@@ -16,12 +16,7 @@ export default function App() {
     } catch {
       // ignore
     }
-    // Default persistent user session so page reloads keep you on your active view
-    return {
-      name: 'XZR Munna',
-      email: 'xzrmunna96@gmail.com',
-      accountCode: '2886064606'
-    };
+    return null;
   });
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 

@@ -1,0 +1,6 @@
+{
+  "name": "SUPER X SMS",
+  "description": "SUPER X SMS - Enterprise SMS routing portal with dedicated account codes and high-speed multi-gateway access.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

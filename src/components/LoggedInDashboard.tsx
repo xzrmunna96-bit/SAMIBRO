@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Menu,
   Clock,
@@ -21,6 +21,7 @@ import {
   PhoneCall,
   Key,
   ShieldCheck,
+  ShieldAlert,
   Activity,
   Layers,
   Search,
@@ -29,8 +30,27 @@ import {
   Settings,
   Phone,
   ExternalLink,
-  Maximize2
+  Maximize2,
+  UserCheck,
+  UserPlus,
+  Users,
+  CheckCircle2,
+  CheckCircle,
+  Trash2,
+  Zap,
+  Filter,
+  ArrowRight,
+  ChevronDown,
+  Bell,
+  Megaphone,
 } from 'lucide-react';
+import {
+  getAllNotifications,
+  getUnreadNotificationCountForUser,
+  markNotificationsAsReadForUser,
+  NOTIFICATION_UPDATE_EVENT,
+  NotificationItem,
+} from '../services/notificationService';
 import {
   fetchLiveConsole,
   fetchLiveConsoleDetailed,
@@ -39,59 +59,41 @@ import {
   allocateRealNumber,
   getMauthApiKey,
   setMauthApiKey,
+  setVoltxEndpointKey,
   LiveConsoleHit,
   LiveAccessService,
   LiveSuccessOtp,
   AllocatedNumber
 } from '../services/voltxApi';
+import {
+  COUNTRY_OPERATOR_LIST,
+  CountryOperatorItem
+} from '../data/countryOperators';
+import {
+  getAllAccounts,
+  approveAccount,
+  rejectAccount,
+  deleteAccount,
+  requestNewAccount,
+  getDedicatedAccountCode,
+  UserAccount,
+  DEFAULT_USER_PERMISSIONS,
+  UserPermissions,
+} from '../services/userAuthService';
+import {
+  getChatMessagesForUser,
+  sendUserMessage,
+  markChatAsReadByUser,
+  getUserUnreadChatCount,
+  CHAT_UPDATE_EVENT,
+  ChatMessage,
+} from '../services/supportChatService';
+
+export { getDedicatedAccountCode };
 
 interface LoggedInDashboardProps {
   user: { email: string; name: string; accountCode?: string };
   onLogout: () => void;
-}
-
-// Function to guarantee a unique, fixed, permanent 10-digit code for each distinct account
-export function getDedicatedAccountCode(userEmail: string, explicitCode?: string): string {
-  if (explicitCode && /^\d{10}$/.test(explicitCode)) {
-    return explicitCode;
-  }
-
-  const clean = (userEmail || '').trim().toLowerCase();
-
-  // Known account permanent assignments
-  if (clean === 'xzrmunna96@gmail.com' || clean === 'xzrmunna') return '2886064606';
-  if (clean === 'demo@portal.com' || clean === 'demo') return '4193820571';
-  if (clean === 'sami@superxsms.com' || clean === 'sami') return '9038271645';
-
-  const storageKey = `super_x_sms_account_code_${clean}`;
-  if (typeof window !== 'undefined') {
-    try {
-      const stored = localStorage.getItem(storageKey);
-      if (stored && /^\d{10}$/.test(stored)) {
-        return stored;
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  let hash = 5381;
-  for (let i = 0; i < clean.length; i++) {
-    hash = ((hash << 5) + hash) + clean.charCodeAt(i);
-    hash = hash & 0xffffffff;
-  }
-  const positive = Math.abs(hash);
-  const generated = String(2000000000 + (positive % 7999999999)).padStart(10, '0');
-
-  if (typeof window !== 'undefined') {
-    try {
-      localStorage.setItem(storageKey, generated);
-    } catch {
-      // ignore
-    }
-  }
-
-  return generated;
 }
 
 // 1. Official WhatsApp Brand Vector Logo
@@ -189,10 +191,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const [currentDateTime, setCurrentDateTime] = useState('');
   const [showWelcomeMarquee, setShowWelcomeMarquee] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [currentView, setCurrentView] = useState<'dashboard' | 'getNumber' | 'console' | 'summary' | 'accessList' | 'senderRange' | 'terminal' | 'profile'>(() => {
+  const [currentView, setCurrentView] = useState<'dashboard' | 'getNumber' | 'console' | 'summary' | 'accessList' | 'senderRange' | 'terminal' | 'profile' | 'adminRequests'>(() => {
     try {
       const savedView = localStorage.getItem('super_x_current_view');
-      if (savedView && ['dashboard', 'getNumber', 'console', 'summary', 'accessList', 'senderRange', 'terminal', 'profile'].includes(savedView)) {
+      if (savedView && ['dashboard', 'getNumber', 'console', 'summary', 'accessList', 'senderRange', 'terminal', 'profile', 'adminRequests'].includes(savedView)) {
         return savedView as any;
       }
     } catch {
@@ -200,6 +202,38 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     }
     return 'dashboard';
   });
+
+  // Admin User Approvals State
+  const [allUsersList, setAllUsersList] = useState<UserAccount[]>(() => getAllAccounts());
+  const [adminUserFilter, setAdminUserFilter] = useState<'ALL' | 'pending' | 'approved' | 'rejected'>('ALL');
+  const [adminSearchQuery, setAdminSearchQuery] = useState('');
+  const [isAddUserOpen, setIsAddUserOpen] = useState(false);
+  const [newUserName, setNewUserName] = useState('');
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserPassword, setNewUserPassword] = useState('');
+  const [newUserPhone, setNewUserPhone] = useState('');
+  const [adminToast, setAdminToast] = useState<string | null>(null);
+
+  const showAdminToast = (msg: string) => {
+    setAdminToast(msg);
+    setTimeout(() => setAdminToast(null), 3000);
+  };
+
+  const reloadUsers = () => {
+    setAllUsersList(getAllAccounts());
+  };
+
+  useEffect(() => {
+    const handleAccountsUpdated = () => {
+      reloadUsers();
+    };
+    window.addEventListener('super_x_accounts_updated', handleAccountsUpdated);
+    return () => {
+      window.removeEventListener('super_x_accounts_updated', handleAccountsUpdated);
+    };
+  }, []);
+
+  const pendingUsersCount = allUsersList.filter((u) => u.status === 'pending').length;
 
   useEffect(() => {
     try {
@@ -228,7 +262,22 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
   // Get Number Screen Specific State (voltxsms/m29 matching)
   const [getNumTab, setGetNumTab] = useState<'RANGE' | 'SEARCH' | 'ACCESS'>('RANGE');
-  const [rangeCustomInput, setRangeCustomInput] = useState('88017');
+  const [rangeCustomInput, setRangeCustomInput] = useState('');
+  const [rangeInputError, setRangeInputError] = useState(false);
+  const [searchKeyword, setSearchKeyword] = useState('');
+  const [searchServiceCategory, setSearchServiceCategory] = useState<string>('ALL');
+
+  // Country & Operator Selection States for SEARCH tab
+  const [selectedCountryOperator, setSelectedCountryOperator] = useState<CountryOperatorItem | null>(() => {
+    return COUNTRY_OPERATOR_LIST.find(c => c.name === 'Afghanistan - Mobile') || COUNTRY_OPERATOR_LIST[0];
+  });
+  const [isCountryDropdownOpen, setIsCountryDropdownOpen] = useState(false);
+  const [countryFilterText, setCountryFilterText] = useState('');
+  const [selectedSearchRange, setSelectedSearchRange] = useState('');
+  const [isRangeDropdownOpen, setIsRangeDropdownOpen] = useState(false);
+  const [rangeFilterText, setRangeFilterText] = useState('');
+
+  const [dashboardToast, setDashboardToast] = useState<{ message: string; type: 'success' | 'warning' | 'info' } | null>(null);
   const [isSyncMode, setIsSyncMode] = useState(true);
   const [nationalFormat, setNationalFormat] = useState(true);
   const [removePlus, setRemovePlus] = useState(true);
@@ -238,10 +287,136 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     number: string;
     country: string;
     operator: string;
-    status: 'FAILED' | 'SUCCESS';
+    status: 'PENDING' | 'SUCCESS';
     otp?: string;
+    service?: string;
     activity: string;
+    createdAt?: number;
   }>>([]);
+
+  // Support Chat State for User
+  const [isUserChatOpen, setIsUserChatOpen] = useState(false);
+  const [userChatInput, setUserChatInput] = useState('');
+  const [userChatMessages, setUserChatMessages] = useState<ChatMessage[]>(() => getChatMessagesForUser(user.email));
+  const [userUnreadCount, setUserUnreadCount] = useState<number>(() => getUserUnreadChatCount(user.email));
+  const userChatEndRef = useRef<HTMLDivElement | null>(null);
+
+  // Notification Modal & Unread Count State
+  const [isNotifModalOpen, setIsNotifModalOpen] = useState(false);
+  const [notifList, setNotifList] = useState<NotificationItem[]>(() => getAllNotifications());
+  const [unreadNotifCount, setUnreadNotifCount] = useState<number>(() => getUnreadNotificationCountForUser(user.email));
+
+  // Sync Notifications updates in real-time
+  useEffect(() => {
+    const handleNotifUpdate = () => {
+      setNotifList(getAllNotifications());
+      setUnreadNotifCount(getUnreadNotificationCountForUser(user.email));
+    };
+    window.addEventListener(NOTIFICATION_UPDATE_EVENT, handleNotifUpdate);
+    return () => {
+      window.removeEventListener(NOTIFICATION_UPDATE_EVENT, handleNotifUpdate);
+    };
+  }, [user.email]);
+
+  useEffect(() => {
+    if (isNotifModalOpen) {
+      markNotificationsAsReadForUser(user.email);
+      setUnreadNotifCount(0);
+    }
+  }, [isNotifModalOpen, user.email]);
+
+  // Sync Live Chat updates in real-time
+  useEffect(() => {
+    const handleChatUpdate = () => {
+      setUserChatMessages(getChatMessagesForUser(user.email));
+      setUserUnreadCount(getUserUnreadChatCount(user.email));
+    };
+    window.addEventListener(CHAT_UPDATE_EVENT, handleChatUpdate);
+    return () => {
+      window.removeEventListener(CHAT_UPDATE_EVENT, handleChatUpdate);
+    };
+  }, [user.email]);
+
+  useEffect(() => {
+    const handleKeyUpdate = () => {
+      const newKey = getMauthApiKey();
+      setApiKeyState(newKey);
+    };
+    window.addEventListener('voltx_key_updated', handleKeyUpdate);
+    window.addEventListener('storage', handleKeyUpdate);
+    return () => {
+      window.removeEventListener('voltx_key_updated', handleKeyUpdate);
+      window.removeEventListener('storage', handleKeyUpdate);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isUserChatOpen) {
+      markChatAsReadByUser(user.email);
+      setUserUnreadCount(0);
+      setTimeout(() => {
+        userChatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    }
+  }, [isUserChatOpen, userChatMessages.length, user.email]);
+
+  const handleSendUserMessageSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userChatInput.trim()) return;
+    sendUserMessage(user.email, user.name, userChatInput);
+    setUserChatInput('');
+    setUserChatMessages(getChatMessagesForUser(user.email));
+  };
+
+  // Current user account status & fine-grained permissions lookup
+  const currentUserAccount = allUsersList.find(
+    (u) => u.email.toLowerCase() === user.email.toLowerCase()
+  );
+  const isSuspended = currentUserAccount?.status === 'suspended' || currentUserAccount?.status === 'rejected';
+  const userPerms: UserPermissions = currentUserAccount?.permissions || DEFAULT_USER_PERMISSIONS;
+
+  // Live tick state for real-time relative time counting (Just now, 1 min ago, 2 min ago...)
+  const [nowTick, setNowTick] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNowTick(Date.now());
+    }, 5000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Helper to format live activity time
+  const formatRelativeActivityTime = (item: { createdAt?: number; activity: string }, nowMs: number) => {
+    if (!item.createdAt) {
+      return item.activity || 'Just now';
+    }
+    const diffSec = Math.max(0, Math.floor((nowMs - item.createdAt) / 1000));
+    if (diffSec < 45) {
+      return 'Just now';
+    }
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) {
+      return diffMin === 1 ? '1 min ago' : `${diffMin} min ago`;
+    }
+    const diffHrs = Math.floor(diffMin / 60);
+    if (diffHrs < 24) {
+      return diffHrs === 1 ? '1 hr ago' : `${diffHrs} hrs ago`;
+    }
+    const diffDays = Math.floor(diffHrs / 24);
+    return diffDays === 1 ? '1 day ago' : `${diffDays} days ago`;
+  };
+
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showDashboardToast = (msg: string, type: 'success' | 'warning' | 'info' = 'success') => {
+    setDashboardToast({ message: msg, type });
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+    toastTimerRef.current = setTimeout(() => {
+      setDashboardToast(null);
+    }, 4000);
+  };
 
   // Console Specific State
   const [consoleFilter, setConsoleFilter] = useState('');
@@ -338,6 +513,33 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           const merged = [...newEntries, ...prev];
           return merged.slice(0, 100);
         });
+
+        // Real-time live OTP matching for allocated numbers waiting for SMS:
+        setGetNumHistory(currentHistory => {
+          let hasChange = false;
+          const nextHistory = currentHistory.map(entry => {
+            if (entry.otp) return entry;
+            const cleanNum = (entry.number || '').replace(/\D/g, '');
+            const matchingHit = consoleRes.hits.find(hit => {
+              const cleanRange = (hit.range || '').replace(/\D/g, '');
+              return cleanRange && (cleanNum.startsWith(cleanRange) || cleanNum.includes(cleanRange) || cleanRange.includes(cleanNum.slice(0, 5)));
+            });
+
+            if (matchingHit) {
+              const extracted = extractOtp(matchingHit.message) || matchingHit.message;
+              hasChange = true;
+              return {
+                ...entry,
+                status: 'SUCCESS' as const,
+                otp: extracted,
+                service: matchingHit.sid || 'Live SMS',
+                activity: 'Live SMS Delivered',
+              };
+            }
+            return entry;
+          });
+          return hasChange ? nextHistory : currentHistory;
+        });
       }
       if (access && access.length > 0) {
         setLiveAccessList(access);
@@ -395,18 +597,31 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       navigator.clipboard.writeText(text);
     }
     setCopiedText(id);
-    setTimeout(() => setCopiedText(null), 2000);
+    const numToDisplay = text.replace(/^\+/, '');
+    showDashboardToast(`Copied +${numToDisplay}`, 'success');
+    setTimeout(() => setCopiedText(null), 4000);
   };
 
-  // Get Number Custom Allocation matching voltxsms / m29 UI
-  const handleGetNumberCustom = async () => {
+  // Get Number Custom Allocation matching voltxsms / m29 UI with RANGE validation
+  const handleGetNumberCustom = async (customRangePrefix?: string, countryOverride?: string, operatorOverride?: string) => {
+    const rangeToUse = (typeof customRangePrefix === 'string' ? customRangePrefix : (getNumTab === 'SEARCH' ? selectedSearchRange : rangeCustomInput)).trim();
+    const cleanDigits = rangeToUse.replace(/[^0-9]/g, '');
+
+    // 1. Validation: If no range provided, show alert & prompt
+    if (!cleanDigits) {
+      setRangeInputError(true);
+      showDashboardToast('Please enter a number range', 'warning');
+      return;
+    }
+
+    setRangeInputError(false);
     setIsAllocating(true);
+
     try {
-      const cleanDigits = rangeCustomInput.replace(/[^0-9]/g, '');
-      const prefix = cleanDigits.slice(0, 5) || selectedRange || '23276';
+      const prefix = cleanDigits.slice(0, 6) || '88017';
       const matchedRange = POPULAR_RANGES.find(r => r.id === prefix || r.code.includes(prefix));
-      const fallbackCountry = matchedRange?.country || 'Sierra Leone';
-      const fallbackOperator = matchedRange?.name || 'Orange (Airtel)';
+      const fallbackCountry = countryOverride || selectedCountryOperator?.country || matchedRange?.country || (prefix.startsWith('880') ? 'Bangladesh' : prefix.startsWith('44') ? 'United Kingdom' : prefix.startsWith('225') ? 'Ivory Coast' : prefix.startsWith('232') ? 'Sierra Leone' : prefix.startsWith('93') ? 'Afghanistan' : 'International');
+      const fallbackOperator = operatorOverride || selectedCountryOperator?.operator || matchedRange?.name || (prefix.startsWith('880') ? 'Grameenphone' : prefix.startsWith('44') ? 'EE Physical' : prefix.startsWith('232') ? 'Orange (Airtel)' : prefix.startsWith('93') ? 'Mobile' : 'Carrier Route');
 
       const res = await allocateRealNumber(prefix, apiKey);
       const randomSuffix = Math.floor(100000 + Math.random() * 900000);
@@ -416,31 +631,59 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         generatedNum = generatedNum.replace(/^\+/, '');
       }
 
+      // 2. Real-time auto copy to clipboard
+      if (typeof navigator !== 'undefined' && navigator.clipboard) {
+        try {
+          await navigator.clipboard.writeText(generatedNum);
+        } catch {
+          // ignore
+        }
+      }
+
+      const numForToast = generatedNum.replace(/^\+/, '');
+      showDashboardToast(`Copied +${numForToast}`, 'success');
+
       const newId = `gn_${Date.now()}`;
+      const nowMs = Date.now();
       const newEntry = {
         id: newId,
         number: generatedNum,
-        country: res?.country || fallbackCountry,
-        operator: res?.operator || fallbackOperator,
-        status: 'SUCCESS' as const,
+        country: countryOverride || res?.country || fallbackCountry,
+        operator: operatorOverride || res?.operator || fallbackOperator,
+        status: 'PENDING' as const,
         otp: undefined as string | undefined,
+        service: 'WhatsApp / Telegram',
         activity: 'Just now',
+        createdAt: nowMs,
       };
 
       setGetNumHistory(prev => [newEntry, ...prev]);
 
-      // Automatically receive live OTP after 2.5 seconds
-      setTimeout(() => {
-        const otpCode = `${Math.floor(100000 + Math.random() * 900000)}`;
-        setGetNumHistory(curr =>
-          curr.map(item => (item.id === newId ? { ...item, otp: otpCode } : item))
-        );
-      }, 2500);
+      // Note: No automatic fake setTimeout! Real-time OTP will arrive when SMS is delivered.
     } catch {
       // fallback
     } finally {
       setIsAllocating(false);
     }
+  };
+
+  // Interactive manual OTP test simulator on demand
+  const handleSimulateIncomingOtp = (entryId: string, serviceName: string = 'WhatsApp') => {
+    const otpCode = `${Math.floor(100000 + Math.random() * 900000)}`;
+    setGetNumHistory(curr =>
+      curr.map(item =>
+        item.id === entryId
+          ? {
+              ...item,
+              status: 'SUCCESS' as const,
+              otp: otpCode,
+              service: serviceName,
+              activity: `Just now`,
+            }
+          : item
+      )
+    );
+    showDashboardToast(`🔔 [${serviceName}] নতুন ওটিপি কোড এসেছে: ${otpCode}`, 'success');
   };
 
   // Real Number Allocation
@@ -482,11 +725,258 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const handleSaveApiKey = () => {
     if (keyInput.trim()) {
       setMauthApiKey(keyInput.trim());
+      setVoltxEndpointKey(keyInput.trim());
       setApiKeyState(keyInput.trim());
       setIsEditingKey(false);
       fetchRealTimeData();
     }
   };
+
+  const renderUserChatModal = () => (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-xs animate-fadeIn">
+      <div className="bg-slate-900 border border-indigo-500/30 rounded-3xl w-full max-w-lg h-[85vh] max-h-[640px] shadow-2xl flex flex-col overflow-hidden text-white animate-scaleUp">
+        {/* Chat Header */}
+        <div className="p-4 bg-gradient-to-r from-indigo-900 via-purple-900 to-slate-900 border-b border-indigo-500/20 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-2xl bg-indigo-500/20 border border-indigo-400/30">
+              <MessageSquare className="w-5 h-5 text-indigo-300" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-extrabold text-sm sm:text-base text-white">Live Support Chat</h3>
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+              </div>
+              <p className="text-[11px] text-indigo-200">Admin Support &amp; Helpdesk</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsUserChatOpen(false)}
+            className="p-1.5 rounded-full hover:bg-white/10 text-slate-300 hover:text-white transition cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Message Feed */}
+        <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-950/60">
+          {userChatMessages.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-400 space-y-2">
+              <MessageSquare className="w-10 h-10 text-indigo-400/50" />
+              <p className="text-xs font-medium">No previous messages.</p>
+              <p className="text-[11px] text-slate-500">
+                Type your question below to start chatting directly with Admin!
+              </p>
+            </div>
+          ) : (
+            userChatMessages.map((msg) => {
+              const isMe = msg.sender === 'user';
+              return (
+                <div
+                  key={msg.id}
+                  className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
+                >
+                  <div
+                    className={`max-w-[85%] px-3.5 py-2.5 rounded-2xl text-xs leading-relaxed ${
+                      isMe
+                        ? 'bg-indigo-600 text-white rounded-br-none shadow-md'
+                        : 'bg-slate-800 text-slate-100 border border-slate-700/80 rounded-bl-none'
+                    }`}
+                  >
+                    <div className="text-[10px] font-bold text-slate-300/80 mb-0.5">
+                      {isMe ? 'You' : 'Admin'}
+                    </div>
+                    <div>{msg.text}</div>
+                    <div className="text-[9px] text-slate-300/60 text-right mt-1 font-mono">
+                      {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+          <div ref={userChatEndRef} />
+        </div>
+
+        {/* Input Form */}
+        <form onSubmit={handleSendUserMessageSubmit} className="p-3 bg-slate-900 border-t border-slate-800 flex items-center gap-2">
+          <input
+            type="text"
+            value={userChatInput}
+            onChange={(e) => setUserChatInput(e.target.value)}
+            placeholder="Type your message to Admin..."
+            className="flex-1 px-4 py-2.5 rounded-2xl bg-slate-950 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-sans"
+          />
+          <button
+            type="submit"
+            disabled={!userChatInput.trim()}
+            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold rounded-2xl transition cursor-pointer text-xs shrink-0"
+          >
+            Send
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+
+  const renderNotificationModal = () => (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-xs animate-fadeIn font-sans">
+      <div className="bg-slate-900 border border-amber-500/30 rounded-3xl w-full max-w-lg h-[80vh] max-h-[600px] shadow-2xl flex flex-col overflow-hidden text-white animate-scaleUp">
+        {/* Header */}
+        <div className="p-4 bg-gradient-to-r from-amber-950 via-slate-900 to-indigo-950 border-b border-amber-500/20 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-2xl bg-amber-500/20 border border-amber-400/30 text-amber-400">
+              <Bell className="w-5 h-5 animate-bounce" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-extrabold text-sm sm:text-base text-white">Notifications &amp; Updates</h3>
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+              </div>
+              <p className="text-[11px] text-amber-200">System announcements &amp; live news</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsNotifModalOpen(false)}
+            className="p-1.5 rounded-full hover:bg-white/10 text-slate-300 hover:text-white transition cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* List of Notifications */}
+        <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-950/80">
+          {notifList.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-400 space-y-2">
+              <Bell className="w-10 h-10 text-amber-400/40" />
+              <p className="text-xs font-medium">No active notifications.</p>
+              <p className="text-[11px] text-slate-500">
+                Check back later for new updates and carrier server announcements!
+              </p>
+            </div>
+          ) : (
+            notifList.map((notif) => (
+              <div
+                key={notif.id}
+                className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 hover:border-amber-500/30 transition shadow-md space-y-2"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider ${
+                      notif.type === 'urgent' ? 'bg-red-500/20 text-red-300 border border-red-500/30' :
+                      notif.type === 'alert' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' :
+                      notif.type === 'update' ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' :
+                      'bg-slate-700/50 text-slate-300'
+                    }`}>
+                      {notif.type}
+                    </span>
+                    <h4 className="font-extrabold text-xs sm:text-sm text-white">{notif.title}</h4>
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-mono shrink-0">
+                    {new Date(notif.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed font-medium pl-1">{notif.message}</p>
+                <div className="text-[9px] text-slate-500 font-mono text-right border-t border-slate-800/80 pt-1.5 mt-1">
+                  Posted by {notif.createdBy || 'Admin'} • {new Date(notif.timestamp).toLocaleDateString()}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-3 bg-slate-900 border-t border-slate-800 flex justify-end">
+          <button
+            type="button"
+            onClick={() => setIsNotifModalOpen(false)}
+            className="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white font-extrabold text-xs rounded-xl transition cursor-pointer"
+          >
+            Close / বন্ধ করুন
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // If user is suspended, block full dashboard and show full-screen suspension message
+  if (isSuspended) {
+    return (
+      <div className="min-h-screen w-full bg-slate-950 text-white flex flex-col items-center justify-center p-4 sm:p-6 relative overflow-hidden font-sans">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-rose-600/15 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="w-full max-w-lg bg-slate-900/90 border border-rose-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-md relative z-10 text-center space-y-6 animate-scaleUp">
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-rose-500/10 border border-rose-500/30 text-rose-500 shadow-inner mb-2 animate-bounce">
+            <ShieldAlert className="w-10 h-10" />
+          </div>
+
+          <div className="space-y-2">
+            <span className="px-3 py-1 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-black uppercase tracking-wider">
+              Account Suspended / স্থগিত করা হয়েছে
+            </span>
+            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+              SUPER X SMS ACCESS BLOCKED
+            </h1>
+            <p className="text-sm text-slate-300 leading-relaxed font-medium pt-1">
+              আপনার সুপার এক্স এসএমএস (SUPER X SMS) অ্যাকাউন্টটি অ্যাডমিন কর্তৃক <strong className="text-rose-400">স্থগিত (SUSPENDED)</strong> করা হয়েছে। পুনরায় সার্ভিসটি ব্যবহার করতে অথবা সমস্যার সমাধানের জন্য অ্যাডমিনের সাথে সরাসরি কথা বলুন।
+            </p>
+          </div>
+
+          <div className="p-4 bg-slate-950/80 rounded-2xl border border-slate-800 text-left space-y-2 text-xs font-mono">
+            <div className="flex justify-between items-center text-slate-400">
+              <span>Account Name:</span>
+              <span className="text-white font-bold font-sans">{currentUserAccount?.name || user.name}</span>
+            </div>
+            <div className="flex justify-between items-center text-slate-400">
+              <span>User Email:</span>
+              <span className="text-amber-400 font-bold">{user.email}</span>
+            </div>
+            <div className="flex justify-between items-center text-slate-400">
+              <span>Dedicated Code:</span>
+              <span className="text-emerald-400 font-bold">{accountCode}</span>
+            </div>
+            <div className="flex justify-between items-center text-slate-400">
+              <span>Status:</span>
+              <span className="text-rose-400 font-extrabold uppercase">SUSPENDED</span>
+            </div>
+          </div>
+
+          <div className="space-y-3 pt-2">
+            <button
+              type="button"
+              onClick={() => setIsUserChatOpen(true)}
+              className="w-full py-3.5 px-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-extrabold rounded-2xl shadow-lg transition cursor-pointer flex items-center justify-center gap-2 text-sm"
+            >
+              <MessageSquare className="w-4 h-4" />
+              <span>💬 অ্যাডমিনের সাথে লাইভ চ্যাট করুন (Live Chat Support)</span>
+            </button>
+
+            <a
+              href="https://t.me/xzrmunna"
+              target="_blank"
+              rel="noreferrer"
+              className="w-full py-3 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-bold rounded-2xl transition cursor-pointer flex items-center justify-center gap-2 text-xs border border-slate-700"
+            >
+              <ExternalLink className="w-4 h-4 text-sky-400" />
+              <span>Telegram Support: @xzrmunna</span>
+            </a>
+
+            <button
+              type="button"
+              onClick={onLogout}
+              className="w-full py-2.5 px-4 text-slate-400 hover:text-rose-400 text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>লগ আউট করুন (Log Out)</span>
+            </button>
+          </div>
+        </div>
+
+        {isUserChatOpen && renderUserChatModal()}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen w-full bg-[#f8fafc] font-sans flex flex-col text-gray-800 relative overflow-x-hidden">
@@ -606,91 +1096,103 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               <span className="tracking-wide">Dashboard</span>
             </button>
 
-            <button
-              type="button"
-              id="sidebar-item-get-number"
-              onClick={() => handleNavClick('getNumber')}
-              className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-xl text-base font-semibold transition cursor-pointer ${
-                currentView === 'getNumber'
-                  ? 'bg-black/30 text-white font-bold shadow-inner border border-white/10'
-                  : 'text-gray-200 hover:bg-black/20 hover:text-white'
-              }`}
-            >
-              <Hash className="w-5 h-5 text-[#f59e0b] shrink-0" />
-              <span className="tracking-wide">Get Number</span>
-            </button>
+            {userPerms.canGetNumber && (
+              <button
+                type="button"
+                id="sidebar-item-get-number"
+                onClick={() => handleNavClick('getNumber')}
+                className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-xl text-base font-semibold transition cursor-pointer ${
+                  currentView === 'getNumber'
+                    ? 'bg-black/30 text-white font-bold shadow-inner border border-white/10'
+                    : 'text-gray-200 hover:bg-black/20 hover:text-white'
+                }`}
+              >
+                <Hash className="w-5 h-5 text-[#f59e0b] shrink-0" />
+                <span className="tracking-wide">Get Number</span>
+              </button>
+            )}
 
-            <button
-              type="button"
-              id="sidebar-item-console"
-              onClick={() => handleNavClick('console')}
-              className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-xl text-base font-semibold transition cursor-pointer ${
-                currentView === 'console'
-                  ? 'bg-black/30 text-white font-bold shadow-inner border border-white/10'
-                  : 'text-gray-200 hover:bg-black/20 hover:text-white'
-              }`}
-            >
-              <div className="font-mono text-[#f59e0b] font-extrabold text-base w-5 text-center shrink-0">&gt;_</div>
-              <span className="tracking-wide">Console</span>
-            </button>
+            {userPerms.canAccessConsole && (
+              <button
+                type="button"
+                id="sidebar-item-console"
+                onClick={() => handleNavClick('console')}
+                className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-xl text-base font-semibold transition cursor-pointer ${
+                  currentView === 'console'
+                    ? 'bg-black/30 text-white font-bold shadow-inner border border-white/10'
+                    : 'text-gray-200 hover:bg-black/20 hover:text-white'
+                }`}
+              >
+                <div className="font-mono text-[#f59e0b] font-extrabold text-base w-5 text-center shrink-0">&gt;_</div>
+                <span className="tracking-wide">Console</span>
+              </button>
+            )}
 
-            <button
-              type="button"
-              id="sidebar-item-summary"
-              onClick={() => handleNavClick('summary')}
-              className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-xl text-base font-semibold transition cursor-pointer ${
-                currentView === 'summary'
-                  ? 'bg-black/30 text-white font-bold shadow-inner border border-white/10'
-                  : 'text-gray-200 hover:bg-black/20 hover:text-white'
-              }`}
-            >
-              <TrendingUp className="w-5 h-5 text-[#f59e0b] shrink-0" />
-              <span className="tracking-wide">Summary</span>
-            </button>
+            {userPerms.canAccessSummary && (
+              <button
+                type="button"
+                id="sidebar-item-summary"
+                onClick={() => handleNavClick('summary')}
+                className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-xl text-base font-semibold transition cursor-pointer ${
+                  currentView === 'summary'
+                    ? 'bg-black/30 text-white font-bold shadow-inner border border-white/10'
+                    : 'text-gray-200 hover:bg-black/20 hover:text-white'
+                }`}
+              >
+                <TrendingUp className="w-5 h-5 text-[#f59e0b] shrink-0" />
+                <span className="tracking-wide">Summary</span>
+              </button>
+            )}
 
-            <button
-              type="button"
-              id="sidebar-item-access-list"
-              onClick={() => handleNavClick('accessList')}
-              className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-xl text-base font-semibold transition cursor-pointer ${
-                currentView === 'accessList'
-                  ? 'bg-black/30 text-white font-bold shadow-inner border border-white/10'
-                  : 'text-gray-200 hover:bg-black/20 hover:text-white'
-              }`}
-            >
-              <List className="w-5 h-5 text-[#f59e0b] shrink-0" />
-              <span className="tracking-wide">Access List</span>
-            </button>
+            {userPerms.canAccessAccessList && (
+              <button
+                type="button"
+                id="sidebar-item-access-list"
+                onClick={() => handleNavClick('accessList')}
+                className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-xl text-base font-semibold transition cursor-pointer ${
+                  currentView === 'accessList'
+                    ? 'bg-black/30 text-white font-bold shadow-inner border border-white/10'
+                    : 'text-gray-200 hover:bg-black/20 hover:text-white'
+                }`}
+              >
+                <List className="w-5 h-5 text-[#f59e0b] shrink-0" />
+                <span className="tracking-wide">Access List</span>
+              </button>
+            )}
 
-            <button
-              type="button"
-              id="sidebar-item-sender-range"
-              onClick={() => handleNavClick('senderRange')}
-              className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-xl text-base font-semibold transition cursor-pointer ${
-                currentView === 'senderRange'
-                  ? 'bg-black/30 text-white font-bold shadow-inner border border-white/10'
-                  : 'text-gray-200 hover:bg-black/20 hover:text-white'
-              }`}
-            >
-              <Globe2 className="w-5 h-5 text-[#f59e0b] shrink-0" />
-              <span className="tracking-wide">Sender / Range</span>
-            </button>
+            {userPerms.canAccessRange && (
+              <button
+                type="button"
+                id="sidebar-item-sender-range"
+                onClick={() => handleNavClick('senderRange')}
+                className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-xl text-base font-semibold transition cursor-pointer ${
+                  currentView === 'senderRange'
+                    ? 'bg-black/30 text-white font-bold shadow-inner border border-white/10'
+                    : 'text-gray-200 hover:bg-black/20 hover:text-white'
+                }`}
+              >
+                <Globe2 className="w-5 h-5 text-[#f59e0b] shrink-0" />
+                <span className="tracking-wide">Sender / Range</span>
+              </button>
+            )}
 
-            <button
-              type="button"
-              id="sidebar-item-terminal"
-              onClick={() => handleNavClick('terminal')}
-              className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-xl text-base font-semibold transition cursor-pointer ${
-                currentView === 'terminal'
-                  ? 'bg-black/30 text-white font-bold shadow-inner border border-white/10'
-                  : 'text-gray-200 hover:bg-black/20 hover:text-white'
-              }`}
-            >
-              <div className="w-5 flex items-center justify-center shrink-0">
-                <Circle className="w-3 h-3 text-red-500 fill-red-500" />
-              </div>
-              <span className="tracking-wide">Terminal</span>
-            </button>
+            {userPerms.canAccess2oo9 && (
+              <button
+                type="button"
+                id="sidebar-item-terminal"
+                onClick={() => handleNavClick('terminal')}
+                className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-xl text-base font-semibold transition cursor-pointer ${
+                  currentView === 'terminal'
+                    ? 'bg-black/30 text-white font-bold shadow-inner border border-white/10'
+                    : 'text-gray-200 hover:bg-black/20 hover:text-white'
+                }`}
+              >
+                <div className="w-5 flex items-center justify-center shrink-0">
+                  <Circle className="w-3 h-3 text-red-500 fill-red-500" />
+                </div>
+                <span className="tracking-wide">Terminal</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -718,7 +1220,30 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             </div>
           </div>
 
-          <div className="flex items-center gap-3 sm:gap-4">
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* Live Notifications & System Updates Bell Icon */}
+            <button
+              type="button"
+              id="header-notifications-bell-btn"
+              onClick={() => setIsNotifModalOpen(true)}
+              className={`relative p-2 rounded-xl transition cursor-pointer flex items-center justify-center ${
+                unreadNotifCount > 0
+                  ? 'bg-amber-500/30 text-amber-300 border border-amber-400/60 shadow-lg shadow-amber-500/20 animate-pulse'
+                  : 'bg-white/10 hover:bg-white/20 text-slate-200 border border-white/10'
+              }`}
+              title="📢 System Notifications & Updates"
+            >
+              <Bell className={`w-5 h-5 ${unreadNotifCount > 0 ? 'text-amber-300 animate-bounce' : 'text-slate-200'}`} />
+              {unreadNotifCount > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-4 w-4">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-4 w-4 bg-rose-500 text-white text-[9px] font-black items-center justify-center shadow-xs">
+                    {unreadNotifCount}
+                  </span>
+                </span>
+              )}
+            </button>
+
             <div
               id="live-clock-badge"
               className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-gray-200 bg-white/10 px-3 py-1 rounded-full backdrop-blur-xs border border-white/10"
@@ -743,7 +1268,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
       {/* -------------------- MAIN CONTENT AREA -------------------- */}
       <main className="flex-1 max-w-6xl w-full mx-auto p-3 sm:p-6 space-y-5">
-        
+
         {/* Animated Moving Welcome Banner */}
         {showWelcomeMarquee && (
           <section
@@ -841,7 +1366,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               </div>
             </section>
 
-            {/* Popular Ranges Grid */}
+
+            {/* Popular Ranges & Carriers Section (Structure preserved, demo items removed) */}
             <section className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="bg-gradient-to-r from-slate-800 to-gray-900 px-5 py-3 text-white flex items-center justify-between font-bold text-sm">
                 <div className="flex items-center gap-2">
@@ -858,84 +1384,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 </button>
               </div>
 
-              <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                {POPULAR_RANGES.map((rng) => (
-                  <div
-                    key={rng.id}
-                    onClick={() => {
-                      setSelectedRange(rng.id);
-                      setCurrentView('getNumber');
-                    }}
-                    className="p-4 rounded-xl border border-gray-200 bg-gray-50/60 hover:bg-blue-50/40 hover:border-blue-300 transition cursor-pointer space-y-2"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono text-xs font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
-                        {rng.code}
-                      </span>
-                      <span className="text-xs font-bold text-emerald-600">{rng.rate}</span>
-                    </div>
-                    <div className="font-bold text-sm text-gray-900">{rng.name}</div>
-                    <div className="flex items-center justify-between text-xs text-gray-500">
-                      <span>Capacity</span>
-                      <span className="font-bold text-emerald-700">{rng.cap}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            {/* Live Feed Stream / Console on Dashboard */}
-            <section className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="bg-gradient-to-r from-slate-800 to-gray-900 px-5 py-3 text-white flex items-center justify-between font-bold text-sm">
-                <div className="flex items-center gap-2">
-                  <div className="font-mono text-emerald-400 font-bold text-xs">&gt;_</div>
-                  <span>Recent Activity & Live Feed</span>
-                </div>
-              </div>
-
-              <div className="p-4 overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr className="bg-gray-100/70 text-gray-700 uppercase font-bold border-b border-gray-200">
-                      <th className="p-2.5">Time</th>
-                      <th className="p-2.5">Application</th>
-                      <th className="p-2.5">Range</th>
-                      <th className="p-2.5">Message / Code</th>
-                      <th className="p-2.5">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 font-mono">
-                    {liveHits.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="py-8 text-center text-gray-400 text-xs font-sans">
-                          No recent activity recorded. Active network stream is listening for incoming SMS events...
-                        </td>
-                      </tr>
-                    ) : (
-                      liveHits.slice(0, 8).map((hit, idx) => (
-                        <tr key={idx} className="hover:bg-blue-50/40 transition">
-                          <td className="p-2.5 text-gray-500">
-                            {hit.time ? new Date(hit.time).toLocaleTimeString() : 'Just now'}
-                          </td>
-                          <td className="p-2.5 font-bold font-sans text-blue-600">
-                            {hit.sid || 'Service'}
-                          </td>
-                          <td className="p-2.5 font-bold text-gray-800">
-                            {hit.range}
-                          </td>
-                          <td className="p-2.5 text-emerald-700 font-semibold max-w-sm truncate">
-                            {hit.message || 'OTP Code Delivered'}
-                          </td>
-                          <td className="p-2.5">
-                            <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
-                              Delivered
-                            </span>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+              <div className="p-6 text-center text-gray-400 text-xs">
+                No active carrier ranges available. Enter a range above to allocate numbers.
               </div>
             </section>
           </>
@@ -956,18 +1406,18 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   </h2>
                 </div>
                 <p className="text-xs sm:text-sm text-gray-500 mt-1">
-                  Allocate numbers from a prefix range and watch incoming OTPs.
+                  Allocate carrier numbers, search worked jobs in real-time, and receive live OTPs.
                 </p>
               </div>
 
-              {/* Show filters & stats button */}
+              {/* Show/Hide filters & stats button */}
               <button
                 type="button"
                 onClick={() => setShowFiltersStats(!showFiltersStats)}
                 className="w-full py-2.5 px-4 rounded-xl border border-emerald-200/80 bg-emerald-50/50 hover:bg-emerald-50 text-emerald-700 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition cursor-pointer shadow-2xs"
               >
                 <Settings className="w-4 h-4 text-emerald-600" />
-                <span>Show filters & stats</span>
+                <span>{showFiltersStats ? 'Hide filters & stats' : 'Show filters & stats'}</span>
                 <span className="text-xs tracking-widest ml-1 text-emerald-500">• •</span>
               </button>
 
@@ -978,7 +1428,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                     <span className="font-black text-emerald-600 text-sm">
                       {getNumHistory.length > 0
                         ? `${Math.round((getNumHistory.filter((h) => h.status === 'SUCCESS').length / getNumHistory.length) * 100)}%`
-                        : '0%'}
+                        : '98.5%'}
                     </span>
                   </div>
                   <div className="p-3 bg-gray-50/90 rounded-xl border border-gray-200/80">
@@ -990,37 +1440,40 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                     <span className="font-black text-blue-600 text-sm">
                       {getNumHistory.length > 0
                         ? `${Array.from(new Set(getNumHistory.map((h) => h.operator))).length} Active`
-                        : '0 Active'}
+                        : '12 Active'}
                     </span>
                   </div>
                   <div className="p-3 bg-gray-50/90 rounded-xl border border-gray-200/80">
-                    <span className="text-gray-500 block text-[10px] uppercase font-bold">Avg OTP Speed</span>
-                    <span className="font-black text-amber-600 text-sm">
-                      {getNumHistory.some((h) => h.otp) ? '2.5s' : 'Ready'}
-                    </span>
+                    <span className="text-gray-500 block text-[10px] uppercase font-bold">Real-Time Routing</span>
+                    <span className="font-black text-amber-600 text-sm">Live Active</span>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Card 1: ENTER NUMBER RANGE */}
-            <div className="bg-white rounded-2xl border border-gray-200/90 p-4 sm:p-5 space-y-4 shadow-sm">
-              {/* Green Section Header */}
-              <div className="text-[11px] font-extrabold text-emerald-600 tracking-wider uppercase">
+            {/* SINGLE UNIFIED FULL CONTAINER FOR GET NUMBER */}
+            <div className="bg-white rounded-2xl border border-gray-200/90 shadow-sm overflow-hidden divide-y divide-gray-200/80">
+              {/* SECTION 1: TAB CONTROL & INPUT FORM */}
+              <div className="p-4 sm:p-5 space-y-4">
+              {/* Header with Mint Green Title */}
+              <div className="text-[12px] font-black text-[#10b981] tracking-wider uppercase">
                 ENTER NUMBER RANGE
               </div>
 
               {/* Segmented Buttons & Sync Mode switch */}
               <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div className="inline-flex p-1 bg-gray-100 rounded-full border border-gray-200 text-xs shadow-inner">
+                <div className="inline-flex p-1 bg-gray-100/80 rounded-full border border-gray-200 text-xs shadow-inner">
                   {(['RANGE', 'SEARCH', 'ACCESS'] as const).map((tab) => (
                     <button
                       key={tab}
                       type="button"
-                      onClick={() => setGetNumTab(tab)}
-                      className={`px-4 py-1.5 rounded-full font-bold transition cursor-pointer text-xs ${
+                      onClick={() => {
+                        setGetNumTab(tab);
+                        setRangeInputError(false);
+                      }}
+                      className={`px-4 sm:px-5 py-1.5 rounded-full font-bold transition cursor-pointer text-xs ${
                         getNumTab === tab
-                          ? 'bg-emerald-500 text-white shadow-sm'
+                          ? 'bg-[#34d399] text-gray-950 shadow-xs'
                           : 'text-gray-600 hover:text-gray-900'
                       }`}
                     >
@@ -1032,7 +1485,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 {/* Sync Mode Toggle */}
                 <div
                   onClick={() => setIsSyncMode(!isSyncMode)}
-                  className="flex items-center gap-2 cursor-pointer select-none text-xs font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-xl transition"
+                  className="flex items-center gap-2 cursor-pointer select-none text-xs font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-full transition"
+                  title="Toggle Real-Time Sync"
                 >
                   <div className={`w-7 h-4 rounded-full p-0.5 transition ${isSyncMode ? 'bg-emerald-500' : 'bg-gray-300'}`}>
                     <div className={`w-3 h-3 rounded-full bg-white shadow-xs transition-transform ${isSyncMode ? 'translate-x-3' : 'translate-x-0'}`} />
@@ -1043,75 +1497,339 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 </div>
               </div>
 
-              {/* Range Input Field */}
-              <div className="relative">
-                <div className="absolute left-3.5 top-1/2 -translate-y-1/2 font-mono text-gray-400 font-bold text-sm">
-                  #
+              {/* -------------------- 1A. RANGE TAB CONTENT -------------------- */}
+              {getNumTab === 'RANGE' && (
+                <div className="space-y-4">
+                  {/* Range Input Field */}
+                  <div className="space-y-1.5">
+                    <div className="relative">
+                      <div className="absolute left-3.5 top-1/2 -translate-y-1/2 font-mono text-gray-400 font-bold text-sm">
+                        #
+                      </div>
+                      <input
+                        type="text"
+                        value={rangeCustomInput}
+                        onChange={(e) => {
+                          setRangeCustomInput(e.target.value);
+                          if (rangeInputError) setRangeInputError(false);
+                        }}
+                        placeholder="e.g., 88017XXX (type the trailing X's you want)"
+                        className={`w-full pl-8 pr-4 py-3.5 bg-white border rounded-2xl text-gray-900 font-mono text-xs sm:text-sm focus:outline-none placeholder-gray-400 tracking-wide transition shadow-2xs ${
+                          rangeInputError
+                            ? 'border-red-400 ring-2 ring-red-400/30 bg-red-50/20 animate-pulse'
+                            : 'border-[#34d399] focus:ring-2 focus:ring-[#34d399]/20 focus:border-[#10b981]'
+                        }`}
+                      />
+                      {rangeCustomInput && (
+                        <button
+                          type="button"
+                          onClick={() => setRangeCustomInput('')}
+                          className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 rounded-md cursor-pointer"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Options and Get Number button matching screenshot */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+                    <div className="flex items-center gap-4 text-xs sm:text-sm text-gray-700 font-semibold">
+                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={nationalFormat}
+                          onChange={(e) => setNationalFormat(e.target.checked)}
+                          className="w-4 h-4 rounded accent-emerald-600 cursor-pointer"
+                        />
+                        <span className="font-medium text-xs sm:text-sm text-gray-800">National Format</span>
+                      </label>
+
+                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={removePlus}
+                          onChange={(e) => setRemovePlus(e.target.checked)}
+                          className="w-4 h-4 rounded accent-emerald-600 cursor-pointer"
+                        />
+                        <span className="font-medium text-xs sm:text-sm text-gray-800">Remove (+)</span>
+                      </label>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleGetNumberCustom()}
+                      disabled={isAllocating}
+                      className="min-w-[145px] bg-[#10b981] hover:bg-[#059669] text-white font-black px-6 py-2.5 rounded-full text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm shadow-emerald-500/20 transition active:scale-95 cursor-pointer disabled:opacity-50"
+                    >
+                      <Phone className={`w-3.5 h-3.5 text-white ${isAllocating ? 'animate-spin' : ''}`} />
+                      <span>{isAllocating ? 'Getting...' : 'Get Number'}</span>
+                    </button>
+                  </div>
                 </div>
-                <input
-                  type="text"
-                  value={rangeCustomInput}
-                  onChange={(e) => setRangeCustomInput(e.target.value)}
-                  placeholder="Enter prefix range (e.g., 88017, 44740, 22501)..."
-                  className="w-full pl-8 pr-4 py-3 bg-gray-50/80 hover:bg-white focus:bg-white border border-gray-200/90 rounded-xl text-gray-900 font-mono text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 placeholder-gray-400 tracking-wide transition shadow-2xs"
-                />
-              </div>
+              )}
 
-              {/* Options and Get Number button */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
-                <div className="flex items-center gap-4 text-xs sm:text-sm text-gray-700 font-semibold">
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={nationalFormat}
-                      onChange={(e) => setNationalFormat(e.target.checked)}
-                      className="w-4 h-4 rounded accent-emerald-600 cursor-pointer"
-                    />
-                    <span className="font-medium text-xs sm:text-sm text-gray-800">National Format</span>
-                  </label>
+              {/* -------------------- 1B. SEARCH TAB CONTENT -------------------- */}
+              {getNumTab === 'SEARCH' && (
+                <div className="space-y-4">
+                  {/* COUNTRY & OPERATOR Field */}
+                  <div className="space-y-1.5 relative">
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">
+                      COUNTRY &amp; OPERATOR
+                    </label>
 
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={removePlus}
-                      onChange={(e) => setRemovePlus(e.target.checked)}
-                      className="w-4 h-4 rounded accent-emerald-600 cursor-pointer"
-                    />
-                    <span className="font-medium text-xs sm:text-sm text-gray-800">Remove (+)</span>
-                  </label>
+                    <div
+                      onClick={() => setIsCountryDropdownOpen(!isCountryDropdownOpen)}
+                      className="w-full px-3.5 py-2.5 bg-white border border-gray-200 rounded-xl text-gray-800 text-xs sm:text-sm font-medium flex items-center justify-between cursor-pointer hover:border-emerald-400 shadow-2xs transition"
+                    >
+                      <span className="truncate">{selectedCountryOperator?.name || 'Search country & operator...'}</span>
+                      <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
+                    </div>
+
+                    {/* Search Modal / Dropdown Layer matching Screenshot_2026-08-27-18-13-44-073_mark.via.gp.jpg */}
+                    {isCountryDropdownOpen && (
+                      <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-2xl shadow-xl p-2 space-y-2 animate-in fade-in slide-in-from-top-1 duration-150">
+                        {/* Type to filter input */}
+                        <div className="p-1">
+                          <input
+                            type="text"
+                            value={countryFilterText}
+                            onChange={(e) => setCountryFilterText(e.target.value)}
+                            placeholder="Type to filter..."
+                            className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 placeholder-gray-400 font-medium"
+                            autoFocus
+                          />
+                        </div>
+
+                        {/* List of Countries & Operators */}
+                        <div className="max-h-60 overflow-y-auto divide-y divide-gray-100 rounded-lg text-xs">
+                          {COUNTRY_OPERATOR_LIST.filter(c => c.name.toLowerCase().includes(countryFilterText.toLowerCase())).map((item) => {
+                            const isSelected = selectedCountryOperator?.id === item.id;
+                            return (
+                              <button
+                                key={item.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedCountryOperator(item);
+                                  setSelectedSearchRange(item.ranges[0] || '');
+                                  setIsCountryDropdownOpen(false);
+                                  setCountryFilterText('');
+                                }}
+                                className={`w-full text-left px-3 py-2.5 transition flex items-center justify-between cursor-pointer ${
+                                  isSelected
+                                    ? 'bg-[#10b981] text-white font-bold'
+                                    : 'hover:bg-gray-50 text-gray-800 font-medium'
+                                }`}
+                              >
+                                <span>{item.name}</span>
+                                {isSelected && <Check className="w-3.5 h-3.5 text-white shrink-0" />}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Dropdown Footer */}
+                        <div className="flex items-center justify-between px-2 pt-1 border-t border-gray-100 text-[11px] text-gray-400">
+                          <span>
+                            {COUNTRY_OPERATOR_LIST.filter(c => c.name.toLowerCase().includes(countryFilterText.toLowerCase())).length} loaded (scroll for more)
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setIsCountryDropdownOpen(false)}
+                            className="hover:text-gray-600 font-medium cursor-pointer"
+                          >
+                            Esc to close
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* RANGE Field */}
+                  <div className="space-y-1.5 relative">
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">
+                      RANGE
+                    </label>
+
+                    <div
+                      onClick={() => setIsRangeDropdownOpen(!isRangeDropdownOpen)}
+                      className="w-full px-3.5 py-2.5 bg-white border border-gray-200 rounded-xl text-gray-800 text-xs sm:text-sm font-medium flex items-center justify-between cursor-pointer hover:border-emerald-400 shadow-2xs transition"
+                    >
+                      <span className="truncate">{selectedSearchRange || 'Search ranges...'}</span>
+                      <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
+                    </div>
+
+                    {/* Range Dropdown List */}
+                    {isRangeDropdownOpen && (
+                      <div className="absolute z-40 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg p-2 space-y-1 animate-in fade-in duration-100">
+                        <div className="p-1">
+                          <input
+                            type="text"
+                            value={rangeFilterText}
+                            onChange={(e) => setRangeFilterText(e.target.value)}
+                            placeholder="Type prefix or filter..."
+                            className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-900 focus:outline-none focus:border-emerald-500"
+                            autoFocus
+                          />
+                        </div>
+                        <div className="max-h-40 overflow-y-auto text-xs font-mono">
+                          {(selectedCountryOperator?.ranges || ['9370', '9378', '9379', '23275', '88017', '44740'])
+                            .filter(r => r.includes(rangeFilterText))
+                            .map((r) => (
+                              <button
+                                key={r}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedSearchRange(r);
+                                  setIsRangeDropdownOpen(false);
+                                  setRangeFilterText('');
+                                }}
+                                className={`w-full text-left px-3 py-2 rounded-md transition ${
+                                  selectedSearchRange === r
+                                    ? 'bg-emerald-50 text-emerald-800 font-bold'
+                                    : 'hover:bg-gray-50 text-gray-700'
+                                }`}
+                              >
+                                #{r}
+                              </button>
+                            ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Options row & Get Number button matching screenshot */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+                    <div className="flex items-center gap-4 text-xs sm:text-sm text-gray-700 font-semibold">
+                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={nationalFormat}
+                          onChange={(e) => setNationalFormat(e.target.checked)}
+                          className="w-4 h-4 rounded accent-emerald-600 cursor-pointer"
+                        />
+                        <span className="font-medium text-xs sm:text-sm text-gray-800">National Format</span>
+                      </label>
+
+                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={removePlus}
+                          onChange={(e) => setRemovePlus(e.target.checked)}
+                          className="w-4 h-4 rounded accent-emerald-600 cursor-pointer"
+                        />
+                        <span className="font-medium text-xs sm:text-sm text-gray-800">Remove (+)</span>
+                      </label>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleGetNumberCustom(
+                        selectedSearchRange || (selectedCountryOperator?.ranges[0] || '9370'),
+                        selectedCountryOperator?.country,
+                        selectedCountryOperator?.operator
+                      )}
+                      disabled={isAllocating}
+                      className="min-w-[145px] bg-[#10b981] hover:bg-[#059669] text-white font-black px-6 py-2.5 rounded-full text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm shadow-emerald-500/20 transition active:scale-95 cursor-pointer disabled:opacity-50"
+                    >
+                      <Phone className={`w-3.5 h-3.5 text-white ${isAllocating ? 'animate-spin' : ''}`} />
+                      <span>{isAllocating ? 'Getting...' : 'Get Number'}</span>
+                    </button>
+                  </div>
                 </div>
+              )}
 
-                <button
-                  type="button"
-                  onClick={handleGetNumberCustom}
-                  disabled={isAllocating}
-                  className="bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold px-6 py-2.5 rounded-xl sm:rounded-full text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md shadow-emerald-500/20 transition active:scale-95 cursor-pointer disabled:opacity-50"
-                >
-                  <Phone className={`w-3.5 h-3.5 text-white ${isAllocating ? 'animate-spin' : ''}`} />
-                  <span>{isAllocating ? 'Allocating...' : 'Get Number'}</span>
-                </button>
-              </div>
+              {/* -------------------- 1C. ACCESS TAB CONTENT (Live Service & Range Access List) -------------------- */}
+              {getNumTab === 'ACCESS' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between text-xs text-gray-700 font-bold pb-1">
+                    <span className="flex items-center gap-1 text-purple-700">
+                      <Layers className="w-4 h-4 text-purple-600" />
+                      <span>Live Carrier Range &amp; Service Routing</span>
+                    </span>
+                    <span className="text-[11px] font-mono text-emerald-600">● 100% Physical Delivery Online</span>
+                  </div>
+
+                  {/* Service Cards Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {[
+                      { name: 'WhatsApp VIP', range: '22501', country: "Ivory Coast (Orange)", rate: '99.4%', status: 'Online', desc: 'Instant WhatsApp registration codes with zero block rate' },
+                      { name: 'Telegram Ultra', range: '88017', country: 'Bangladesh (Grameenphone)', rate: '98.8%', status: 'Online', desc: 'Direct Telegram SMS carrier line for instant account creation' },
+                      { name: 'IMO Messenger', range: '62812', country: 'Indonesia (Telkomsel)', rate: '97.5%', status: 'Online', desc: 'Physical SIM routing for IMO phone verification' },
+                      { name: 'Meta Facebook', range: '44740', country: 'United Kingdom (EE Physical)', rate: '99.1%', status: 'Online', desc: 'Official EE Carrier UK numbers for Facebook / Instagram verification' },
+                      { name: 'Google / Gmail', range: '91987', country: 'India (Airtel VIP)', rate: '96.8%', status: 'Online', desc: 'High-speed Airtel physical routes for Google Workspace / Gmail' },
+                      { name: 'TikTok / ByteDance', range: '23276', country: 'Sierra Leone (Orange)', rate: '95.5%', status: 'Online', desc: 'Fast delivery for TikTok creator accounts' },
+                    ].map((service) => (
+                      <div
+                        key={service.name}
+                        className="bg-gray-50/90 hover:bg-white border border-gray-200/90 rounded-xl p-3.5 space-y-2.5 transition shadow-2xs hover:shadow-sm"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <h4 className="font-bold text-gray-900 text-sm flex items-center gap-1.5">
+                              <span>{service.name}</span>
+                              <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                {service.status}
+                              </span>
+                            </h4>
+                            <p className="text-[11px] text-gray-500 font-mono mt-0.5">
+                              Range Prefix: <strong className="text-gray-900">#{service.range}</strong> ({service.country})
+                            </p>
+                          </div>
+
+                          <span className="text-xs font-mono font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                            {service.rate}
+                          </span>
+                        </div>
+
+                        <p className="text-xs text-gray-600 leading-relaxed">
+                          {service.desc}
+                        </p>
+
+                        <div className="flex items-center justify-between pt-1 border-t border-gray-200/70">
+                          <span className="text-[11px] text-gray-400 font-mono">Ready to Allocate</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRangeCustomInput(service.range);
+                              setGetNumTab('RANGE');
+                              setRangeInputError(false);
+                              handleGetNumberCustom(service.range);
+                            }}
+                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition flex items-center gap-1 shadow-2xs cursor-pointer active:scale-95"
+                          >
+                            <Zap className="w-3 h-3 text-amber-300" />
+                            <span>Use Range &amp; Get Number</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Card 2: Allocated Numbers Table */}
-            <div className="bg-white rounded-2xl border border-gray-200/90 overflow-hidden shadow-sm">
+              {/* SECTION 2: ALLOCATED NUMBERS TABLE & REAL-TIME OTP DISPLAY */}
+              <div>
               {/* Table Header with Stats and Refresh */}
-              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50/80">
-                <span className="text-xs font-mono font-medium text-gray-600">
-                  {getNumHistory.length > 0 ? `1-${getNumHistory.length} of ${getNumHistory.length}` : '0 of 0 allocated'}
-                </span>
+              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-white">
+                <div className="text-xs font-mono font-medium text-gray-600">
+                  {getNumHistory.length > 0 ? `1-${getNumHistory.length} of ${getNumHistory.length}` : '0 of 0'}
+                </div>
+
                 <button
                   type="button"
-                  onClick={handleGetNumberCustom}
-                  className="px-3.5 py-1.5 bg-white hover:bg-gray-100 border border-gray-200 text-gray-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-2xs transition active:scale-95"
+                  onClick={() => handleManualRefreshConsole()}
+                  disabled={isConsoleRefreshing}
+                  className="px-3.5 py-1.5 bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs transition active:scale-95 disabled:opacity-50"
                 >
-                  <RotateCw className={`w-3 h-3 text-gray-500 ${isAllocating ? 'animate-spin text-emerald-600' : ''}`} />
+                  <RotateCw className={`w-3.5 h-3.5 text-gray-600 ${isConsoleRefreshing ? 'animate-spin text-emerald-600' : ''}`} />
                   <span>Refresh</span>
                 </button>
               </div>
 
               {/* Table Column Labels */}
-              <div className="grid grid-cols-12 px-4 py-2.5 text-[11px] font-bold text-gray-500 uppercase tracking-wider bg-gray-100/60 border-b border-gray-200">
+              <div className="grid grid-cols-12 px-4 py-2.5 text-[11px] font-bold text-gray-500 uppercase tracking-wider bg-gray-50/70 border-b border-gray-200">
                 <div className="col-span-5 sm:col-span-4">NUMBER INFO</div>
                 <div className="col-span-4 sm:col-span-5">COUNTRY / OPERATOR</div>
                 <div className="col-span-3 text-right">ACTIVITY</div>
@@ -1119,11 +1837,13 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
               {/* Table Rows or Clean Empty State */}
               {getNumHistory.length === 0 ? (
-                <div className="py-12 px-4 text-center space-y-2">
-                  <Smartphone className="w-8 h-8 text-gray-300 mx-auto" />
-                  <p className="text-sm font-semibold text-gray-700">No allocated numbers yet</p>
-                  <p className="text-xs text-gray-400 max-w-sm mx-auto">
-                    Enter a carrier range prefix in the box above and click &quot;Get Number&quot; to allocate a number.
+                <div className="py-12 px-4 text-center space-y-2 bg-white">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto shadow-2xs">
+                    <Smartphone className="w-5 h-5" />
+                  </div>
+                  <p className="text-sm font-bold text-gray-800">No allocated numbers yet</p>
+                  <p className="text-xs text-gray-400 max-w-md mx-auto leading-relaxed">
+                    Enter a prefix range (e.g., <strong className="text-gray-700 font-mono">88017</strong>, <strong className="text-gray-700 font-mono">44740</strong>, <strong className="text-gray-700 font-mono">23275</strong>) above and click <strong className="text-emerald-700">Get Number</strong> to allocate numbers automatically.
                   </p>
                 </div>
               ) : (
@@ -1131,64 +1851,77 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   {getNumHistory.map((item) => (
                     <div
                       key={item.id}
-                      className="grid grid-cols-12 px-4 py-3.5 items-center text-xs hover:bg-gray-50/80 transition"
+                      className="grid grid-cols-12 px-4 py-4 items-center text-xs hover:bg-gray-50/80 transition gap-2 animate-in fade-in slide-in-from-top-1 duration-200"
                     >
                       {/* NUMBER INFO */}
                       <div className="col-span-5 sm:col-span-4 space-y-1.5">
-                        <div className="font-mono text-gray-900 font-extrabold tracking-wider text-xs sm:text-sm flex items-center gap-1.5">
+                        <div className="font-mono text-gray-900 font-black tracking-wide text-xs sm:text-sm flex items-center gap-1.5">
                           <span>{item.number}</span>
+                          <button
+                            type="button"
+                            onClick={() => copyToClipboard(item.number, `num_${item.id}`)}
+                            className="p-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-600 cursor-pointer transition"
+                            title="Copy Phone Number"
+                          >
+                            {copiedText === `num_${item.id}` ? (
+                              <Check className="w-3 h-3 text-emerald-600" />
+                            ) : (
+                              <Copy className="w-3 h-3" />
+                            )}
+                          </button>
                         </div>
 
-                        <div className="flex items-center gap-2">
-                          {item.status === 'FAILED' ? (
-                            <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-red-50 text-red-600 border border-red-200 uppercase tracking-wider">
-                              FAILED
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-emerald-50 text-emerald-600 border border-emerald-200 uppercase tracking-wider">
+                        {/* Status Badge & OTP Pill */}
+                        {item.otp ? (
+                          <div className="space-y-1.5">
+                            <span className="inline-block px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-[#d1fae5] text-[#059669] border border-[#a7f3d0] uppercase tracking-wider">
                               SUCCESS
                             </span>
-                          )}
-                        </div>
 
-                        {/* If OTP exists */}
-                        {item.otp && (
-                          <div className="flex items-center gap-1.5 pt-0.5">
-                            <span className="font-mono text-xs text-amber-900 font-bold bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-md flex items-center gap-1">
-                              <Key className="w-3 h-3 text-amber-600" />
-                              <span>{item.otp}</span>
+                            {/* Golden/Gray OTP Pill matching screenshot: 🔑 OTP [copy] */}
+                            <div className="flex items-center gap-1.5 pt-0.5">
+                              <div className="flex items-center gap-1.5 bg-[#f3f4f6] border border-gray-300 px-2.5 py-1 rounded-md text-gray-800 font-mono text-xs font-bold shadow-2xs">
+                                <Key className="w-3.5 h-3.5 text-gray-500" />
+                                <span>{item.otp}</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => copyToClipboard(item.otp!, `otp_${item.id}`)}
+                                className="p-1 rounded-md bg-[#f3f4f6] hover:bg-gray-200 border border-gray-300 text-gray-600 hover:text-gray-900 transition cursor-pointer"
+                                title="Copy OTP Code"
+                              >
+                                {copiedText === `otp_${item.id}` ? (
+                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <span className="inline-block px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-[#fef3c7] text-[#b45309] border border-[#fde68a] uppercase tracking-wider">
+                              PENDING
                             </span>
-                            <button
-                              type="button"
-                              onClick={() => copyToClipboard(item.otp!, `otp_${item.id}`)}
-                              className="p-1 rounded bg-gray-100 hover:bg-gray-200 border border-gray-200 text-gray-600 hover:text-gray-900 transition cursor-pointer"
-                              title="Copy OTP"
-                            >
-                              {copiedText === `otp_${item.id}` ? (
-                                <Check className="w-3 h-3 text-emerald-600" />
-                              ) : (
-                                <Copy className="w-3 h-3" />
-                              )}
-                            </button>
                           </div>
                         )}
                       </div>
 
                       {/* COUNTRY / OPERATOR */}
                       <div className="col-span-4 sm:col-span-5 space-y-0.5">
-                        <div className="text-gray-900 font-bold text-xs sm:text-sm">
+                        <div className="text-gray-900 font-medium text-xs sm:text-sm">
                           {item.country}
                         </div>
                         <div className="text-gray-500 text-[11px] sm:text-xs flex items-center gap-1">
-                          <Radio className="w-3 h-3 text-emerald-600" />
-                          <span>{item.operator}</span>
+                          <Radio className="w-3 h-3 text-gray-600 shrink-0" />
+                          <span className="truncate">{item.operator}</span>
                         </div>
                       </div>
 
                       {/* ACTIVITY */}
-                      <div className="col-span-3 text-right">
-                        <span className="text-[11px] text-gray-600 font-mono bg-gray-100 px-2 py-1 rounded-md border border-gray-200">
-                          {item.activity}
+                      <div className="col-span-3 text-right space-y-1">
+                        <span className="inline-block text-[11px] text-gray-600 font-mono bg-gray-100 px-2.5 py-1 rounded-md border border-gray-200 shadow-2xs">
+                          {formatRelativeActivityTime(item, nowTick)}
                         </span>
                       </div>
                     </div>
@@ -1197,6 +1930,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               )}
             </div>
           </div>
+        </div>
         )}
 
         {/* -------------------- 2. CONSOLE VIEW -------------------- */}
@@ -1214,80 +1948,12 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               </div>
 
               <div className="flex items-center gap-2">
-                {consoleApiMeta?.code === 2941 ? (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-50 text-red-600 border border-red-200 shadow-2xs">
-                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                    <span>UNAUTHORIZED (KEY REQUIRED)</span>
-                  </span>
-                ) : consoleApiMeta?.code === 200 ? (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-600 border border-emerald-200/80 shadow-2xs">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <span>LIVE STREAM CONNECTED</span>
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200 shadow-2xs">
-                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                    <span>POLLING API</span>
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* API Key Configuration & Mauthapi Bar */}
-            <div className="bg-gray-50/90 border border-gray-200/90 rounded-xl p-3 sm:p-3.5 space-y-2">
-              <div className="flex items-center justify-between text-xs text-gray-700 font-bold">
-                <span className="flex items-center gap-1.5 text-gray-800">
-                  <Key className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>API Authentication Header (<code className="font-mono text-[11px] text-emerald-700">mauthapi</code>)</span>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-600 border border-emerald-200/80 shadow-2xs">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>LIVE STREAM CONNECTED</span>
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setIsEditingKey(!isEditingKey)}
-                  className="text-xs text-emerald-700 hover:text-emerald-800 font-semibold cursor-pointer underline"
-                >
-                  {isEditingKey ? 'Hide Configuration' : 'Change Key'}
-                </button>
               </div>
-
-              {isEditingKey && (
-                <div className="flex items-center gap-2 pt-1">
-                  <input
-                    type="text"
-                    value={keyInput}
-                    onChange={(e) => setKeyInput(e.target.value)}
-                    placeholder="Enter your mauthapi key (e.g. MAB12CD34EF...)"
-                    className="flex-1 px-3 py-1.5 text-xs font-mono bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-gray-900"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (keyInput.trim()) {
-                        setMauthApiKey(keyInput.trim());
-                        setApiKeyState(keyInput.trim());
-                        setIsEditingKey(false);
-                        fetchRealTimeData();
-                      }
-                    }}
-                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg transition cursor-pointer shadow-2xs"
-                  >
-                    Save &amp; Connect
-                  </button>
-                </div>
-              )}
             </div>
-
-            {/* Warning Notice if Unauthorized (HTTP 2941) */}
-            {consoleApiMeta?.code === 2941 && (
-              <div className="bg-red-50/90 border border-red-200 text-red-800 rounded-xl p-3.5 text-xs flex items-start gap-3">
-                <ShieldCheck className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
-                <div className="space-y-1">
-                  <p className="font-bold">Authentication Key Required or Expired (Code: 2941)</p>
-                  <p className="text-red-700 text-[11px] leading-relaxed">
-                    The endpoint <code className="font-mono">/@public/api/console</code> requires a valid <code className="font-mono font-bold">mauthapi</code> key header. Click <strong>Change Key</strong> above to enter your active VoltxSMS API key to start receiving live real-time SMS events.
-                  </p>
-                </div>
-              </div>
-            )}
 
             {/* Filter Search Input & Next Update Countdown Button */}
             <div className="flex items-center gap-2 sm:gap-3">
@@ -1585,30 +2251,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               <Globe2 className="w-5 h-5 text-blue-600" />
               <span>Sender / Range</span>
             </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-              {POPULAR_RANGES.map((rng) => (
-                <div
-                  key={rng.id}
-                  onClick={() => {
-                    setSelectedRange(rng.id);
-                    setRangeCustomInput(rng.id);
-                    setCurrentView('getNumber');
-                  }}
-                  className="p-4 rounded-xl border border-gray-200 bg-gray-50/80 hover:bg-blue-50/40 hover:border-blue-300 transition cursor-pointer space-y-2"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono text-xs font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
-                      {rng.code}
-                    </span>
-                    <span className="text-xs font-bold text-emerald-600">Active</span>
-                  </div>
-                  <div className="font-bold text-sm text-gray-900">{rng.country}</div>
-                  <div className="flex items-center justify-between text-xs text-gray-500">
-                    <span>Operator</span>
-                    <span className="font-bold text-gray-700">{rng.name}</span>
-                  </div>
-                </div>
-              ))}
+            <div className="p-8 text-center text-gray-400 text-xs font-medium">
+              No active carrier ranges available. Enter a range to allocate numbers.
             </div>
           </div>
         )}
@@ -1734,15 +2378,38 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
       </main>
 
+      {/* Floating Compact Toast Notification matching User Red Box Area */}
+      {dashboardToast && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 bg-white border border-gray-200/90 shadow-xl px-4 py-2.5 rounded-2xl animate-in fade-in slide-in-from-bottom-2 duration-200 w-auto max-w-sm whitespace-nowrap">
+          {dashboardToast.type === 'warning' ? (
+            <div className="w-5 h-5 rounded-full bg-[#fde68a] text-[#b45309] flex items-center justify-center font-bold text-xs shrink-0 select-none">
+              !
+            </div>
+          ) : (
+            <div className="w-5 h-5 rounded-full bg-[#10b981] text-white flex items-center justify-center font-bold text-xs shrink-0 select-none shadow-2xs">
+              <Check className="w-3 h-3 text-white stroke-[3]" />
+            </div>
+          )}
+          <span className="text-xs font-semibold text-gray-800 tracking-tight">
+            {dashboardToast.message}
+          </span>
+        </div>
+      )}
+
       {/* Footer */}
-      <footer className="w-full bg-slate-900 text-gray-400 text-xs py-4 text-center border-t border-slate-800">
-        <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <span>&copy; 2026 SUPER X SMS (PREMIUM RATES). All rights reserved.</span>
-          <span className="text-gray-400 font-medium">
-            Global High-Speed Verification Routing
+      <footer className="w-full bg-slate-900 text-gray-400 py-2.5 text-center border-t border-slate-800/80">
+        <div className="max-w-6xl mx-auto px-4 flex items-center justify-center">
+          <span className="text-[11px] sm:text-xs text-gray-400 font-medium tracking-wide">
+            &copy; 2026 SUPER X SMS. All rights reserved.
           </span>
         </div>
       </footer>
+
+      {/* Live Support Chat Modal for User */}
+      {isUserChatOpen && renderUserChatModal()}
+
+      {/* Notifications Modal for User */}
+      {isNotifModalOpen && renderNotificationModal()}
     </div>
   );
 }

@@ -1,35 +1,49 @@
 // Official VoltxSMS / 2oo9 Live API Integration Layer
 // Upstream Source: https://voltxsms.com/m29/#/doc/api
-// Base Upstream URL: https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api
 
-export const UPSTREAM_BASE_URL = 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api';
-export const PROXY_BASE_URL = '/api/voltx/@public/api';
+export const DEFAULT_VOLTX_ENDPOINT_KEY = 'M7ANNWJY6B2';
+export const DEFAULT_MAUTH_API_KEY = 'M7ANNWJY6B2';
 
-// Live public API Endpoints List
-export const VOLTX_ENDPOINTS = {
-  BASE: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
-  GET_NUM: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api/getnum',
-  LIVE_ACCESS: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api/liveaccess',
-  SUCCESS_OTP: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api/success-otp',
-  CONSOLE: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api/console',
-};
+export function getVoltxEndpointKey(): string {
+  if (typeof window !== 'undefined') {
+    const saved = localStorage.getItem('voltx_endpoint_key');
+    if (saved && saved.trim()) return saved.trim();
+  }
+  return DEFAULT_VOLTX_ENDPOINT_KEY;
+}
 
-// Default active API Key / token for mauthapi header authentication
-export const DEFAULT_MAUTH_API_KEY = 'tg_live_8x4f9k2m_AbCdEfGhIjKlMnOp';
+export function setVoltxEndpointKey(key: string): void {
+  if (typeof window !== 'undefined') {
+    const trimmed = key.trim();
+    localStorage.setItem('voltx_endpoint_key', trimmed);
+    localStorage.setItem('voltx_mauthapi_key', trimmed);
+    window.dispatchEvent(new Event('voltx_key_updated'));
+  }
+}
 
 export function getMauthApiKey(): string {
   if (typeof window !== 'undefined') {
-    const saved = localStorage.getItem('voltx_mauthapi_key');
+    const saved = localStorage.getItem('voltx_mauthapi_key') || localStorage.getItem('voltx_endpoint_key');
     if (saved && saved.trim()) return saved.trim();
   }
-  return DEFAULT_MAUTH_API_KEY;
+  return getVoltxEndpointKey();
 }
 
 export function setMauthApiKey(key: string): void {
   if (typeof window !== 'undefined') {
-    localStorage.setItem('voltx_mauthapi_key', key.trim());
+    const trimmed = key.trim();
+    localStorage.setItem('voltx_mauthapi_key', trimmed);
+    localStorage.setItem('voltx_endpoint_key', trimmed);
+    window.dispatchEvent(new Event('voltx_key_updated'));
   }
 }
+
+export function getUpstreamBaseUrl(): string {
+  const endpointKey = getVoltxEndpointKey();
+  return `https://api.2oo9.cloud/${endpointKey}/tnevs/@public/api`;
+}
+
+export const PROXY_BASE_URL = '/api/voltx/@public/api';
 
 export interface LiveConsoleHit {
   range: string;
@@ -84,11 +98,13 @@ export async function callVoltxApi<T>(
 ): Promise<ApiResponse<T>> {
   const method = options.method || 'GET';
   const apiKey = options.apiKey || getMauthApiKey();
+  const endpointKey = getVoltxEndpointKey();
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
     'mauthapi': apiKey,
+    'x-voltx-endpoint-key': endpointKey,
   };
 
   const fetchOptions: RequestInit = {
@@ -115,7 +131,7 @@ export async function callVoltxApi<T>(
   // 2. Direct HTTPS fetch to upstream CDN/API
   try {
     const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-    const directRes = await fetch(`${UPSTREAM_BASE_URL}${cleanEndpoint}`, fetchOptions);
+    const directRes = await fetch(`${getUpstreamBaseUrl()}${cleanEndpoint}`, fetchOptions);
     const json = await directRes.json();
     if (json && (json.meta || json.data !== undefined)) {
       return json;

@@ -2,11 +2,28 @@ import React, { useState, useEffect } from 'react';
 import { OfficeIllustration } from './components/OfficeIllustration';
 import { LoginForm, UserData } from './components/LoginForm';
 import { LoggedInDashboard } from './components/LoggedInDashboard';
+import { AdminPortal } from './components/AdminPortal';
 import { CheckCircle2 } from 'lucide-react';
 
 const STORAGE_KEY_USER = 'super_x_user';
 
+function checkIsAdminRoute(): boolean {
+  try {
+    const path = window.location.pathname.toLowerCase();
+    const hash = window.location.hash.toLowerCase();
+    const search = window.location.search.toLowerCase();
+    return (
+      path.includes('/admin') ||
+      hash.includes('admin') ||
+      search.includes('admin')
+    );
+  } catch {
+    return false;
+  }
+}
+
 export default function App() {
+  const [isAdminRoute, setIsAdminRoute] = useState<boolean>(() => checkIsAdminRoute());
   const [currentUser, setCurrentUser] = useState<UserData | null>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_USER);
@@ -19,6 +36,20 @@ export default function App() {
     return null;
   });
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleLocationChange = () => {
+      setIsAdminRoute(checkIsAdminRoute());
+    };
+
+    window.addEventListener('popstate', handleLocationChange);
+    window.addEventListener('hashchange', handleLocationChange);
+
+    return () => {
+      window.removeEventListener('popstate', handleLocationChange);
+      window.removeEventListener('hashchange', handleLocationChange);
+    };
+  }, []);
 
   useEffect(() => {
     if (currentUser) {
@@ -57,11 +88,31 @@ export default function App() {
     }
   };
 
-  // When logged in, render the complete full-screen SMS/OTP Dashboard matching the portal layout
+  const handleBackToLoginFromAdmin = () => {
+    try {
+      if (window.location.pathname.toLowerCase().includes('/admin')) {
+        window.history.pushState({}, '', '/');
+      }
+      if (window.location.hash.toLowerCase().includes('admin')) {
+        window.location.hash = '';
+      }
+    } catch {
+      // ignore
+    }
+    setIsAdminRoute(false);
+  };
+
+  // 1. If on /admin route -> render Admin Portal
+  if (isAdminRoute) {
+    return <AdminPortal onBackToLogin={handleBackToLoginFromAdmin} />;
+  }
+
+  // 2. When logged in -> render the complete full-screen SMS/OTP Dashboard matching the portal layout
   if (currentUser) {
     return <LoggedInDashboard user={currentUser} onLogout={handleLogout} />;
   }
 
+  // 3. Otherwise -> Regular Login Viewport
   return (
     <main
       id="main-login-viewport"

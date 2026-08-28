@@ -9,17 +9,36 @@ const STORAGE_KEY_USER = 'super_x_user';
 
 function checkIsAdminRoute(): boolean {
   try {
-    const path = window.location.pathname.toLowerCase();
-    const hash = window.location.hash.toLowerCase();
-    const search = window.location.search.toLowerCase();
+    const path = (window.location.pathname || '').toLowerCase();
+    const hash = (window.location.hash || '').toLowerCase();
+    const search = (window.location.search || '').toLowerCase();
     return (
+      path === '/admin' ||
+      path === '/admin/' ||
+      path.startsWith('/admin') ||
       path.includes('/admin') ||
+      path.endsWith('/admin') ||
+      path.endsWith('admin') ||
+      hash === '#admin' ||
+      hash === '#/admin' ||
       hash.includes('admin') ||
       search.includes('admin')
     );
   } catch {
     return false;
   }
+}
+
+export function triggerAdminRoute(): void {
+  try {
+    if (!window.location.pathname.toLowerCase().includes('/admin')) {
+      window.history.pushState({}, '', '/admin');
+    }
+  } catch {
+    window.location.hash = '#admin';
+  }
+  window.dispatchEvent(new Event('popstate'));
+  window.dispatchEvent(new Event('navigate_admin'));
 }
 
 export default function App() {
@@ -37,6 +56,20 @@ export default function App() {
   });
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Check for SPA 404 redirect fallback state from static hosts (Vercel, Netlify, S3, etc.)
+  useEffect(() => {
+    try {
+      const redirectedPath = sessionStorage.getItem('spa_redirect_path');
+      if (redirectedPath) {
+        sessionStorage.removeItem('spa_redirect_path');
+        window.history.replaceState({}, '', redirectedPath);
+        setIsAdminRoute(checkIsAdminRoute());
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
   useEffect(() => {
     const handleLocationChange = () => {
       setIsAdminRoute(checkIsAdminRoute());
@@ -44,10 +77,19 @@ export default function App() {
 
     window.addEventListener('popstate', handleLocationChange);
     window.addEventListener('hashchange', handleLocationChange);
+    window.addEventListener('navigate_admin', handleLocationChange);
+
+    // Periodic safety check in case location changed without popstate
+    const interval = setInterval(() => {
+      const isRoute = checkIsAdminRoute();
+      setIsAdminRoute((prev) => (prev !== isRoute ? isRoute : prev));
+    }, 400);
 
     return () => {
       window.removeEventListener('popstate', handleLocationChange);
       window.removeEventListener('hashchange', handleLocationChange);
+      window.removeEventListener('navigate_admin', handleLocationChange);
+      clearInterval(interval);
     };
   }, []);
 
@@ -99,6 +141,7 @@ export default function App() {
     } catch {
       // ignore
     }
+    window.dispatchEvent(new Event('popstate'));
     setIsAdminRoute(false);
   };
 

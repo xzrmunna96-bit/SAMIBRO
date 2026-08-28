@@ -1,14 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
-  ShieldCheck,
+  Key,
+  Users,
+  UserPlus,
+  Bell,
+  MessageSquare,
   Lock,
   Eye,
   EyeOff,
-  UserCheck,
-  UserX,
-  UserPlus,
-  Trash2,
-  Search,
+  ShieldCheck,
   CheckCircle2,
   AlertCircle,
   Clock,
@@ -16,43 +16,41 @@ import {
   RefreshCw,
   LogOut,
   Sparkles,
-  Phone,
-  Mail,
-  Key,
-  KeyRound,
-  Calendar,
-  X,
-  Share2,
-  MessageSquare,
-  Pencil,
-  Send,
+  Search,
   Check,
   Copy,
-  MessageCircle,
-  Shield,
-  Sliders,
-  Ban,
-  Bell,
-  Megaphone,
+  Send,
+  Trash2,
+  UserCheck,
+  UserX,
+  Play,
+  Pause,
+  Terminal,
+  Activity,
+  KeyRound,
+  ShieldAlert,
+  Smartphone,
+  CheckCheck,
+  X,
 } from 'lucide-react';
 import {
   getAllNotifications,
   addNotification,
   deleteNotification,
   NotificationItem,
+  NOTIFICATION_UPDATE_EVENT,
 } from '../services/notificationService';
 import {
   getAllAccounts,
   approveAccount,
   rejectAccount,
   suspendAccount,
-  updateUserPermissions,
   deleteAccount,
   requestNewAccount,
   resetAccountPassword,
+  sendAdminNoticeToUser,
+  getDedicatedAccountCode,
   UserAccount,
-  UserPermissions,
-  DEFAULT_USER_PERMISSIONS,
 } from '../services/userAuthService';
 import {
   getAllSupportMessages,
@@ -64,16 +62,35 @@ import {
   ChatMessage,
   CHAT_UPDATE_EVENT,
 } from '../services/supportChatService';
-import { getMauthApiKey, setMauthApiKey, getVoltxEndpointKey, setVoltxEndpointKey } from '../services/voltxApi';
+import {
+  getMauthApiKey,
+  setMauthApiKey,
+  setVoltxEndpointKey,
+  fetchLiveConsoleDetailed,
+  syncSystemApiKeyFromServer,
+  broadcastSystemApiKeyToServer,
+  LiveConsoleHit,
+  DEFAULT_VOLTX_ENDPOINT_KEY,
+} from '../services/voltxApi';
 
 const ADMIN_MASTER_PASSWORD = 'MUNNA12061';
 const ADMIN_SESSION_KEY = 'super_x_admin_session_auth';
+const DEFAULT_API_KEY = 'M7ANNWJY6B2';
+
+type AdminTab =
+  | 'console-api'
+  | 'active-account-management'
+  | 'user-management'
+  | 'manually-user'
+  | 'user-notification'
+  | 'live-chat';
 
 interface AdminPortalProps {
   onBackToLogin: () => void;
 }
 
 export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
+  // Authentication State
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
     try {
       return sessionStorage.getItem(ADMIN_SESSION_KEY) === 'true';
@@ -85,135 +102,571 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
   const [enteredPassword, setEnteredPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState('');
-
-  // Admin Data State
-  const [accountsList, setAccountsList] = useState<UserAccount[]>(() => getAllAccounts());
-  const [filterTab, setFilterTab] = useState<'ALL' | 'pending' | 'approved' | 'rejected'>('ALL');
-  const [searchQuery, setSearchQuery] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Manual Account Creation Form
-  const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
-  const [newUserName, setNewUserName] = useState('');
-  const [newUserEmail, setNewUserEmail] = useState('');
-  const [newUserPassword, setNewUserPassword] = useState('');
-  const [newUserPhone, setNewUserPhone] = useState('');
-  const [newUserNote, setNewUserNote] = useState('');
-  const [addUserError, setAddUserError] = useState('');
+  // Active Tab
+  const [activeTab, setActiveTab] = useState<AdminTab>('console-api');
 
-  // Password Reset Modal State
+  // Active Account Management Tab State
+  const [activeAccSearch, setActiveAccSearch] = useState('');
+  const [activeAccFilter, setActiveAccFilter] = useState<'ALL' | 'pending' | 'approved' | 'rejected'>('pending');
+  const [noticeModalUser, setNoticeModalUser] = useState<UserAccount | null>(null);
+  const [noticeModalText, setNoticeModalText] = useState('');
+  const [rejectModalUser, setRejectModalUser] = useState<UserAccount | null>(null);
+  const [rejectModalReason, setRejectModalReason] = useState('');
+
+  // =========================================================================
+  // SECTION 1: CONSOLE API KEY & REAL-TIME INCOMING SMS
+  // =========================================================================
+  const [apiKeyInput, setApiKeyInput] = useState<string>(() => {
+    const saved = getMauthApiKey();
+    return saved && saved.trim() ? saved.trim() : DEFAULT_API_KEY;
+  });
+  const [isApiKeySaved, setIsApiKeySaved] = useState(false);
+  const [isTestingApi, setIsTestingApi] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    success: boolean;
+    message: string;
+    hitsCount: number;
+    code: number;
+    latencyMs?: number;
+  } | null>(null);
+
+  // Real-time console stream state
+  const [liveStreamHits, setLiveStreamHits] = useState<LiveConsoleHit[]>([]);
+  const [isStreamFetching, setIsStreamFetching] = useState(false);
+  const [isAutoStreamActive, setIsAutoStreamActive] = useState(true);
+  const [streamCountdown, setStreamCountdown] = useState(2);
+  const [streamFilter, setStreamFilter] = useState('');
+  const [copiedText, setCopiedText] = useState<string | null>(null);
+
+  // =========================================================================
+  // SECTION 2: USER MANAGEMENT
+  // =========================================================================
+  const [accountsList, setAccountsList] = useState<UserAccount[]>(() => getAllAccounts());
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [userFilterStatus, setUserFilterStatus] = useState<'ALL' | 'approved' | 'suspended' | 'pending'>('ALL');
+  const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
+
+  // Reset Password Modal
   const [resetModalUser, setResetModalUser] = useState<UserAccount | null>(null);
-  const [resetNewPass, setResetNewPass] = useState('');
-  const [resetError, setResetError] = useState('');
+  const [resetPasswordInput, setResetPasswordInput] = useState('');
+  const [resetModalError, setResetModalError] = useState('');
 
-  // Fine-Grained Permissions Modal State
-  const [permissionsUser, setPermissionsUser] = useState<UserAccount | null>(null);
-  const [tempPermissions, setTempPermissions] = useState<UserPermissions>(DEFAULT_USER_PERMISSIONS);
-  const [tempStatus, setTempStatus] = useState<'approved' | 'pending' | 'rejected' | 'suspended'>('approved');
+  // Quick Answer / Message Modal
+  const [quickAnswerUser, setQuickAnswerUser] = useState<UserAccount | null>(null);
+  const [quickAnswerText, setQuickAnswerText] = useState('');
 
-  const handleOpenPermissionsModal = (user: UserAccount) => {
-    setPermissionsUser(user);
-    setTempPermissions(user.permissions ? { ...user.permissions } : { ...DEFAULT_USER_PERMISSIONS });
-    setTempStatus(user.status);
-  };
+  // =========================================================================
+  // SECTION 3: MANUALLY USER MANAGEMENT
+  // =========================================================================
+  const [manualName, setManualName] = useState('');
+  const [manualEmail, setManualEmail] = useState('');
+  const [manualPassword, setManualPassword] = useState('');
+  const [manualPhone, setManualPhone] = useState('');
+  const [manualNote, setManualNote] = useState('');
+  const [manualError, setManualError] = useState('');
+  const [recentlyCreatedUser, setRecentlyCreatedUser] = useState<{
+    email: string;
+    password: string;
+    accountCode: string;
+    name: string;
+  } | null>(null);
 
-  const handleSavePermissions = (e: React.FormEvent) => {
+  // =========================================================================
+  // SECTION 4: USER NOTIFICATION & TOP MARQUEE NOTICE
+  // =========================================================================
+  const [notificationsList, setNotificationsList] = useState<NotificationItem[]>(() => getAllNotifications());
+  const [notifTitle, setNotifTitle] = useState('');
+  const [notifMessage, setNotifMessage] = useState('');
+  const [notifType, setNotifType] = useState<NotificationItem['type']>('update');
+
+  // Top Marquee Notice Banner State
+  const [adminNoticeInput, setAdminNoticeInput] = useState(() => {
+    try {
+      return (
+        localStorage.getItem("super_x_site_marquee_notice") ||
+        "SMS Portal - Premium Carrier Rates 📲 Instant Verification Codes & Physical Carrier Routes Active"
+      );
+    } catch {
+      return "SMS Portal - Premium Carrier Rates 📲 Instant Verification Codes & Physical Carrier Routes Active";
+    }
+  });
+  const [isNoticeSaved, setIsNoticeSaved] = useState(false);
+
+  const handleSaveMarqueeNotice = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!permissionsUser) return;
-
-    updateUserPermissions(permissionsUser.id, tempPermissions);
-
-    if (tempStatus !== permissionsUser.status) {
-      if (tempStatus === 'suspended') {
-        suspendAccount(permissionsUser.id);
-      } else if (tempStatus === 'approved') {
-        approveAccount(permissionsUser.id);
-      } else if (tempStatus === 'rejected') {
-        rejectAccount(permissionsUser.id);
-      }
-    }
-
-    reloadAccounts();
-    setPermissionsUser(null);
-    showToast(`Updated permissions & status for ${permissionsUser.email}`);
-  };
-
-  const handleSuspend = (id: string, email: string) => {
-    const res = suspendAccount(id);
-    if (res.success) {
-      reloadAccounts();
-      showToast(`Account for ${email} has been SUSPENDED!`);
+    const clean = adminNoticeInput.trim();
+    if (!clean) return;
+    try {
+      localStorage.setItem("super_x_site_marquee_notice", clean);
+      window.dispatchEvent(new Event("super_x_marquee_notice_updated"));
+      setIsNoticeSaved(true);
+      showToast("Top Notice Banner text updated & published to all user panels!");
+      setTimeout(() => setIsNoticeSaved(false), 3000);
+    } catch {
+      showToast("Failed to save notice banner.");
     }
   };
 
-  // Live Support Chat State
-  const [isChatCenterOpen, setIsChatCenterOpen] = useState(false);
+  // =========================================================================
+  // SECTION 5: LIVE CHAT
+  // =========================================================================
   const [activeChatUserEmail, setActiveChatUserEmail] = useState<string>('');
   const [adminChatInput, setAdminChatInput] = useState('');
   const [adminUnreadCount, setAdminUnreadCount] = useState<number>(() => getAdminUnreadChatCount());
+  const [chatSearchQuery, setChatSearchQuery] = useState('');
   const [chatRefreshKey, setChatRefreshKey] = useState(0);
+  const chatBottomRef = useRef<HTMLDivElement | null>(null);
 
-  // VoltxSMS API Key State
-  const [adminApiKey, setAdminApiKey] = useState<string>(() => getMauthApiKey());
-  const [isApiKeySaved, setIsApiKeySaved] = useState(false);
-
-  // Notification Management State
-  const [notificationsList, setNotificationsList] = useState<NotificationItem[]>(() => getAllNotifications());
-  const [newNotifTitle, setNewNotifTitle] = useState('');
-  const [newNotifMessage, setNewNotifMessage] = useState('');
-  const [newNotifType, setNewNotifType] = useState<NotificationItem['type']>('update');
-
-  const handlePublishNotification = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newNotifTitle.trim() || !newNotifMessage.trim()) return;
-    addNotification(newNotifTitle, newNotifMessage, newNotifType);
-    setNotificationsList(getAllNotifications());
-    setNewNotifTitle('');
-    setNewNotifMessage('');
-    showToast('📢 Notification broadcasted to all users successfully!');
-  };
-
-  const handleDeleteNotif = (id: string) => {
-    deleteNotification(id);
-    setNotificationsList(getAllNotifications());
-    showToast('Notification deleted.');
-  };
-
+  // Toast Helper
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  const reloadAccounts = () => {
-    setAccountsList(getAllAccounts());
+  const copyToClipboard = (text: string, label = 'Copied') => {
+    try {
+      navigator.clipboard.writeText(text);
+      setCopiedText(text);
+      showToast(`${label}: ${text}`);
+      setTimeout(() => setCopiedText(null), 2500);
+    } catch {
+      showToast(`Copied: ${text}`);
+    }
   };
 
+  // Helper to extract OTP code
+  const extractOtp = (msg: string): string | null => {
+    if (!msg) return null;
+    const gCode = msg.match(/G-\d{6}/i);
+    if (gCode) return gCode[0];
+    const hyphenCode = msg.match(/\b\d{3}-\d{3}\b/);
+    if (hyphenCode) return hyphenCode[0];
+    const digitCode = msg.match(/\b\d{4,8}\b/);
+    if (digitCode) return digitCode[0];
+    return null;
+  };
+
+  // -------------------------------------------------------------------------
+  // Real-time Incoming SMS Fetcher
+  // -------------------------------------------------------------------------
+  const fetchIncomingSmsHits = async (keyOverride?: string) => {
+    const key = (keyOverride !== undefined ? keyOverride : apiKeyInput) || DEFAULT_API_KEY;
+    if (!key || !key.trim()) return;
+    setIsStreamFetching(true);
+    try {
+      const res = await fetchLiveConsoleDetailed(key.trim());
+      if (res.hits && Array.isArray(res.hits)) {
+        setLiveStreamHits(res.hits);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setIsStreamFetching(false);
+    }
+  };
+
+  // 2s Auto Polling Interval for Live Incoming Messages
+  useEffect(() => {
+    if (!isAdminAuthenticated || !isAutoStreamActive) return;
+    const timer = setInterval(() => {
+      setStreamCountdown((prev) => {
+        if (prev <= 1) {
+          fetchIncomingSmsHits();
+          return 2;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [isAdminAuthenticated, isAutoStreamActive, apiKeyInput]);
+
+  // Initial Fetch & Chat Conversation Selection on Mount / Auth
+  useEffect(() => {
+    syncSystemApiKeyFromServer().then((remoteKey) => {
+      if (remoteKey && remoteKey.trim()) {
+        setApiKeyInput(remoteKey.trim());
+      }
+    });
+
+    if (!isAdminAuthenticated) return;
+    fetchIncomingSmsHits();
+    const convs = getAllChatConversations();
+    if (convs.length > 0 && !activeChatUserEmail) {
+      setActiveChatUserEmail(convs[0].userEmail);
+    }
+  }, [isAdminAuthenticated]);
+
+  // Event Listeners for Accounts, Notifications, and Chat Updates
   useEffect(() => {
     const handleAccountsUpdated = () => {
-      reloadAccounts();
+      setAccountsList(getAllAccounts());
     };
     const handleChatUpdated = () => {
       setAdminUnreadCount(getAdminUnreadChatCount());
       setChatRefreshKey((k) => k + 1);
     };
+    const handleNotifUpdated = () => {
+      setNotificationsList(getAllNotifications());
+    };
 
     window.addEventListener('super_x_accounts_updated', handleAccountsUpdated);
     window.addEventListener(CHAT_UPDATE_EVENT, handleChatUpdated);
+    window.addEventListener(NOTIFICATION_UPDATE_EVENT, handleNotifUpdated);
+    window.addEventListener('storage', handleAccountsUpdated);
 
     return () => {
       window.removeEventListener('super_x_accounts_updated', handleAccountsUpdated);
       window.removeEventListener(CHAT_UPDATE_EVENT, handleChatUpdated);
+      window.removeEventListener(NOTIFICATION_UPDATE_EVENT, handleNotifUpdated);
+      window.removeEventListener('storage', handleAccountsUpdated);
     };
   }, []);
 
-  const handleOpenUserChat = (userEmail: string) => {
-    setActiveChatUserEmail(userEmail);
-    markChatAsReadByAdmin(userEmail);
-    setAdminUnreadCount(getAdminUnreadChatCount());
-    setIsChatCenterOpen(true);
+  // Auto scroll chat to bottom
+  useEffect(() => {
+    if (activeTab === 'live-chat') {
+      chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [activeChatUserEmail, chatRefreshKey, activeTab]);
+
+  // -------------------------------------------------------------------------
+  // Auth Handlers
+  // -------------------------------------------------------------------------
+  const handleAdminLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError('');
+    const clean = enteredPassword.trim();
+    if (!clean) {
+      setAuthError('Please enter the Admin Master Password.');
+      return;
+    }
+    if (clean === ADMIN_MASTER_PASSWORD || clean.toUpperCase() === ADMIN_MASTER_PASSWORD.toUpperCase()) {
+      setIsAdminAuthenticated(true);
+      try {
+        sessionStorage.setItem(ADMIN_SESSION_KEY, 'true');
+      } catch {}
+      setEnteredPassword('');
+      showToast('Admin access granted! Welcome.');
+    } else {
+      setAuthError('Incorrect master password. Please verify credentials.');
+    }
   };
 
-  const handleSendAdminReply = (e: React.FormEvent) => {
+  const handleAdminLogout = () => {
+    setIsAdminAuthenticated(false);
+    try {
+      sessionStorage.removeItem(ADMIN_SESSION_KEY);
+    } catch {}
+  };
+
+  // -------------------------------------------------------------------------
+  // SECTION 1: Console API Key Handlers
+  // -------------------------------------------------------------------------
+  const handleSaveApiKey = async () => {
+    const trimmed = apiKeyInput.trim();
+    if (!trimmed) {
+      showToast('Please enter a valid API Key');
+      return;
+    }
+
+    setMauthApiKey(trimmed);
+    setVoltxEndpointKey(trimmed);
+
+    try {
+      await broadcastSystemApiKeyToServer(trimmed);
+      localStorage.setItem('super_x_api_activated', 'true');
+      localStorage.setItem('super_x_last_sync_time', Date.now().toString());
+    } catch {}
+
+    window.dispatchEvent(new Event('voltx_key_updated'));
+    window.dispatchEvent(new Event('super_x_api_key_updated'));
+    window.dispatchEvent(new Event('storage'));
+
+    setIsApiKeySaved(true);
+    showToast(`API Key [${trimmed}] saved & activated across all user panels!`);
+    await fetchIncomingSmsHits(trimmed);
+    setTimeout(() => setIsApiKeySaved(false), 4000);
+  };
+
+  const handleTestConnection = async () => {
+    const key = apiKeyInput.trim();
+    if (!key) {
+      showToast('Please enter an API Key to test');
+      return;
+    }
+    setIsTestingApi(true);
+    setTestResult(null);
+    const start = Date.now();
+    try {
+      const res = await fetchLiveConsoleDetailed(key);
+      const latency = Date.now() - start;
+      const isSuccess = res.code === 200 || (res.hits && res.hits.length > 0);
+
+      setTestResult({
+        success: isSuccess,
+        code: res.code,
+        latencyMs: latency,
+        hitsCount: res.hits ? res.hits.length : 0,
+        message: isSuccess
+          ? `Connected successfully! Latency: ${latency}ms, Incoming Messages: ${res.hits ? res.hits.length : 0}`
+          : `API returned code ${res.code}. Verify key permissions.`,
+      });
+
+      if (res.hits && res.hits.length > 0) {
+        setLiveStreamHits(res.hits);
+      }
+    } catch (err: any) {
+      setTestResult({
+        success: false,
+        code: 500,
+        latencyMs: Date.now() - start,
+        hitsCount: 0,
+        message: err?.message || 'Connection failed. Check network or key.',
+      });
+    } finally {
+      setIsTestingApi(false);
+    }
+  };
+
+  const handleResetToDefaultApiKey = async () => {
+    setApiKeyInput(DEFAULT_API_KEY);
+    setMauthApiKey(DEFAULT_API_KEY);
+    setVoltxEndpointKey(DEFAULT_API_KEY);
+    try {
+      await broadcastSystemApiKeyToServer(DEFAULT_API_KEY);
+    } catch {}
+    setIsApiKeySaved(true);
+    showToast(`Reset to default API key: ${DEFAULT_API_KEY}`);
+    await fetchIncomingSmsHits(DEFAULT_API_KEY);
+    setTimeout(() => setIsApiKeySaved(false), 4000);
+  };
+
+  // -------------------------------------------------------------------------
+  // ACTIVE ACCOUNT MANAGEMENT HANDLERS
+  // -------------------------------------------------------------------------
+  const handleApproveActiveAccount = (user: UserAccount) => {
+    approveAccount(user.id);
+    setAccountsList(getAllAccounts());
+    showToast(`Account for ${user.email} has been APPROVED & ACTIVATED!`);
+  };
+
+  const handleOpenNoticeModal = (user: UserAccount) => {
+    setNoticeModalUser(user);
+    setNoticeModalText(user.adminNotice || '');
+  };
+
+  const handleSendNoticeSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!noticeModalUser || !noticeModalText.trim()) return;
+    const res = sendAdminNoticeToUser(noticeModalUser.id, noticeModalText.trim());
+    if (res.success) {
+      showToast(`Notice sent to ${noticeModalUser.email}!`);
+      setAccountsList(getAllAccounts());
+      setNoticeModalUser(null);
+      setNoticeModalText('');
+    }
+  };
+
+  const handleOpenRejectModal = (user: UserAccount) => {
+    setRejectModalUser(user);
+    setRejectModalReason('');
+  };
+
+  const handleConfirmRejectSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!rejectModalUser) return;
+    rejectAccount(rejectModalUser.id, rejectModalReason.trim());
+    setAccountsList(getAllAccounts());
+    showToast(`Account request for ${rejectModalUser.email} has been REJECTED.`);
+    setRejectModalUser(null);
+    setRejectModalReason('');
+  };
+
+  // -------------------------------------------------------------------------
+  // SECTION 2: User Management Handlers
+  // -------------------------------------------------------------------------
+  const handleToggleSuspend = (user: UserAccount) => {
+    if (user.status === 'approved') {
+      suspendAccount(user.id, 'Suspended by Admin');
+      setAccountsList(getAllAccounts());
+      showToast(`User ${user.email} has been SUSPENDED.`);
+    } else {
+      approveAccount(user.id);
+      setAccountsList(getAllAccounts());
+      showToast(`User ${user.email} has been UNSUSPENDED & APPROVED!`);
+    }
+  };
+
+  const handleOpenResetModal = (user: UserAccount) => {
+    setResetModalUser(user);
+    setResetPasswordInput(user.password || '');
+    setResetModalError('');
+  };
+
+  const handleGenerateRandomPassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+    let pass = '';
+    for (let i = 0; i < 8; i++) {
+      pass += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setResetPasswordInput(pass);
+  };
+
+  const handleSaveResetPassword = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetModalUser) return;
+    setResetModalError('');
+
+    const clean = resetPasswordInput.trim();
+    if (!clean || clean.length < 4) {
+      setResetModalError('Password must be at least 4 characters long.');
+      return;
+    }
+
+    const res = resetAccountPassword(resetModalUser.id, clean);
+    if (res.success) {
+      // Send real-time notice to user in Live Chat
+      sendAdminMessage(
+        resetModalUser.email,
+        `🔑 Password Reset Notice: Admin has updated your account password to: ${clean}. You can now sign in.`
+      );
+      setAccountsList(getAllAccounts());
+      showToast(`Password updated for ${resetModalUser.email} to: ${clean}`);
+      setResetModalUser(null);
+      setResetPasswordInput('');
+    } else {
+      setResetModalError(res.message);
+    }
+  };
+
+  const handleOpenQuickAnswer = (user: UserAccount) => {
+    setQuickAnswerUser(user);
+    setQuickAnswerText('');
+  };
+
+  const handleSendQuickAnswer = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickAnswerUser || !quickAnswerText.trim()) return;
+
+    sendAdminMessage(quickAnswerUser.email, quickAnswerText.trim());
+    showToast(`Reply sent to ${quickAnswerUser.email}!`);
+    setQuickAnswerUser(null);
+    setQuickAnswerText('');
+    setChatRefreshKey((k) => k + 1);
+  };
+
+  const handleDeleteUserAccount = (user: UserAccount) => {
+    if (window.confirm(`Permanently delete account for ${user.email}? This action cannot be undone.`)) {
+      deleteAccount(user.id);
+      setAccountsList(getAllAccounts());
+      showToast(`Account for ${user.email} removed.`);
+    }
+  };
+
+  const togglePasswordVisibility = (userId: string) => {
+    setRevealedPasswords((prev) => ({
+      ...prev,
+      [userId]: !prev[userId],
+    }));
+  };
+
+  // -------------------------------------------------------------------------
+  // SECTION 3: Manually User Management Handlers
+  // -------------------------------------------------------------------------
+  const handleGenerateManualPassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+    let pass = 'Pass';
+    for (let i = 0; i < 5; i++) {
+      pass += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setManualPassword(pass);
+  };
+
+  const handleCreateManualUser = (e: React.FormEvent) => {
+    e.preventDefault();
+    setManualError('');
+    setRecentlyCreatedUser(null);
+
+    const cleanEmail = manualEmail.trim().toLowerCase();
+    const cleanPassword = manualPassword.trim();
+
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      setManualError('Please provide a valid email address.');
+      return;
+    }
+    if (!cleanPassword || cleanPassword.length < 4) {
+      setManualError('Password must be at least 4 characters long.');
+      return;
+    }
+
+    const res = requestNewAccount({
+      name: manualName.trim() || cleanEmail.split('@')[0],
+      email: cleanEmail,
+      password: cleanPassword,
+      phoneOrTelegram: manualPhone.trim(),
+      note: manualNote.trim() || 'Created manually by Admin',
+    });
+
+    if (res.success && res.account) {
+      // Directly approve so user can sign in immediately
+      approveAccount(res.account.id);
+      setAccountsList(getAllAccounts());
+
+      setRecentlyCreatedUser({
+        email: cleanEmail,
+        password: cleanPassword,
+        accountCode: res.account.accountCode,
+        name: res.account.name,
+      });
+
+      // Clear input fields
+      setManualName('');
+      setManualEmail('');
+      setManualPassword('');
+      setManualPhone('');
+      setManualNote('');
+
+      showToast(`User account created & approved for: ${cleanEmail}`);
+    } else {
+      setManualError(res.message || 'Failed to create user account.');
+    }
+  };
+
+  // -------------------------------------------------------------------------
+  // SECTION 4: User Notification Handlers
+  // -------------------------------------------------------------------------
+  const handleBroadcastNotification = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!notifTitle.trim() || !notifMessage.trim()) {
+      showToast('Please enter both title and message.');
+      return;
+    }
+
+    addNotification(notifTitle.trim(), notifMessage.trim(), notifType);
+    setNotificationsList(getAllNotifications());
+    setNotifTitle('');
+    setNotifMessage('');
+    showToast('Notification broadcasted to all users successfully!');
+  };
+
+  const handleDeleteNotification = (id: string) => {
+    deleteNotification(id);
+    setNotificationsList(getAllNotifications());
+    showToast('Notification removed.');
+  };
+
+  // -------------------------------------------------------------------------
+  // SECTION 5: Live Chat Handlers
+  // -------------------------------------------------------------------------
+  const handleSelectChatUser = (email: string) => {
+    setActiveChatUserEmail(email);
+    markChatAsReadByAdmin(email);
+    setAdminUnreadCount(getAdminUnreadChatCount());
+  };
+
+  const handleSendChatReply = (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeChatUserEmail || !adminChatInput.trim()) return;
 
@@ -222,242 +675,140 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     setChatRefreshKey((k) => k + 1);
   };
 
-  const handleQuickSendPasswordInChat = (targetUser: UserAccount) => {
-    const randomPass = 'pass' + Math.floor(1000 + Math.random() * 9000);
-    resetAccountPassword(targetUser.id, randomPass);
-    reloadAccounts();
-    sendAdminMessage(
-      targetUser.email,
-      `Hello ${targetUser.name}, your account password has been reset by Admin to: ${randomPass}. You can now sign in directly!`
-    );
+  const handleSendTemplateReply = (template: string) => {
+    if (!activeChatUserEmail) return;
+    sendAdminMessage(activeChatUserEmail, template);
     setChatRefreshKey((k) => k + 1);
-    showToast(`New password generated (${randomPass}) and sent to ${targetUser.email}`);
+    showToast('Template response sent!');
   };
 
-  const handleAdminLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthError('');
+  // Filtered Lists
+  const filteredHits = liveStreamHits.filter((hit) => {
+    if (!streamFilter.trim()) return true;
+    const q = streamFilter.toLowerCase();
+    return (
+      hit.sid.toLowerCase().includes(q) ||
+      hit.range.toLowerCase().includes(q) ||
+      hit.message.toLowerCase().includes(q) ||
+      (hit.operator && hit.operator.toLowerCase().includes(q)) ||
+      (hit.country && hit.country.toLowerCase().includes(q))
+    );
+  });
 
-    const cleanInput = enteredPassword.trim();
-    if (!cleanInput) {
-      setAuthError('Please enter the Admin Password.');
-      return;
+  const filteredActiveAccountRequests = accountsList.filter((acc) => {
+    if (activeAccFilter !== 'ALL') {
+      if (acc.status !== activeAccFilter) return false;
     }
-
-    if (cleanInput === ADMIN_MASTER_PASSWORD || cleanInput.toUpperCase() === ADMIN_MASTER_PASSWORD.toUpperCase()) {
-      setIsAdminAuthenticated(true);
-      try {
-        sessionStorage.setItem(ADMIN_SESSION_KEY, 'true');
-      } catch {
-        // ignore
-      }
-      setEnteredPassword('');
-      showToast('Admin access granted! Welcome to Master Control.');
-    } else {
-      setAuthError('Incorrect admin password. Please check your credentials.');
-    }
-  };
-
-  const handleAdminLogout = () => {
-    setIsAdminAuthenticated(false);
-    try {
-      sessionStorage.removeItem(ADMIN_SESSION_KEY);
-    } catch {
-      // ignore
-    }
-  };
-
-  const handleApprove = (id: string, email: string) => {
-    const res = approveAccount(id);
-    if (res.success) {
-      reloadAccounts();
-      showToast(`User ${email} approved and activated!`);
-    } else {
-      showToast(res.message);
-    }
-  };
-
-  const handleReject = (id: string, email: string) => {
-    rejectAccount(id, 'Rejected by Admin');
-    reloadAccounts();
-    showToast(`User ${email} status set to Rejected/Suspended.`);
-  };
-
-  const handleDelete = (id: string, email: string) => {
-    if (window.confirm(`Are you sure you want to permanently delete account for ${email}?`)) {
-      deleteAccount(id);
-      reloadAccounts();
-      showToast(`Account for ${email} permanently deleted.`);
-    }
-  };
-
-  const handleCreateUserSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setAddUserError('');
-
-    if (!newUserEmail.trim() || !newUserEmail.includes('@')) {
-      setAddUserError('Valid email address is required.');
-      return;
-    }
-    if (!newUserPassword.trim() || newUserPassword.length < 4) {
-      setAddUserError('Password must be at least 4 characters.');
-      return;
-    }
-
-    const res = requestNewAccount({
-      name: newUserName.trim() || 'New User',
-      email: newUserEmail.trim(),
-      password: newUserPassword.trim(),
-      phoneOrTelegram: newUserPhone.trim(),
-      note: newUserNote.trim() || 'Created directly by Admin',
-    });
-
-    if (res.success && res.account) {
-      // Immediately approve
-      approveAccount(res.account.id);
-      reloadAccounts();
-      setNewUserName('');
-      setNewUserEmail('');
-      setNewUserPassword('');
-      setNewUserPhone('');
-      setNewUserNote('');
-      setIsAddUserModalOpen(false);
-      showToast(`User ${res.account.email} created and approved with code: ${res.account.accountCode}`);
-    } else {
-      setAddUserError(res.message || 'Failed to create user account.');
-    }
-  };
-
-  const handleOpenResetModal = (user: UserAccount) => {
-    setResetModalUser(user);
-    setResetNewPass(user.password || '');
-    setResetError('');
-  };
-
-  const handleResetPasswordSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!resetModalUser) return;
-    setResetError('');
-
-    const cleanPass = resetNewPass.trim();
-    if (!cleanPass || cleanPass.length < 4) {
-      setResetError('Password must be at least 4 characters long.');
-      return;
-    }
-
-    const res = resetAccountPassword(resetModalUser.id, cleanPass);
-    if (res.success) {
-      sendAdminMessage(
-        resetModalUser.email,
-        `🛡️ Password Update: Admin has set your password to: ${cleanPass}. You can now sign in immediately.`
-      );
-      reloadAccounts();
-      showToast(`Password for ${resetModalUser.email} reset to: ${cleanPass}`);
-      setResetModalUser(null);
-      setResetNewPass('');
-    } else {
-      setResetError(res.message);
-    }
-  };
-
-  const pendingCount = accountsList.filter((a) => a.status === 'pending').length;
-  const approvedCount = accountsList.filter((a) => a.status === 'approved').length;
-  const rejectedCount = accountsList.filter((a) => a.status === 'rejected').length;
+    if (!activeAccSearch.trim()) return true;
+    const q = activeAccSearch.toLowerCase();
+    return (
+      acc.name.toLowerCase().includes(q) ||
+      acc.email.toLowerCase().includes(q) ||
+      (acc.phoneOrTelegram && acc.phoneOrTelegram.toLowerCase().includes(q)) ||
+      (acc.note && acc.note.toLowerCase().includes(q)) ||
+      (acc.groupLink && acc.groupLink.toLowerCase().includes(q)) ||
+      (acc.adminNotice && acc.adminNotice.toLowerCase().includes(q))
+    );
+  });
 
   const filteredAccounts = accountsList.filter((acc) => {
-    if (filterTab !== 'ALL' && acc.status !== filterTab) return false;
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
+    if (userFilterStatus !== 'ALL') {
+      if (acc.status !== userFilterStatus) return false;
+    }
+    if (!userSearchQuery.trim()) return true;
+    const q = userSearchQuery.toLowerCase();
     return (
       acc.name.toLowerCase().includes(q) ||
       acc.email.toLowerCase().includes(q) ||
       (acc.accountCode && acc.accountCode.includes(q)) ||
-      (acc.phoneOrTelegram && acc.phoneOrTelegram.toLowerCase().includes(q)) ||
-      (acc.note && acc.note.toLowerCase().includes(q))
+      (acc.phoneOrTelegram && acc.phoneOrTelegram.toLowerCase().includes(q))
     );
   });
 
-  // -------------------------------------------------------------
-  // VIEW 1: ADMIN PASSWORD LOCK SCREEN
-  // -------------------------------------------------------------
+  const chatConversations = getAllChatConversations().filter((conv) => {
+    if (!chatSearchQuery.trim()) return true;
+    const q = chatSearchQuery.toLowerCase();
+    return (
+      conv.userName.toLowerCase().includes(q) ||
+      conv.userEmail.toLowerCase().includes(q) ||
+      (conv.lastMessage && conv.lastMessage.text.toLowerCase().includes(q))
+    );
+  });
+
+  const currentChatMessages = activeChatUserEmail
+    ? getChatMessagesForUser(activeChatUserEmail)
+    : [];
+
+  const activeChatUserObj = accountsList.find(
+    (a) => a.email.toLowerCase() === activeChatUserEmail.toLowerCase()
+  );
+
+  // -------------------------------------------------------------------------
+  // VIEW: LOCK SCREEN
+  // -------------------------------------------------------------------------
   if (!isAdminAuthenticated) {
     return (
-      <div
-        className="min-h-screen w-full flex items-center justify-center p-4 sm:p-6"
-        style={{
-          background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 40%, #4338ca 75%, #3730a3 100%)',
-        }}
-      >
-        <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-6 sm:p-8 border border-white/20 relative animate-fadeIn">
-          {/* Header */}
+      <div className="min-h-screen w-full flex items-center justify-center p-4 bg-slate-950 text-slate-100 font-sans">
+        <div className="w-full max-w-md bg-slate-900 rounded-3xl shadow-2xl p-6 sm:p-8 border border-slate-800 relative">
           <div className="text-center mb-6">
-            <div className="w-16 h-16 bg-purple-100 text-purple-700 rounded-2xl flex items-center justify-center mx-auto mb-3.5 shadow-inner border border-purple-200">
-              <ShieldCheck className="w-8 h-8" />
+            <div className="w-14 h-14 bg-indigo-500/10 text-indigo-400 rounded-2xl flex items-center justify-center mx-auto mb-3 border border-indigo-500/20 shadow-inner">
+              <ShieldCheck className="w-7 h-7" />
             </div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 text-xs font-extrabold uppercase tracking-wider mb-2">
-              <Sparkles className="w-3 h-3 text-purple-600" />
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-950 border border-indigo-500/30 text-indigo-300 text-xs font-extrabold uppercase tracking-wider mb-2">
+              <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
               <span>SUPER X SMS ADMIN</span>
             </div>
-            <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">Admin Portal Access</h1>
-            <p className="text-xs text-gray-500 mt-1">
-              Protected administrative area. Enter master password to manage account approvals.
+            <h1 className="text-2xl font-black text-white tracking-tight">Admin Portal Access</h1>
+            <p className="text-xs text-slate-400 mt-1">
+              Protected administration console. Restricted access only.
             </p>
           </div>
 
-          {/* Auth Error Banner */}
           {authError && (
-            <div className="mb-4 p-3 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold flex items-center gap-2 animate-fadeIn">
-              <AlertCircle className="w-4 h-4 shrink-0" />
+            <div className="mb-4 p-3 bg-red-950/60 border border-red-500/40 rounded-xl text-red-300 text-xs font-semibold flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
               <span>{authError}</span>
             </div>
           )}
 
-          {/* Password Form */}
           <form onSubmit={handleAdminLogin} className="space-y-4">
             <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5 ml-1">
-                Admin Password
+              <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
+                Admin Master Password
               </label>
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={enteredPassword}
-                  onChange={(e) => {
-                    setEnteredPassword(e.target.value);
-                    if (authError) setAuthError('');
-                  }}
-                  placeholder="Enter admin password"
+                  onChange={(e) => setEnteredPassword(e.target.value)}
+                  placeholder="Enter master password..."
+                  className="w-full pl-4 pr-11 py-3 text-sm rounded-xl bg-slate-950 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 font-mono"
                   autoFocus
-                  className="w-full px-4 py-3.5 pl-11 pr-11 rounded-2xl border border-gray-300 focus:border-purple-600 focus:ring-4 focus:ring-purple-100 text-gray-900 placeholder-gray-400 text-sm outline-none transition bg-gray-50/50 focus:bg-white shadow-2xs font-mono"
                 />
-                <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
-                  <Lock className="w-5 h-5" />
-                </div>
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition p-1 cursor-pointer"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition p-1 cursor-pointer"
                 >
-                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>
 
             <button
               type="submit"
-              className="w-full py-3.5 px-6 rounded-2xl bg-purple-700 hover:bg-purple-800 active:bg-purple-900 text-white font-extrabold text-sm tracking-wider uppercase shadow-md hover:shadow-lg transition-all duration-200 cursor-pointer flex items-center justify-center gap-2"
+              className="w-full py-3 px-5 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-extrabold text-xs uppercase tracking-wider shadow-md transition cursor-pointer flex items-center justify-center gap-2"
             >
-              <ShieldCheck className="w-5 h-5" />
+              <Lock className="w-4 h-4" />
               <span>Unlock Admin Panel</span>
             </button>
           </form>
 
-          {/* Back to regular login */}
-          <div className="mt-6 pt-4 border-t border-gray-100 text-center">
+          <div className="mt-6 pt-4 border-t border-slate-800 text-center">
             <button
               type="button"
               onClick={onBackToLogin}
-              className="inline-flex items-center gap-2 text-xs font-bold text-gray-500 hover:text-purple-700 transition cursor-pointer"
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-400 hover:text-indigo-400 transition cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4" />
               <span>Back to SMS Gateway Login</span>
@@ -468,1343 +819,1636 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     );
   }
 
-  // -------------------------------------------------------------
-  // VIEW 2: AUTHENTICATED FULL ADMIN DASHBOARD
-  // -------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // VIEW: AUTHENTICATED ADMIN PORTAL
+  // -------------------------------------------------------------------------
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 font-sans pb-12">
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-20 selection:bg-indigo-500 selection:text-white">
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed top-5 left-1/2 -translate-y-1/2 -translate-x-1/2 z-50 bg-gray-900/95 text-white px-5 py-2.5 rounded-full shadow-2xl backdrop-blur-md flex items-center gap-2.5 text-xs sm:text-sm font-semibold border border-white/20 animate-fadeIn">
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white px-5 py-2.5 rounded-full shadow-2xl backdrop-blur-md flex items-center gap-2.5 text-xs sm:text-sm font-bold border border-indigo-500/40">
           <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
           <span>{toastMessage}</span>
         </div>
       )}
 
-      {/* Top Navbar */}
-      <header className="bg-slate-900 text-white sticky top-0 z-40 shadow-md border-b border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex items-center justify-between gap-4">
+      {/* Top Header */}
+      <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-40 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-purple-600/30 border border-purple-500/40 rounded-xl text-purple-300">
-              <ShieldCheck className="w-6 h-6" />
+            <div className="p-2 bg-indigo-600/20 border border-indigo-500/30 rounded-xl text-indigo-400">
+              <ShieldCheck className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-extrabold text-base sm:text-lg tracking-tight">SUPER X SMS</span>
-                <span className="px-2 py-0.5 rounded-md bg-purple-600 text-white text-[10px] font-black uppercase tracking-wider">
-                  Admin Master
+                <span className="font-black text-base sm:text-lg tracking-tight text-white">SUPER X SMS</span>
+                <span className="px-2 py-0.5 rounded-md bg-indigo-600 text-white text-[10px] font-black uppercase tracking-wider">
+                  Admin Panel
+                </span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-[10px] font-mono text-emerald-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Real-Time Stream Active</span>
                 </span>
               </div>
-              <p className="text-xs text-slate-400 hidden sm:block">
-                User Account Requests &amp; SMS Gateway Approvals
-              </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2.5">
             <button
               type="button"
               onClick={onBackToLogin}
-              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 border border-slate-700"
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 border border-slate-700"
             >
-              <ArrowLeft className="w-4 h-4" />
+              <ArrowLeft className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Go to SMS Portal</span>
             </button>
 
             <button
               type="button"
               onClick={handleAdminLogout}
-              className="px-3 py-1.5 rounded-xl bg-red-600/20 hover:bg-red-600/30 text-red-300 text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 border border-red-500/30"
+              className="px-3 py-1.5 rounded-xl bg-red-950/60 hover:bg-red-900/60 text-red-300 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 border border-red-500/30"
               title="Lock Admin Session"
             >
-              <LogOut className="w-4 h-4" />
-              <span className="hidden sm:inline">Lock Admin</span>
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Lock</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 5 Distinct Navigation Tabs (Only What the User Requested) */}
+        <div className="bg-slate-900/95 border-t border-slate-800/80 overflow-x-auto py-2 px-4 scrollbar-none">
+          <div className="max-w-7xl mx-auto flex items-center gap-2 whitespace-nowrap text-xs">
+            {/* 1. Console API Key */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('console-api')}
+              className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-2 ${
+                activeTab === 'console-api'
+                  ? 'bg-emerald-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              <Key className="w-4 h-4" />
+              <span>Console API Key</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-slate-950/60 font-mono text-emerald-300 border border-emerald-500/30">
+                Live
+              </span>
+            </button>
+
+            {/* 2. Active Account Management (একটিভ একাউন্ট ম্যানেজমেন্ট) */}
+            <button
+              type="button"
+              id="admin-tab-active-accounts"
+              onClick={() => setActiveTab('active-account-management')}
+              className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-2 ${
+                activeTab === 'active-account-management'
+                  ? 'bg-amber-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              <UserCheck className="w-4 h-4" />
+              <span>Active Account Management</span>
+              {accountsList.filter((a) => a.status === 'pending').length > 0 ? (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500 text-slate-950 font-black animate-pulse">
+                  {accountsList.filter((a) => a.status === 'pending').length} Pending
+                </span>
+              ) : (
+                <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-slate-950/60 font-mono text-amber-300 border border-amber-500/30">
+                  {accountsList.length}
+                </span>
+              )}
+            </button>
+
+            {/* 2. User Management */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('user-management')}
+              className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-2 ${
+                activeTab === 'user-management'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              <span>User Management</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-slate-950/60 font-mono text-indigo-300 border border-indigo-500/30">
+                {accountsList.length}
+              </span>
+            </button>
+
+            {/* 3. Manually User Management */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('manually-user')}
+              className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-2 ${
+                activeTab === 'manually-user'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>Manually User Management</span>
+            </button>
+
+            {/* 4. User Notification */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('user-notification')}
+              className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-2 ${
+                activeTab === 'user-notification'
+                  ? 'bg-amber-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              <Bell className="w-4 h-4" />
+              <span>User Notification</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-slate-950/60 font-mono text-amber-300 border border-amber-500/30">
+                {notificationsList.length}
+              </span>
+            </button>
+
+            {/* 5. Live Chat */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('live-chat')}
+              className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-2 ${
+                activeTab === 'live-chat'
+                  ? 'bg-purple-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              <MessageSquare className="w-4 h-4" />
+              <span>Live Chat</span>
+              {adminUnreadCount > 0 && (
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-rose-500 text-white font-bold animate-pulse">
+                  {adminUnreadCount}
+                </span>
+              )}
             </button>
           </div>
         </div>
       </header>
 
       {/* Main Content Area */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-6">
-        {/* API Authentication Header (mauthapi) Key Management Box */}
-        <div className="bg-white p-5 rounded-2xl border border-gray-200/90 shadow-2xs space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 pb-3">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-emerald-100 text-emerald-700 rounded-xl">
-                <Key className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="text-base font-extrabold text-gray-900 tracking-tight flex items-center gap-2">
-                  <span>API Authentication Header</span>
-                  <code className="font-mono text-xs bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">
-                    mauthapi
-                  </code>
-                </h2>
-                <p className="text-xs text-gray-500">
-                  Global VoltxSMS / 2oo9 API Key used to authenticate Live Console and SMS Gateway requests
-                </p>
-              </div>
-            </div>
-            {isApiKeySaved && (
-              <span className="text-xs font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full flex items-center gap-1 animate-fadeIn">
-                <Check className="w-3.5 h-3.5" /> API Key Saved Successfully!
-              </span>
-            )}
-          </div>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
 
-          <div className="flex flex-col sm:flex-row items-center gap-3 pt-1">
-            <div className="relative flex-1 w-full">
-              <input
-                type="text"
-                value={adminApiKey}
-                onChange={(e) => {
-                  setAdminApiKey(e.target.value);
-                  setIsApiKeySaved(false);
-                }}
-                placeholder="Enter your VoltxSMS mauthapi key (e.g., tg_live_8x4f9k2m...)"
-                className="w-full px-4 py-2.5 font-mono text-xs sm:text-sm bg-gray-50 border border-gray-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-gray-900"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                if (adminApiKey.trim()) {
-                  setMauthApiKey(adminApiKey.trim());
-                  setVoltxEndpointKey(adminApiKey.trim());
-                  setIsApiKeySaved(true);
-                  showToast(`VoltxSMS Real-Time API Key activated: ${adminApiKey.trim()}`);
-                  setTimeout(() => setIsApiKeySaved(false), 3000);
-                }
-              }}
-              className="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-extrabold text-xs rounded-xl shadow-2xs transition cursor-pointer flex items-center justify-center gap-2 shrink-0"
-            >
-              <KeyRound className="w-4 h-4" />
-              <span>Update &amp; Activate API Key</span>
-            </button>
-          </div>
-        </div>
-
-        {/* User Notifications & Announcements Broadcast Box */}
-        <div className="bg-white p-5 rounded-2xl border border-gray-200/90 shadow-2xs space-y-4">
-          <div className="flex items-center gap-2.5 border-b border-gray-100 pb-3">
-            <div className="p-2 bg-indigo-100 text-indigo-700 rounded-xl">
-              <Megaphone className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-base font-extrabold text-gray-900 tracking-tight flex items-center gap-2">
-                <span>Broadcast User Notifications &amp; Updates</span>
-                <span className="bg-indigo-100 text-indigo-800 text-[10px] font-black px-2 py-0.5 rounded-full uppercase">
-                  Live Header Bell
-                </span>
-              </h2>
-              <p className="text-xs text-gray-500">
-                Publish site-wide announcements, maintenance notices, and feature updates. The header bell icon will glow for users.
-              </p>
-            </div>
-          </div>
-
-          <form onSubmit={handlePublishNotification} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-            <div className="md:col-span-4 space-y-1">
-              <label className="text-xs font-bold text-gray-700">Notification Title</label>
-              <input
-                type="text"
-                value={newNotifTitle}
-                onChange={(e) => setNewNotifTitle(e.target.value)}
-                placeholder="e.g. 📢 New Carrier Server Added"
-                className="w-full px-3.5 py-2 text-xs sm:text-sm bg-gray-50 border border-gray-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                required
-              />
-            </div>
-            <div className="md:col-span-5 space-y-1">
-              <label className="text-xs font-bold text-gray-700">Message / Update Content</label>
-              <input
-                type="text"
-                value={newNotifMessage}
-                onChange={(e) => setNewNotifMessage(e.target.value)}
-                placeholder="Write update details for users..."
-                className="w-full px-3.5 py-2 text-xs sm:text-sm bg-gray-50 border border-gray-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                required
-              />
-            </div>
-            <div className="md:col-span-1.5 space-y-1">
-              <label className="text-xs font-bold text-gray-700">Category</label>
-              <select
-                value={newNotifType}
-                onChange={(e) => setNewNotifType(e.target.value as NotificationItem['type'])}
-                className="w-full px-2 py-2 text-xs bg-gray-50 border border-gray-300 rounded-xl focus:bg-white font-semibold"
-              >
-                <option value="update">Update</option>
-                <option value="info">Info</option>
-                <option value="alert">Alert</option>
-                <option value="urgent">Urgent</option>
-              </select>
-            </div>
-            <div className="md:col-span-1.5">
-              <button
-                type="submit"
-                className="w-full py-2 px-3 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
-              >
-                <Send className="w-3.5 h-3.5" />
-                <span>Publish</span>
-              </button>
-            </div>
-          </form>
-
-          {/* Active Broadcasts List */}
-          {notificationsList.length > 0 && (
-            <div className="pt-2 border-t border-gray-100">
-              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Active Published Notifications ({notificationsList.length})</h3>
-              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                {notificationsList.map((notif) => (
-                  <div key={notif.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-start justify-between gap-3 text-xs">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-extrabold text-slate-900">{notif.title}</span>
-                        <span className={`text-[9px] font-black uppercase px-1.5 py-0.2 rounded ${
-                          notif.type === 'urgent' ? 'bg-red-100 text-red-700' :
-                          notif.type === 'alert' ? 'bg-amber-100 text-amber-800' :
-                          notif.type === 'update' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-700'
-                        }`}>
-                          {notif.type}
-                        </span>
-                        <span className="text-[10px] text-gray-400 font-mono">
-                          {new Date(notif.timestamp).toLocaleString()}
-                        </span>
-                      </div>
-                      <p className="text-slate-600 mt-0.5">{notif.message}</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteNotif(notif.id)}
-                      className="text-gray-400 hover:text-red-600 p-1 rounded-lg transition cursor-pointer shrink-0"
-                      title="Delete Notification"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+        {/* ================================================================= */}
+        {/* TAB 1: CONSOLE API KEY & REAL-TIME INCOMING SMS CONSOLE           */}
+        {/* ================================================================= */}
+        {activeTab === 'console-api' && (
+          <div className="space-y-6">
+            {/* API Key Configuration Card */}
+            <section className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-emerald-500/15 border border-emerald-500/30 rounded-xl text-emerald-400">
+                    <Key className="w-5 h-5" />
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+                  <div>
+                    <h2 className="text-base sm:text-lg font-black text-white">Console API Key Configuration</h2>
+                    <p className="text-xs text-slate-400">
+                      Default Key: <span className="font-mono text-emerald-400 font-bold">M7ANNWJY6B2</span> — Saves key and activates incoming stream.
+                    </p>
+                  </div>
+                </div>
 
-        {/* Metric Cards Row */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          {/* Total Accounts */}
-          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-200 shadow-2xs">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Total Accounts</span>
-              <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
-                <Sparkles className="w-4 h-4" />
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleResetToDefaultApiKey}
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 transition cursor-pointer flex items-center gap-1.5 border border-slate-700"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Reset Default (M7ANNWJY6B2)</span>
+                  </button>
+                </div>
               </div>
-            </div>
-            <div className="text-2xl sm:text-3xl font-black text-gray-900">{accountsList.length}</div>
-          </div>
 
-          {/* Pending Approvals */}
-          <div className="bg-gradient-to-br from-amber-50 to-amber-100/60 p-4 sm:p-5 rounded-2xl border border-amber-300/80 shadow-2xs">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold text-amber-800 uppercase tracking-wider">Pending Requests</span>
-              <div className="p-2 bg-amber-500 text-white rounded-xl shadow-2xs">
-                <Clock className="w-4 h-4 animate-pulse" />
-              </div>
-            </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl sm:text-3xl font-black text-amber-900">{pendingCount}</span>
-              {pendingCount > 0 && (
-                <span className="text-xs font-extrabold text-amber-700 animate-pulse">Needs Review</span>
+              {/* Feedback messages */}
+              {isApiKeySaved && (
+                <div className="p-3.5 rounded-xl bg-emerald-950/80 border border-emerald-500/50 text-emerald-200 text-xs font-bold flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>API Key saved! Real-time stream is active and synced across all user panels.</span>
+                  </div>
+                  <span className="text-[11px] font-mono bg-emerald-900/90 text-emerald-300 px-2 py-0.5 rounded">
+                    {apiKeyInput.trim()}
+                  </span>
+                </div>
               )}
-            </div>
-          </div>
 
-          {/* Approved Users */}
-          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-200 shadow-2xs">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider">Approved Users</span>
-              <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
-                <UserCheck className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="text-2xl sm:text-3xl font-black text-emerald-800">{approvedCount}</div>
-          </div>
-
-          {/* Rejected / Suspended */}
-          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-200 shadow-2xs">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold text-red-700 uppercase tracking-wider">Suspended</span>
-              <div className="p-2 bg-red-50 text-red-600 rounded-xl">
-                <UserX className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="text-2xl sm:text-3xl font-black text-red-800">{rejectedCount}</div>
-          </div>
-        </div>
-
-        {/* Action Bar: Controls, Add User Button & Search */}
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-200 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-          {/* Filter Tabs */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
-            {(['ALL', 'pending', 'approved', 'rejected'] as const).map((tab) => {
-              const isActive = filterTab === tab;
-              const count =
-                tab === 'ALL'
-                  ? accountsList.length
-                  : tab === 'pending'
-                  ? pendingCount
-                  : tab === 'approved'
-                  ? approvedCount
-                  : rejectedCount;
-
-              return (
-                <button
-                  key={tab}
-                  type="button"
-                  onClick={() => setFilterTab(tab)}
-                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
-                    isActive
-                      ? 'bg-purple-700 text-white shadow-2xs'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              {testResult && (
+                <div
+                  className={`p-3.5 rounded-xl border text-xs font-bold flex items-center justify-between gap-2 ${
+                    testResult.success
+                      ? 'bg-emerald-950/80 border-emerald-500/40 text-emerald-200'
+                      : 'bg-amber-950/80 border-amber-500/40 text-amber-200'
                   }`}
                 >
-                  <span>{tab === 'ALL' ? 'ALL ACCOUNTS' : tab.toUpperCase()}</span>
-                  <span
-                    className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
-                      isActive ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-800'
+                  <div className="flex items-center gap-2">
+                    {testResult.success ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                    )}
+                    <span>{testResult.message}</span>
+                  </div>
+                  <span className="text-[11px] px-2 py-0.5 rounded bg-slate-950 font-mono text-slate-300 border border-slate-700">
+                    HTTP {testResult.code} | {testResult.latencyMs}ms
+                  </span>
+                </div>
+              )}
+
+              {/* API Key Input & Action Buttons */}
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
+                  API Key (<code className="text-emerald-400 font-mono">mauthapi</code>)
+                </label>
+
+                <div className="flex flex-col sm:flex-row items-center gap-2.5">
+                  <input
+                    type="text"
+                    value={apiKeyInput}
+                    onChange={(e) => {
+                      setApiKeyInput(e.target.value);
+                      setIsApiKeySaved(false);
+                      setTestResult(null);
+                    }}
+                    placeholder="Enter API Key (e.g. M7ANNWJY6B2)..."
+                    className="w-full flex-1 px-4 py-2.5 font-mono text-xs sm:text-sm bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 shadow-inner"
+                  />
+
+                  {/* Test Connection Button */}
+                  <button
+                    type="button"
+                    onClick={handleTestConnection}
+                    disabled={isTestingApi}
+                    className="w-full sm:w-auto px-4 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
+                  >
+                    <Activity className={`w-3.5 h-3.5 ${isTestingApi ? 'animate-spin text-indigo-400' : 'text-slate-400'}`} />
+                    <span>{isTestingApi ? 'Testing...' : 'Test Connection'}</span>
+                  </button>
+
+                  {/* Save Button */}
+                  <button
+                    type="button"
+                    onClick={handleSaveApiKey}
+                    className="w-full sm:w-auto px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-md transition cursor-pointer flex items-center justify-center gap-2 shrink-0"
+                  >
+                    <KeyRound className="w-4 h-4" />
+                    <span>Save API Key</span>
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            {/* Real-time Incoming SMS Console Stream */}
+            <section className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-indigo-500/15 border border-indigo-500/30 rounded-xl text-indigo-400">
+                    <Terminal className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-base sm:text-lg font-black text-white">Live Real-Time Incoming SMS Console</h2>
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      Streaming incoming messages in real-time on key: <span className="font-mono text-emerald-400">{apiKeyInput.trim()}</span>
+                    </p>
+                  </div>
+                </div>
+
+                {/* Stream Controls */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] font-mono text-slate-400 px-2.5 py-1 bg-slate-950 rounded-lg border border-slate-800">
+                    Poll: <span className="text-emerald-400 font-bold">{streamCountdown}s</span>
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsAutoStreamActive(!isAutoStreamActive)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 border ${
+                      isAutoStreamActive
+                        ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/40'
+                        : 'bg-slate-800 text-slate-400 border-slate-700'
                     }`}
                   >
-                    {count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+                    {isAutoStreamActive ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                    <span>{isAutoStreamActive ? 'Pause' : 'Resume'}</span>
+                  </button>
 
-          {/* Search & Actions */}
-          <div className="flex items-center gap-2.5">
-            <div className="relative flex-1 sm:w-64">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search name, email, code..."
-                className="w-full px-3.5 py-2 pl-9 rounded-xl bg-gray-50 border border-gray-200 focus:bg-white text-xs text-gray-900 outline-none focus:ring-2 focus:ring-purple-500 transition"
-              />
-              <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            </div>
-
-            <button
-              type="button"
-              onClick={reloadAccounts}
-              title="Refresh List"
-              className="p-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 transition cursor-pointer"
-            >
-              <RefreshCw className="w-4 h-4" />
-            </button>
-
-            {/* Live Chat Support Button */}
-            <button
-              type="button"
-              onClick={() => {
-                const convs = getAllChatConversations();
-                if (convs.length > 0) {
-                  handleOpenUserChat(convs[0].userEmail);
-                } else {
-                  setIsChatCenterOpen(true);
-                }
-              }}
-              className="relative px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-2xs whitespace-nowrap"
-              title="Open Live Support Chat Console"
-            >
-              <MessageSquare className="w-4 h-4 text-indigo-600" />
-              <span>Live Support</span>
-              {adminUnreadCount > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full bg-red-600 text-white font-extrabold text-[10px] animate-bounce">
-                  {adminUnreadCount}
-                </span>
-              )}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setIsAddUserModalOpen(true)}
-              className="px-3.5 py-2 bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-2xs whitespace-nowrap"
-            >
-              <UserPlus className="w-4 h-4" />
-              <span>Add User</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Pending Requests Highlight Card (if any pending) */}
-        {pendingCount > 0 && filterTab !== 'approved' && filterTab !== 'rejected' && (
-          <div className="bg-amber-50/80 rounded-2xl border-2 border-amber-300 p-4 sm:p-5 shadow-sm space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-amber-500 animate-ping" />
-                <h2 className="text-sm sm:text-base font-extrabold text-amber-950">
-                  Pending Account Requests ({pendingCount})
-                </h2>
-              </div>
-              <span className="text-xs text-amber-800 font-medium hidden sm:inline">
-                Users waiting for sign in approval
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {accountsList
-                .filter((a) => a.status === 'pending')
-                .map((req) => (
-                  <div
-                    key={req.id}
-                    className="bg-white p-4 rounded-xl border border-amber-200 shadow-2xs flex flex-col justify-between gap-3"
+                  <button
+                    type="button"
+                    onClick={() => fetchIncomingSmsHits()}
+                    disabled={isStreamFetching}
+                    className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 border border-slate-700"
                   >
-                    <div>
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <div className="font-extrabold text-gray-900 text-sm">{req.name}</div>
-                          <div className="text-xs text-purple-700 font-mono font-bold flex items-center gap-1 mt-0.5">
-                            <Mail className="w-3.5 h-3.5 text-purple-500" />
-                            <span>{req.email}</span>
-                          </div>
-                        </div>
-                        <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 font-bold text-[10px] uppercase tracking-wider border border-amber-300">
-                          Pending
-                        </span>
-                      </div>
+                    <RefreshCw className={`w-3.5 h-3.5 text-slate-400 ${isStreamFetching ? 'animate-spin text-indigo-400' : ''}`} />
+                    <span>Refresh Now</span>
+                  </button>
+                </div>
+              </div>
 
-                      <div className="mt-2.5 pt-2 border-t border-gray-100 text-xs space-y-1.5 font-mono text-gray-600">
-                        <div className="flex items-center justify-between">
-                          <span className="text-gray-400 font-sans">Password:</span>
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-bold text-gray-900 bg-gray-50 px-2 py-0.5 rounded border border-gray-200">
-                              {req.password || '—'}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => handleOpenResetModal(req)}
-                              className="p-1 text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded-md transition cursor-pointer"
-                              title="Edit / Reset Password"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-gray-400 font-sans">Allocated Code:</span>
-                          <span className="font-bold text-amber-700">{req.accountCode}</span>
-                        </div>
-                        {req.phoneOrTelegram && (
-                          <div className="flex items-center justify-between">
-                            <span className="text-gray-400 font-sans">Contact:</span>
-                            <span className="text-gray-800">{req.phoneOrTelegram}</span>
-                          </div>
-                        )}
-                        {req.groupLink && (
-                          <div className="flex items-center justify-between gap-1">
-                            <span className="text-gray-400 font-sans shrink-0">Group Link:</span>
-                            <a
-                              href={req.groupLink.startsWith('http') ? req.groupLink : `https://${req.groupLink}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-blue-600 hover:underline truncate max-w-[200px]"
-                            >
-                              {req.groupLink}
-                            </a>
-                          </div>
-                        )}
-                        {req.note && (
-                          <div className="text-[11px] text-gray-700 mt-1 bg-amber-50/70 p-2 rounded-lg border border-amber-200/60 font-sans">
-                            <div className="text-[10px] font-bold text-amber-900 mb-0.5">Admin Message:</div>
-                            <div className="whitespace-pre-wrap">{req.note}</div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+              {/* Filter Search Input */}
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={streamFilter}
+                  onChange={(e) => setStreamFilter(e.target.value)}
+                  placeholder="Filter incoming messages by service, number, carrier, OTP, or message text..."
+                  className="w-full pl-9 pr-4 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+              </div>
 
-                    <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
-                      <button
-                        type="button"
-                        onClick={() => handleApprove(req.id, req.email)}
-                        className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs"
-                      >
-                        <UserCheck className="w-4 h-4" />
-                        <span>Approve User</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleOpenUserChat(req.email)}
-                        className="px-2.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl transition cursor-pointer flex items-center gap-1 border border-indigo-200"
-                        title="Chat with user"
-                      >
-                        <MessageSquare className="w-3.5 h-3.5" />
-                        <span>Chat</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleReject(req.id, req.email)}
-                        className="px-3 py-2 bg-red-100 hover:bg-red-200 text-red-700 font-bold text-xs rounded-xl transition cursor-pointer"
-                      >
-                        Reject
-                      </button>
-                    </div>
-                  </div>
-                ))}
-            </div>
+              {/* Real-time SMS Feed Table */}
+              <div className="rounded-xl border border-slate-800 bg-slate-950 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-900/90 text-slate-400 border-b border-slate-800 text-[11px] uppercase tracking-wider font-semibold">
+                        <th className="py-3 px-4">Time</th>
+                        <th className="py-3 px-4">Service</th>
+                        <th className="py-3 px-4">Number / Range</th>
+                        <th className="py-3 px-4">Operator</th>
+                        <th className="py-3 px-4">Full Message</th>
+                        <th className="py-3 px-4 text-right">OTP / Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60 font-mono">
+                      {filteredHits.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="py-8 text-center text-slate-500 font-sans text-xs">
+                            {isStreamFetching
+                              ? 'Fetching live carrier packets...'
+                              : 'Waiting for incoming carrier SMS packets on this API key... (Socket connected)'}
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredHits.map((hit, index) => {
+                          const otp = extractOtp(hit.message);
+                          const hitTime = hit.time ? new Date(hit.time).toLocaleTimeString() : 'Just now';
+
+                          return (
+                            <tr key={index} className="hover:bg-slate-900/70 transition">
+                              {/* Time */}
+                              <td className="py-3 px-4 text-slate-400 whitespace-nowrap text-[11px]">
+                                {hitTime}
+                              </td>
+
+                              {/* Service */}
+                              <td className="py-3 px-4 font-sans font-bold text-indigo-300 whitespace-nowrap">
+                                <span className="px-2 py-0.5 rounded-md bg-indigo-950/80 border border-indigo-500/30">
+                                  {hit.sid || 'General'}
+                                </span>
+                              </td>
+
+                              {/* Number / Range */}
+                              <td className="py-3 px-4 text-white font-bold whitespace-nowrap">
+                                {hit.range}
+                              </td>
+
+                              {/* Operator & Country */}
+                              <td className="py-3 px-4 text-slate-300 font-sans whitespace-nowrap">
+                                <span>{hit.country || ''} </span>
+                                <span className="text-slate-400 font-mono text-[11px]">{hit.operator || 'Carrier'}</span>
+                              </td>
+
+                              {/* Message Body */}
+                              <td className="py-3 px-4 font-sans text-slate-300 max-w-xs md:max-w-md break-words">
+                                {hit.message}
+                              </td>
+
+                              {/* OTP / Action */}
+                              <td className="py-3 px-4 text-right whitespace-nowrap">
+                                {otp ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => copyToClipboard(otp, 'OTP Copied')}
+                                    className="px-2.5 py-1 rounded-lg bg-emerald-950/90 hover:bg-emerald-900 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition inline-flex items-center gap-1.5 cursor-pointer"
+                                    title="Click to copy OTP"
+                                  >
+                                    <KeyRound className="w-3 h-3 text-emerald-400" />
+                                    <span>{otp}</span>
+                                    {copiedText === otp ? (
+                                      <Check className="w-3 h-3 text-emerald-400" />
+                                    ) : (
+                                      <Copy className="w-3 h-3 text-emerald-400" />
+                                    )}
+                                  </button>
+                                ) : (
+                                  <span className="text-[10px] text-slate-500 font-sans">No OTP</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
           </div>
         )}
 
-        {/* Master Accounts Table */}
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-2xs overflow-hidden">
-          <div className="p-4 sm:p-5 border-b border-gray-200 flex items-center justify-between">
-            <h3 className="font-extrabold text-sm sm:text-base text-gray-900">
-              Registered Accounts ({filteredAccounts.length})
-            </h3>
-            <span className="text-xs text-gray-500 font-normal">
-              Managing credentials, permanent 10-digit codes &amp; status
-            </span>
-          </div>
+        {/* ================================================================= */}
+        {/* TAB: ACTIVE ACCOUNT MANAGEMENT (একটিভ একাউন্ট ম্যানেজমেন্ট)       */}
+        {/* ================================================================= */}
+        {activeTab === 'active-account-management' && (
+          <div className="space-y-6">
+            {/* Header Banner & Stat Cards */}
+            <section className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 space-y-5">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-amber-500/15 border border-amber-500/30 rounded-2xl text-amber-400">
+                    <UserCheck className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg sm:text-xl font-black text-white tracking-tight flex items-center gap-2">
+                      <span>Active Account Management</span>
+                      <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-extrabold border border-amber-500/30">
+                        একটিভ একাউন্ট ম্যানেজমেন্ট
+                      </span>
+                    </h2>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Check user submissions, review full contact details, approve/reject portal logins, or send direct notices.
+                    </p>
+                  </div>
+                </div>
 
-          {/* Responsive View: Desktop Table (hidden on small screens) + Mobile Cards (visible on small screens) */}
-          {/* 1. Desktop & Tablet Table View */}
-          <div className="hidden md:block overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-gray-50 text-gray-600 font-bold uppercase tracking-wider text-[10px] border-b border-gray-200">
-                <tr>
-                  <th className="px-4 py-3">User Details</th>
-                  <th className="px-4 py-3">Dedicated Code</th>
-                  <th className="px-4 py-3">Password</th>
-                  <th className="px-4 py-3">Contact &amp; Note</th>
-                  <th className="px-4 py-3">Registered</th>
-                  <th className="px-4 py-3 text-center">Status</th>
-                  <th className="px-4 py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 bg-white">
-                {filteredAccounts.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-gray-400 text-xs font-medium">
-                      No accounts found matching filter or search query.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredAccounts.map((acc) => (
-                    <tr key={acc.id} className="hover:bg-gray-50/80 transition-colors">
-                      {/* Name & Email */}
-                      <td className="px-4 py-3.5">
-                        <div className="font-bold text-gray-900 text-sm">{acc.name}</div>
-                        <div className="text-xs text-purple-700 font-mono font-medium">{acc.email}</div>
-                        {acc.role === 'admin' && (
-                          <span className="inline-block mt-0.5 px-1.5 py-0.2 rounded bg-purple-100 text-purple-800 text-[9px] font-black uppercase tracking-wider">
-                            MASTER ADMIN
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Account Code */}
-                      <td className="px-4 py-3.5 font-mono">
-                        <div className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 font-bold text-xs">
-                          <Key className="w-3 h-3 text-amber-600" />
-                          <span>{acc.accountCode}</span>
-                        </div>
-                      </td>
-
-                      {/* Password with prominent Pencil Edit button */}
-                      <td className="px-4 py-3.5 font-mono">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-gray-900 font-bold text-xs bg-gray-100/90 px-2 py-0.5 rounded-lg border border-gray-200 shadow-2xs">
-                            {acc.password || '—'}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenResetModal(acc)}
-                            className="p-1.5 rounded-lg text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 transition cursor-pointer shadow-2xs"
-                            title="✏️ পেন্সিল: পাসওয়ার্ড পরিবর্তন করুন / Change Password"
-                          >
-                            <Pencil className="w-3.5 h-3.5 text-purple-700" />
-                          </button>
-                        </div>
-                      </td>
-
-                      {/* Contact, Group Link & Note */}
-                      <td className="px-4 py-3.5 text-xs text-gray-600 max-w-xs">
-                        {acc.phoneOrTelegram && (
-                          <div className="flex items-center gap-1 text-gray-800 font-medium mb-0.5">
-                            <Phone className="w-3 h-3 text-emerald-600" />
-                            <span>{acc.phoneOrTelegram}</span>
-                          </div>
-                        )}
-                        {acc.groupLink && (
-                          <div className="flex items-center gap-1 text-blue-600 mb-0.5 truncate">
-                            <Share2 className="w-3 h-3 shrink-0" />
-                            <a
-                              href={acc.groupLink.startsWith('http') ? acc.groupLink : `https://${acc.groupLink}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="hover:underline truncate"
-                              title={acc.groupLink}
-                            >
-                              {acc.groupLink}
-                            </a>
-                          </div>
-                        )}
-                        {acc.note && (
-                          <div className="text-[11px] text-gray-500 truncate" title={acc.note}>
-                            💬 {acc.note}
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Registration Date */}
-                      <td className="px-4 py-3.5 text-gray-500 text-xs whitespace-nowrap">
-                        <div className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3 text-gray-400" />
-                          <span>{new Date(acc.createdAt).toLocaleDateString()}</span>
-                        </div>
-                      </td>
-
-                      {/* Status */}
-                      <td className="px-4 py-3.5 text-center">
-                        <span
-                          className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                            acc.status === 'pending'
-                              ? 'bg-amber-100 text-amber-900 animate-pulse border border-amber-300'
-                              : acc.status === 'approved'
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                              : acc.status === 'suspended'
-                              ? 'bg-rose-100 text-rose-900 font-bold border border-rose-300 shadow-2xs'
-                              : 'bg-red-100 text-red-800 border border-red-200'
-                          }`}
-                        >
-                          {acc.status}
+                {/* Filter Tabs */}
+                <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                  {(['ALL', 'pending', 'approved', 'rejected'] as const).map((st) => {
+                    const count = accountsList.filter((a) => st === 'ALL' || a.status === st).length;
+                    return (
+                      <button
+                        key={st}
+                        type="button"
+                        onClick={() => setActiveAccFilter(st)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                          activeAccFilter === st
+                            ? st === 'pending'
+                              ? 'bg-amber-600 text-white shadow-md'
+                              : st === 'approved'
+                              ? 'bg-emerald-600 text-white shadow-md'
+                              : st === 'rejected'
+                              ? 'bg-rose-600 text-white shadow-md'
+                              : 'bg-indigo-600 text-white shadow-md'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        <span>
+                          {st === 'ALL'
+                            ? 'All Requests'
+                            : st === 'pending'
+                            ? 'Pending'
+                            : st === 'approved'
+                            ? 'Approved'
+                            : 'Rejected'}
                         </span>
-                      </td>
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-900/80 font-mono">
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
-                      {/* Actions */}
-                      <td className="px-4 py-3.5 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {/* 1. Fine-Grained Permissions & Status Button */}
-                          <button
-                            type="button"
-                            onClick={() => handleOpenPermissionsModal(acc)}
-                            className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-lg transition cursor-pointer flex items-center gap-1 font-bold text-[11px] shadow-2xs"
-                            title="🛡️ এক এক করে পারমিশন ও স্ট্যাটাস পরিবর্তন করুন (Fine-grained Permissions)"
-                          >
-                            <Sliders className="w-3.5 h-3.5 text-blue-600" />
-                            <span>Perms</span>
-                          </button>
+              {/* Quick Stat Counter Bar */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+                  <div>
+                    <div className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Total Submitted</div>
+                    <div className="text-xl font-black text-white font-mono mt-0.5">{accountsList.length}</div>
+                  </div>
+                  <Users className="w-5 h-5 text-slate-500" />
+                </div>
 
-                          {/* 2. Prominent Pencil / Edit Password Button */}
-                          <button
-                            type="button"
-                            onClick={() => handleOpenResetModal(acc)}
-                            className="px-2.5 py-1.5 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-800 hover:to-indigo-800 text-white rounded-lg transition cursor-pointer flex items-center gap-1.5 font-bold text-xs shadow-2xs group"
-                            title="✏️ পেন্সিল: পাসওয়ার্ড পরিবর্তন বা নতুন তৈরি করুন (Reset/Change Password)"
-                          >
-                            <Pencil className="w-3.5 h-3.5 text-purple-200 group-hover:rotate-12 transition-transform" />
-                            <span className="text-[11px]">Pass</span>
-                          </button>
+                <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-500/30 flex items-center justify-between">
+                  <div>
+                    <div className="text-[10px] font-extrabold text-amber-400 uppercase tracking-wider">Pending Review</div>
+                    <div className="text-xl font-black text-amber-300 font-mono mt-0.5">
+                      {accountsList.filter((a) => a.status === 'pending').length}
+                    </div>
+                  </div>
+                  <Clock className="w-5 h-5 text-amber-400 animate-pulse" />
+                </div>
 
-                          {/* 3. Live Chat Button */}
-                          <button
-                            type="button"
-                            onClick={() => handleOpenUserChat(acc.email)}
-                            className="p-1.5 text-indigo-700 hover:text-indigo-900 hover:bg-indigo-50 border border-indigo-200 rounded-lg transition cursor-pointer flex items-center gap-1 font-bold text-xs"
-                            title="💬 Live Chat with this user"
-                          >
-                            <MessageSquare className="w-3.5 h-3.5 text-indigo-600" />
-                          </button>
+                <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500/30 flex items-center justify-between">
+                  <div>
+                    <div className="text-[10px] font-extrabold text-emerald-400 uppercase tracking-wider">Approved Active</div>
+                    <div className="text-xl font-black text-emerald-300 font-mono mt-0.5">
+                      {accountsList.filter((a) => a.status === 'approved').length}
+                    </div>
+                  </div>
+                  <UserCheck className="w-5 h-5 text-emerald-400" />
+                </div>
 
-                          {/* 4. Approve / Reject / Suspend */}
+                <div className="p-3.5 rounded-xl bg-rose-950/40 border border-rose-500/30 flex items-center justify-between">
+                  <div>
+                    <div className="text-[10px] font-extrabold text-rose-400 uppercase tracking-wider">Rejected Requests</div>
+                    <div className="text-xl font-black text-rose-300 font-mono mt-0.5">
+                      {accountsList.filter((a) => a.status === 'rejected').length}
+                    </div>
+                  </div>
+                  <UserX className="w-5 h-5 text-rose-400" />
+                </div>
+              </div>
+
+              {/* Search Bar */}
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={activeAccSearch}
+                  onChange={(e) => setActiveAccSearch(e.target.value)}
+                  placeholder="Search submissions by Full Name, Email, Phone Number, Admin Message, or Telegram link..."
+                  className="w-full pl-9 pr-4 py-2.5 text-xs sm:text-sm bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                />
+              </div>
+            </section>
+
+            {/* List of Active Account Submissions */}
+            <section className="space-y-4">
+              {filteredActiveAccountRequests.length === 0 ? (
+                <div className="p-12 text-center bg-slate-900 border border-slate-800 rounded-2xl text-slate-500 space-y-2">
+                  <UserCheck className="w-10 h-10 text-slate-600 mx-auto" />
+                  <p className="text-sm font-bold text-slate-300">No submitted account requests found</p>
+                  <p className="text-xs text-slate-500">
+                    {activeAccSearch ? 'Try clearing your search query' : 'When users submit "Create Active Account", their details will appear here.'}
+                  </p>
+                </div>
+              ) : (
+                filteredActiveAccountRequests.map((acc) => {
+                  const isPassRevealed = !!revealedPasswords[acc.id];
+                  const displayPass = acc.password || 'Password123';
+
+                  return (
+                    <div
+                      key={acc.id}
+                      className={`bg-slate-900 border rounded-2xl p-5 transition shadow-sm space-y-4 ${
+                        acc.status === 'pending'
+                          ? 'border-amber-500/40 bg-slate-900/90 ring-1 ring-amber-500/20'
+                          : acc.status === 'approved'
+                          ? 'border-emerald-500/30'
+                          : acc.status === 'rejected'
+                          ? 'border-rose-500/30 opacity-80'
+                          : 'border-slate-800'
+                      }`}
+                    >
+                      {/* Card Top Row: Identity, Status Badge & Timestamp */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black text-sm border ${
+                            acc.status === 'pending'
+                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                              : acc.status === 'approved'
+                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                              : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                          }`}>
+                            {acc.name?.charAt(0)?.toUpperCase() || 'U'}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-extrabold text-white text-sm sm:text-base">{acc.name}</h3>
+                              <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 font-mono border border-indigo-500/30">
+                                ID: {acc.accountCode || getDedicatedAccountCode(acc.email)}
+                              </span>
+                            </div>
+                            <div className="text-xs text-slate-400 font-mono">{acc.email}</div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          {/* Status Badge */}
                           {acc.status === 'pending' && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => handleApprove(acc.id, acc.email)}
-                                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg transition cursor-pointer flex items-center gap-1 shadow-2xs"
-                              >
-                                <UserCheck className="w-3.5 h-3.5" />
-                                <span>Approve</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleReject(acc.id, acc.email)}
-                                className="px-2 py-1 bg-red-100 hover:bg-red-200 text-red-700 font-bold text-xs rounded-lg transition cursor-pointer"
-                              >
-                                Reject
-                              </button>
-                            </>
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 text-xs font-black border border-amber-500/40">
+                              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                              <span>PENDING APPROVAL</span>
+                            </span>
                           )}
 
-                          {acc.status === 'approved' && acc.role !== 'admin' && (
-                            <button
-                              type="button"
-                              onClick={() => handleSuspend(acc.id, acc.email)}
-                              className="px-2.5 py-1 bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold text-xs rounded-lg transition cursor-pointer border border-rose-200"
-                              title="Suspend this user"
-                            >
-                              Suspend
-                            </button>
-                          )}
-
-                          {acc.status === 'suspended' && (
-                            <button
-                              type="button"
-                              onClick={() => handleApprove(acc.id, acc.email)}
-                              className="px-2.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-bold text-xs rounded-lg transition cursor-pointer border border-emerald-200"
-                              title="Un-suspend & Activate User"
-                            >
-                              Activate
-                            </button>
+                          {acc.status === 'approved' && (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-black border border-emerald-500/40">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>APPROVED &amp; ACTIVE</span>
+                            </span>
                           )}
 
                           {acc.status === 'rejected' && (
-                            <button
-                              type="button"
-                              onClick={() => handleApprove(acc.id, acc.email)}
-                              className="px-2.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-bold text-xs rounded-lg transition cursor-pointer"
-                            >
-                              Re-Approve
-                            </button>
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/20 text-rose-300 text-xs font-black border border-rose-500/40">
+                              <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+                              <span>REJECTED</span>
+                            </span>
                           )}
 
-                          {/* 4. Delete Account */}
-                          {acc.role !== 'admin' && (
-                            <button
-                              type="button"
-                              onClick={() => handleDelete(acc.id, acc.email)}
-                              className="p-1.5 text-gray-400 hover:text-red-600 transition cursor-pointer rounded-lg hover:bg-red-50"
-                              title="Delete user permanently"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* 2. Mobile Cards View (Optimized for Mobile Phone Screens) */}
-          <div className="block md:hidden divide-y divide-gray-100">
-            {filteredAccounts.length === 0 ? (
-              <div className="p-6 text-center text-gray-400 text-xs font-medium">
-                No accounts found matching filter or search query.
-              </div>
-            ) : (
-              filteredAccounts.map((acc) => (
-                <div key={acc.id} className="p-4 space-y-3 bg-white hover:bg-gray-50/60 transition">
-                  {/* Header: Name, Email & Status */}
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="font-bold text-gray-900 text-sm flex items-center gap-1.5">
-                        <span>{acc.name}</span>
-                        {acc.role === 'admin' && (
-                          <span className="px-1.5 py-0.2 rounded bg-purple-100 text-purple-800 text-[9px] font-black uppercase tracking-wider">
-                            ADMIN
+                          <span className="text-[11px] text-slate-500 font-mono hidden md:inline">
+                            Submitted: {new Date(acc.createdAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
                           </span>
+                        </div>
+                      </div>
+
+                      {/* Card Content Grid */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+                        {/* Contact Phone / WhatsApp */}
+                        <div className="p-3 bg-slate-950 rounded-xl border border-slate-800/80 space-y-1">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Contact Phone / WhatsApp</span>
+                          <div className="flex items-center justify-between gap-1 text-slate-200 font-bold font-mono">
+                            <span>{acc.phoneOrTelegram || 'Not provided'}</span>
+                            {acc.phoneOrTelegram && (
+                              <button
+                                type="button"
+                                onClick={() => copyToClipboard(acc.phoneOrTelegram!, 'Phone')}
+                                className="text-slate-400 hover:text-indigo-400 p-1 transition cursor-pointer"
+                                title="Copy Contact Phone"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Submitted Password */}
+                        <div className="p-3 bg-slate-950 rounded-xl border border-slate-800/80 space-y-1">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Account Password</span>
+                          <div className="flex items-center justify-between gap-1 text-slate-200 font-bold font-mono">
+                            <span>{isPassRevealed ? displayPass : '••••••••••••'}</span>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => togglePasswordVisibility(acc.id)}
+                                className="text-slate-400 hover:text-indigo-400 p-1 transition cursor-pointer"
+                                title={isPassRevealed ? 'Hide Password' : 'Show Password'}
+                              >
+                                {isPassRevealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => copyToClipboard(displayPass, 'Password')}
+                                className="text-slate-400 hover:text-indigo-400 p-1 transition cursor-pointer"
+                                title="Copy Password"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Telegram / Group Link */}
+                        <div className="p-3 bg-slate-950 rounded-xl border border-slate-800/80 space-y-1">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Telegram / Group Link</span>
+                          <div className="truncate text-indigo-400 font-medium">
+                            {acc.groupLink ? (
+                              <a
+                                href={acc.groupLink.startsWith('http') ? acc.groupLink : `https://${acc.groupLink}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="hover:underline flex items-center gap-1 truncate"
+                              >
+                                <span>{acc.groupLink}</span>
+                              </a>
+                            ) : (
+                              <span className="text-slate-500 italic">None provided</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* User Message / Monthly Requirement */}
+                        <div className="md:col-span-2 lg:col-span-3 p-3 bg-slate-950 rounded-xl border border-slate-800/80 space-y-1">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                            User Note / Admin Message / Monthly Requirement:
+                          </span>
+                          <p className="text-slate-300 text-xs leading-relaxed whitespace-pre-wrap font-sans">
+                            {acc.note || 'No specific admin note provided.'}
+                          </p>
+                        </div>
+
+                        {/* Sent Admin Notice Banner */}
+                        {acc.adminNotice && (
+                          <div className="md:col-span-2 lg:col-span-3 p-3 bg-indigo-950/60 rounded-xl border border-indigo-500/40 text-indigo-200 text-xs space-y-1">
+                            <span className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1">
+                              <Bell className="w-3.5 h-3.5 text-indigo-400" />
+                              <span>Official Admin Notice Sent to User:</span>
+                            </span>
+                            <p className="text-white font-medium">{acc.adminNotice}</p>
+                          </div>
                         )}
                       </div>
-                      <div className="text-xs text-purple-700 font-mono font-medium">{acc.email}</div>
-                    </div>
-                    <span
-                      className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shrink-0 ${
-                        acc.status === 'pending'
-                          ? 'bg-amber-100 text-amber-900 animate-pulse border border-amber-300'
-                          : acc.status === 'approved'
-                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                          : 'bg-red-100 text-red-800 border border-red-200'
-                      }`}
-                    >
-                      {acc.status}
-                    </span>
-                  </div>
 
-                  {/* Account Code & Password Row */}
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="p-2 bg-amber-50/80 rounded-xl border border-amber-200 flex flex-col justify-center">
-                      <span className="text-[10px] text-amber-800 font-medium">Dedicated Code:</span>
-                      <span className="font-mono font-bold text-amber-950 text-xs">{acc.accountCode}</span>
-                    </div>
+                      {/* Card Action Controls Footer */}
+                      <div className="pt-3 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          {/* Approve Button */}
+                          {acc.status !== 'approved' && (
+                            <button
+                              type="button"
+                              onClick={() => handleApproveActiveAccount(acc)}
+                              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-black text-xs transition cursor-pointer flex items-center gap-1.5 shadow-md"
+                            >
+                              <UserCheck className="w-4 h-4" />
+                              <span>Approve Account (এপ্রুভ করুন)</span>
+                            </button>
+                          )}
 
-                    <div className="p-2 bg-purple-50/80 rounded-xl border border-purple-200 flex items-center justify-between">
-                      <div>
-                        <span className="text-[10px] text-purple-700 font-medium block">Password:</span>
-                        <span className="font-mono font-bold text-gray-900 text-xs truncate max-w-[80px]">
-                          {acc.password || '—'}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleOpenResetModal(acc)}
-                        className="p-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white transition cursor-pointer shadow-2xs"
-                        title="✏️ পেন্সিল: পাসওয়ার্ড তৈরি/পরিবর্তন করুন"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
+                          {/* Reject Button */}
+                          {acc.status !== 'rejected' && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenRejectModal(acc)}
+                              className="px-3.5 py-2 rounded-xl bg-rose-950 hover:bg-rose-900 text-rose-300 border border-rose-500/40 font-bold text-xs transition cursor-pointer flex items-center gap-1.5"
+                            >
+                              <UserX className="w-4 h-4" />
+                              <span>Reject Request (রিজেক্ট)</span>
+                            </button>
+                          )}
 
-                  {/* Contact / Note if present */}
-                  {(acc.phoneOrTelegram || acc.note || acc.groupLink) && (
-                    <div className="text-[11px] text-gray-600 space-y-1 bg-gray-50 p-2 rounded-xl border border-gray-200/70">
-                      {acc.phoneOrTelegram && (
-                        <div className="flex items-center gap-1">
-                          <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
-                          <span className="font-medium text-gray-800">{acc.phoneOrTelegram}</span>
+                          {/* Send Notice Button */}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenNoticeModal(acc)}
+                            className="px-3.5 py-2 rounded-xl bg-purple-950/80 hover:bg-purple-900 text-purple-200 border border-purple-500/40 font-bold text-xs transition cursor-pointer flex items-center gap-1.5"
+                          >
+                            <Bell className="w-4 h-4 text-purple-400" />
+                            <span>Send Notice (নোটিশ পাঠান)</span>
+                          </button>
                         </div>
-                      )}
-                      {acc.note && (
-                        <div className="text-gray-600 truncate">
-                          💬 {acc.note}
+
+                        <div className="flex items-center gap-2">
+                          {/* Reset Password */}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenResetModal(acc)}
+                            className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition cursor-pointer flex items-center gap-1 border border-slate-700"
+                          >
+                            <Key className="w-3.5 h-3.5" />
+                            <span>Reset Password</span>
+                          </button>
+
+                          {/* Delete Request */}
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteUserAccount(acc)}
+                            className="p-2 rounded-xl bg-slate-950 hover:bg-red-950/80 text-slate-400 hover:text-red-400 border border-slate-800 transition cursor-pointer"
+                            title="Delete submission record"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Prominent Action Toolbar with Pencil Password Button on Mobile */}
-                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-gray-100">
-                    {/* Pencil Button for changing password */}
-                    <button
-                      type="button"
-                      onClick={() => handleOpenResetModal(acc)}
-                      className="flex-1 py-2 px-3 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-800 hover:to-indigo-800 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
-                    >
-                      <Pencil className="w-3.5 h-3.5 text-purple-200" />
-                      <span>Edit Password</span>
-                    </button>
-
-                    {/* Chat Button */}
-                    <button
-                      type="button"
-                      onClick={() => handleOpenUserChat(acc.email)}
-                      className="py-2 px-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl font-bold text-xs flex items-center gap-1 cursor-pointer"
-                      title="Live Chat"
-                    >
-                      <MessageSquare className="w-3.5 h-3.5" />
-                      <span>Chat</span>
-                    </button>
-
-                    {/* Status Toggle (Approve / Suspend) */}
-                    {acc.status === 'pending' && (
-                      <button
-                        type="button"
-                        onClick={() => handleApprove(acc.id, acc.email)}
-                        className="py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl flex items-center gap-1 cursor-pointer shadow-2xs"
-                      >
-                        <UserCheck className="w-3.5 h-3.5" />
-                        <span>Approve</span>
-                      </button>
-                    )}
-
-                    {acc.status === 'approved' && acc.role !== 'admin' && (
-                      <button
-                        type="button"
-                        onClick={() => handleReject(acc.id, acc.email)}
-                        className="py-2 px-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl cursor-pointer"
-                      >
-                        Suspend
-                      </button>
-                    )}
-
-                    {/* Delete */}
-                    {acc.role !== 'admin' && (
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(acc.id, acc.email)}
-                        className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition cursor-pointer"
-                        title="Delete User"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      </main>
-
-      {/* -------------------- MODAL: ADMIN RESET USER PASSWORD -------------------- */}
-      {resetModalUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/65 backdrop-blur-xs animate-fadeIn">
-          <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl border border-purple-100 overflow-hidden flex flex-col animate-scaleUp">
-            <div className="p-4 sm:p-5 bg-gradient-to-r from-purple-800 via-indigo-800 to-purple-900 text-white flex items-center justify-between shadow-xs">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-xl bg-white/20">
-                  <KeyRound className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-sm sm:text-base">Reset User Password</h3>
-                  <p className="text-[11px] text-purple-200 truncate max-w-[200px]">
-                    {resetModalUser.email}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setResetModalUser(null)}
-                className="p-1 rounded-full hover:bg-white/20 transition cursor-pointer text-white/80 hover:text-white"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleResetPasswordSubmit} className="p-5 space-y-4 text-xs">
-              {resetError && (
-                <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 rounded-xl font-bold flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{resetError}</span>
-                </div>
-              )}
-
-              <div className="p-3 bg-purple-50/70 rounded-2xl border border-purple-100 space-y-1">
-                <div className="text-[11px] text-gray-500 font-sans">Target User:</div>
-                <div className="font-bold text-gray-900 text-sm">{resetModalUser.name}</div>
-                <div className="text-purple-700 font-mono font-medium">{resetModalUser.email}</div>
-                <div className="text-[11px] text-amber-800 font-mono font-bold mt-1">
-                  Code: {resetModalUser.accountCode}
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-bold text-gray-700 mb-1 flex items-center justify-between">
-                  <span>New Password <span className="text-red-500">*</span></span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const randomPass = 'pass' + Math.floor(1000 + Math.random() * 9000);
-                      setResetNewPass(randomPass);
-                    }}
-                    className="text-[10px] text-purple-700 font-bold hover:underline cursor-pointer"
-                  >
-                    Generate Random
-                  </button>
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={resetNewPass}
-                    onChange={(e) => setResetNewPass(e.target.value)}
-                    placeholder="Enter new password"
-                    required
-                    className="w-full px-3 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-xs sm:text-sm text-gray-900 focus:bg-white outline-none focus:ring-2 focus:ring-purple-500 font-mono pl-9"
-                  />
-                  <Lock className="w-4 h-4 text-purple-600 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                </div>
-                <p className="text-[10px] text-gray-400 mt-1">
-                  Once reset, the user can immediately log in with this new password.
-                </p>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
-                <button
-                  type="button"
-                  onClick={() => setResetModalUser(null)}
-                  className="px-3.5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl cursor-pointer text-xs"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2.5 bg-purple-700 hover:bg-purple-800 text-white font-bold rounded-xl shadow-md transition cursor-pointer text-xs flex items-center gap-1.5"
-                >
-                  <KeyRound className="w-3.5 h-3.5" />
-                  <span>Update Password</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* -------------------- MODAL: FINE-GRAINED USER PERMISSIONS & STATUS -------------------- */}
-      {permissionsUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
-          <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl border border-gray-200 overflow-hidden flex flex-col animate-scaleUp max-h-[90vh]">
-            <div className="p-4 sm:p-5 bg-gradient-to-r from-blue-900 via-indigo-900 to-purple-950 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Sliders className="w-5 h-5 text-blue-300" />
-                <h3 className="font-extrabold text-base">User Permissions &amp; Access Control</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPermissionsUser(null)}
-                className="p-1 rounded-full hover:bg-white/20 transition cursor-pointer text-white/80"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSavePermissions} className="p-5 space-y-4 text-xs overflow-y-auto">
-              <div className="p-3 bg-blue-50/70 rounded-2xl border border-blue-100 flex items-center justify-between">
-                <div>
-                  <div className="font-bold text-gray-900 text-sm">{permissionsUser.name}</div>
-                  <div className="text-blue-700 font-mono font-medium text-xs">{permissionsUser.email}</div>
-                  <div className="text-[11px] text-amber-800 font-mono font-bold mt-0.5">
-                    Account Code: {permissionsUser.accountCode}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <span className="text-[10px] text-gray-500 font-medium block">Current Status</span>
-                  <span
-                    className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                      permissionsUser.status === 'approved'
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : permissionsUser.status === 'suspended'
-                        ? 'bg-rose-100 text-rose-800'
-                        : 'bg-amber-100 text-amber-900'
-                    }`}
-                  >
-                    {permissionsUser.status}
-                  </span>
-                </div>
-              </div>
-
-              {/* Status Selector */}
-              <div>
-                <label className="block font-bold text-gray-800 mb-1.5">Account Status Control</label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setTempStatus('approved')}
-                    className={`py-2 px-2.5 rounded-xl text-xs font-bold border transition cursor-pointer flex items-center justify-center gap-1 ${
-                      tempStatus === 'approved'
-                        ? 'bg-emerald-600 text-white border-emerald-700 shadow-2xs'
-                        : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
-                    }`}
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Active</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTempStatus('suspended')}
-                    className={`py-2 px-2.5 rounded-xl text-xs font-bold border transition cursor-pointer flex items-center justify-center gap-1 ${
-                      tempStatus === 'suspended'
-                        ? 'bg-rose-600 text-white border-rose-700 shadow-2xs'
-                        : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
-                    }`}
-                  >
-                    <Ban className="w-3.5 h-3.5" />
-                    <span>Suspended</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTempStatus('pending')}
-                    className={`py-2 px-2.5 rounded-xl text-xs font-bold border transition cursor-pointer flex items-center justify-center gap-1 ${
-                      tempStatus === 'pending'
-                        ? 'bg-amber-500 text-white border-amber-600 shadow-2xs'
-                        : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
-                    }`}
-                  >
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>Pending</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTempStatus('rejected')}
-                    className={`py-2 px-2.5 rounded-xl text-xs font-bold border transition cursor-pointer flex items-center justify-center gap-1 ${
-                      tempStatus === 'rejected'
-                        ? 'bg-red-600 text-white border-red-700 shadow-2xs'
-                        : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
-                    }`}
-                  >
-                    <UserX className="w-3.5 h-3.5" />
-                    <span>Rejected</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Toggle Switches for individual feature permissions */}
-              <div className="space-y-2 pt-2 border-t border-gray-100">
-                <label className="block font-bold text-gray-800 text-xs mb-1">
-                  Feature Permissions (এক এক করে পারমিশন কন্ট্রোল)
-                </label>
-
-                {[
-                  { key: 'canGetNumber', label: 'Allocate Carrier Numbers (Get Number)', desc: 'Allow user to allocate mobile numbers' },
-                  { key: 'canAccessRange', label: 'Number Range Search', desc: 'Allow searching specific number ranges' },
-                  { key: 'canAccessAccessList', label: 'Access List Tab', desc: 'Allow viewing carrier access list' },
-                  { key: 'canAccessConsole', label: 'Voltx Console', desc: 'Allow raw Voltx API console access' },
-                  { key: 'canAccessSummary', label: 'Summary Statistics', desc: 'Allow viewing summary stats dashboard' },
-                  { key: 'canAccess2oo9', label: '2oo9 Terminal', desc: 'Allow terminal command interface' },
-                  { key: 'canChat', label: 'Live Support Chat', desc: 'Allow sending live chat messages to admin' },
-                ].map((item) => {
-                  const isChecked = tempPermissions[item.key as keyof UserPermissions] ?? true;
-                  return (
-                    <div
-                      key={item.key}
-                      onClick={() =>
-                        setTempPermissions((prev) => ({
-                          ...prev,
-                          [item.key]: !isChecked,
-                        }))
-                      }
-                      className="p-2.5 rounded-xl bg-gray-50 hover:bg-gray-100/80 border border-gray-200 flex items-center justify-between cursor-pointer transition select-none"
-                    >
-                      <div>
-                        <div className="font-bold text-gray-900 text-xs">{item.label}</div>
-                        <div className="text-[10px] text-gray-500">{item.desc}</div>
-                      </div>
-                      <div
-                        className={`w-10 h-5 flex items-center rounded-full p-0.5 transition-colors ${
-                          isChecked ? 'bg-emerald-600' : 'bg-gray-300'
-                        }`}
-                      >
-                        <div
-                          className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${
-                            isChecked ? 'translate-x-5' : 'translate-x-0'
-                          }`}
-                        />
                       </div>
                     </div>
                   );
-                })}
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">
-                <button
-                  type="button"
-                  onClick={() => setPermissionsUser(null)}
-                  className="px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl cursor-pointer text-xs"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-xl shadow-md transition cursor-pointer text-xs flex items-center gap-1.5"
-                >
-                  <Shield className="w-3.5 h-3.5" />
-                  <span>Save Permissions</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* -------------------- MODAL: DIRECT USER CREATION FORM -------------------- */}
-      {isAddUserModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
-          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl border border-gray-200 overflow-hidden flex flex-col animate-scaleUp">
-            <div className="p-4 sm:p-5 bg-purple-800 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <UserPlus className="w-5 h-5" />
-                <h3 className="font-extrabold text-base">Add New Approved User</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsAddUserModalOpen(false)}
-                className="p-1 rounded-full hover:bg-white/20 transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateUserSubmit} className="p-5 space-y-3.5 text-xs">
-              {addUserError && (
-                <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 rounded-xl font-bold flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{addUserError}</span>
-                </div>
+                })
               )}
-
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">Full Name</label>
-                <input
-                  type="text"
-                  value={newUserName}
-                  onChange={(e) => setNewUserName(e.target.value)}
-                  placeholder="e.g. John Doe"
-                  className="w-full px-3 py-2 rounded-xl bg-gray-50 border border-gray-300 text-xs text-gray-900 focus:bg-white outline-none focus:ring-2 focus:ring-purple-500"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">Email Address *</label>
-                <input
-                  type="email"
-                  value={newUserEmail}
-                  onChange={(e) => setNewUserEmail(e.target.value)}
-                  placeholder="user@gmail.com"
-                  required
-                  className="w-full px-3 py-2 rounded-xl bg-gray-50 border border-gray-300 text-xs text-gray-900 focus:bg-white outline-none focus:ring-2 focus:ring-purple-500"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">Password *</label>
-                <input
-                  type="text"
-                  value={newUserPassword}
-                  onChange={(e) => setNewUserPassword(e.target.value)}
-                  placeholder="Set account password"
-                  required
-                  className="w-full px-3 py-2 rounded-xl bg-gray-50 border border-gray-300 text-xs text-gray-900 focus:bg-white outline-none focus:ring-2 focus:ring-purple-500 font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">Phone / Telegram Contact</label>
-                <input
-                  type="text"
-                  value={newUserPhone}
-                  onChange={(e) => setNewUserPhone(e.target.value)}
-                  placeholder="+8801... or @telegram"
-                  className="w-full px-3 py-2 rounded-xl bg-gray-50 border border-gray-300 text-xs text-gray-900 focus:bg-white outline-none focus:ring-2 focus:ring-purple-500"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">Admin Note (Optional)</label>
-                <input
-                  type="text"
-                  value={newUserNote}
-                  onChange={(e) => setNewUserNote(e.target.value)}
-                  placeholder="VIP client, tested on demo, etc."
-                  className="w-full px-3 py-2 rounded-xl bg-gray-50 border border-gray-300 text-xs text-gray-900 focus:bg-white outline-none focus:ring-2 focus:ring-purple-500"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
-                <button
-                  type="button"
-                  onClick={() => setIsAddUserModalOpen(false)}
-                  className="px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white font-bold rounded-xl shadow-2xs cursor-pointer"
-                >
-                  Create &amp; Approve
-                </button>
-              </div>
-            </form>
+            </section>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* -------------------- MODAL: LIVE SUPPORT & ADMIN CHAT CONSOLE -------------------- */}
-      {isChatCenterOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/65 backdrop-blur-xs animate-fadeIn">
-          <div className="bg-white rounded-3xl w-full max-w-4xl h-[90vh] max-h-[720px] shadow-2xl border border-indigo-100 overflow-hidden flex flex-col animate-scaleUp">
-            {/* Chat Modal Top Header */}
-            <div className="p-4 sm:p-5 bg-gradient-to-r from-indigo-900 via-purple-900 to-violet-950 text-white flex items-center justify-between shadow-md">
+        {/* ================================================================= */}
+        {/* TAB 2: USER MANAGEMENT                                            */}
+        {/* ================================================================= */}
+        {activeTab === 'user-management' && (
+          <section className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-2xl bg-white/15 backdrop-blur-xs border border-white/20">
-                  <MessageSquare className="w-5 h-5 text-indigo-200" />
+                <div className="p-2.5 bg-indigo-500/15 border border-indigo-500/30 rounded-xl text-indigo-400">
+                  <Users className="w-5 h-5" />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-extrabold text-base sm:text-lg">Live Support &amp; User Chat Center</h3>
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[10px] font-black uppercase">
-                      Admin Online
-                    </span>
-                  </div>
-                  <p className="text-xs text-indigo-200">
-                    Real-time support, password recovery assistance &amp; approvals
+                  <h2 className="text-base sm:text-lg font-black text-white">User Management</h2>
+                  <p className="text-xs text-slate-400">
+                    View user Email, Account ID &amp; Password. Suspend/Unsuspend, Answer questions &amp; Reset passwords.
                   </p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsChatCenterOpen(false)}
-                className="p-1.5 rounded-full hover:bg-white/20 transition cursor-pointer text-white/80 hover:text-white"
-              >
-                <X className="w-5 h-5" />
-              </button>
+
+              {/* Status Filter Buttons */}
+              <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                {(['ALL', 'approved', 'suspended', 'pending'] as const).map((st) => (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => setUserFilterStatus(st)}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                      userFilterStatus === st
+                        ? 'bg-indigo-600 text-white'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {st === 'ALL' ? 'All' : st.charAt(0).toUpperCase() + st.slice(1)}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {/* Chat Body: Split View (Conversations List + Chat Box) */}
-            <div className="flex-1 flex flex-col sm:flex-row overflow-hidden bg-gray-50">
-              {/* Left Side: Conversations / User Selector */}
-              <div className="w-full sm:w-72 bg-white border-r border-gray-200 flex flex-col shrink-0">
-                <div className="p-3 border-b border-gray-200 bg-gray-50/70">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5 flex items-center justify-between">
-                    <span>User Conversations</span>
-                    <span className="px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-800 text-[10px]">
-                      {getAllChatConversations().length}
-                    </span>
+            {/* Search Input */}
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={userSearchQuery}
+                onChange={(e) => setUserSearchQuery(e.target.value)}
+                placeholder="Search by User Email, Name, or 10-digit Account ID..."
+                className="w-full pl-9 pr-4 py-2.5 text-xs bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
+
+            {/* User List Table */}
+            <div className="rounded-xl border border-slate-800 bg-slate-950 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-900/90 text-slate-400 border-b border-slate-800 text-[11px] uppercase tracking-wider font-semibold">
+                      <th className="py-3 px-4">User Details</th>
+                      <th className="py-3 px-4">Account ID</th>
+                      <th className="py-3 px-4">Password</th>
+                      <th className="py-3 px-4">Status</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60 font-sans">
+                    {filteredAccounts.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="py-8 text-center text-slate-500 text-xs">
+                          No users found matching your search or filter.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredAccounts.map((user) => {
+                        const isPasswordRevealed = !!revealedPasswords[user.id];
+                        const displayPass = user.password || 'Password123';
+
+                        return (
+                          <tr key={user.id} className="hover:bg-slate-900/60 transition">
+                            {/* User Details */}
+                            <td className="py-3.5 px-4">
+                              <div className="font-bold text-white text-xs sm:text-sm">{user.name}</div>
+                              <div className="text-slate-400 text-xs font-mono">{user.email}</div>
+                              {user.phoneOrTelegram && (
+                                <div className="text-[11px] text-slate-500 mt-0.5">
+                                  Contact: {user.phoneOrTelegram}
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Account ID (10 digits) */}
+                            <td className="py-3.5 px-4 whitespace-nowrap">
+                              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-950/80 border border-indigo-500/30 text-indigo-300 font-mono font-bold text-xs">
+                                <span>{user.accountCode || getDedicatedAccountCode(user.email)}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => copyToClipboard(user.accountCode || getDedicatedAccountCode(user.email), 'Account ID')}
+                                  className="text-indigo-400 hover:text-white p-0.5 cursor-pointer"
+                                  title="Copy Account ID"
+                                >
+                                  <Copy className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </td>
+
+                            {/* Password (Visible directly / Toggle) */}
+                            <td className="py-3.5 px-4 whitespace-nowrap">
+                              <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-white font-mono text-xs">
+                                <span>{isPasswordRevealed ? displayPass : '••••••••'}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => togglePasswordVisibility(user.id)}
+                                  className="text-slate-400 hover:text-slate-200 transition cursor-pointer"
+                                  title={isPasswordRevealed ? 'Hide Password' : 'Show Password'}
+                                >
+                                  {isPasswordRevealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5 text-indigo-400" />}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => copyToClipboard(displayPass, 'Password')}
+                                  className="text-slate-400 hover:text-white transition cursor-pointer"
+                                  title="Copy Password"
+                                >
+                                  <Copy className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </td>
+
+                            {/* Status */}
+                            <td className="py-3.5 px-4 whitespace-nowrap">
+                              {user.status === 'approved' ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-500/30">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                  <span>Approved</span>
+                                </span>
+                              ) : user.status === 'suspended' ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-950 text-rose-300 border border-rose-500/30">
+                                  <ShieldAlert className="w-3 h-3 text-rose-400" />
+                                  <span>Suspended</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-950 text-amber-300 border border-amber-500/30">
+                                  <Clock className="w-3 h-3 text-amber-400" />
+                                  <span>Pending</span>
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Actions: Suspend/Unsuspend, Answer, Reset Password */}
+                            <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                              <div className="inline-flex items-center gap-1.5">
+                                {/* 1. Suspend / Unsuspend */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleSuspend(user)}
+                                  className={`px-2.5 py-1.5 rounded-lg font-bold text-xs transition cursor-pointer flex items-center gap-1 border ${
+                                    user.status === 'approved'
+                                      ? 'bg-rose-950/80 text-rose-300 hover:bg-rose-900 border-rose-500/30'
+                                      : 'bg-emerald-950/80 text-emerald-300 hover:bg-emerald-900 border-emerald-500/30'
+                                  }`}
+                                  title={user.status === 'approved' ? 'Suspend User' : 'Unsuspend User'}
+                                >
+                                  {user.status === 'approved' ? (
+                                    <>
+                                      <UserX className="w-3.5 h-3.5" />
+                                      <span>Suspend</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <UserCheck className="w-3.5 h-3.5" />
+                                      <span>Unsuspend</span>
+                                    </>
+                                  )}
+                                </button>
+
+                                {/* 2. Answer / Send Message */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenQuickAnswer(user)}
+                                  className="px-2.5 py-1.5 rounded-lg bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 border border-indigo-500/30 font-bold text-xs transition cursor-pointer flex items-center gap-1"
+                                  title="Send answer or message to user"
+                                >
+                                  <Send className="w-3.5 h-3.5" />
+                                  <span>Answer</span>
+                                </button>
+
+                                {/* 3. Reset / Create New Password */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenResetModal(user)}
+                                  className="px-2.5 py-1.5 rounded-lg bg-blue-950/80 hover:bg-blue-900 text-blue-300 border border-blue-500/30 font-bold text-xs transition cursor-pointer flex items-center gap-1"
+                                  title="Create or reset new password"
+                                >
+                                  <Key className="w-3.5 h-3.5" />
+                                  <span>New Password</span>
+                                </button>
+
+                                {/* Delete User */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteUserAccount(user)}
+                                  className="p-1.5 rounded-lg bg-slate-900 hover:bg-red-950 text-slate-400 hover:text-red-300 border border-slate-800 transition cursor-pointer"
+                                  title="Delete User Account"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Modal: Reset / Create New Password */}
+            {resetModalUser && (
+              <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <div className="flex items-center gap-2">
+                      <Key className="w-5 h-5 text-indigo-400" />
+                      <h3 className="font-black text-white text-base">Create New Password</h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setResetModalUser(null)}
+                      className="text-slate-400 hover:text-white p-1"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="text-xs text-slate-400">
+                    Updating password for: <span className="text-white font-bold">{resetModalUser.email}</span>
+                  </div>
+
+                  {resetModalError && (
+                    <div className="p-3 rounded-xl bg-red-950/60 border border-red-500/40 text-red-300 text-xs font-semibold">
+                      {resetModalError}
+                    </div>
+                  )}
+
+                  <form onSubmit={handleSaveResetPassword} className="space-y-4">
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-xs font-bold text-slate-300">New Password</label>
+                        <button
+                          type="button"
+                          onClick={handleGenerateRandomPassword}
+                          className="text-[11px] text-indigo-400 hover:text-indigo-300 font-bold"
+                        >
+                          + Generate Random
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        value={resetPasswordInput}
+                        onChange={(e) => setResetPasswordInput(e.target.value)}
+                        placeholder="Enter new password..."
+                        className="w-full px-4 py-2.5 text-xs sm:text-sm font-mono bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        autoFocus
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setResetModalUser(null)}
+                        className="px-4 py-2 text-xs font-bold text-slate-400 hover:text-white"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md cursor-pointer"
+                      >
+                        Save &amp; Notify User
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* Modal: Quick Answer / Message */}
+            {quickAnswerUser && (
+              <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <div className="flex items-center gap-2">
+                      <MessageSquare className="w-5 h-5 text-indigo-400" />
+                      <h3 className="font-black text-white text-base">Answer / Send Message</h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setQuickAnswerUser(null)}
+                      className="text-slate-400 hover:text-white p-1"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="text-xs text-slate-400">
+                    Recipient: <span className="text-white font-bold">{quickAnswerUser.email}</span> ({quickAnswerUser.name})
+                  </div>
+
+                  <form onSubmit={handleSendQuickAnswer} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1">Your Message / Answer</label>
+                      <textarea
+                        rows={4}
+                        value={quickAnswerText}
+                        onChange={(e) => setQuickAnswerText(e.target.value)}
+                        placeholder="Type answer or update message to user... Will be delivered in real-time to their Live Chat."
+                        className="w-full p-3 text-xs bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        autoFocus
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const target = quickAnswerUser.email;
+                          setQuickAnswerUser(null);
+                          setActiveChatUserEmail(target);
+                          setActiveTab('live-chat');
+                        }}
+                        className="text-xs font-bold text-indigo-400 hover:text-indigo-300"
+                      >
+                        Open Full Live Chat →
+                      </button>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setQuickAnswerUser(null)}
+                          className="px-4 py-2 text-xs font-bold text-slate-400 hover:text-white"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md cursor-pointer flex items-center gap-1.5"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          <span>Send Answer</span>
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* ================================================================= */}
+        {/* TAB 3: MANUALLY USER MANAGEMENT                                   */}
+        {/* ================================================================= */}
+        {activeTab === 'manually-user' && (
+          <div className="space-y-6">
+            <section className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 space-y-5">
+              <div className="border-b border-slate-800 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-blue-500/15 border border-blue-500/30 rounded-xl text-blue-400">
+                    <UserPlus className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-base sm:text-lg font-black text-white">Manually User Management</h2>
+                    <p className="text-xs text-slate-400">
+                      Create and activate user accounts with Email &amp; Password. Automatically generates dedicated 10-digit Account ID.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Success Banner if user created */}
+              {recentlyCreatedUser && (
+                <div className="p-4 rounded-xl bg-emerald-950/80 border border-emerald-500/50 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-emerald-200 font-bold text-sm">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                      <span>Account Successfully Created &amp; Approved!</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        copyToClipboard(
+                          `Account ID: ${recentlyCreatedUser.accountCode} | Email: ${recentlyCreatedUser.email} | Password: ${recentlyCreatedUser.password}`,
+                          'All Credentials'
+                        )
+                      }
+                      className="px-3 py-1 rounded-lg bg-emerald-900 hover:bg-emerald-800 text-emerald-200 text-xs font-bold border border-emerald-500/40 flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Copy Credentials</span>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs font-mono pt-1">
+                    <div className="p-2 bg-slate-950/80 rounded-lg border border-emerald-500/30">
+                      <span className="text-slate-400 block text-[10px]">Email:</span>
+                      <span className="text-white font-bold">{recentlyCreatedUser.email}</span>
+                    </div>
+                    <div className="p-2 bg-slate-950/80 rounded-lg border border-emerald-500/30">
+                      <span className="text-slate-400 block text-[10px]">Password:</span>
+                      <span className="text-emerald-300 font-bold">{recentlyCreatedUser.password}</span>
+                    </div>
+                    <div className="p-2 bg-slate-950/80 rounded-lg border border-emerald-500/30">
+                      <span className="text-slate-400 block text-[10px]">Account ID (10 digits):</span>
+                      <span className="text-indigo-300 font-bold">{recentlyCreatedUser.accountCode}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Error Banner */}
+              {manualError && (
+                <div className="p-3.5 rounded-xl bg-rose-950/80 border border-rose-500/40 text-rose-200 text-xs font-semibold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>{manualError}</span>
+                </div>
+              )}
+
+              {/* Manual User Creation Form */}
+              <form onSubmit={handleCreateManualUser} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Name */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
+                      User Full Name
+                    </label>
+                    <input
+                      type="text"
+                      value={manualName}
+                      onChange={(e) => setManualName(e.target.value)}
+                      placeholder="e.g. Rahim Ahmed"
+                      className="w-full px-4 py-2.5 text-xs sm:text-sm bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500"
+                    />
+                  </div>
+
+                  {/* Email */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
+                      Email Address <span className="text-rose-400">*</span>
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      value={manualEmail}
+                      onChange={(e) => setManualEmail(e.target.value)}
+                      placeholder="e.g. user@gmail.com"
+                      className="w-full px-4 py-2.5 text-xs sm:text-sm bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500"
+                    />
+                  </div>
+
+                  {/* Password with Generator */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                        Password <span className="text-rose-400">*</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleGenerateManualPassword}
+                        className="text-[11px] font-bold text-blue-400 hover:text-blue-300 cursor-pointer"
+                      >
+                        + Generate Password
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      required
+                      value={manualPassword}
+                      onChange={(e) => setManualPassword(e.target.value)}
+                      placeholder="e.g. Pass8291"
+                      className="w-full px-4 py-2.5 font-mono text-xs sm:text-sm bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500"
+                    />
+                  </div>
+
+                  {/* Phone / Telegram */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
+                      Phone or Telegram (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={manualPhone}
+                      onChange={(e) => setManualPhone(e.target.value)}
+                      placeholder="e.g. +8801700000000 or @username"
+                      className="w-full px-4 py-2.5 text-xs sm:text-sm bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500"
+                    />
                   </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
-                  {getAllChatConversations().length === 0 ? (
-                    <div className="p-4 text-center text-xs text-gray-400">
-                      <MessageCircle className="w-8 h-8 mx-auto text-gray-300 mb-1" />
-                      <p>No chat messages yet.</p>
-                      <p className="text-[10px] mt-1 text-gray-400">
-                        When users send a message from the login modal, it will appear here.
-                      </p>
+                {/* Note */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
+                    Admin Note / Remarks (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={manualNote}
+                    onChange={(e) => setManualNote(e.target.value)}
+                    placeholder="e.g. Manual VIP user account"
+                    className="w-full px-4 py-2.5 text-xs sm:text-sm bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500"
+                  />
+                </div>
+
+                {/* Submit Button */}
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    className="w-full sm:w-auto px-8 py-3 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md transition cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    <span>Create &amp; Approve User Account</span>
+                  </button>
+                </div>
+              </form>
+            </section>
+          </div>
+        )}
+
+        {/* ================================================================= */}
+        {/* TAB 4: USER NOTIFICATION & SITE NOTICE                            */}
+        {/* ================================================================= */}
+        {activeTab === 'user-notification' && (
+          <div className="space-y-6">
+            {/* Top Dashboard Marquee Notice Banner Editor */}
+            <section className="bg-slate-900 border border-indigo-500/30 rounded-2xl p-5 sm:p-6 space-y-4 shadow-xl">
+              <div className="border-b border-slate-800 pb-3 flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-indigo-500/15 border border-indigo-500/30 rounded-xl text-indigo-400">
+                    <Sparkles className="w-5 h-5 animate-pulse" />
+                  </div>
+                  <div>
+                    <h2 className="text-base sm:text-lg font-black text-white">
+                      Top Dashboard Marquee Notice Banner (ইউজার ড্যাশবোর্ড নোটিশ হেডার)
+                    </h2>
+                    <p className="text-xs text-slate-400">
+                      Edit and publish the moving top marquee announcement banner shown on every user's main dashboard.
+                    </p>
+                  </div>
+                </div>
+
+                {isNoticeSaved && (
+                  <span className="text-xs font-bold text-emerald-400 bg-emerald-950/80 px-3 py-1 rounded-full border border-emerald-500/40 animate-pulse">
+                    ✓ Published &amp; Live!
+                  </span>
+                )}
+              </div>
+
+              <form onSubmit={handleSaveMarqueeNotice} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
+                    Notice Banner Text (নোটিশ বার লেখা)
+                  </label>
+                  <textarea
+                    rows={3}
+                    required
+                    value={adminNoticeInput}
+                    onChange={(e) => {
+                      setAdminNoticeInput(e.target.value);
+                      setIsNoticeSaved(false);
+                    }}
+                    placeholder="e.g. Welcome to SUPER X SMS Portal - Premium Carrier Rates 📲 Instant Verification Codes Active..."
+                    className="w-full p-3.5 text-xs sm:text-sm bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-sans"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    💡 Tip: Change this notice text anytime. It instantly updates across all user dashboards in real-time.
+                  </p>
+                </div>
+
+                {/* Quick Presets */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-bold text-slate-400">Presets:</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAdminNoticeInput("SMS Portal - Premium Carrier Rates 📲 Instant Verification Codes & Physical Carrier Routes Active");
+                      setIsNoticeSaved(false);
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-indigo-300 text-[11px] font-bold border border-slate-700 cursor-pointer"
+                  >
+                    Default Premium Rate
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAdminNoticeInput("⚡ Special Offer: All WhatsApp & Telegram Carrier Routes Active 🚀 Contact Admin for Custom Bulk Rates");
+                      setIsNoticeSaved(false);
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 text-[11px] font-bold border border-slate-700 cursor-pointer"
+                  >
+                    Special Rates Notice
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAdminNoticeInput("🛠️ Server Maintenance Update: All carrier API connections are operating smoothly at 100% speed.");
+                      setIsNoticeSaved(false);
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-300 text-[11px] font-bold border border-slate-700 cursor-pointer"
+                  >
+                    Server Status Notice
+                  </button>
+                </div>
+
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="submit"
+                    className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md transition cursor-pointer flex items-center gap-2"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    <span>Save &amp; Publish Notice Banner (নোটিশ সেভ ও পাবলিশ করুন)</span>
+                  </button>
+                </div>
+              </form>
+            </section>
+
+            {/* Create Notification Card */}
+            <section className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 space-y-5">
+              <div className="border-b border-slate-800 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-amber-500/15 border border-amber-500/30 rounded-xl text-amber-400">
+                    <Bell className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-base sm:text-lg font-black text-white">User Notification Broadcast</h2>
+                    <p className="text-xs text-slate-400">
+                      Send announcements, system notices, or urgent alerts directly to every user's dashboard notification bell.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <form onSubmit={handleBroadcastNotification} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {/* Title */}
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
+                      Notification Title <span className="text-rose-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={notifTitle}
+                      onChange={(e) => setNotifTitle(e.target.value)}
+                      placeholder="e.g. সিস্টেম আপডেট - নতুন রেঞ্জ যোগ করা হয়েছে"
+                      className="w-full px-4 py-2.5 text-xs sm:text-sm bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500"
+                    />
+                  </div>
+
+                  {/* Priority / Type */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
+                      Notice Type
+                    </label>
+                    <select
+                      value={notifType}
+                      onChange={(e) => setNotifType(e.target.value as any)}
+                      className="w-full px-3 py-2.5 text-xs sm:text-sm bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500"
+                    >
+                      <option value="update">Update / Announcement</option>
+                      <option value="urgent">Urgent / Alert</option>
+                      <option value="info">General Info</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Message Body */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
+                    Notification Message <span className="text-rose-400">*</span>
+                  </label>
+                  <textarea
+                    rows={4}
+                    required
+                    value={notifMessage}
+                    onChange={(e) => setNotifMessage(e.target.value)}
+                    placeholder="Write detailed notification message that all users will read in their notification drawer..."
+                    className="w-full p-4 text-xs sm:text-sm bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md transition cursor-pointer flex items-center gap-2"
+                >
+                  <Bell className="w-4 h-4" />
+                  <span>Send Notification to All Users</span>
+                </button>
+              </form>
+            </section>
+
+            {/* List of Sent Notifications */}
+            <section className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 className="text-sm font-black text-white uppercase tracking-wider">
+                  Active Broadcasted Notifications ({notificationsList.length})
+                </h3>
+              </div>
+
+              {notificationsList.length === 0 ? (
+                <div className="py-8 text-center text-slate-500 text-xs">
+                  No notifications sent yet. Broadcast one using the form above.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {notificationsList.map((n) => (
+                    <div
+                      key={n.id}
+                      className="p-4 rounded-xl bg-slate-950 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                              n.type === 'urgent'
+                                ? 'bg-rose-950 text-rose-300 border border-rose-500/30'
+                                : n.type === 'info'
+                                ? 'bg-blue-950 text-blue-300 border border-blue-500/30'
+                                : 'bg-amber-950 text-amber-300 border border-amber-500/30'
+                            }`}
+                          >
+                            {n.type}
+                          </span>
+                          <span className="font-bold text-white text-sm">{n.title}</span>
+                          <span className="text-[11px] text-slate-500">
+                            • {new Date(n.timestamp).toLocaleString()}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-300">{n.message}</p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteNotification(n.id)}
+                        className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-rose-950 text-slate-400 hover:text-rose-300 border border-slate-800 text-xs font-bold transition flex items-center gap-1 shrink-0 cursor-pointer"
+                        title="Delete notification"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+        )}
+
+        {/* ================================================================= */}
+        {/* TAB 5: LIVE CHAT (REAL-TIME USER MESSAGES & ADMIN REPLY)          */}
+        {/* ================================================================= */}
+        {activeTab === 'live-chat' && (
+          <section className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+            <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-purple-500/15 border border-purple-500/30 rounded-xl text-purple-400">
+                  <MessageSquare className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-base sm:text-lg font-black text-white">Live Support Chat</h2>
+                  <p className="text-xs text-slate-400">
+                    Receive all user SMS / support queries in real-time and send instant replies.
+                  </p>
+                </div>
+              </div>
+
+              {adminUnreadCount > 0 && (
+                <div className="px-3 py-1 rounded-full bg-rose-950 border border-rose-500/40 text-rose-300 text-xs font-bold">
+                  {adminUnreadCount} Unread User Messages
+                </div>
+              )}
+            </div>
+
+            {/* Split Screen Chat Layout */}
+            <div className="grid grid-cols-1 md:grid-cols-12 min-h-[550px] max-h-[700px]">
+              {/* Left Column: User Conversations List */}
+              <div className="md:col-span-4 border-r border-slate-800 bg-slate-950 flex flex-col">
+                <div className="p-3 border-b border-slate-800">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={chatSearchQuery}
+                      onChange={(e) => setChatSearchQuery(e.target.value)}
+                      placeholder="Search users..."
+                      className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto divide-y divide-slate-800/60">
+                  {chatConversations.length === 0 ? (
+                    <div className="p-6 text-center text-slate-500 text-xs">
+                      No user conversations yet.
                     </div>
                   ) : (
-                    getAllChatConversations().map((conv) => {
-                      const isSelected = activeChatUserEmail.toLowerCase() === conv.userEmail.toLowerCase();
-                      const userAcc = accountsList.find((a) => a.email.toLowerCase() === conv.userEmail.toLowerCase());
+                    chatConversations.map((conv) => {
+                      const isSelected =
+                        conv.userEmail.toLowerCase() === activeChatUserEmail.toLowerCase();
+
                       return (
                         <button
                           key={conv.userEmail}
                           type="button"
-                          onClick={() => {
-                            setActiveChatUserEmail(conv.userEmail);
-                            markChatAsReadByAdmin(conv.userEmail);
-                            setAdminUnreadCount(getAdminUnreadChatCount());
-                          }}
-                          className={`w-full text-left p-3 transition cursor-pointer flex flex-col gap-1 ${
+                          onClick={() => handleSelectChatUser(conv.userEmail)}
+                          className={`w-full text-left p-3.5 transition flex items-start justify-between gap-2 cursor-pointer ${
                             isSelected
-                              ? 'bg-indigo-50/90 border-l-4 border-indigo-600'
-                              : 'hover:bg-gray-50'
+                              ? 'bg-purple-950/60 border-l-4 border-purple-500'
+                              : 'hover:bg-slate-900/60'
                           }`}
                         >
-                          <div className="flex items-center justify-between gap-1">
-                            <span className="font-bold text-xs text-gray-900 truncate">
-                              {conv.userName || conv.userEmail}
-                            </span>
-                            <span className="text-[10px] text-gray-400 font-mono">
-                              {new Date(conv.lastMessage.timestamp).toLocaleTimeString([], {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })}
-                            </span>
-                          </div>
-
-                          <div className="text-[11px] text-purple-700 font-mono truncate">
-                            {conv.userEmail}
-                          </div>
-
-                          <div className="flex items-center justify-between text-[11px] text-gray-500">
-                            <span className="truncate max-w-[150px]">
-                              {conv.lastMessage.sender === 'admin' ? 'You: ' : ''}
-                              {conv.lastMessage.text}
-                            </span>
-                            {conv.unreadCount > 0 && (
-                              <span className="px-1.5 py-0.2 rounded-full bg-red-600 text-white font-extrabold text-[9px] shrink-0">
-                                {conv.unreadCount} new
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-white text-xs truncate">
+                                {conv.userName}
                               </span>
-                            )}
-                          </div>
-
-                          {userAcc && (
-                            <div className="flex items-center gap-1 mt-0.5 text-[10px]">
-                              <span
-                                className={`px-1.5 py-0.2 rounded font-bold uppercase ${
-                                  userAcc.status === 'approved'
-                                    ? 'bg-emerald-100 text-emerald-800'
-                                    : 'bg-amber-100 text-amber-800'
-                                }`}
-                              >
-                                {userAcc.status}
-                              </span>
-                              <span className="text-gray-400 font-mono font-medium">
-                                Pass: {userAcc.password || '—'}
+                              <span className="text-[10px] text-slate-500">
+                                {conv.lastMessage?.timestamp
+                                  ? new Date(conv.lastMessage.timestamp).toLocaleTimeString([], {
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                    })
+                                  : ''}
                               </span>
                             </div>
+                            <div className="text-[11px] text-slate-400 truncate">{conv.userEmail}</div>
+                            <div className="text-xs text-slate-300 truncate mt-1">
+                              {conv.lastMessage ? conv.lastMessage.text : 'No messages'}
+                            </div>
+                          </div>
+
+                          {conv.unreadCount > 0 && (
+                            <span className="shrink-0 px-2 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-bold">
+                              {conv.unreadCount}
+                            </span>
                           )}
                         </button>
                       );
@@ -1813,137 +2457,114 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                 </div>
               </div>
 
-              {/* Right Side: Active Chat Thread */}
-              <div className="flex-1 flex flex-col bg-slate-50 overflow-hidden">
+              {/* Right Column: Active Conversation & Reply Input */}
+              <div className="md:col-span-8 flex flex-col bg-slate-900">
                 {activeChatUserEmail ? (
                   <>
-                    {/* User Info & Quick Action Bar */}
-                    {(() => {
-                      const targetUser = accountsList.find(
-                        (a) => a.email.toLowerCase() === activeChatUserEmail.toLowerCase()
-                      );
-                      return (
-                        <div className="p-3 bg-white border-b border-gray-200 flex flex-wrap items-center justify-between gap-2 shadow-2xs">
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center text-xs">
-                              {targetUser ? targetUser.name.charAt(0).toUpperCase() : activeChatUserEmail.charAt(0).toUpperCase()}
-                            </div>
-                            <div>
-                              <div className="font-extrabold text-xs text-gray-900 flex items-center gap-1.5">
-                                <span>{targetUser ? targetUser.name : activeChatUserEmail}</span>
-                                {targetUser && (
-                                  <span
-                                    className={`px-1.5 py-0.2 rounded text-[9px] font-black uppercase ${
-                                      targetUser.status === 'approved'
-                                        ? 'bg-emerald-100 text-emerald-800'
-                                        : 'bg-amber-100 text-amber-800'
-                                    }`}
-                                  >
-                                    {targetUser.status}
-                                  </span>
-                                )}
-                              </div>
-                              <div className="text-[11px] text-gray-500 font-mono flex items-center gap-2">
-                                <span>{activeChatUserEmail}</span>
-                                {targetUser && (
-                                  <span className="text-purple-700 font-bold">
-                                    Current Pass: {targetUser.password || '—'}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Quick Admin Actions */}
-                          <div className="flex items-center gap-1.5">
-                            {targetUser && targetUser.status === 'pending' && (
-                              <button
-                                type="button"
-                                onClick={() => handleApprove(targetUser.id, targetUser.email)}
-                                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg transition cursor-pointer flex items-center gap-1"
-                              >
-                                <UserCheck className="w-3.5 h-3.5" />
-                                <span>Approve</span>
-                              </button>
-                            )}
-
-                            {targetUser && (
-                              <button
-                                type="button"
-                                onClick={() => handleQuickSendPasswordInChat(targetUser)}
-                                className="px-2.5 py-1 bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-300 font-bold text-[11px] rounded-lg transition cursor-pointer flex items-center gap-1"
-                                title="Generate a new password and send directly to this user via chat"
-                              >
-                                <Pencil className="w-3.5 h-3.5 text-purple-700" />
-                                <span>Reset &amp; Send Pass</span>
-                              </button>
-                            )}
-                          </div>
+                    {/* Chat Header */}
+                    <div className="p-3.5 border-b border-slate-800 bg-slate-900/90 flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-400 flex items-center justify-center font-bold text-xs">
+                          {activeChatUserObj?.name?.charAt(0) || activeChatUserEmail.charAt(0).toUpperCase()}
                         </div>
-                      );
-                    })()}
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-white text-xs sm:text-sm">
+                              {activeChatUserObj?.name || activeChatUserEmail.split('@')[0]}
+                            </span>
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-950 font-mono text-indigo-300 border border-indigo-500/30">
+                              ID: {activeChatUserObj?.accountCode || getDedicatedAccountCode(activeChatUserEmail)}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-400 font-mono">{activeChatUserEmail}</div>
+                        </div>
+                      </div>
 
-                    {/* Messages Scroll Area */}
-                    <div className="flex-1 p-4 overflow-y-auto space-y-3">
-                      {getChatMessagesForUser(activeChatUserEmail).length === 0 ? (
-                        <div className="h-full flex flex-col items-center justify-center text-center p-6 text-gray-400">
-                          <MessageSquare className="w-10 h-10 text-gray-300 mb-2" />
-                          <p className="text-xs font-semibold text-gray-600">No chat messages with this user yet.</p>
-                          <p className="text-[11px] text-gray-400 max-w-xs mt-1">
-                            Type a message below to send direct assistance, password reset info, or portal instructions.
-                          </p>
+                      {activeChatUserObj && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenResetModal(activeChatUserObj)}
+                          className="px-2.5 py-1 rounded-lg bg-blue-950/80 hover:bg-blue-900 text-blue-300 border border-blue-500/30 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                        >
+                          <Key className="w-3 h-3" />
+                          <span>Reset Password</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Messages Thread */}
+                    <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-950/50">
+                      {currentChatMessages.length === 0 ? (
+                        <div className="h-full flex items-center justify-center text-slate-500 text-xs">
+                          No messages yet in this conversation.
                         </div>
                       ) : (
-                        getChatMessagesForUser(activeChatUserEmail).map((msg) => {
+                        currentChatMessages.map((msg) => {
                           const isAdmin = msg.sender === 'admin';
+
                           return (
                             <div
                               key={msg.id}
                               className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'}`}
                             >
-                              <div className="flex items-center gap-1.5 mb-0.5 text-[10px] text-gray-400">
-                                <span className="font-bold text-gray-700">
-                                  {isAdmin ? '🛡️ Super Admin' : `👤 ${msg.senderName || 'User'}`}
-                                </span>
-                                <span>•</span>
-                                <span>
-                                  {new Date(msg.timestamp).toLocaleTimeString([], {
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                  })}
-                                </span>
-                              </div>
                               <div
-                                className={`px-3.5 py-2.5 rounded-2xl max-w-sm sm:max-w-md text-xs leading-relaxed break-words shadow-2xs ${
+                                className={`max-w-md rounded-2xl px-4 py-2.5 text-xs ${
                                   isAdmin
-                                    ? 'bg-gradient-to-r from-purple-800 to-indigo-800 text-white rounded-tr-xs'
-                                    : 'bg-white text-gray-900 border border-gray-200 rounded-tl-xs'
+                                    ? 'bg-purple-600 text-white rounded-br-xs'
+                                    : 'bg-slate-800 text-slate-100 rounded-bl-xs border border-slate-700'
                                 }`}
                               >
-                                {msg.text}
+                                <div className="text-[10px] font-bold opacity-75 mb-0.5">
+                                  {isAdmin ? 'Admin' : msg.senderName}
+                                </div>
+                                <div className="whitespace-pre-wrap">{msg.text}</div>
                               </div>
+                              <span className="text-[10px] text-slate-500 mt-1 px-1 font-mono">
+                                {new Date(msg.timestamp).toLocaleTimeString([], {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </span>
                             </div>
                           );
                         })
                       )}
+                      <div ref={chatBottomRef} />
                     </div>
 
-                    {/* Chat Input Bar */}
-                    <form
-                      onSubmit={handleSendAdminReply}
-                      className="p-3 bg-white border-t border-gray-200 flex items-center gap-2"
-                    >
+                    {/* Quick Response Templates */}
+                    <div className="px-4 py-1.5 bg-slate-900 border-t border-slate-800/80 flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+                      <span className="text-[10px] font-bold text-slate-400 shrink-0">Quick:</span>
+                      {[
+                        'Your account has been approved and activated.',
+                        'We have reset your password. Please sign in.',
+                        'Please check your real-time SMS console.',
+                        'Thank you for contacting Super X SMS support.',
+                      ].map((tmpl, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => handleSendTemplateReply(tmpl)}
+                          className="px-2 py-0.5 rounded-full bg-slate-800 hover:bg-purple-900/60 text-slate-300 hover:text-purple-200 text-[10px] whitespace-nowrap transition cursor-pointer border border-slate-700"
+                        >
+                          {tmpl}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Admin Reply Input Box */}
+                    <form onSubmit={handleSendChatReply} className="p-3 border-t border-slate-800 bg-slate-900 flex items-center gap-2">
                       <input
                         type="text"
                         value={adminChatInput}
                         onChange={(e) => setAdminChatInput(e.target.value)}
-                        placeholder={`Type reply to ${activeChatUserEmail}...`}
-                        className="flex-1 px-3.5 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-xs text-gray-900 focus:bg-white outline-none focus:ring-2 focus:ring-purple-500"
+                        placeholder="Type reply to user (delivers in real-time)..."
+                        className="flex-1 px-4 py-2.5 text-xs bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
                       />
                       <button
                         type="submit"
                         disabled={!adminChatInput.trim()}
-                        className="px-4 py-2.5 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-800 hover:to-indigo-800 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer flex items-center gap-1.5"
+                        className="px-4 py-2.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-md cursor-pointer shrink-0"
                       >
                         <Send className="w-3.5 h-3.5" />
                         <span>Send</span>
@@ -1951,19 +2572,130 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                     </form>
                   </>
                 ) : (
-                  <div className="h-full flex flex-col items-center justify-center p-6 text-center text-gray-400">
-                    <MessageSquare className="w-12 h-12 text-indigo-200 mb-2" />
-                    <p className="text-sm font-bold text-gray-700">Select a user conversation from the left</p>
-                    <p className="text-xs text-gray-400 max-w-sm mt-1">
-                      You can reply to user inquiries in real-time, issue new passwords, and confirm account approvals.
-                    </p>
+                  <div className="h-full flex items-center justify-center p-6 text-center text-slate-500 text-xs">
+                    Select a conversation from the left to read user SMS &amp; send replies.
                   </div>
                 )}
               </div>
             </div>
+          </section>
+        )}
+
+      {/* Notice Modal */}
+      {noticeModalUser && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-purple-500/30 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2 text-purple-400 font-extrabold text-sm sm:text-base">
+                <Bell className="w-5 h-5" />
+                <span>Send Notice to User</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setNoticeModalUser(null)}
+                className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              User: <span className="font-bold text-white font-mono">{noticeModalUser.email}</span> ({noticeModalUser.name})
+            </p>
+
+            <form onSubmit={handleSendNoticeSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
+                  Admin Notice Message (ইউজারকে পাঠানোর নোটিশ)
+                </label>
+                <textarea
+                  rows={4}
+                  required
+                  value={noticeModalText}
+                  onChange={(e) => setNoticeModalText(e.target.value)}
+                  placeholder="e.g. আপনার দেওয়া ফোন নম্বরটি ভুল ছিল। অনুগ্রহ করে সঠিক নম্বর প্রদান করুন।"
+                  className="w-full p-3 text-xs bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setNoticeModalUser(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-extrabold transition cursor-pointer flex items-center gap-1.5 shadow-md"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Send Notice</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
+
+      {/* Reject Modal */}
+      {rejectModalUser && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-rose-500/30 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2 text-rose-400 font-extrabold text-sm sm:text-base">
+                <UserX className="w-5 h-5" />
+                <span>Reject Account Request</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRejectModalUser(null)}
+                className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              Rejecting submission for: <span className="font-bold text-white font-mono">{rejectModalUser.email}</span>
+            </p>
+
+            <form onSubmit={handleConfirmRejectSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
+                  Reason for Rejection (optional notice)
+                </label>
+                <textarea
+                  rows={3}
+                  value={rejectModalReason}
+                  onChange={(e) => setRejectModalReason(e.target.value)}
+                  placeholder="e.g. Duplicate account attempt or incomplete details submitted."
+                  className="w-full p-3 text-xs bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-rose-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setRejectModalUser(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-extrabold transition cursor-pointer flex items-center gap-1.5 shadow-md"
+                >
+                  <UserX className="w-3.5 h-3.5" />
+                  <span>Confirm Rejection</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      </main>
     </div>
   );
 }

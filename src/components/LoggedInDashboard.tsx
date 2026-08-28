@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from "react";
 import {
   Menu,
   Clock,
@@ -36,6 +36,7 @@ import {
   Users,
   CheckCircle2,
   CheckCircle,
+  Lock,
   Trash2,
   Zap,
   Filter,
@@ -43,32 +44,35 @@ import {
   ChevronDown,
   Bell,
   Megaphone,
-} from 'lucide-react';
+} from "lucide-react";
 import {
   getAllNotifications,
   getUnreadNotificationCountForUser,
   markNotificationsAsReadForUser,
   NOTIFICATION_UPDATE_EVENT,
   NotificationItem,
-} from '../services/notificationService';
+} from "../services/notificationService";
 import {
   fetchLiveConsole,
   fetchLiveConsoleDetailed,
   fetchLiveAccess,
   fetchSuccessOtps,
   allocateRealNumber,
+  allocateRealNumberDetailed,
   getMauthApiKey,
   setMauthApiKey,
   setVoltxEndpointKey,
+  syncSystemApiKeyFromServer,
   LiveConsoleHit,
   LiveAccessService,
   LiveSuccessOtp,
-  AllocatedNumber
-} from '../services/voltxApi';
+  AllocatedNumber,
+  resolveCarrierDetails,
+} from "../services/voltxApi";
 import {
   COUNTRY_OPERATOR_LIST,
-  CountryOperatorItem
-} from '../data/countryOperators';
+  CountryOperatorItem,
+} from "../data/countryOperators";
 import {
   getAllAccounts,
   approveAccount,
@@ -76,10 +80,11 @@ import {
   deleteAccount,
   requestNewAccount,
   getDedicatedAccountCode,
+  updateUserProfileAndPassword,
   UserAccount,
   DEFAULT_USER_PERMISSIONS,
   UserPermissions,
-} from '../services/userAuthService';
+} from "../services/userAuthService";
 import {
   getChatMessagesForUser,
   sendUserMessage,
@@ -87,21 +92,94 @@ import {
   getUserUnreadChatCount,
   CHAT_UPDATE_EVENT,
   ChatMessage,
-} from '../services/supportChatService';
+} from "../services/supportChatService";
+import {
+  getTopAppsConfig,
+  TOP_APPS_UPDATE_EVENT,
+  TopAppItem,
+} from "../services/topAppsService";
+import { getBrandLogoComponent } from "./BrandLogos";
 
 export { getDedicatedAccountCode };
 
-interface LoggedInDashboardProps {
-  user: { email: string; name: string; accountCode?: string };
+const COUNTRY_DIAL_CODES: Record<string, string> = {
+  "Montenegro": "382",
+  "Sierra Leone": "232",
+  "Bangladesh": "880",
+  "United Kingdom": "44",
+  "Afghanistan": "93",
+  "Central African Republic": "236",
+  "Madagascar": "261",
+  "Benin": "229",
+  "Togo": "228",
+  "Ivory Coast": "225",
+  "Indonesia": "62",
+  "India": "91",
+  "United States": "1",
+  "Cameroon": "237",
+  "Senegal": "221",
+  "Nigeria": "234",
+  "Kenya": "254",
+  "Morocco": "212",
+  "Philippines": "63",
+  "Ghana": "233",
+  "Tanzania": "255",
+  "Uganda": "256",
+  "Pakistan": "92",
+  "UAE": "971",
+  "Saudi Arabia": "966",
+  "Egypt": "20",
+  "Brazil": "55",
+  "Kazakhstan / Russia": "7",
+  "Germany": "49",
+  "France": "33",
+};
+
+export function formatNumberWithAreaCode(rawNum: string, country?: string): string {
+  if (!rawNum) return "";
+  const clean = rawNum.replace(/^\+/, "").trim();
+  const digitsOnly = clean.replace(/\D/g, "");
+
+  if (country && COUNTRY_DIAL_CODES[country]) {
+    const dialCode = COUNTRY_DIAL_CODES[country];
+    if (!digitsOnly.startsWith(dialCode)) {
+      return `${dialCode}${clean}`;
+    }
+  }
+
+  return clean;
+}
+
+export interface LoggedInDashboardProps {
+  user: {
+    email: string;
+    name: string;
+    accountCode?: string;
+    role?: string;
+    phoneOrTelegram?: string;
+    note?: string;
+  };
   onLogout: () => void;
 }
 
 // 1. Official WhatsApp Brand Vector Logo
 function WhatsAppLogo({ className = "w-16 h-16" }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg
+      className={className}
+      viewBox="0 0 64 64"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
       <defs>
-        <linearGradient id="waGradient" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+        <linearGradient
+          id="waGradient"
+          x1="8"
+          y1="8"
+          x2="56"
+          y2="56"
+          gradientUnits="userSpaceOnUse"
+        >
           <stop offset="0%" stopColor="#29E26E" />
           <stop offset="100%" stopColor="#1EBE5D" />
         </linearGradient>
@@ -120,9 +198,21 @@ function WhatsAppLogo({ className = "w-16 h-16" }: { className?: string }) {
 // 2. Official Telegram Brand Vector Logo
 function TelegramLogo({ className = "w-16 h-16" }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg
+      className={className}
+      viewBox="0 0 64 64"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
       <defs>
-        <linearGradient id="tgGradient" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+        <linearGradient
+          id="tgGradient"
+          x1="8"
+          y1="8"
+          x2="56"
+          y2="56"
+          gradientUnits="userSpaceOnUse"
+        >
           <stop offset="0%" stopColor="#2BB8F7" />
           <stop offset="100%" stopColor="#1E96D8" />
         </linearGradient>
@@ -139,7 +229,12 @@ function TelegramLogo({ className = "w-16 h-16" }: { className?: string }) {
 // 3. Official Meta Facebook Brand Vector Logo
 function FacebookLogo({ className = "w-16 h-16" }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg
+      className={className}
+      viewBox="0 0 64 64"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
       <circle cx="32" cy="32" r="28" fill="#0866FF" />
       <path
         d="M35.6 52.8V33.8H41.8L42.7 26.6H35.6V22C35.6 19.9 36.2 18.5 39.2 18.5H43V12.1C42.3 12 39.9 11.8 37.1 11.8C31.2 11.8 27.2 15.4 27.2 21.8V26.6H21V33.8H27.2V52.8H35.6Z"
@@ -152,9 +247,21 @@ function FacebookLogo({ className = "w-16 h-16" }: { className?: string }) {
 // 4. Official IMO Brand Vector Logo
 function ImoLogo({ className = "w-16 h-16" }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg
+      className={className}
+      viewBox="0 0 64 64"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
       <defs>
-        <linearGradient id="imoGradient" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+        <linearGradient
+          id="imoGradient"
+          x1="8"
+          y1="8"
+          x2="56"
+          y2="56"
+          gradientUnits="userSpaceOnUse"
+        >
           <stop offset="0%" stopColor="#00B8FF" />
           <stop offset="100%" stopColor="#008EE0" />
         </linearGradient>
@@ -171,47 +278,250 @@ function ImoLogo({ className = "w-16 h-16" }: { className?: string }) {
   );
 }
 
+export function getCountryFlagEmoji(countryName: string): string {
+  if (!countryName) return "🌐";
+  const norm = countryName.toLowerCase().trim();
+
+  if (norm.includes("bangladesh")) return "🇧🇩";
+  if (norm.includes("sierra leone")) return "🇸🇱";
+  if (norm.includes("cameroon")) return "🇨🇲";
+  if (norm.includes("ivory coast") || norm.includes("cote d'ivoire")) return "🇨🇮";
+  if (norm.includes("united states") || norm.includes("usa") || norm.includes("us")) return "🇺🇸";
+  if (norm.includes("united kingdom") || norm.includes("uk") || norm.includes("britain")) return "🇬🇧";
+  if (norm.includes("indonesia")) return "🇮🇩";
+  if (norm.includes("india")) return "🇮🇳";
+  if (norm.includes("central african")) return "🇨🇫";
+  if (norm.includes("madagascar")) return "🇲🇬";
+  if (norm.includes("benin")) return "🇧🇯";
+  if (norm.includes("togo")) return "🇹🇬";
+  if (norm.includes("montenegro")) return "🇲🇪";
+  if (norm.includes("senegal")) return "🇸🇳";
+  if (norm.includes("nigeria")) return "🇳🇬";
+  if (norm.includes("kenya")) return "🇰🇪";
+  if (norm.includes("morocco")) return "🇲🇦";
+  if (norm.includes("philippines")) return "🇵🇭";
+  if (norm.includes("ghana")) return "🇬🇭";
+  if (norm.includes("tanzania")) return "🇹🇿";
+  if (norm.includes("uganda")) return "🇺🇬";
+  if (norm.includes("pakistan")) return "🇵🇰";
+  if (norm.includes("uae") || norm.includes("emirates") || norm.includes("united arab")) return "🇦🇪";
+  if (norm.includes("saudi")) return "🇸🇦";
+  if (norm.includes("egypt")) return "🇪🇬";
+  if (norm.includes("brazil")) return "🇧🇷";
+  if (norm.includes("russia") || norm.includes("kazakhstan")) return "🇷🇺";
+  if (norm.includes("germany")) return "🇩🇪";
+  if (norm.includes("france")) return "🇫🇷";
+  if (norm.includes("afghanistan")) return "🇦🇫";
+  if (norm.includes("albania")) return "🇦🇱";
+  if (norm.includes("algeria")) return "🇩🇿";
+  if (norm.includes("andorra")) return "🇦🇩";
+  if (norm.includes("angola")) return "🇦🇴";
+  if (norm.includes("anguilla")) return "🇦🇮";
+  if (norm.includes("argentina")) return "🇦🇷";
+  if (norm.includes("armenia")) return "🇦🇲";
+  if (norm.includes("aruba")) return "🇦🇼";
+  if (norm.includes("australia")) return "🇦🇺";
+  if (norm.includes("austria")) return "🇦🇹";
+  if (norm.includes("azerbaijan")) return "🇦🇿";
+  if (norm.includes("bahamas")) return "🇧🇸";
+  if (norm.includes("bahrain")) return "🇧🇭";
+  if (norm.includes("barbados")) return "🇧🇧";
+  if (norm.includes("belarus")) return "🇧🇾";
+  if (norm.includes("belgium")) return "🇧🇪";
+  if (norm.includes("belize")) return "🇧🇿";
+  if (norm.includes("china")) return "🇨🇳";
+  if (norm.includes("turkey")) return "🇹🇷";
+  if (norm.includes("malaysia")) return "🇲🇾";
+  if (norm.includes("singapore")) return "🇸🇬";
+  if (norm.includes("thailand")) return "🇹🇭";
+  if (norm.includes("vietnam")) return "🇻🇳";
+  if (norm.includes("korea")) return "🇰🇷";
+  if (norm.includes("japan")) return "🇯🇵";
+  if (norm.includes("nepal")) return "🇳🇵";
+  if (norm.includes("sri lanka")) return "🇱🇰";
+
+  return "🌐";
+}
+
+const APP_CARRIER_RANGES: Record<
+  string,
+  Array<{
+    code: string;
+    operator: string;
+    country: string;
+    rate: string;
+    status: string;
+    defaultHits: number;
+  }>
+> = {
+  WhatsApp: [
+    { code: "88017XXX", operator: "Grameenphone", country: "Bangladesh", rate: "$0.22", status: "Active Stream", defaultHits: 28 },
+    { code: "23275XXX", operator: "Orange (Airtel)", country: "Sierra Leone", rate: "$0.18", status: "Active Gateway", defaultHits: 19 },
+    { code: "23762XXX", operator: "Orange Cameroun", country: "Cameroon", rate: "$0.25", status: "Working Stream", defaultHits: 14 },
+    { code: "62812XXX", operator: "Telkomsel", country: "Indonesia", rate: "$0.20", status: "High Demand", defaultHits: 32 },
+    { code: "22501XXX", operator: "Moov", country: "Ivory Coast", rate: "$0.19", status: "Active Stream", defaultHits: 11 },
+    { code: "15552XXX", operator: "T-Mobile", country: "United States", rate: "$0.35", status: "Ready", defaultHits: 8 },
+  ],
+  Telegram: [
+    { code: "88018XXX", operator: "Robi", country: "Bangladesh", rate: "$0.22", status: "Active Stream", defaultHits: 35 },
+    { code: "88019XXX", operator: "Banglalink", country: "Bangladesh", rate: "$0.22", status: "High Output", defaultHits: 24 },
+    { code: "91981XXX", operator: "Airtel", country: "India", rate: "$0.15", status: "Active Gateway", defaultHits: 42 },
+    { code: "92300XXX", operator: "Jazz / Telenor", country: "Pakistan", rate: "$0.18", status: "Working Stream", defaultHits: 16 },
+    { code: "62852XXX", operator: "Telkomsel", country: "Indonesia", rate: "$0.20", status: "Active Stream", defaultHits: 21 },
+    { code: "23480XXX", operator: "MTN Nigeria", country: "Nigeria", rate: "$0.26", status: "Ready", defaultHits: 12 },
+  ],
+  Facebook: [
+    { code: "23762XXX", operator: "Orange Cameroun", country: "Cameroon", rate: "$0.25", status: "Active Stream", defaultHits: 22 },
+    { code: "88017XXX", operator: "Grameenphone", country: "Bangladesh", rate: "$0.22", status: "Working Stream", defaultHits: 31 },
+    { code: "23324XXX", operator: "MTN Ghana", country: "Ghana", rate: "$0.28", status: "Active Gateway", defaultHits: 15 },
+    { code: "25471XXX", operator: "Safaricom", country: "Kenya", rate: "$0.30", status: "Ready Stream", defaultHits: 10 },
+    { code: "63917XXX", operator: "Globe / Smart", country: "Philippines", rate: "$0.24", status: "High Demand", defaultHits: 27 },
+    { code: "20100XXX", operator: "Vodafone", country: "Egypt", rate: "$0.20", status: "Active Stream", defaultHits: 18 },
+  ],
+  IMO: [
+    { code: "62812XXX", operator: "Telkomsel", country: "Indonesia", rate: "$0.20", status: "Active Stream", defaultHits: 29 },
+    { code: "88016XXX", operator: "Robi (Airtel)", country: "Bangladesh", rate: "$0.22", status: "Working Stream", defaultHits: 25 },
+    { code: "91701XXX", operator: "Airtel", country: "India", rate: "$0.15", status: "High Output", defaultHits: 38 },
+    { code: "97150XXX", operator: "Etisalat", country: "UAE", rate: "$0.40", status: "Active Gateway", defaultHits: 14 },
+    { code: "96655XXX", operator: "STC", country: "Saudi Arabia", rate: "$0.38", status: "Ready Stream", defaultHits: 17 },
+    { code: "60123XXX", operator: "Maxis / Celcom", country: "Malaysia", rate: "$0.25", status: "Active Stream", defaultHits: 13 },
+  ],
+};
+
 const TOP_APPLICATIONS = [
-  { id: 'wa', name: 'WhatsApp', icon: WhatsAppLogo, hoverBg: 'hover:bg-emerald-50/40', range: '22501' },
-  { id: 'tg', name: 'Telegram', icon: TelegramLogo, hoverBg: 'hover:bg-sky-50/40', range: '88017' },
-  { id: 'fb', name: 'Facebook', icon: FacebookLogo, hoverBg: 'hover:bg-blue-50/40', range: '44740' },
-  { id: 'imo', name: 'IMO', icon: ImoLogo, hoverBg: 'hover:bg-cyan-50/40', range: '62812' },
+  {
+    id: "wa",
+    name: "WhatsApp",
+    icon: WhatsAppLogo,
+    hoverBg: "hover:bg-emerald-50/40",
+    range: "22501",
+  },
+  {
+    id: "tg",
+    name: "Telegram",
+    icon: TelegramLogo,
+    hoverBg: "hover:bg-sky-50/40",
+    range: "88017",
+  },
+  {
+    id: "fb",
+    name: "Facebook",
+    icon: FacebookLogo,
+    hoverBg: "hover:bg-blue-50/40",
+    range: "44740",
+  },
+  {
+    id: "imo",
+    name: "IMO",
+    icon: ImoLogo,
+    hoverBg: "hover:bg-cyan-50/40",
+    range: "62812",
+  },
 ];
 
 const POPULAR_RANGES = [
-  { id: '88017', name: 'Bangladesh GP', code: '88017XXX', country: 'Bangladesh', rate: '$0.22', cap: '98%' },
-  { id: '44740', name: 'UK EE Physical', code: '44740XXX', country: 'United Kingdom', rate: '$0.28', cap: '94%' },
-  { id: '22501', name: 'Ivory Coast Direct', code: '22501XXX', country: 'Ivory Coast', rate: '$0.19', cap: '91%' },
-  { id: '62812', name: 'Indonesia Telkomsel', code: '62812XXX', country: 'Indonesia', rate: '$0.24', cap: '96%' },
-  { id: '91987', name: 'India Airtel VIP', code: '91987XXX', country: 'India', rate: '$0.15', cap: '99%' },
-  { id: '15552', name: 'USA T-Mobile', code: '15552XXX', country: 'United States', rate: '$0.35', cap: '89%' },
+  {
+    id: "88017",
+    name: "Bangladesh GP",
+    code: "88017XXX",
+    country: "Bangladesh",
+    rate: "$0.22",
+    cap: "98%",
+  },
+  {
+    id: "44740",
+    name: "UK EE Physical",
+    code: "44740XXX",
+    country: "United Kingdom",
+    rate: "$0.28",
+    cap: "94%",
+  },
+  {
+    id: "22501",
+    name: "Ivory Coast Direct",
+    code: "22501XXX",
+    country: "Ivory Coast",
+    rate: "$0.19",
+    cap: "91%",
+  },
+  {
+    id: "62812",
+    name: "Indonesia Telkomsel",
+    code: "62812XXX",
+    country: "Indonesia",
+    rate: "$0.24",
+    cap: "96%",
+  },
+  {
+    id: "91987",
+    name: "India Airtel VIP",
+    code: "91987XXX",
+    country: "India",
+    rate: "$0.15",
+    cap: "99%",
+  },
+  {
+    id: "15552",
+    name: "USA T-Mobile",
+    code: "15552XXX",
+    country: "United States",
+    rate: "$0.35",
+    cap: "89%",
+  },
 ];
 
 export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
-  const [currentDateTime, setCurrentDateTime] = useState('');
+  const [currentDateTime, setCurrentDateTime] = useState("");
   const [showWelcomeMarquee, setShowWelcomeMarquee] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [currentView, setCurrentView] = useState<'dashboard' | 'getNumber' | 'console' | 'summary' | 'accessList' | 'senderRange' | 'terminal' | 'profile' | 'adminRequests'>(() => {
+  const [currentView, setCurrentView] = useState<
+    | "dashboard"
+    | "getNumber"
+    | "console"
+    | "summary"
+    | "accessList"
+    | "senderRange"
+    | "terminal"
+    | "profile"
+    | "adminRequests"
+  >(() => {
     try {
-      const savedView = localStorage.getItem('super_x_current_view');
-      if (savedView && ['dashboard', 'getNumber', 'console', 'summary', 'accessList', 'senderRange', 'terminal', 'profile', 'adminRequests'].includes(savedView)) {
+      const savedView = localStorage.getItem("super_x_current_view");
+      if (
+        savedView &&
+        [
+          "dashboard",
+          "getNumber",
+          "console",
+          "summary",
+          "accessList",
+          "senderRange",
+          "terminal",
+          "profile",
+          "adminRequests",
+        ].includes(savedView)
+      ) {
         return savedView as any;
       }
     } catch {
       // ignore
     }
-    return 'dashboard';
+    return "dashboard";
   });
 
   // Admin User Approvals State
-  const [allUsersList, setAllUsersList] = useState<UserAccount[]>(() => getAllAccounts());
-  const [adminUserFilter, setAdminUserFilter] = useState<'ALL' | 'pending' | 'approved' | 'rejected'>('ALL');
-  const [adminSearchQuery, setAdminSearchQuery] = useState('');
+  const [allUsersList, setAllUsersList] = useState<UserAccount[]>(() =>
+    getAllAccounts(),
+  );
+  const [adminUserFilter, setAdminUserFilter] = useState<
+    "ALL" | "pending" | "approved" | "rejected"
+  >("ALL");
+  const [adminSearchQuery, setAdminSearchQuery] = useState("");
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
-  const [newUserName, setNewUserName] = useState('');
-  const [newUserEmail, setNewUserEmail] = useState('');
-  const [newUserPassword, setNewUserPassword] = useState('');
-  const [newUserPhone, setNewUserPhone] = useState('');
+  const [newUserName, setNewUserName] = useState("");
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserPassword, setNewUserPassword] = useState("");
+  const [newUserPhone, setNewUserPhone] = useState("");
   const [adminToast, setAdminToast] = useState<string | null>(null);
 
   const showAdminToast = (msg: string) => {
@@ -227,84 +537,290 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     const handleAccountsUpdated = () => {
       reloadUsers();
     };
-    window.addEventListener('super_x_accounts_updated', handleAccountsUpdated);
+    window.addEventListener("super_x_accounts_updated", handleAccountsUpdated);
     return () => {
-      window.removeEventListener('super_x_accounts_updated', handleAccountsUpdated);
+      window.removeEventListener(
+        "super_x_accounts_updated",
+        handleAccountsUpdated,
+      );
     };
   }, []);
 
-  const pendingUsersCount = allUsersList.filter((u) => u.status === 'pending').length;
+  const pendingUsersCount = allUsersList.filter(
+    (u) => u.status === "pending",
+  ).length;
 
   useEffect(() => {
     try {
-      localStorage.setItem('super_x_current_view', currentView);
+      localStorage.setItem("super_x_current_view", currentView);
     } catch {
       // ignore
     }
   }, [currentView]);
-  const [accountCode, setAccountCode] = useState(() => getDedicatedAccountCode(user.email, user.accountCode));
+  const [accountCode, setAccountCode] = useState(() =>
+    getDedicatedAccountCode(user.email, user.accountCode),
+  );
+  const [brandTitle, setBrandTitle] = useState(() => {
+    try {
+      return localStorage.getItem("super_x_site_brand_title") || "SUPER X SMS";
+    } catch {
+      return "SUPER X SMS";
+    }
+  });
+
+  const [siteNoticeText, setSiteNoticeText] = useState(() => {
+    try {
+      return (
+        localStorage.getItem("super_x_site_marquee_notice") ||
+        "SMS Portal - Premium Carrier Rates 📲 Instant Verification Codes & Physical Carrier Routes Active"
+      );
+    } catch {
+      return "SMS Portal - Premium Carrier Rates 📲 Instant Verification Codes & Physical Carrier Routes Active";
+    }
+  });
+
+  useEffect(() => {
+    const handleTitleUpdate = () => {
+      try {
+        const saved = localStorage.getItem("super_x_site_brand_title");
+        if (saved) setBrandTitle(saved);
+      } catch {
+        // ignore
+      }
+    };
+    const handleNoticeUpdate = () => {
+      try {
+        const saved = localStorage.getItem("super_x_site_marquee_notice");
+        if (saved) setSiteNoticeText(saved);
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener("super_x_brand_title_updated", handleTitleUpdate);
+    window.addEventListener("super_x_marquee_notice_updated", handleNoticeUpdate);
+    window.addEventListener("storage", handleTitleUpdate);
+    window.addEventListener("storage", handleNoticeUpdate);
+    return () => {
+      window.removeEventListener("super_x_brand_title_updated", handleTitleUpdate);
+      window.removeEventListener("super_x_marquee_notice_updated", handleNoticeUpdate);
+      window.removeEventListener("storage", handleTitleUpdate);
+      window.removeEventListener("storage", handleNoticeUpdate);
+    };
+  }, []);
+
   const [isReloading, setIsReloading] = useState(false);
   const [copiedText, setCopiedText] = useState<string | null>(null);
+
+  // User Profile Form & Password States
+  const [profileName, setProfileName] = useState(user.name || "");
+  const [profilePhone, setProfilePhone] = useState(user.phoneOrTelegram || "");
+  const [profileNote, setProfileNote] = useState(user.note || "");
+  const [profileNewPassword, setProfileNewPassword] = useState("");
+  const [profileConfirmPassword, setProfileConfirmPassword] = useState("");
+  const [profileSaveSuccess, setProfileSaveSuccess] = useState<string | null>(null);
+  const [profileSaveError, setProfileSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setProfileName(user.name || "");
+    setProfilePhone(user.phoneOrTelegram || "");
+    setProfileNote(user.note || "");
+  }, [user]);
+
+  const handleSaveProfileInfo = (e: React.FormEvent) => {
+    e.preventDefault();
+    setProfileSaveError(null);
+    setProfileSaveSuccess(null);
+
+    const res = updateUserProfileAndPassword({
+      email: user.email,
+      name: profileName,
+      phoneOrTelegram: profilePhone,
+      note: profileNote,
+    });
+
+    if (res.success) {
+      setProfileSaveSuccess("Profile info saved! Admin panel updated successfully.");
+      reloadUsers();
+      setTimeout(() => setProfileSaveSuccess(null), 4000);
+    } else {
+      setProfileSaveError(res.message || "Failed to update profile.");
+    }
+  };
+
+  const handleUpdatePassword = (e: React.FormEvent) => {
+    e.preventDefault();
+    setProfileSaveError(null);
+    setProfileSaveSuccess(null);
+
+    if (!profileNewPassword || profileNewPassword.length < 4) {
+      setProfileSaveError("Password must be at least 4 characters.");
+      return;
+    }
+
+    if (profileNewPassword !== profileConfirmPassword) {
+      setProfileSaveError("Passwords do not match!");
+      return;
+    }
+
+    const res = updateUserProfileAndPassword({
+      email: user.email,
+      password: profileNewPassword,
+    });
+
+    if (res.success) {
+      setProfileSaveSuccess("New password saved! Admin credentials updated.");
+      setProfileNewPassword("");
+      setProfileConfirmPassword("");
+      reloadUsers();
+      setTimeout(() => setProfileSaveSuccess(null), 4000);
+    } else {
+      setProfileSaveError(res.message || "Failed to update password.");
+    }
+  };
 
   // Background API Key State
   const [apiKey, setApiKeyState] = useState<string>(() => getMauthApiKey());
   const [isEditingKey, setIsEditingKey] = useState(false);
-  const [keyInput, setKeyInput] = useState('');
+  const [keyInput, setKeyInput] = useState("");
 
   // Live Real Data State
   const [liveHits, setLiveHits] = useState<LiveConsoleHit[]>([]);
   const [liveAccessList, setLiveAccessList] = useState<LiveAccessService[]>([]);
   const [liveSuccessOtps, setLiveSuccessOtps] = useState<LiveSuccessOtp[]>([]);
-  const [allocatedNumbers, setAllocatedNumbers] = useState<Array<AllocatedNumber & { serviceName: string; time: string; status: string; otp?: string }>>([]);
-  const [selectedRange, setSelectedRange] = useState('88017');
-  const [selectedService, setSelectedService] = useState('WhatsApp');
+  const [allocatedNumbers, setAllocatedNumbers] = useState<
+    Array<
+      AllocatedNumber & {
+        serviceName: string;
+        time: string;
+        status: string;
+        otp?: string;
+      }
+    >
+  >([]);
+  const [selectedRange, setSelectedRange] = useState("88017");
+  const [selectedService, setSelectedService] = useState("WhatsApp");
+  const [activeAppStream, setActiveAppStream] = useState<
+    "WhatsApp" | "Telegram" | "Facebook" | "IMO"
+  >("WhatsApp");
+  const [appStreamCountdown, setAppStreamCountdown] = useState<number>(3);
   const [isAllocating, setIsAllocating] = useState(false);
 
   // Get Number Screen Specific State (voltxsms/m29 matching)
-  const [getNumTab, setGetNumTab] = useState<'RANGE' | 'SEARCH' | 'ACCESS'>('RANGE');
-  const [rangeCustomInput, setRangeCustomInput] = useState('');
+  const [getNumTab, setGetNumTab] = useState<"RANGE" | "SEARCH" | "ACCESS">(
+    "RANGE",
+  );
+  const [rangeCustomInput, setRangeCustomInput] = useState("");
   const [rangeInputError, setRangeInputError] = useState(false);
-  const [searchKeyword, setSearchKeyword] = useState('');
-  const [searchServiceCategory, setSearchServiceCategory] = useState<string>('ALL');
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const [searchServiceCategory, setSearchServiceCategory] =
+    useState<string>("ALL");
 
   // Country & Operator Selection States for SEARCH tab
-  const [selectedCountryOperator, setSelectedCountryOperator] = useState<CountryOperatorItem | null>(() => {
-    return COUNTRY_OPERATOR_LIST.find(c => c.name === 'Afghanistan - Mobile') || COUNTRY_OPERATOR_LIST[0];
-  });
+  const [selectedCountryOperator, setSelectedCountryOperator] =
+    useState<CountryOperatorItem | null>(() => {
+      return (
+        COUNTRY_OPERATOR_LIST.find((c) => c.name === "Afghanistan - Mobile") ||
+        COUNTRY_OPERATOR_LIST[0]
+      );
+    });
   const [isCountryDropdownOpen, setIsCountryDropdownOpen] = useState(false);
-  const [countryFilterText, setCountryFilterText] = useState('');
-  const [selectedSearchRange, setSelectedSearchRange] = useState('');
+  const [countryFilterText, setCountryFilterText] = useState("");
+  const [selectedSearchRange, setSelectedSearchRange] = useState("");
   const [isRangeDropdownOpen, setIsRangeDropdownOpen] = useState(false);
-  const [rangeFilterText, setRangeFilterText] = useState('');
+  const [rangeFilterText, setRangeFilterText] = useState("");
 
-  const [dashboardToast, setDashboardToast] = useState<{ message: string; type: 'success' | 'warning' | 'info' } | null>(null);
+  const [dashboardToast, setDashboardToast] = useState<{
+    message: string;
+    type: "success" | "warning" | "info";
+  } | null>(null);
   const [isSyncMode, setIsSyncMode] = useState(true);
   const [nationalFormat, setNationalFormat] = useState(true);
   const [removePlus, setRemovePlus] = useState(true);
   const [showFiltersStats, setShowFiltersStats] = useState(false);
-  const [getNumHistory, setGetNumHistory] = useState<Array<{
-    id: string;
-    number: string;
-    country: string;
-    operator: string;
-    status: 'PENDING' | 'SUCCESS';
-    otp?: string;
-    service?: string;
-    activity: string;
-    createdAt?: number;
-  }>>([]);
+  const [getNumHistory, setGetNumHistory] = useState<
+    Array<{
+      id: string;
+      number: string;
+      country: string;
+      operator: string;
+      status: "PENDING" | "SUCCESS";
+      otp?: string;
+      service?: string;
+      activity: string;
+      createdAt?: number;
+    }>
+  >(() => {
+    try {
+      const saved = localStorage.getItem(
+        `super_x_get_num_history_${user.email}`,
+      );
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          // Reconcile and clear false OTPs that were mistakenly assigned by previous prefix match
+          return parsed.map((item: any) => {
+            if (item.otp === "817-089" || item.otp === "980-424") {
+              return {
+                ...item,
+                status: "PENDING",
+                otp: undefined,
+                activity: "Waiting for SMS...",
+              };
+            }
+            return item;
+          });
+        }
+      }
+    } catch {}
+    return [];
+  });
+
+  // Persist user allocated numbers locally so ownership is preserved across views & sessions
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        `super_x_get_num_history_${user.email}`,
+        JSON.stringify(getNumHistory),
+      );
+    } catch {}
+  }, [getNumHistory, user.email]);
+
+  // Reload history when active user account changes
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(
+        `super_x_get_num_history_${user.email}`,
+      );
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          setGetNumHistory(parsed);
+          return;
+        }
+      }
+    } catch {}
+    setGetNumHistory([]);
+  }, [user.email]);
 
   // Support Chat State for User
   const [isUserChatOpen, setIsUserChatOpen] = useState(false);
-  const [userChatInput, setUserChatInput] = useState('');
-  const [userChatMessages, setUserChatMessages] = useState<ChatMessage[]>(() => getChatMessagesForUser(user.email));
-  const [userUnreadCount, setUserUnreadCount] = useState<number>(() => getUserUnreadChatCount(user.email));
+  const [userChatInput, setUserChatInput] = useState("");
+  const [userChatMessages, setUserChatMessages] = useState<ChatMessage[]>(() =>
+    getChatMessagesForUser(user.email),
+  );
+  const [userUnreadCount, setUserUnreadCount] = useState<number>(() =>
+    getUserUnreadChatCount(user.email),
+  );
   const userChatEndRef = useRef<HTMLDivElement | null>(null);
 
   // Notification Modal & Unread Count State
   const [isNotifModalOpen, setIsNotifModalOpen] = useState(false);
-  const [notifList, setNotifList] = useState<NotificationItem[]>(() => getAllNotifications());
-  const [unreadNotifCount, setUnreadNotifCount] = useState<number>(() => getUnreadNotificationCountForUser(user.email));
+  const [notifList, setNotifList] = useState<NotificationItem[]>(() =>
+    getAllNotifications(),
+  );
+  const [unreadNotifCount, setUnreadNotifCount] = useState<number>(() =>
+    getUnreadNotificationCountForUser(user.email),
+  );
 
   // Sync Notifications updates in real-time
   useEffect(() => {
@@ -338,15 +854,23 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   }, [user.email]);
 
   useEffect(() => {
+    // 1. Initial sync with server active API key
+    syncSystemApiKeyFromServer().then((remoteKey) => {
+      if (remoteKey && remoteKey.trim()) {
+        setApiKeyState(remoteKey.trim());
+      }
+    });
+
     const handleKeyUpdate = () => {
       const newKey = getMauthApiKey();
       setApiKeyState(newKey);
+      setLiveHits([]); // Reset hits for clean streaming on newly configured key
     };
-    window.addEventListener('voltx_key_updated', handleKeyUpdate);
-    window.addEventListener('storage', handleKeyUpdate);
+    window.addEventListener("voltx_key_updated", handleKeyUpdate);
+    window.addEventListener("storage", handleKeyUpdate);
     return () => {
-      window.removeEventListener('voltx_key_updated', handleKeyUpdate);
-      window.removeEventListener('storage', handleKeyUpdate);
+      window.removeEventListener("voltx_key_updated", handleKeyUpdate);
+      window.removeEventListener("storage", handleKeyUpdate);
     };
   }, []);
 
@@ -355,7 +879,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       markChatAsReadByUser(user.email);
       setUserUnreadCount(0);
       setTimeout(() => {
-        userChatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        userChatEndRef.current?.scrollIntoView({ behavior: "smooth" });
       }, 100);
     }
   }, [isUserChatOpen, userChatMessages.length, user.email]);
@@ -364,16 +888,19 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     e.preventDefault();
     if (!userChatInput.trim()) return;
     sendUserMessage(user.email, user.name, userChatInput);
-    setUserChatInput('');
+    setUserChatInput("");
     setUserChatMessages(getChatMessagesForUser(user.email));
   };
 
   // Current user account status & fine-grained permissions lookup
   const currentUserAccount = allUsersList.find(
-    (u) => u.email.toLowerCase() === user.email.toLowerCase()
+    (u) => u.email.toLowerCase() === user.email.toLowerCase(),
   );
-  const isSuspended = currentUserAccount?.status === 'suspended' || currentUserAccount?.status === 'rejected';
-  const userPerms: UserPermissions = currentUserAccount?.permissions || DEFAULT_USER_PERMISSIONS;
+  const isSuspended =
+    currentUserAccount?.status === "suspended" ||
+    currentUserAccount?.status === "rejected";
+  const userPerms: UserPermissions =
+    currentUserAccount?.permissions || DEFAULT_USER_PERMISSIONS;
 
   // Live tick state for real-time relative time counting (Just now, 1 min ago, 2 min ago...)
   const [nowTick, setNowTick] = useState(() => Date.now());
@@ -386,29 +913,35 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   }, []);
 
   // Helper to format live activity time
-  const formatRelativeActivityTime = (item: { createdAt?: number; activity: string }, nowMs: number) => {
+  const formatRelativeActivityTime = (
+    item: { createdAt?: number; activity: string },
+    nowMs: number,
+  ) => {
     if (!item.createdAt) {
-      return item.activity || 'Just now';
+      return item.activity || "Just now";
     }
     const diffSec = Math.max(0, Math.floor((nowMs - item.createdAt) / 1000));
     if (diffSec < 45) {
-      return 'Just now';
+      return "Just now";
     }
     const diffMin = Math.floor(diffSec / 60);
     if (diffMin < 60) {
-      return diffMin === 1 ? '1 min ago' : `${diffMin} min ago`;
+      return diffMin === 1 ? "1 min ago" : `${diffMin} min ago`;
     }
     const diffHrs = Math.floor(diffMin / 60);
     if (diffHrs < 24) {
-      return diffHrs === 1 ? '1 hr ago' : `${diffHrs} hrs ago`;
+      return diffHrs === 1 ? "1 hr ago" : `${diffHrs} hrs ago`;
     }
     const diffDays = Math.floor(diffHrs / 24);
-    return diffDays === 1 ? '1 day ago' : `${diffDays} days ago`;
+    return diffDays === 1 ? "1 day ago" : `${diffDays} days ago`;
   };
 
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const showDashboardToast = (msg: string, type: 'success' | 'warning' | 'info' = 'success') => {
+  const showDashboardToast = (
+    msg: string,
+    type: "success" | "warning" | "info" = "success",
+  ) => {
     setDashboardToast({ message: msg, type });
     if (toastTimerRef.current) {
       clearTimeout(toastTimerRef.current);
@@ -419,19 +952,27 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   };
 
   // Console Specific State
-  const [consoleFilter, setConsoleFilter] = useState('');
-  const [consoleServiceFilter, setConsoleServiceFilter] = useState('ALL');
+  const [consoleFilter, setConsoleFilter] = useState("");
+  const [consoleServiceFilter, setConsoleServiceFilter] = useState("ALL");
   const [consoleCountdown, setConsoleCountdown] = useState(2);
-  const [lastUpdatedTime, setLastUpdatedTime] = useState(() => new Date().toLocaleTimeString('en-GB', { hour12: false }));
+  const [lastUpdatedTime, setLastUpdatedTime] = useState(() =>
+    new Date().toLocaleTimeString("en-GB", { hour12: false }),
+  );
   const [isConsoleRefreshing, setIsConsoleRefreshing] = useState(false);
-  const [consoleApiMeta, setConsoleApiMeta] = useState<{ code: number; message?: string; status?: string } | null>(null);
+  const [consoleApiMeta, setConsoleApiMeta] = useState<{
+    code: number;
+    message?: string;
+    status?: string;
+  } | null>(null);
 
   // Helper to format timestamp as HH:mm:ss
   const formatHitTime = (timeVal: number | string) => {
-    if (!timeVal) return new Date().toLocaleTimeString('en-GB', { hour12: false });
-    const d = typeof timeVal === 'number' ? new Date(timeVal) : new Date(timeVal);
+    if (!timeVal)
+      return new Date().toLocaleTimeString("en-GB", { hour12: false });
+    const d =
+      typeof timeVal === "number" ? new Date(timeVal) : new Date(timeVal);
     if (isNaN(d.getTime())) return String(timeVal);
-    return d.toLocaleTimeString('en-GB', { hour12: false });
+    return d.toLocaleTimeString("en-GB", { hour12: false });
   };
 
   // Helper to extract OTP digits from message
@@ -446,42 +987,307 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     return null;
   };
 
+  // Helper to mask OTP code in message with 'X' (e.g. 088309 -> XXXXXX)
+  const maskOtpInMessage = (
+    message: string,
+    otpCode: string | null,
+  ): string => {
+    if (!message) return "";
+    if (otpCode) {
+      // Replace all numeric digits in the extracted OTP code with 'X'
+      const masked = otpCode.replace(/\d/g, "X");
+      return message.split(otpCode).join(masked);
+    }
+    // Fallback: replace any isolated 4 to 8 digit numbers in message with 'X'
+    return message.replace(/\b\d{4,8}\b/g, (match) => "X".repeat(match.length));
+  };
+
+  // Helper to verify if an incoming live SMS packet belongs to the current user's allocated number
+  const isHitOwnedByUser = (hit: {
+    range?: string;
+    message?: string;
+    time?: number | string;
+  }): { isOwner: boolean; matchedEntry?: (typeof getNumHistory)[0] } => {
+    if (!hit || !hit.range) return { isOwner: false };
+    const cleanHitRange = (hit.range || "").replace(/\D/g, "");
+    if (!cleanHitRange) return { isOwner: false };
+
+    // If the hit range is shorter than 8 digits (e.g. 23274 or 23274XXX), it is a CARRIER / ROUTE prefix, NOT an individual phone number!
+    // In that case, only claim ownership if the message text explicitly contains the user's full number.
+    if (cleanHitRange.length < 8) {
+      const matchedByMessage = getNumHistory.find((entry) => {
+        const cleanNum = (entry.number || "").replace(/\D/g, "");
+        return (
+          cleanNum.length >= 8 &&
+          Boolean(hit.message && hit.message.includes(cleanNum))
+        );
+      });
+      if (matchedByMessage) {
+        return { isOwner: true, matchedEntry: matchedByMessage };
+      }
+      return { isOwner: false };
+    }
+
+    const hitTime =
+      typeof hit.time === "number"
+        ? hit.time < 10000000000
+          ? hit.time * 1000
+          : hit.time
+        : hit.time
+          ? new Date(hit.time).getTime()
+          : Date.now();
+
+    const matchedEntry = getNumHistory.find((entry) => {
+      const cleanNum = (entry.number || "").replace(/\D/g, "");
+      if (!cleanNum || cleanNum.length < 8) return false;
+
+      // Timing check: Must have arrived after the number was allocated
+      if (entry.createdAt && hitTime < entry.createdAt - 10000) {
+        return false;
+      }
+
+      // 1. Direct exact match
+      if (cleanNum === cleanHitRange) {
+        return true;
+      }
+
+      // 2. Both must be at least 8 digits to match prefix/suffix
+      if (cleanHitRange.length >= 8 && cleanNum.length >= 8) {
+        if (
+          cleanNum.startsWith(cleanHitRange) ||
+          cleanHitRange.startsWith(cleanNum)
+        ) {
+          return true;
+        }
+      }
+
+      // 3. Message contains the full number
+      if (hit.message && hit.message.includes(cleanNum)) {
+        return true;
+      }
+
+      return false;
+    });
+
+    if (matchedEntry) {
+      return { isOwner: true, matchedEntry };
+    }
+    return { isOwner: false };
+  };
+
   // Helper for service branding colors
   const getServiceTextColor = (sid: string) => {
-    const s = (sid || '').toLowerCase();
-    if (s.includes('whatsapp')) return 'text-[#10B981]';
-    if (s.includes('facebook') || s.includes('fb')) return 'text-[#2563EB]';
-    if (s.includes('telegram') || s.includes('tg')) return 'text-[#0284C7]';
-    if (s.includes('google')) return 'text-[#DC2626]';
-    if (s.includes('imo')) return 'text-[#2563EB]';
-    if (s.includes('tiktok')) return 'text-neutral-900';
-    if (s.includes('instagram')) return 'text-[#E1306C]';
-    return 'text-[#4F46E5]';
+    const s = (sid || "").toLowerCase();
+    if (s.includes("whatsapp")) return "text-[#10B981]";
+    if (s.includes("facebook") || s.includes("fb")) return "text-[#2563EB]";
+    if (s.includes("telegram") || s.includes("tg")) return "text-[#0284C7]";
+    if (s.includes("google")) return "text-[#DC2626]";
+    if (s.includes("imo")) return "text-[#2563EB]";
+    if (s.includes("tiktok")) return "text-neutral-900";
+    if (s.includes("instagram")) return "text-[#E1306C]";
+    return "text-[#4F46E5]";
   };
 
   const getServiceStyle = (sid: string) => {
-    const s = (sid || '').toLowerCase();
-    if (s.includes('whatsapp')) return { text: 'text-emerald-700', border: 'border-emerald-300', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
-    if (s.includes('facebook')) return { text: 'text-[#0866FF]', border: 'border-blue-300', badge: 'bg-blue-50 text-[#0866FF] border-blue-200' };
-    if (s.includes('telegram')) return { text: 'text-sky-600', border: 'border-sky-300', badge: 'bg-sky-50 text-sky-700 border-sky-200' };
-    if (s.includes('google')) return { text: 'text-red-600', border: 'border-red-300', badge: 'bg-red-50 text-red-700 border-red-200' };
-    if (s.includes('imo')) return { text: 'text-blue-600', border: 'border-blue-300', badge: 'bg-blue-50 text-blue-700 border-blue-200' };
-    if (s.includes('tiktok')) return { text: 'text-neutral-900', border: 'border-neutral-300', badge: 'bg-neutral-100 text-neutral-900 border-neutral-200' };
-    if (s.includes('instagram')) return { text: 'text-pink-600', border: 'border-pink-300', badge: 'bg-pink-50 text-pink-700 border-pink-200' };
-    return { text: 'text-indigo-600', border: 'border-indigo-300', badge: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
+    const s = (sid || "").toLowerCase();
+    if (s.includes("whatsapp"))
+      return {
+        text: "text-emerald-700",
+        border: "border-emerald-300",
+        badge: "bg-emerald-50 text-emerald-700 border-emerald-200",
+      };
+    if (s.includes("facebook"))
+      return {
+        text: "text-[#0866FF]",
+        border: "border-blue-300",
+        badge: "bg-blue-50 text-[#0866FF] border-blue-200",
+      };
+    if (s.includes("telegram"))
+      return {
+        text: "text-sky-600",
+        border: "border-sky-300",
+        badge: "bg-sky-50 text-sky-700 border-sky-200",
+      };
+    if (s.includes("google"))
+      return {
+        text: "text-red-600",
+        border: "border-red-300",
+        badge: "bg-red-50 text-red-700 border-red-200",
+      };
+    if (s.includes("imo"))
+      return {
+        text: "text-blue-600",
+        border: "border-blue-300",
+        badge: "bg-blue-50 text-blue-700 border-blue-200",
+      };
+    if (s.includes("tiktok"))
+      return {
+        text: "text-neutral-900",
+        border: "border-neutral-300",
+        badge: "bg-neutral-100 text-neutral-900 border-neutral-200",
+      };
+    if (s.includes("instagram"))
+      return {
+        text: "text-pink-600",
+        border: "border-pink-300",
+        badge: "bg-pink-50 text-pink-700 border-pink-200",
+      };
+    return {
+      text: "text-indigo-600",
+      border: "border-indigo-300",
+      badge: "bg-indigo-50 text-indigo-700 border-indigo-200",
+    };
   };
+
+  // Sender / Range View State & Live Aggregation
+  const [senderRangeFilter, setSenderRangeFilter] = useState("");
+  const [senderCategoryFilter, setSenderCategoryFilter] = useState("ALL");
+
+  interface SenderRangeItem {
+    key: string;
+    range: string;
+    sid: string;
+    operator: string;
+    country: string;
+    hitsCount: number;
+    latestMessage: string;
+    latestTime: number | string;
+    hasActiveStream: boolean;
+  }
+
+  const senderRangeList: SenderRangeItem[] = React.useMemo(() => {
+    const map = new Map<string, SenderRangeItem>();
+
+    // 1. Incorporate live incoming hits from real-time stream
+    liveHits.forEach((hit) => {
+      const cleanRange = (hit.range || "").trim();
+      if (!cleanRange) return;
+      const key = `${hit.sid || "SMS"}_${cleanRange}`;
+      const carrier = resolveCarrierDetails(cleanRange);
+
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          range: cleanRange,
+          sid: hit.sid || "SMS",
+          operator: hit.operator || carrier.operator,
+          country: hit.country || carrier.country,
+          hitsCount: 1,
+          latestMessage: isHitOwnedByUser(hit).isOwner
+            ? hit.message
+            : maskOtpInMessage(hit.message, extractOtp(hit.message)),
+          latestTime: hit.time,
+          hasActiveStream: true,
+        });
+      } else {
+        const item = map.get(key)!;
+        item.hitsCount += 1;
+      }
+    });
+
+    // 2. Incorporate access list services
+    liveAccessList.forEach((srv) => {
+      (srv.ranges || []).forEach((r) => {
+        const cleanRange = (r || "").trim();
+        if (!cleanRange) return;
+        const key = `${srv.sid}_${cleanRange}`;
+        if (!map.has(key)) {
+          const carrier = resolveCarrierDetails(cleanRange);
+          map.set(key, {
+            key,
+            range: cleanRange,
+            sid: srv.sid,
+            operator: carrier.operator,
+            country: carrier.country,
+            hitsCount: 0,
+            latestMessage: "Carrier range active and ready for incoming OTP",
+            latestTime: srv.last_at ? srv.last_at * 1000 : Date.now(),
+            hasActiveStream: false,
+          });
+        }
+      });
+    });
+
+    // 3. Fallback popular carrier ranges if needed
+    if (map.size < 6) {
+      POPULAR_RANGES.forEach((pr) => {
+        const key = `WhatsApp_${pr.code}`;
+        if (!map.has(key)) {
+          map.set(key, {
+            key,
+            range: pr.code,
+            sid: "WhatsApp",
+            operator: pr.name,
+            country: pr.country,
+            hitsCount: 0,
+            latestMessage: "Carrier gateway waiting for stream hits",
+            latestTime: Date.now(),
+            hasActiveStream: false,
+          });
+        }
+      });
+    }
+
+    return Array.from(map.values());
+  }, [liveHits, liveAccessList]);
+
+  const filteredSenderRanges = senderRangeList.filter((item) => {
+    if (senderCategoryFilter !== "ALL") {
+      const sidUpper = item.sid.toUpperCase();
+      const catUpper = senderCategoryFilter.toUpperCase();
+      if (!sidUpper.includes(catUpper)) return false;
+    }
+    if (senderRangeFilter.trim()) {
+      const q = senderRangeFilter.toLowerCase();
+      return (
+        item.sid.toLowerCase().includes(q) ||
+        item.range.toLowerCase().includes(q) ||
+        item.operator.toLowerCase().includes(q) ||
+        item.country.toLowerCase().includes(q) ||
+        item.latestMessage.toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
+
+  const handleAllocateFromSenderRange = (
+    rangeDigits: string,
+    serviceName?: string,
+  ) => {
+    if (serviceName) {
+      setSelectedService(serviceName);
+    }
+    setSelectedRange(rangeDigits);
+    setRangeCustomInput(rangeDigits);
+    setCurrentView("getNumber");
+    setGetNumTab("RANGE");
+    setDashboardToast({
+      message: `Carrier range ${rangeDigits} ${serviceName ? `for ${serviceName}` : ""} selected for direct allocation!`,
+      type: "success",
+    });
+  };
+
+  // 3-second live auto-refresh timer for Top Applications Stream
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setAppStreamCountdown((prev) => (prev <= 1 ? 3 : prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Live timer clock & Console auto-update countdown
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
       const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const day = String(now.getDate()).padStart(2, '0');
-      const hours = String(now.getHours()).padStart(2, '0');
-      const minutes = String(now.getMinutes()).padStart(2, '0');
-      const seconds = String(now.getSeconds()).padStart(2, '0');
-      setCurrentDateTime(`${year}-${month}-${day} ${hours}:${minutes}:${seconds}`);
+      const month = String(now.getMonth() + 1).padStart(2, "0");
+      const day = String(now.getDate()).padStart(2, "0");
+      const hours = String(now.getHours()).padStart(2, "0");
+      const minutes = String(now.getMinutes()).padStart(2, "0");
+      const seconds = String(now.getSeconds()).padStart(2, "0");
+      setCurrentDateTime(
+        `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`,
+      );
     };
 
     updateTime();
@@ -507,39 +1313,18 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       if (consoleRes.hits && consoleRes.hits.length > 0) {
         setLiveHits((prev) => {
           if (prev.length === 0) return consoleRes.hits;
-          const existingKeys = new Set(prev.map(h => `${h.range}_${h.time}_${h.sid}_${h.message}`));
-          const newEntries = consoleRes.hits.filter(h => !existingKeys.has(`${h.range}_${h.time}_${h.sid}_${h.message}`));
+          const existingKeys = new Set(
+            prev.map((h) => `${h.range}_${h.time}_${h.sid}_${h.message}`),
+          );
+          const newEntries = consoleRes.hits.filter(
+            (h) =>
+              !existingKeys.has(`${h.range}_${h.time}_${h.sid}_${h.message}`),
+          );
           if (newEntries.length === 0) return prev;
           const merged = [...newEntries, ...prev];
           return merged.slice(0, 100);
         });
 
-        // Real-time live OTP matching for allocated numbers waiting for SMS:
-        setGetNumHistory(currentHistory => {
-          let hasChange = false;
-          const nextHistory = currentHistory.map(entry => {
-            if (entry.otp) return entry;
-            const cleanNum = (entry.number || '').replace(/\D/g, '');
-            const matchingHit = consoleRes.hits.find(hit => {
-              const cleanRange = (hit.range || '').replace(/\D/g, '');
-              return cleanRange && (cleanNum.startsWith(cleanRange) || cleanNum.includes(cleanRange) || cleanRange.includes(cleanNum.slice(0, 5)));
-            });
-
-            if (matchingHit) {
-              const extracted = extractOtp(matchingHit.message) || matchingHit.message;
-              hasChange = true;
-              return {
-                ...entry,
-                status: 'SUCCESS' as const,
-                otp: extracted,
-                service: matchingHit.sid || 'Live SMS',
-                activity: 'Live SMS Delivered',
-              };
-            }
-            return entry;
-          });
-          return hasChange ? nextHistory : currentHistory;
-        });
       }
       if (access && access.length > 0) {
         setLiveAccessList(access);
@@ -547,8 +1332,113 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       if (otps && otps.length > 0) {
         setLiveSuccessOtps(otps);
       }
+
+      // Real-time live OTP matching for allocated numbers waiting for SMS:
+      setGetNumHistory((currentHistory) => {
+        let hasChange = false;
+        let newlyDeliveredOtp = "";
+
+        const nextHistory = currentHistory.map((entry) => {
+          if (entry.otp) return entry; // Already received real OTP
+          const cleanNum = (entry.number || "").replace(/\D/g, "");
+          if (!cleanNum || cleanNum.length < 6) return entry;
+
+          let matchedCode: string | null = null;
+          let matchedService = entry.service || "Live SMS";
+
+          // 1. PRIMARY SOURCE: Direct verified carrier delivered reports (/success-otp)
+          if (otps && otps.length > 0) {
+            const foundSuccessOtp = otps.find((o) => {
+              const cleanOtpNum = (o.number || "").replace(/\D/g, "");
+              if (!cleanOtpNum) return false;
+
+              // Exact number match or international suffix match (min 8 digits)
+              const isMatch =
+                cleanNum === cleanOtpNum ||
+                (cleanNum.length >= 8 &&
+                  cleanOtpNum.length >= 8 &&
+                  (cleanNum.endsWith(cleanOtpNum) ||
+                    cleanOtpNum.endsWith(cleanNum)));
+              if (!isMatch) return false;
+
+              // Timing check: OTP must have arrived around or after allocation time (60s clock skew buffer)
+              const oTime =
+                typeof o.time === "number"
+                  ? o.time < 10000000000
+                    ? o.time * 1000
+                    : o.time
+                  : o.time
+                    ? new Date(o.time).getTime()
+                    : Date.now();
+
+              return !(entry.createdAt && oTime < entry.createdAt - 60000);
+            });
+
+            if (foundSuccessOtp) {
+              matchedCode =
+                extractOtp(foundSuccessOtp.message) || foundSuccessOtp.message;
+              matchedService = "Delivered SMS";
+            }
+          }
+
+          // 2. SECONDARY SOURCE: Live console hits (strict verification: at least 8 digits and arrived after allocation)
+          if (!matchedCode && consoleRes.hits && consoleRes.hits.length > 0) {
+            const matchingHit = consoleRes.hits.find((hit) => {
+              const cleanRange = (hit.range || "").replace(/\D/g, "");
+              if (!cleanRange || cleanRange.length < 8) return false;
+
+              const isMatch =
+                cleanNum === cleanRange ||
+                (cleanRange.length >= 8 &&
+                  cleanNum.length >= 8 &&
+                  (cleanNum.startsWith(cleanRange) ||
+                    cleanRange.startsWith(cleanNum)));
+              if (!isMatch) return false;
+
+              const hitTime =
+                typeof hit.time === "number"
+                  ? hit.time < 10000000000
+                    ? hit.time * 1000
+                    : hit.time
+                  : hit.time
+                    ? new Date(hit.time).getTime()
+                    : Date.now();
+
+              return !(entry.createdAt && hitTime < entry.createdAt - 5000);
+            });
+
+            if (matchingHit) {
+              matchedCode =
+                extractOtp(matchingHit.message) || matchingHit.message;
+              matchedService = matchingHit.sid || "Live Console";
+            }
+          }
+
+          if (matchedCode) {
+            hasChange = true;
+            newlyDeliveredOtp = matchedCode;
+            return {
+              ...entry,
+              status: "SUCCESS" as const,
+              otp: matchedCode,
+              service: matchedService,
+              activity: "Delivered just now",
+            };
+          }
+
+          return entry;
+        });
+
+        if (hasChange && newlyDeliveredOtp) {
+          showDashboardToast(
+            `🎉 আপনার নাম্বারে ওটিপি এসেছে: ${newlyDeliveredOtp}`,
+            "success",
+          );
+        }
+        return hasChange ? nextHistory : currentHistory;
+      });
       const now = new Date();
-      setLastUpdatedTime(now.toLocaleTimeString('en-GB', { hour12: false }));
+      setLastUpdatedTime(now.toLocaleTimeString("en-GB", { hour12: false }));
     } catch {
       // ignore
     }
@@ -597,20 +1487,39 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       navigator.clipboard.writeText(text);
     }
     setCopiedText(id);
-    const numToDisplay = text.replace(/^\+/, '');
-    showDashboardToast(`Copied +${numToDisplay}`, 'success');
+    if (id.startsWith("otp_") || id.startsWith("sender_otp_")) {
+      showDashboardToast(`Copied OTP: ${text}`, "success");
+    } else if (id.startsWith("msg_")) {
+      showDashboardToast("Copied message text", "success");
+    } else {
+      const numToDisplay = text.replace(/^\+/, "");
+      showDashboardToast(
+        `Copied ${numToDisplay.startsWith("+") ? "" : "+"}${numToDisplay}`,
+        "success",
+      );
+    }
     setTimeout(() => setCopiedText(null), 4000);
   };
 
   // Get Number Custom Allocation matching voltxsms / m29 UI with RANGE validation
-  const handleGetNumberCustom = async (customRangePrefix?: string, countryOverride?: string, operatorOverride?: string) => {
-    const rangeToUse = (typeof customRangePrefix === 'string' ? customRangePrefix : (getNumTab === 'SEARCH' ? selectedSearchRange : rangeCustomInput)).trim();
-    const cleanDigits = rangeToUse.replace(/[^0-9]/g, '');
+  const handleGetNumberCustom = async (
+    customRangePrefix?: string,
+    countryOverride?: string,
+    operatorOverride?: string,
+  ) => {
+    const rangeToUse = (
+      typeof customRangePrefix === "string"
+        ? customRangePrefix
+        : getNumTab === "SEARCH"
+          ? selectedSearchRange
+          : rangeCustomInput
+    ).trim();
+    const cleanDigits = rangeToUse.replace(/[^0-9]/g, "");
 
     // 1. Validation: If no range provided, show alert & prompt
     if (!cleanDigits) {
       setRangeInputError(true);
-      showDashboardToast('Please enter a number range', 'warning');
+      showDashboardToast("Please enter a number range", "warning");
       return;
     }
 
@@ -618,21 +1527,61 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     setIsAllocating(true);
 
     try {
-      const prefix = cleanDigits.slice(0, 6) || '88017';
-      const matchedRange = POPULAR_RANGES.find(r => r.id === prefix || r.code.includes(prefix));
-      const fallbackCountry = countryOverride || selectedCountryOperator?.country || matchedRange?.country || (prefix.startsWith('880') ? 'Bangladesh' : prefix.startsWith('44') ? 'United Kingdom' : prefix.startsWith('225') ? 'Ivory Coast' : prefix.startsWith('232') ? 'Sierra Leone' : prefix.startsWith('93') ? 'Afghanistan' : 'International');
-      const fallbackOperator = operatorOverride || selectedCountryOperator?.operator || matchedRange?.name || (prefix.startsWith('880') ? 'Grameenphone' : prefix.startsWith('44') ? 'EE Physical' : prefix.startsWith('232') ? 'Orange (Airtel)' : prefix.startsWith('93') ? 'Mobile' : 'Carrier Route');
+      const prefix = cleanDigits.slice(0, 6) || "88017";
+      const matchedRange = POPULAR_RANGES.find(
+        (r) => r.id === prefix || r.code.includes(prefix),
+      );
+      const fallbackCountry =
+        countryOverride ||
+        selectedCountryOperator?.country ||
+        matchedRange?.country ||
+        (prefix.startsWith("880")
+          ? "Bangladesh"
+          : prefix.startsWith("44")
+            ? "United Kingdom"
+            : prefix.startsWith("225")
+              ? "Ivory Coast"
+              : prefix.startsWith("232")
+                ? "Sierra Leone"
+                : prefix.startsWith("93")
+                  ? "Afghanistan"
+                  : "International");
+      const fallbackOperator =
+        operatorOverride ||
+        selectedCountryOperator?.operator ||
+        matchedRange?.name ||
+        (prefix.startsWith("880")
+          ? "Grameenphone"
+          : prefix.startsWith("44")
+            ? "EE Physical"
+            : prefix.startsWith("232")
+              ? "Orange (Airtel)"
+              : prefix.startsWith("93")
+                ? "Mobile"
+                : "Carrier Route");
 
-      const res = await allocateRealNumber(prefix, apiKey);
-      const randomSuffix = Math.floor(100000 + Math.random() * 900000);
-      let generatedNum = res?.full_number || `${prefix}${randomSuffix}`;
-
-      if (removePlus) {
-        generatedNum = generatedNum.replace(/^\+/, '');
+      const res = await allocateRealNumberDetailed(rangeToUse || prefix, apiKey);
+      if (!res.success || !res.data?.full_number) {
+        showDashboardToast(
+          res.message || "এই রেঞ্জে কোনো নাম্বার পাওয়া যায়নি। অন্য রেঞ্জ চেষ্টা করুন।",
+          "warning",
+        );
+        return;
       }
 
+      const targetCountry = countryOverride || res.data.country || fallbackCountry;
+      let generatedNum = formatNumberWithAreaCode(res.data.full_number || "", targetCountry);
+      if (nationalFormat && res.data.national_number) {
+        generatedNum = res.data.national_number;
+      } else if (removePlus && res.data.no_plus_number) {
+        generatedNum = res.data.no_plus_number;
+      } else if (removePlus) {
+        generatedNum = generatedNum.replace(/^\+/, "");
+      }
+      generatedNum = formatNumberWithAreaCode(generatedNum, targetCountry);
+
       // 2. Real-time auto copy to clipboard
-      if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      if (typeof navigator !== "undefined" && navigator.clipboard) {
         try {
           await navigator.clipboard.writeText(generatedNum);
         } catch {
@@ -640,53 +1589,65 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         }
       }
 
-      const numForToast = generatedNum.replace(/^\+/, '');
-      showDashboardToast(`Copied +${numForToast}`, 'success');
+      const numForToast = generatedNum.replace(/^\+/, "");
+      showDashboardToast(`Copied +${numForToast}`, "success");
 
-      const newId = `gn_${Date.now()}`;
+      const newId = `gn_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
       const nowMs = Date.now();
       const newEntry = {
         id: newId,
         number: generatedNum,
-        country: countryOverride || res?.country || fallbackCountry,
-        operator: operatorOverride || res?.operator || fallbackOperator,
-        status: 'PENDING' as const,
+        country: countryOverride || res.data.country || fallbackCountry,
+        operator: operatorOverride || res.data.operator || fallbackOperator,
+        status: "PENDING" as const,
         otp: undefined as string | undefined,
-        service: 'WhatsApp / Telegram',
-        activity: 'Just now',
+        service: "Waiting for SMS...",
+        activity: "Just now",
         createdAt: nowMs,
       };
 
-      setGetNumHistory(prev => [newEntry, ...prev]);
-
-      // Note: No automatic fake setTimeout! Real-time OTP will arrive when SMS is delivered.
-    } catch {
-      // fallback
+      setGetNumHistory((prev) => [newEntry, ...prev]);
+    } catch (err: any) {
+      showDashboardToast(
+        err?.message || "সার্ভার এপিআই এর সাথে যোগাযোগ করা যায়নি।",
+        "warning",
+      );
     } finally {
       setIsAllocating(false);
     }
   };
 
-  // Interactive manual OTP test simulator on demand
-  const handleSimulateIncomingOtp = (entryId: string, serviceName: string = 'WhatsApp') => {
-    const otpCode = `${Math.floor(100000 + Math.random() * 900000)}`;
-    setGetNumHistory(curr =>
-      curr.map(item =>
-        item.id === entryId
-          ? {
-              ...item,
-              status: 'SUCCESS' as const,
-              otp: otpCode,
-              service: serviceName,
-              activity: `Just now`,
-            }
-          : item
-      )
+  // Re-check SMS directly from carrier API for an allocated number
+  const handleRecheckOtpForEntry = async (entryId: string) => {
+    const target = getNumHistory.find((i) => i.id === entryId);
+    if (!target) return;
+    setIsConsoleRefreshing(true);
+    showDashboardToast(
+      `Checking real-time carrier API for ${target.number}...`,
+      "info",
     );
-    showDashboardToast(`🔔 [${serviceName}] নতুন ওটিপি কোড এসেছে: ${otpCode}`, 'success');
+    await fetchRealTimeData();
+    setIsConsoleRefreshing(false);
   };
 
-  // Real Number Allocation
+  // Delete an individual allocated number from the history
+  const handleDeleteNumEntry = (entryId: string) => {
+    setGetNumHistory((prev) => prev.filter((i) => i.id !== entryId));
+    showDashboardToast("Number removed from history", "info");
+  };
+
+  // Clear all allocated numbers
+  const handleClearAllNumHistory = () => {
+    if (window.confirm("Are you sure you want to clear all allocated numbers?")) {
+      setGetNumHistory([]);
+      try {
+        localStorage.removeItem(`super_x_get_num_history_${user.email}`);
+      } catch {}
+      showDashboardToast("All allocated numbers cleared", "info");
+    }
+  };
+
+  // Real Number Allocation for classic view (strictly real-time, no fake timer)
   const handleAllocate = async () => {
     setIsAllocating(true);
     try {
@@ -696,24 +1657,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           ...res,
           serviceName: selectedService,
           time: new Date().toLocaleTimeString(),
-          status: 'Waiting for SMS...',
+          status: "Waiting for SMS...",
         };
-        setAllocatedNumbers(prev => [newAllocated, ...prev]);
-
-        // Incoming OTP listener
-        setTimeout(() => {
-          setAllocatedNumbers(current =>
-            current.map(n =>
-              n.full_number === res.full_number
-                ? {
-                    ...n,
-                    status: 'OTP Received',
-                    otp: `${Math.floor(100000 + Math.random() * 900000)}`,
-                  }
-                : n
-            )
-          );
-        }, 4000);
+        setAllocatedNumbers((prev) => [newAllocated, ...prev]);
       }
     } catch {
       // ignore
@@ -743,10 +1689,14 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-extrabold text-sm sm:text-base text-white">Live Support Chat</h3>
+                <h3 className="font-extrabold text-sm sm:text-base text-white">
+                  Live Support Chat
+                </h3>
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
               </div>
-              <p className="text-[11px] text-indigo-200">Admin Support &amp; Helpdesk</p>
+              <p className="text-[11px] text-indigo-200">
+                Admin Support &amp; Helpdesk
+              </p>
             </div>
           </div>
           <button
@@ -770,25 +1720,28 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             </div>
           ) : (
             userChatMessages.map((msg) => {
-              const isMe = msg.sender === 'user';
+              const isMe = msg.sender === "user";
               return (
                 <div
                   key={msg.id}
-                  className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
+                  className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}
                 >
                   <div
                     className={`max-w-[85%] px-3.5 py-2.5 rounded-2xl text-xs leading-relaxed ${
                       isMe
-                        ? 'bg-indigo-600 text-white rounded-br-none shadow-md'
-                        : 'bg-slate-800 text-slate-100 border border-slate-700/80 rounded-bl-none'
+                        ? "bg-indigo-600 text-white rounded-br-none shadow-md"
+                        : "bg-slate-800 text-slate-100 border border-slate-700/80 rounded-bl-none"
                     }`}
                   >
                     <div className="text-[10px] font-bold text-slate-300/80 mb-0.5">
-                      {isMe ? 'You' : 'Admin'}
+                      {isMe ? "You" : "Admin"}
                     </div>
                     <div>{msg.text}</div>
                     <div className="text-[9px] text-slate-300/60 text-right mt-1 font-mono">
-                      {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {new Date(msg.timestamp).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
                     </div>
                   </div>
                 </div>
@@ -799,7 +1752,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         </div>
 
         {/* Input Form */}
-        <form onSubmit={handleSendUserMessageSubmit} className="p-3 bg-slate-900 border-t border-slate-800 flex items-center gap-2">
+        <form
+          onSubmit={handleSendUserMessageSubmit}
+          className="p-3 bg-slate-900 border-t border-slate-800 flex items-center gap-2"
+        >
           <input
             type="text"
             value={userChatInput}
@@ -830,10 +1786,14 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-extrabold text-sm sm:text-base text-white">Notifications &amp; Updates</h3>
+                <h3 className="font-extrabold text-sm sm:text-base text-white">
+                  Notifications &amp; Updates
+                </h3>
                 <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
               </div>
-              <p className="text-[11px] text-amber-200">System announcements &amp; live news</p>
+              <p className="text-[11px] text-amber-200">
+                System announcements &amp; live news
+              </p>
             </div>
           </div>
           <button
@@ -852,7 +1812,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               <Bell className="w-10 h-10 text-amber-400/40" />
               <p className="text-xs font-medium">No active notifications.</p>
               <p className="text-[11px] text-slate-500">
-                Check back later for new updates and carrier server announcements!
+                Check back later for new updates and carrier server
+                announcements!
               </p>
             </div>
           ) : (
@@ -863,23 +1824,36 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider ${
-                      notif.type === 'urgent' ? 'bg-red-500/20 text-red-300 border border-red-500/30' :
-                      notif.type === 'alert' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' :
-                      notif.type === 'update' ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' :
-                      'bg-slate-700/50 text-slate-300'
-                    }`}>
+                    <span
+                      className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider ${
+                        notif.type === "urgent"
+                          ? "bg-red-500/20 text-red-300 border border-red-500/30"
+                          : notif.type === "alert"
+                            ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                            : notif.type === "update"
+                              ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/30"
+                              : "bg-slate-700/50 text-slate-300"
+                      }`}
+                    >
                       {notif.type}
                     </span>
-                    <h4 className="font-extrabold text-xs sm:text-sm text-white">{notif.title}</h4>
+                    <h4 className="font-extrabold text-xs sm:text-sm text-white">
+                      {notif.title}
+                    </h4>
                   </div>
                   <span className="text-[10px] text-slate-400 font-mono shrink-0">
-                    {new Date(notif.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {new Date(notif.timestamp).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
                   </span>
                 </div>
-                <p className="text-xs text-slate-300 leading-relaxed font-medium pl-1">{notif.message}</p>
+                <p className="text-xs text-slate-300 leading-relaxed font-medium pl-1">
+                  {notif.message}
+                </p>
                 <div className="text-[9px] text-slate-500 font-mono text-right border-t border-slate-800/80 pt-1.5 mt-1">
-                  Posted by {notif.createdBy || 'Admin'} • {new Date(notif.timestamp).toLocaleDateString()}
+                  Posted by {notif.createdBy || "Admin"} •{" "}
+                  {new Date(notif.timestamp).toLocaleDateString()}
                 </div>
               </div>
             ))
@@ -919,14 +1893,19 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               SUPER X SMS ACCESS BLOCKED
             </h1>
             <p className="text-sm text-slate-300 leading-relaxed font-medium pt-1">
-              আপনার সুপার এক্স এসএমএস (SUPER X SMS) অ্যাকাউন্টটি অ্যাডমিন কর্তৃক <strong className="text-rose-400">স্থগিত (SUSPENDED)</strong> করা হয়েছে। পুনরায় সার্ভিসটি ব্যবহার করতে অথবা সমস্যার সমাধানের জন্য অ্যাডমিনের সাথে সরাসরি কথা বলুন।
+              আপনার সুপার এক্স এসএমএস (SUPER X SMS) অ্যাকাউন্টটি অ্যাডমিন কর্তৃক{" "}
+              <strong className="text-rose-400">স্থগিত (SUSPENDED)</strong> করা
+              হয়েছে। পুনরায় সার্ভিসটি ব্যবহার করতে অথবা সমস্যার সমাধানের জন্য
+              অ্যাডমিনের সাথে সরাসরি কথা বলুন।
             </p>
           </div>
 
           <div className="p-4 bg-slate-950/80 rounded-2xl border border-slate-800 text-left space-y-2 text-xs font-mono">
             <div className="flex justify-between items-center text-slate-400">
               <span>Account Name:</span>
-              <span className="text-white font-bold font-sans">{currentUserAccount?.name || user.name}</span>
+              <span className="text-white font-bold font-sans">
+                {currentUserAccount?.name || user.name}
+              </span>
             </div>
             <div className="flex justify-between items-center text-slate-400">
               <span>User Email:</span>
@@ -938,7 +1917,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             </div>
             <div className="flex justify-between items-center text-slate-400">
               <span>Status:</span>
-              <span className="text-rose-400 font-extrabold uppercase">SUSPENDED</span>
+              <span className="text-rose-400 font-extrabold uppercase">
+                SUSPENDED
+              </span>
             </div>
           </div>
 
@@ -949,7 +1930,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               className="w-full py-3.5 px-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-extrabold rounded-2xl shadow-lg transition cursor-pointer flex items-center justify-center gap-2 text-sm"
             >
               <MessageSquare className="w-4 h-4" />
-              <span>💬 অ্যাডমিনের সাথে লাইভ চ্যাট করুন (Live Chat Support)</span>
+              <span>
+                💬 অ্যাডমিনের সাথে লাইভ চ্যাট করুন (Live Chat Support)
+              </span>
             </button>
 
             <a
@@ -980,13 +1963,14 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
   return (
     <div className="min-h-screen w-full bg-[#f8fafc] font-sans flex flex-col text-gray-800 relative overflow-x-hidden">
-      
       {/* -------------------- SIDEBAR DRAWER OVERLAY & PANEL -------------------- */}
       <div
         id="sidebar-backdrop"
         onClick={() => setIsSidebarOpen(false)}
         className={`fixed inset-0 z-50 bg-black/60 backdrop-blur-xs transition-opacity duration-300 ${
-          isSidebarOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+          isSidebarOpen
+            ? "opacity-100 pointer-events-auto"
+            : "opacity-0 pointer-events-none"
         }`}
         aria-hidden="true"
       />
@@ -994,7 +1978,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       <aside
         id="dashboard-sidebar-drawer"
         className={`fixed top-0 left-0 bottom-0 w-[280px] sm:w-[310px] bg-[#3f4a56] text-gray-200 z-50 shadow-2xl flex flex-col justify-between overflow-y-auto transition-transform duration-300 ease-out border-r border-gray-700/60 ${
-          isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          isSidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         <div className="flex flex-col">
@@ -1032,17 +2016,17 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
             <div className="flex-1 min-w-0">
               <h3 className="text-base font-bold text-[#f59e0b] uppercase tracking-wide truncate">
-                {user.name || 'SAMI'}
+                {user.name || "SAMI"}
               </h3>
               <p className="text-xs text-[#f59e0b]/90 font-medium mt-0.5">
-                Level : <span className="text-gray-200">Standard</span>
+                Level : <span className="text-gray-200 font-semibold">Agent</span>
               </p>
 
               <div className="flex items-center gap-3.5 mt-2 text-xs">
                 <button
                   type="button"
                   id="sidebar-profile-link-btn"
-                  onClick={() => handleNavClick('profile')}
+                  onClick={() => handleNavClick("profile")}
                   className="flex items-center gap-1 text-gray-200 hover:text-white font-medium hover:underline transition cursor-pointer"
                 >
                   <User className="w-3.5 h-3.5 text-gray-300" />
@@ -1065,7 +2049,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           {/* Account Code & Reload Bar */}
           <div className="px-5 py-3 border-b border-gray-500/30 flex items-center justify-between text-xs font-semibold">
             <div className="text-[#f59e0b]">
-              Account Code : <span className="font-mono text-[#fbbf24]">{accountCode}</span>
+              Account Code :{" "}
+              <span className="font-mono text-[#fbbf24]">{accountCode}</span>
             </div>
 
             <button
@@ -1075,7 +2060,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               className="flex items-center gap-1 text-gray-200 hover:text-white transition cursor-pointer active:scale-95"
               title="Reload Account Code"
             >
-              <RotateCw className={`w-3.5 h-3.5 ${isReloading ? 'animate-spin text-[#f59e0b]' : ''}`} />
+              <RotateCw
+                className={`w-3.5 h-3.5 ${isReloading ? "animate-spin text-[#f59e0b]" : ""}`}
+              />
               <span>reload</span>
             </button>
           </div>
@@ -1085,11 +2072,11 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             <button
               type="button"
               id="sidebar-item-dashboard"
-              onClick={() => handleNavClick('dashboard')}
+              onClick={() => handleNavClick("dashboard")}
               className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-xl font-bold text-base transition cursor-pointer ${
-                currentView === 'dashboard'
-                  ? 'bg-black/30 text-white shadow-inner border border-white/10'
-                  : 'text-gray-200 hover:bg-black/20 hover:text-white'
+                currentView === "dashboard"
+                  ? "bg-black/30 text-white shadow-inner border border-white/10"
+                  : "text-gray-200 hover:bg-black/20 hover:text-white"
               }`}
             >
               <Home className="w-5 h-5 text-[#f59e0b] shrink-0" />
@@ -1100,11 +2087,11 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               <button
                 type="button"
                 id="sidebar-item-get-number"
-                onClick={() => handleNavClick('getNumber')}
+                onClick={() => handleNavClick("getNumber")}
                 className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-xl text-base font-semibold transition cursor-pointer ${
-                  currentView === 'getNumber'
-                    ? 'bg-black/30 text-white font-bold shadow-inner border border-white/10'
-                    : 'text-gray-200 hover:bg-black/20 hover:text-white'
+                  currentView === "getNumber"
+                    ? "bg-black/30 text-white font-bold shadow-inner border border-white/10"
+                    : "text-gray-200 hover:bg-black/20 hover:text-white"
                 }`}
               >
                 <Hash className="w-5 h-5 text-[#f59e0b] shrink-0" />
@@ -1116,14 +2103,16 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               <button
                 type="button"
                 id="sidebar-item-console"
-                onClick={() => handleNavClick('console')}
+                onClick={() => handleNavClick("console")}
                 className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-xl text-base font-semibold transition cursor-pointer ${
-                  currentView === 'console'
-                    ? 'bg-black/30 text-white font-bold shadow-inner border border-white/10'
-                    : 'text-gray-200 hover:bg-black/20 hover:text-white'
+                  currentView === "console"
+                    ? "bg-black/30 text-white font-bold shadow-inner border border-white/10"
+                    : "text-gray-200 hover:bg-black/20 hover:text-white"
                 }`}
               >
-                <div className="font-mono text-[#f59e0b] font-extrabold text-base w-5 text-center shrink-0">&gt;_</div>
+                <div className="font-mono text-[#f59e0b] font-extrabold text-base w-5 text-center shrink-0">
+                  &gt;_
+                </div>
                 <span className="tracking-wide">Console</span>
               </button>
             )}
@@ -1132,11 +2121,11 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               <button
                 type="button"
                 id="sidebar-item-summary"
-                onClick={() => handleNavClick('summary')}
+                onClick={() => handleNavClick("summary")}
                 className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-xl text-base font-semibold transition cursor-pointer ${
-                  currentView === 'summary'
-                    ? 'bg-black/30 text-white font-bold shadow-inner border border-white/10'
-                    : 'text-gray-200 hover:bg-black/20 hover:text-white'
+                  currentView === "summary"
+                    ? "bg-black/30 text-white font-bold shadow-inner border border-white/10"
+                    : "text-gray-200 hover:bg-black/20 hover:text-white"
                 }`}
               >
                 <TrendingUp className="w-5 h-5 text-[#f59e0b] shrink-0" />
@@ -1148,11 +2137,11 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               <button
                 type="button"
                 id="sidebar-item-access-list"
-                onClick={() => handleNavClick('accessList')}
+                onClick={() => handleNavClick("accessList")}
                 className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-xl text-base font-semibold transition cursor-pointer ${
-                  currentView === 'accessList'
-                    ? 'bg-black/30 text-white font-bold shadow-inner border border-white/10'
-                    : 'text-gray-200 hover:bg-black/20 hover:text-white'
+                  currentView === "accessList"
+                    ? "bg-black/30 text-white font-bold shadow-inner border border-white/10"
+                    : "text-gray-200 hover:bg-black/20 hover:text-white"
                 }`}
               >
                 <List className="w-5 h-5 text-[#f59e0b] shrink-0" />
@@ -1164,11 +2153,11 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               <button
                 type="button"
                 id="sidebar-item-sender-range"
-                onClick={() => handleNavClick('senderRange')}
+                onClick={() => handleNavClick("senderRange")}
                 className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-xl text-base font-semibold transition cursor-pointer ${
-                  currentView === 'senderRange'
-                    ? 'bg-black/30 text-white font-bold shadow-inner border border-white/10'
-                    : 'text-gray-200 hover:bg-black/20 hover:text-white'
+                  currentView === "senderRange"
+                    ? "bg-black/30 text-white font-bold shadow-inner border border-white/10"
+                    : "text-gray-200 hover:bg-black/20 hover:text-white"
                 }`}
               >
                 <Globe2 className="w-5 h-5 text-[#f59e0b] shrink-0" />
@@ -1180,11 +2169,11 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               <button
                 type="button"
                 id="sidebar-item-terminal"
-                onClick={() => handleNavClick('terminal')}
+                onClick={() => handleNavClick("terminal")}
                 className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-xl text-base font-semibold transition cursor-pointer ${
-                  currentView === 'terminal'
-                    ? 'bg-black/30 text-white font-bold shadow-inner border border-white/10'
-                    : 'text-gray-200 hover:bg-black/20 hover:text-white'
+                  currentView === "terminal"
+                    ? "bg-black/30 text-white font-bold shadow-inner border border-white/10"
+                    : "text-gray-200 hover:bg-black/20 hover:text-white"
                 }`}
               >
                 <div className="w-5 flex items-center justify-center shrink-0">
@@ -1193,74 +2182,96 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 <span className="tracking-wide">Terminal</span>
               </button>
             )}
+
+            {/* User Requested: Profile Navigation Item */}
+            <button
+              type="button"
+              id="sidebar-item-profile"
+              onClick={() => handleNavClick("profile")}
+              className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-xl text-base font-semibold transition cursor-pointer ${
+                currentView === "profile"
+                  ? "bg-black/30 text-white font-bold shadow-inner border border-white/10"
+                  : "text-gray-200 hover:bg-black/20 hover:text-white"
+              }`}
+            >
+              <User className="w-5 h-5 text-[#f59e0b] shrink-0" />
+              <span className="tracking-wide font-bold">Profile</span>
+            </button>
+
+            {/* User Requested: Logout Navigation Item */}
+            <button
+              type="button"
+              id="sidebar-item-logout"
+              onClick={onLogout}
+              className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-xl text-base font-semibold text-rose-300 hover:bg-rose-500/20 hover:text-white transition cursor-pointer"
+            >
+              <LogOut className="w-5 h-5 text-rose-400 shrink-0" />
+              <span className="tracking-wide font-bold">Logout</span>
+            </button>
           </div>
         </div>
 
-        <div className="p-4 text-[11px] text-gray-400/80 text-center border-t border-gray-600/30 flex items-center justify-center gap-1.5">
-          <span>SUPER X SMS &copy; 2026</span>
+        <div className="p-3 border-t border-gray-600/30">
+          <div className="text-[10px] text-gray-400/80 text-center">
+            <span>SUPER X SMS &copy; 2026</span>
+          </div>
         </div>
       </aside>
 
       {/* -------------------- TOP NAVBAR -------------------- */}
-      <header className="sticky top-0 z-40 w-full bg-gradient-to-r from-[#1e293b] via-[#334155] to-[#1e293b] text-white shadow-md">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+      <header className="sticky top-0 z-40 w-full bg-gradient-to-r from-[#1e293b] via-[#334155] to-[#1e293b] text-white shadow-md border-b border-slate-700/60">
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 h-12 sm:h-14 flex items-center justify-between">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <button
               type="button"
               id="dashboard-menu-btn"
               onClick={() => setIsSidebarOpen(true)}
-              className="p-1.5 rounded-lg hover:bg-white/10 transition active:scale-95 cursor-pointer text-white flex items-center justify-center"
+              className="p-1 rounded-md hover:bg-white/10 transition active:scale-95 cursor-pointer text-white flex items-center justify-center shrink-0"
               aria-label="Open Navigation Sidebar"
               title="Open Navigation Menu"
             >
-              <Menu className="w-6 h-6" />
+              <Menu className="w-5 h-5" />
             </button>
-            <div className="font-extrabold tracking-tight text-lg sm:text-xl text-white flex items-center gap-2">
-              <span className="bg-gradient-to-r from-blue-400 to-indigo-300 bg-clip-text text-transparent">SUPER X SMS</span>
+            <div className="font-black tracking-tight text-base sm:text-xl flex items-center gap-2 truncate">
+              <span className="animate-snake-rainbow-text font-black tracking-wider uppercase drop-shadow-sm select-none">
+                {brandTitle}
+              </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3">
-            {/* Live Notifications & System Updates Bell Icon */}
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+            {/* Live Clock Badge (Compact) */}
+            <div
+              id="live-clock-badge"
+              className="hidden md:flex items-center gap-1.5 text-xs font-semibold text-slate-200 bg-white/10 px-2.5 py-0.5 rounded-md backdrop-blur-xs border border-white/10 font-mono"
+            >
+              <span>{currentDateTime || "2026-08-28 16:56:54"}</span>
+              <Clock className="w-3 h-3 text-blue-400" />
+            </div>
+
+            {/* Sleek Compact Notification Bell Icon */}
             <button
               type="button"
               id="header-notifications-bell-btn"
               onClick={() => setIsNotifModalOpen(true)}
-              className={`relative p-2 rounded-xl transition cursor-pointer flex items-center justify-center ${
+              className={`relative p-1.5 rounded-md transition cursor-pointer flex items-center justify-center min-w-[32px] min-h-[32px] ${
                 unreadNotifCount > 0
-                  ? 'bg-amber-500/30 text-amber-300 border border-amber-400/60 shadow-lg shadow-amber-500/20 animate-pulse'
-                  : 'bg-white/10 hover:bg-white/20 text-slate-200 border border-white/10'
+                  ? "bg-amber-500/25 text-amber-300 border border-amber-400/50 shadow-xs animate-pulse"
+                  : "bg-white/10 hover:bg-white/20 text-slate-200 border border-white/10"
               }`}
               title="📢 System Notifications & Updates"
             >
-              <Bell className={`w-5 h-5 ${unreadNotifCount > 0 ? 'text-amber-300 animate-bounce' : 'text-slate-200'}`} />
+              <Bell
+                className={`w-3.5 h-3.5 ${unreadNotifCount > 0 ? "text-amber-300 animate-bounce" : "text-slate-200"}`}
+              />
               {unreadNotifCount > 0 && (
-                <span className="absolute -top-1 -right-1 flex h-4 w-4">
+                <span className="absolute -top-1 -right-1 flex h-3 w-3">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-4 w-4 bg-rose-500 text-white text-[9px] font-black items-center justify-center shadow-xs">
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500 text-white text-[8px] font-black items-center justify-center shadow-xs">
                     {unreadNotifCount}
                   </span>
                 </span>
               )}
-            </button>
-
-            <div
-              id="live-clock-badge"
-              className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-gray-200 bg-white/10 px-3 py-1 rounded-full backdrop-blur-xs border border-white/10"
-            >
-              <span>{currentDateTime || '2026-08-26 15:19:59'}</span>
-              <Clock className="w-3.5 h-3.5 text-blue-400" />
-            </div>
-
-            <button
-              type="button"
-              id="dashboard-logout-btn"
-              onClick={onLogout}
-              className="p-1.5 px-3 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 transition flex items-center gap-1 text-xs font-bold cursor-pointer"
-              title="Sign Out"
-            >
-              <LogOut className="w-4 h-4" />
-              <span className="hidden sm:inline">Logout</span>
             </button>
           </div>
         </div>
@@ -1268,7 +2279,6 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
       {/* -------------------- MAIN CONTENT AREA -------------------- */}
       <main className="flex-1 max-w-6xl w-full mx-auto p-3 sm:p-6 space-y-5">
-
         {/* Animated Moving Welcome Banner */}
         {showWelcomeMarquee && (
           <section
@@ -1284,14 +2294,22 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               <div className="overflow-hidden relative w-full flex items-center">
                 <div className="whitespace-nowrap animate-marquee flex items-center gap-8 text-xs sm:text-sm font-medium text-indigo-100">
                   <span className="flex items-center gap-8">
-                    <span>⚡ Welcome to <strong>SUPER X SMS</strong> Portal - Premium Carrier Rates</span>
-                    <span>📲 Instant Verification Codes & Physical Carrier Routes Active</span>
-                    <span>🔒 Dedicated Account Code: <strong className="font-mono text-amber-300">{accountCode}</strong></span>
+                    <span>⚡ {siteNoticeText}</span>
+                    <span>
+                      🔒 Dedicated Account Code:{" "}
+                      <strong className="font-mono text-amber-300">
+                        {accountCode}
+                      </strong>
+                    </span>
                   </span>
                   <span className="flex items-center gap-8" aria-hidden="true">
-                    <span>⚡ Welcome to <strong>SUPER X SMS</strong> Portal - Premium Carrier Rates</span>
-                    <span>📲 Instant Verification Codes & Physical Carrier Routes Active</span>
-                    <span>🔒 Dedicated Account Code: <strong className="font-mono text-amber-300">{accountCode}</strong></span>
+                    <span>⚡ {siteNoticeText}</span>
+                    <span>
+                      🔒 Dedicated Account Code:{" "}
+                      <strong className="font-mono text-amber-300">
+                        {accountCode}
+                      </strong>
+                    </span>
                   </span>
                 </div>
               </div>
@@ -1311,21 +2329,28 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         )}
 
         {/* -------------------- 0. DASHBOARD VIEW -------------------- */}
-        {currentView === 'dashboard' && (
+        {currentView === "dashboard" && (
           <>
-            {/* Top Applications Access */}
+            {/* Top Applications Access with Animated Rainbow Borders on Each Card */}
             <section
               id="top-applications-section"
-              className="bg-white rounded-2xl shadow-sm border border-gray-200/90 overflow-hidden"
+              className="bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-xl"
             >
-              <div className="bg-gradient-to-r from-blue-600 to-indigo-700 px-5 py-3 text-white flex items-center justify-between font-bold text-sm sm:text-base tracking-wide shadow-xs">
+              <div className="bg-gradient-to-r from-slate-900 via-slate-950 to-slate-900 px-5 py-3.5 text-white flex items-center justify-between border-b border-slate-800">
                 <div className="flex items-center gap-2">
-                  <MessageSquare className="w-4 h-4 text-blue-200" />
-                  <span>Top Applications Access</span>
+                  <MessageSquare className="w-4.5 h-4.5 text-blue-400" />
+                  <span className="font-black text-sm sm:text-base tracking-wide text-white uppercase">
+                    Top Applications Access
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 text-[11px] font-mono text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20 font-bold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                  <span>Instant Allocate</span>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-y md:divide-y-0 divide-gray-100">
+              {/* 4 Main Application Cards - Each with Individual Rainbow Rotating Border */}
+              <div className="p-3.5 sm:p-5 bg-slate-950 grid grid-cols-2 md:grid-cols-4 gap-3.5 sm:gap-4">
                 {TOP_APPLICATIONS.map((app) => {
                   const Icon = app.icon;
                   return (
@@ -1335,64 +2360,135 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                       onClick={() => {
                         setSelectedService(app.name);
                         setSelectedRange(app.range);
-                        setCurrentView('getNumber');
+                        setCurrentView("getNumber");
                       }}
-                      className={`p-6 sm:p-8 flex flex-col items-center justify-center text-center transition-all duration-200 ${app.hoverBg} cursor-pointer group`}
+                      className="p-[3px] rounded-2xl animate-rainbow-border shadow-lg shadow-purple-900/10 hover:shadow-2xl hover:shadow-emerald-500/20 transition-all duration-300 cursor-pointer group active:scale-[0.98]"
                     >
-                      <div className="w-16 h-16 sm:w-20 sm:h-20 mb-3 flex items-center justify-center group-hover:scale-108 transition-transform duration-200">
-                        <Icon className="w-full h-full" />
-                      </div>
+                      <div className="h-full w-full bg-slate-900 rounded-[13px] p-5 sm:p-7 flex flex-col items-center justify-center text-center bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900 group-hover:from-slate-850 group-hover:to-slate-900 transition-all duration-300">
+                        <div className="w-16 h-16 sm:w-20 sm:h-20 mb-3 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 filter drop-shadow-xl">
+                          <Icon className="w-full h-full" />
+                        </div>
 
-                      <h3 className="text-base sm:text-lg font-bold text-gray-900 tracking-tight mt-1 group-hover:text-blue-600 transition-colors">
-                        {app.name}
-                      </h3>
-                      <span className="text-[11px] text-emerald-600 font-semibold mt-0.5">● Ready to Receive</span>
+                        <h3 className="text-base sm:text-lg font-bold text-white tracking-tight mt-1 group-hover:text-emerald-300 transition-colors">
+                          {app.name}
+                        </h3>
+                        <span className="text-[11px] text-emerald-400 font-semibold mt-1.5 flex items-center gap-1 font-mono">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                          Ready to Receive
+                        </span>
+                      </div>
                     </div>
                   );
                 })}
               </div>
-
-              <div className="p-3 bg-gray-50/80 border-t border-gray-100 flex justify-between items-center px-5">
-                <span className="text-xs text-gray-500 font-medium">Click any application to allocate a number instantly</span>
-                <button
-                  type="button"
-                  id="view-all-apps-btn"
-                  onClick={() => setCurrentView('getNumber')}
-                  className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition shadow-xs flex items-center gap-1 cursor-pointer"
-                >
-                  <span>Get Number</span>
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
             </section>
 
-
-            {/* Popular Ranges & Carriers Section (Structure preserved, demo items removed) */}
-            <section className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="bg-gradient-to-r from-slate-800 to-gray-900 px-5 py-3 text-white flex items-center justify-between font-bold text-sm">
-                <div className="flex items-center gap-2">
-                  <Globe2 className="w-4 h-4 text-blue-400" />
-                  <span>Popular Ranges & Carriers</span>
+            {/* Live Test SMS Section with Sleek Animated Theme */}
+            <section className="bg-slate-950 rounded-2xl shadow-lg border border-slate-800 overflow-hidden">
+              <div className="bg-gradient-to-r from-slate-900 via-slate-950 to-slate-900 px-4 py-3 text-white flex items-center justify-between border-b border-slate-800/80">
+                <div className="flex items-center gap-2.5">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                  </span>
+                  <span className="text-white font-black text-xs sm:text-sm tracking-wider uppercase flex items-center gap-2">
+                    <span>LIVE TEST SMS</span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold uppercase tracking-widest animate-pulse">
+                      ● REALTIME STREAM
+                    </span>
+                  </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setCurrentView('senderRange')}
-                  className="text-xs text-blue-300 hover:text-white flex items-center gap-1 cursor-pointer"
-                >
-                  <span>View All</span>
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
+                <div className="text-[11px] font-mono text-slate-400 flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                  <span className="text-emerald-400 font-bold">Auto Updating</span>
+                </div>
               </div>
 
-              <div className="p-6 text-center text-gray-400 text-xs">
-                No active carrier ranges available. Enter a range above to allocate numbers.
+              <div className="p-3.5 bg-slate-900/60">
+                {senderRangeList.length === 0 ? (
+                  <div className="p-6 text-center text-slate-400 text-xs">
+                    No active carrier streams available at the moment.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {senderRangeList.slice(0, 6).map((item, idx) => {
+                      const flag = getCountryFlagEmoji(item.country);
+                      const sStyle = getServiceStyle(item.sid);
+
+                      return (
+                        <div
+                          key={item.key || `live_sms_${idx}`}
+                          className="p-3.5 rounded-xl border border-slate-800 bg-gradient-to-b from-slate-900 to-slate-950 hover:border-emerald-500/50 transition-all duration-300 shadow-md hover:shadow-emerald-500/10 flex flex-col justify-between gap-3 group relative overflow-hidden"
+                        >
+                          {/* Ambient Glow Bar on hover */}
+                          <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-emerald-500 via-teal-400 to-blue-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+
+                          {/* Top Row: Country Flag + Name & Realtime "Just Now" Badge */}
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <span
+                                className="text-2xl sm:text-3xl leading-none shrink-0 select-none filter drop-shadow-sm"
+                                title={item.country}
+                              >
+                                {flag}
+                              </span>
+                              <div className="min-w-0">
+                                <h4 className="font-bold text-white text-xs sm:text-sm truncate tracking-tight">
+                                  {item.country}
+                                </h4>
+                                <div className="text-[11px] text-slate-400 font-medium truncate">
+                                  {item.operator}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* "Just Now" Real-Time Animated Badge */}
+                            <div className="flex items-center gap-1.5 bg-emerald-500/15 text-emerald-300 px-2.5 py-1 rounded-full text-[10px] font-bold border border-emerald-500/30 shrink-0 shadow-xs">
+                              <span className="relative flex h-1.5 w-1.5">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400"></span>
+                              </span>
+                              <span className="tracking-wide">Just Now</span>
+                            </div>
+                          </div>
+
+                          {/* Middle Row: Service Tag & Carrier Range */}
+                          <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-800/80 text-xs">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border uppercase tracking-wide ${sStyle.badge}`}
+                              >
+                                {item.sid}
+                              </span>
+                              <span className="font-mono font-bold text-emerald-300 text-xs tracking-wider">
+                                {item.range}
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
+                              <span className="w-1 h-1 rounded-full bg-emerald-400" />
+                              Hits: {item.hitsCount > 0 ? item.hitsCount : "2"}
+                            </span>
+                          </div>
+
+                          {/* Live SMS Message Box with Code Animation */}
+                          <div className="bg-slate-950/90 text-slate-200 p-2.5 rounded-lg text-[11px] font-mono flex items-center gap-2 border border-slate-800/90 shadow-inner group-hover:border-slate-700 transition-colors">
+                            <span className="text-emerald-400 text-sm shrink-0 animate-bounce">💬</span>
+                            <span className="truncate font-medium text-slate-300 tracking-tight">
+                              {item.latestMessage || "<#> Code WhatsApp: 894-102. Live carrier stream ready"}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </section>
           </>
         )}
 
         {/* -------------------- 1. GET NUMBER VIEW (voltxsms / m29 matching Console Light Theme) -------------------- */}
-        {currentView === 'getNumber' && (
+        {currentView === "getNumber" && (
           <div className="space-y-4">
             {/* Title & Header Section */}
             <div className="space-y-3">
@@ -1406,7 +2502,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   </h2>
                 </div>
                 <p className="text-xs sm:text-sm text-gray-500 mt-1">
-                  Allocate carrier numbers, search worked jobs in real-time, and receive live OTPs.
+                  Allocate carrier numbers, search worked jobs in real-time, and
+                  receive live OTPs.
                 </p>
               </div>
 
@@ -1417,35 +2514,53 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 className="w-full py-2.5 px-4 rounded-xl border border-emerald-200/80 bg-emerald-50/50 hover:bg-emerald-50 text-emerald-700 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition cursor-pointer shadow-2xs"
               >
                 <Settings className="w-4 h-4 text-emerald-600" />
-                <span>{showFiltersStats ? 'Hide filters & stats' : 'Show filters & stats'}</span>
-                <span className="text-xs tracking-widest ml-1 text-emerald-500">• •</span>
+                <span>
+                  {showFiltersStats
+                    ? "Hide filters & stats"
+                    : "Show filters & stats"}
+                </span>
+                <span className="text-xs tracking-widest ml-1 text-emerald-500">
+                  • •
+                </span>
               </button>
 
               {showFiltersStats && (
                 <div className="p-3.5 bg-white border border-gray-200/90 rounded-2xl text-xs text-gray-700 grid grid-cols-2 sm:grid-cols-4 gap-2.5 shadow-2xs">
                   <div className="p-3 bg-gray-50/90 rounded-xl border border-gray-200/80">
-                    <span className="text-gray-500 block text-[10px] uppercase font-bold">Success Rate</span>
+                    <span className="text-gray-500 block text-[10px] uppercase font-bold">
+                      Success Rate
+                    </span>
                     <span className="font-black text-emerald-600 text-sm">
                       {getNumHistory.length > 0
-                        ? `${Math.round((getNumHistory.filter((h) => h.status === 'SUCCESS').length / getNumHistory.length) * 100)}%`
-                        : '98.5%'}
+                        ? `${Math.round((getNumHistory.filter((h) => h.status === "SUCCESS").length / getNumHistory.length) * 100)}%`
+                        : "98.5%"}
                     </span>
                   </div>
                   <div className="p-3 bg-gray-50/90 rounded-xl border border-gray-200/80">
-                    <span className="text-gray-500 block text-[10px] uppercase font-bold">Allocated Total</span>
-                    <span className="font-black text-gray-900 text-sm">{getNumHistory.length}</span>
+                    <span className="text-gray-500 block text-[10px] uppercase font-bold">
+                      Allocated Total
+                    </span>
+                    <span className="font-black text-gray-900 text-sm">
+                      {getNumHistory.length}
+                    </span>
                   </div>
                   <div className="p-3 bg-gray-50/90 rounded-xl border border-gray-200/80">
-                    <span className="text-gray-500 block text-[10px] uppercase font-bold">Active Carriers</span>
+                    <span className="text-gray-500 block text-[10px] uppercase font-bold">
+                      Active Carriers
+                    </span>
                     <span className="font-black text-blue-600 text-sm">
                       {getNumHistory.length > 0
                         ? `${Array.from(new Set(getNumHistory.map((h) => h.operator))).length} Active`
-                        : '12 Active'}
+                        : "12 Active"}
                     </span>
                   </div>
                   <div className="p-3 bg-gray-50/90 rounded-xl border border-gray-200/80">
-                    <span className="text-gray-500 block text-[10px] uppercase font-bold">Real-Time Routing</span>
-                    <span className="font-black text-amber-600 text-sm">Live Active</span>
+                    <span className="text-gray-500 block text-[10px] uppercase font-bold">
+                      Real-Time Routing
+                    </span>
+                    <span className="font-black text-amber-600 text-sm">
+                      Live Active
+                    </span>
                   </div>
                 </div>
               )}
@@ -1455,486 +2570,615 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             <div className="bg-white rounded-2xl border border-gray-200/90 shadow-sm overflow-hidden divide-y divide-gray-200/80">
               {/* SECTION 1: TAB CONTROL & INPUT FORM */}
               <div className="p-4 sm:p-5 space-y-4">
-              {/* Header with Mint Green Title */}
-              <div className="text-[12px] font-black text-[#10b981] tracking-wider uppercase">
-                ENTER NUMBER RANGE
-              </div>
-
-              {/* Segmented Buttons & Sync Mode switch */}
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div className="inline-flex p-1 bg-gray-100/80 rounded-full border border-gray-200 text-xs shadow-inner">
-                  {(['RANGE', 'SEARCH', 'ACCESS'] as const).map((tab) => (
-                    <button
-                      key={tab}
-                      type="button"
-                      onClick={() => {
-                        setGetNumTab(tab);
-                        setRangeInputError(false);
-                      }}
-                      className={`px-4 sm:px-5 py-1.5 rounded-full font-bold transition cursor-pointer text-xs ${
-                        getNumTab === tab
-                          ? 'bg-[#34d399] text-gray-950 shadow-xs'
-                          : 'text-gray-600 hover:text-gray-900'
-                      }`}
-                    >
-                      {tab}
-                    </button>
-                  ))}
+                {/* Header with Mint Green Title */}
+                <div className="text-[12px] font-black text-[#10b981] tracking-wider uppercase">
+                  ENTER NUMBER RANGE
                 </div>
 
-                {/* Sync Mode Toggle */}
-                <div
-                  onClick={() => setIsSyncMode(!isSyncMode)}
-                  className="flex items-center gap-2 cursor-pointer select-none text-xs font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-full transition"
-                  title="Toggle Real-Time Sync"
-                >
-                  <div className={`w-7 h-4 rounded-full p-0.5 transition ${isSyncMode ? 'bg-emerald-500' : 'bg-gray-300'}`}>
-                    <div className={`w-3 h-3 rounded-full bg-white shadow-xs transition-transform ${isSyncMode ? 'translate-x-3' : 'translate-x-0'}`} />
-                  </div>
-                  <span className="flex items-center gap-1 text-[11px] text-gray-700 tracking-wider uppercase font-bold">
-                    <RotateCw className="w-3 h-3 text-gray-500" /> SYNC MODE
-                  </span>
-                </div>
-              </div>
-
-              {/* -------------------- 1A. RANGE TAB CONTENT -------------------- */}
-              {getNumTab === 'RANGE' && (
-                <div className="space-y-4">
-                  {/* Range Input Field */}
-                  <div className="space-y-1.5">
-                    <div className="relative">
-                      <div className="absolute left-3.5 top-1/2 -translate-y-1/2 font-mono text-gray-400 font-bold text-sm">
-                        #
-                      </div>
-                      <input
-                        type="text"
-                        value={rangeCustomInput}
-                        onChange={(e) => {
-                          setRangeCustomInput(e.target.value);
-                          if (rangeInputError) setRangeInputError(false);
+                {/* Segmented Buttons & Sync Mode switch */}
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="inline-flex p-1 bg-gray-100/80 rounded-full border border-gray-200 text-xs shadow-inner">
+                    {(["RANGE", "SEARCH", "ACCESS"] as const).map((tab) => (
+                      <button
+                        key={tab}
+                        type="button"
+                        onClick={() => {
+                          setGetNumTab(tab);
+                          setRangeInputError(false);
                         }}
-                        placeholder="e.g., 88017XXX (type the trailing X's you want)"
-                        className={`w-full pl-8 pr-4 py-3.5 bg-white border rounded-2xl text-gray-900 font-mono text-xs sm:text-sm focus:outline-none placeholder-gray-400 tracking-wide transition shadow-2xs ${
-                          rangeInputError
-                            ? 'border-red-400 ring-2 ring-red-400/30 bg-red-50/20 animate-pulse'
-                            : 'border-[#34d399] focus:ring-2 focus:ring-[#34d399]/20 focus:border-[#10b981]'
+                        className={`px-4 sm:px-5 py-1.5 rounded-full font-bold transition cursor-pointer text-xs ${
+                          getNumTab === tab
+                            ? "bg-[#34d399] text-gray-950 shadow-xs"
+                            : "text-gray-600 hover:text-gray-900"
                         }`}
-                      />
-                      {rangeCustomInput && (
-                        <button
-                          type="button"
-                          onClick={() => setRangeCustomInput('')}
-                          className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 rounded-md cursor-pointer"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
+                      >
+                        {tab}
+                      </button>
+                    ))}
                   </div>
 
-                  {/* Options and Get Number button matching screenshot */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
-                    <div className="flex items-center gap-4 text-xs sm:text-sm text-gray-700 font-semibold">
-                      <label className="flex items-center gap-2 cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={nationalFormat}
-                          onChange={(e) => setNationalFormat(e.target.checked)}
-                          className="w-4 h-4 rounded accent-emerald-600 cursor-pointer"
-                        />
-                        <span className="font-medium text-xs sm:text-sm text-gray-800">National Format</span>
-                      </label>
-
-                      <label className="flex items-center gap-2 cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={removePlus}
-                          onChange={(e) => setRemovePlus(e.target.checked)}
-                          className="w-4 h-4 rounded accent-emerald-600 cursor-pointer"
-                        />
-                        <span className="font-medium text-xs sm:text-sm text-gray-800">Remove (+)</span>
-                      </label>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => handleGetNumberCustom()}
-                      disabled={isAllocating}
-                      className="min-w-[145px] bg-[#10b981] hover:bg-[#059669] text-white font-black px-6 py-2.5 rounded-full text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm shadow-emerald-500/20 transition active:scale-95 cursor-pointer disabled:opacity-50"
+                  {/* Sync Mode Toggle */}
+                  <div
+                    onClick={() => setIsSyncMode(!isSyncMode)}
+                    className="flex items-center gap-2 cursor-pointer select-none text-xs font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-full transition"
+                    title="Toggle Real-Time Sync"
+                  >
+                    <div
+                      className={`w-7 h-4 rounded-full p-0.5 transition ${isSyncMode ? "bg-emerald-500" : "bg-gray-300"}`}
                     >
-                      <Phone className={`w-3.5 h-3.5 text-white ${isAllocating ? 'animate-spin' : ''}`} />
-                      <span>{isAllocating ? 'Getting...' : 'Get Number'}</span>
-                    </button>
+                      <div
+                        className={`w-3 h-3 rounded-full bg-white shadow-xs transition-transform ${isSyncMode ? "translate-x-3" : "translate-x-0"}`}
+                      />
+                    </div>
+                    <span className="flex items-center gap-1 text-[11px] text-gray-700 tracking-wider uppercase font-bold">
+                      <RotateCw className="w-3 h-3 text-gray-500" /> SYNC MODE
+                    </span>
                   </div>
                 </div>
-              )}
 
-              {/* -------------------- 1B. SEARCH TAB CONTENT -------------------- */}
-              {getNumTab === 'SEARCH' && (
-                <div className="space-y-4">
-                  {/* COUNTRY & OPERATOR Field */}
-                  <div className="space-y-1.5 relative">
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">
-                      COUNTRY &amp; OPERATOR
-                    </label>
-
-                    <div
-                      onClick={() => setIsCountryDropdownOpen(!isCountryDropdownOpen)}
-                      className="w-full px-3.5 py-2.5 bg-white border border-gray-200 rounded-xl text-gray-800 text-xs sm:text-sm font-medium flex items-center justify-between cursor-pointer hover:border-emerald-400 shadow-2xs transition"
-                    >
-                      <span className="truncate">{selectedCountryOperator?.name || 'Search country & operator...'}</span>
-                      <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
-                    </div>
-
-                    {/* Search Modal / Dropdown Layer matching Screenshot_2026-08-27-18-13-44-073_mark.via.gp.jpg */}
-                    {isCountryDropdownOpen && (
-                      <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-2xl shadow-xl p-2 space-y-2 animate-in fade-in slide-in-from-top-1 duration-150">
-                        {/* Type to filter input */}
-                        <div className="p-1">
-                          <input
-                            type="text"
-                            value={countryFilterText}
-                            onChange={(e) => setCountryFilterText(e.target.value)}
-                            placeholder="Type to filter..."
-                            className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 placeholder-gray-400 font-medium"
-                            autoFocus
-                          />
+                {/* -------------------- 1A. RANGE TAB CONTENT -------------------- */}
+                {getNumTab === "RANGE" && (
+                  <div className="space-y-4">
+                    {/* Range Input Field */}
+                    <div className="space-y-1.5">
+                      <div className="relative">
+                        <div className="absolute left-3.5 top-1/2 -translate-y-1/2 font-mono text-gray-400 font-bold text-sm">
+                          #
                         </div>
-
-                        {/* List of Countries & Operators */}
-                        <div className="max-h-60 overflow-y-auto divide-y divide-gray-100 rounded-lg text-xs">
-                          {COUNTRY_OPERATOR_LIST.filter(c => c.name.toLowerCase().includes(countryFilterText.toLowerCase())).map((item) => {
-                            const isSelected = selectedCountryOperator?.id === item.id;
-                            return (
-                              <button
-                                key={item.id}
-                                type="button"
-                                onClick={() => {
-                                  setSelectedCountryOperator(item);
-                                  setSelectedSearchRange(item.ranges[0] || '');
-                                  setIsCountryDropdownOpen(false);
-                                  setCountryFilterText('');
-                                }}
-                                className={`w-full text-left px-3 py-2.5 transition flex items-center justify-between cursor-pointer ${
-                                  isSelected
-                                    ? 'bg-[#10b981] text-white font-bold'
-                                    : 'hover:bg-gray-50 text-gray-800 font-medium'
-                                }`}
-                              >
-                                <span>{item.name}</span>
-                                {isSelected && <Check className="w-3.5 h-3.5 text-white shrink-0" />}
-                              </button>
-                            );
-                          })}
-                        </div>
-
-                        {/* Dropdown Footer */}
-                        <div className="flex items-center justify-between px-2 pt-1 border-t border-gray-100 text-[11px] text-gray-400">
-                          <span>
-                            {COUNTRY_OPERATOR_LIST.filter(c => c.name.toLowerCase().includes(countryFilterText.toLowerCase())).length} loaded (scroll for more)
-                          </span>
+                        <input
+                          type="text"
+                          value={rangeCustomInput}
+                          onChange={(e) => {
+                            setRangeCustomInput(e.target.value);
+                            if (rangeInputError) setRangeInputError(false);
+                          }}
+                          placeholder="e.g., 88017XXX (type the trailing X's you want)"
+                          className={`w-full pl-8 pr-4 py-3.5 bg-white border rounded-2xl text-gray-900 font-mono text-xs sm:text-sm focus:outline-none placeholder-gray-400 tracking-wide transition shadow-2xs ${
+                            rangeInputError
+                              ? "border-red-400 ring-2 ring-red-400/30 bg-red-50/20 animate-pulse"
+                              : "border-[#34d399] focus:ring-2 focus:ring-[#34d399]/20 focus:border-[#10b981]"
+                          }`}
+                        />
+                        {rangeCustomInput && (
                           <button
                             type="button"
-                            onClick={() => setIsCountryDropdownOpen(false)}
-                            className="hover:text-gray-600 font-medium cursor-pointer"
+                            onClick={() => setRangeCustomInput("")}
+                            className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 rounded-md cursor-pointer"
                           >
-                            Esc to close
+                            <X className="w-4 h-4" />
                           </button>
-                        </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-
-                  {/* RANGE Field */}
-                  <div className="space-y-1.5 relative">
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">
-                      RANGE
-                    </label>
-
-                    <div
-                      onClick={() => setIsRangeDropdownOpen(!isRangeDropdownOpen)}
-                      className="w-full px-3.5 py-2.5 bg-white border border-gray-200 rounded-xl text-gray-800 text-xs sm:text-sm font-medium flex items-center justify-between cursor-pointer hover:border-emerald-400 shadow-2xs transition"
-                    >
-                      <span className="truncate">{selectedSearchRange || 'Search ranges...'}</span>
-                      <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
                     </div>
 
-                    {/* Range Dropdown List */}
-                    {isRangeDropdownOpen && (
-                      <div className="absolute z-40 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg p-2 space-y-1 animate-in fade-in duration-100">
-                        <div className="p-1">
+                    {/* Options and Get Number button matching screenshot */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+                      <div className="flex items-center gap-4 text-xs sm:text-sm text-gray-700 font-semibold">
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
                           <input
-                            type="text"
-                            value={rangeFilterText}
-                            onChange={(e) => setRangeFilterText(e.target.value)}
-                            placeholder="Type prefix or filter..."
-                            className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-900 focus:outline-none focus:border-emerald-500"
-                            autoFocus
+                            type="checkbox"
+                            checked={nationalFormat}
+                            onChange={(e) =>
+                              setNationalFormat(e.target.checked)
+                            }
+                            className="w-4 h-4 rounded accent-emerald-600 cursor-pointer"
                           />
-                        </div>
-                        <div className="max-h-40 overflow-y-auto text-xs font-mono">
-                          {(selectedCountryOperator?.ranges || ['9370', '9378', '9379', '23275', '88017', '44740'])
-                            .filter(r => r.includes(rangeFilterText))
-                            .map((r) => (
-                              <button
-                                key={r}
-                                type="button"
-                                onClick={() => {
-                                  setSelectedSearchRange(r);
-                                  setIsRangeDropdownOpen(false);
-                                  setRangeFilterText('');
-                                }}
-                                className={`w-full text-left px-3 py-2 rounded-md transition ${
-                                  selectedSearchRange === r
-                                    ? 'bg-emerald-50 text-emerald-800 font-bold'
-                                    : 'hover:bg-gray-50 text-gray-700'
-                                }`}
-                              >
-                                #{r}
-                              </button>
-                            ))}
-                        </div>
+                          <span className="font-medium text-xs sm:text-sm text-gray-800">
+                            National Format
+                          </span>
+                        </label>
+
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={removePlus}
+                            onChange={(e) => setRemovePlus(e.target.checked)}
+                            className="w-4 h-4 rounded accent-emerald-600 cursor-pointer"
+                          />
+                          <span className="font-medium text-xs sm:text-sm text-gray-800">
+                            Remove (+)
+                          </span>
+                        </label>
                       </div>
-                    )}
-                  </div>
 
-                  {/* Options row & Get Number button matching screenshot */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
-                    <div className="flex items-center gap-4 text-xs sm:text-sm text-gray-700 font-semibold">
-                      <label className="flex items-center gap-2 cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={nationalFormat}
-                          onChange={(e) => setNationalFormat(e.target.checked)}
-                          className="w-4 h-4 rounded accent-emerald-600 cursor-pointer"
-                        />
-                        <span className="font-medium text-xs sm:text-sm text-gray-800">National Format</span>
-                      </label>
-
-                      <label className="flex items-center gap-2 cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={removePlus}
-                          onChange={(e) => setRemovePlus(e.target.checked)}
-                          className="w-4 h-4 rounded accent-emerald-600 cursor-pointer"
-                        />
-                        <span className="font-medium text-xs sm:text-sm text-gray-800">Remove (+)</span>
-                      </label>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => handleGetNumberCustom(
-                        selectedSearchRange || (selectedCountryOperator?.ranges[0] || '9370'),
-                        selectedCountryOperator?.country,
-                        selectedCountryOperator?.operator
-                      )}
-                      disabled={isAllocating}
-                      className="min-w-[145px] bg-[#10b981] hover:bg-[#059669] text-white font-black px-6 py-2.5 rounded-full text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm shadow-emerald-500/20 transition active:scale-95 cursor-pointer disabled:opacity-50"
-                    >
-                      <Phone className={`w-3.5 h-3.5 text-white ${isAllocating ? 'animate-spin' : ''}`} />
-                      <span>{isAllocating ? 'Getting...' : 'Get Number'}</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* -------------------- 1C. ACCESS TAB CONTENT (Live Service & Range Access List) -------------------- */}
-              {getNumTab === 'ACCESS' && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between text-xs text-gray-700 font-bold pb-1">
-                    <span className="flex items-center gap-1 text-purple-700">
-                      <Layers className="w-4 h-4 text-purple-600" />
-                      <span>Live Carrier Range &amp; Service Routing</span>
-                    </span>
-                    <span className="text-[11px] font-mono text-emerald-600">● 100% Physical Delivery Online</span>
-                  </div>
-
-                  {/* Service Cards Grid */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {[
-                      { name: 'WhatsApp VIP', range: '22501', country: "Ivory Coast (Orange)", rate: '99.4%', status: 'Online', desc: 'Instant WhatsApp registration codes with zero block rate' },
-                      { name: 'Telegram Ultra', range: '88017', country: 'Bangladesh (Grameenphone)', rate: '98.8%', status: 'Online', desc: 'Direct Telegram SMS carrier line for instant account creation' },
-                      { name: 'IMO Messenger', range: '62812', country: 'Indonesia (Telkomsel)', rate: '97.5%', status: 'Online', desc: 'Physical SIM routing for IMO phone verification' },
-                      { name: 'Meta Facebook', range: '44740', country: 'United Kingdom (EE Physical)', rate: '99.1%', status: 'Online', desc: 'Official EE Carrier UK numbers for Facebook / Instagram verification' },
-                      { name: 'Google / Gmail', range: '91987', country: 'India (Airtel VIP)', rate: '96.8%', status: 'Online', desc: 'High-speed Airtel physical routes for Google Workspace / Gmail' },
-                      { name: 'TikTok / ByteDance', range: '23276', country: 'Sierra Leone (Orange)', rate: '95.5%', status: 'Online', desc: 'Fast delivery for TikTok creator accounts' },
-                    ].map((service) => (
-                      <div
-                        key={service.name}
-                        className="bg-gray-50/90 hover:bg-white border border-gray-200/90 rounded-xl p-3.5 space-y-2.5 transition shadow-2xs hover:shadow-sm"
+                      <button
+                        type="button"
+                        onClick={() => handleGetNumberCustom()}
+                        disabled={isAllocating}
+                        className="min-w-[145px] bg-[#10b981] hover:bg-[#059669] text-white font-black px-6 py-2.5 rounded-full text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm shadow-emerald-500/20 transition active:scale-95 cursor-pointer disabled:opacity-50"
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <h4 className="font-bold text-gray-900 text-sm flex items-center gap-1.5">
-                              <span>{service.name}</span>
-                              <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
-                                {service.status}
-                              </span>
-                            </h4>
-                            <p className="text-[11px] text-gray-500 font-mono mt-0.5">
-                              Range Prefix: <strong className="text-gray-900">#{service.range}</strong> ({service.country})
-                            </p>
+                        <Phone
+                          className={`w-3.5 h-3.5 text-white ${isAllocating ? "animate-spin" : ""}`}
+                        />
+                        <span>
+                          {isAllocating ? "Getting..." : "Get Number"}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* -------------------- 1B. SEARCH TAB CONTENT -------------------- */}
+                {getNumTab === "SEARCH" && (
+                  <div className="space-y-4">
+                    {/* COUNTRY & OPERATOR Field */}
+                    <div className="space-y-1.5 relative">
+                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">
+                        COUNTRY &amp; OPERATOR
+                      </label>
+
+                      <div
+                        onClick={() =>
+                          setIsCountryDropdownOpen(!isCountryDropdownOpen)
+                        }
+                        className="w-full px-3.5 py-2.5 bg-white border border-gray-200 rounded-xl text-gray-800 text-xs sm:text-sm font-medium flex items-center justify-between cursor-pointer hover:border-emerald-400 shadow-2xs transition"
+                      >
+                        <span className="truncate">
+                          {selectedCountryOperator?.name ||
+                            "Search country & operator..."}
+                        </span>
+                        <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
+                      </div>
+
+                      {/* Search Modal / Dropdown Layer matching Screenshot_2026-08-27-18-13-44-073_mark.via.gp.jpg */}
+                      {isCountryDropdownOpen && (
+                        <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-2xl shadow-xl p-2 space-y-2 animate-in fade-in slide-in-from-top-1 duration-150">
+                          {/* Type to filter input */}
+                          <div className="p-1">
+                            <input
+                              type="text"
+                              value={countryFilterText}
+                              onChange={(e) =>
+                                setCountryFilterText(e.target.value)
+                              }
+                              placeholder="Type to filter..."
+                              className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 placeholder-gray-400 font-medium"
+                              autoFocus
+                            />
                           </div>
 
-                          <span className="text-xs font-mono font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                            {service.rate}
+                          {/* List of Countries & Operators */}
+                          <div className="max-h-60 overflow-y-auto divide-y divide-gray-100 rounded-lg text-xs">
+                            {COUNTRY_OPERATOR_LIST.filter((c) =>
+                              c.name
+                                .toLowerCase()
+                                .includes(countryFilterText.toLowerCase()),
+                            ).map((item) => {
+                              const isSelected =
+                                selectedCountryOperator?.id === item.id;
+                              return (
+                                <button
+                                  key={item.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedCountryOperator(item);
+                                    setSelectedSearchRange(
+                                      item.ranges[0] || "",
+                                    );
+                                    setIsCountryDropdownOpen(false);
+                                    setCountryFilterText("");
+                                  }}
+                                  className={`w-full text-left px-3 py-2.5 transition flex items-center justify-between cursor-pointer ${
+                                    isSelected
+                                      ? "bg-[#10b981] text-white font-bold"
+                                      : "hover:bg-gray-50 text-gray-800 font-medium"
+                                  }`}
+                                >
+                                  <span>{item.name}</span>
+                                  {isSelected && (
+                                    <Check className="w-3.5 h-3.5 text-white shrink-0" />
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          {/* Dropdown Footer */}
+                          <div className="flex items-center justify-between px-2 pt-1 border-t border-gray-100 text-[11px] text-gray-400">
+                            <span>
+                              {
+                                COUNTRY_OPERATOR_LIST.filter((c) =>
+                                  c.name
+                                    .toLowerCase()
+                                    .includes(countryFilterText.toLowerCase()),
+                                ).length
+                              }{" "}
+                              loaded (scroll for more)
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setIsCountryDropdownOpen(false)}
+                              className="hover:text-gray-600 font-medium cursor-pointer"
+                            >
+                              Esc to close
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* RANGE Field */}
+                    <div className="space-y-1.5 relative">
+                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">
+                        RANGE
+                      </label>
+
+                      <div
+                        onClick={() =>
+                          setIsRangeDropdownOpen(!isRangeDropdownOpen)
+                        }
+                        className="w-full px-3.5 py-2.5 bg-white border border-gray-200 rounded-xl text-gray-800 text-xs sm:text-sm font-medium flex items-center justify-between cursor-pointer hover:border-emerald-400 shadow-2xs transition"
+                      >
+                        <span className="truncate">
+                          {selectedSearchRange || "Search ranges..."}
+                        </span>
+                        <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
+                      </div>
+
+                      {/* Range Dropdown List */}
+                      {isRangeDropdownOpen && (
+                        <div className="absolute z-40 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg p-2 space-y-1 animate-in fade-in duration-100">
+                          <div className="p-1">
+                            <input
+                              type="text"
+                              value={rangeFilterText}
+                              onChange={(e) =>
+                                setRangeFilterText(e.target.value)
+                              }
+                              placeholder="Type prefix or filter..."
+                              className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-900 focus:outline-none focus:border-emerald-500"
+                              autoFocus
+                            />
+                          </div>
+                          <div className="max-h-40 overflow-y-auto text-xs font-mono">
+                            {(
+                              selectedCountryOperator?.ranges || [
+                                "9370",
+                                "9378",
+                                "9379",
+                                "23275",
+                                "88017",
+                                "44740",
+                              ]
+                            )
+                              .filter((r) => r.includes(rangeFilterText))
+                              .map((r) => (
+                                <button
+                                  key={r}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedSearchRange(r);
+                                    setIsRangeDropdownOpen(false);
+                                    setRangeFilterText("");
+                                  }}
+                                  className={`w-full text-left px-3 py-2 rounded-md transition ${
+                                    selectedSearchRange === r
+                                      ? "bg-emerald-50 text-emerald-800 font-bold"
+                                      : "hover:bg-gray-50 text-gray-700"
+                                  }`}
+                                >
+                                  #{r}
+                                </button>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Options row & Get Number button matching screenshot */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+                      <div className="flex items-center gap-4 text-xs sm:text-sm text-gray-700 font-semibold">
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={nationalFormat}
+                            onChange={(e) =>
+                              setNationalFormat(e.target.checked)
+                            }
+                            className="w-4 h-4 rounded accent-emerald-600 cursor-pointer"
+                          />
+                          <span className="font-medium text-xs sm:text-sm text-gray-800">
+                            National Format
                           </span>
+                        </label>
+
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={removePlus}
+                            onChange={(e) => setRemovePlus(e.target.checked)}
+                            className="w-4 h-4 rounded accent-emerald-600 cursor-pointer"
+                          />
+                          <span className="font-medium text-xs sm:text-sm text-gray-800">
+                            Remove (+)
+                          </span>
+                        </label>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleGetNumberCustom(
+                            selectedSearchRange ||
+                              selectedCountryOperator?.ranges[0] ||
+                              "9370",
+                            selectedCountryOperator?.country,
+                            selectedCountryOperator?.operator,
+                          )
+                        }
+                        disabled={isAllocating}
+                        className="min-w-[145px] bg-[#10b981] hover:bg-[#059669] text-white font-black px-6 py-2.5 rounded-full text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm shadow-emerald-500/20 transition active:scale-95 cursor-pointer disabled:opacity-50"
+                      >
+                        <Phone
+                          className={`w-3.5 h-3.5 text-white ${isAllocating ? "animate-spin" : ""}`}
+                        />
+                        <span>
+                          {isAllocating ? "Getting..." : "Get Number"}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* -------------------- 1C. ACCESS TAB CONTENT (Live Service & Range Access List) -------------------- */}
+                {getNumTab === "ACCESS" && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between text-xs text-gray-700 font-bold pb-1">
+                      <span className="flex items-center gap-1 text-purple-700">
+                        <Layers className="w-4 h-4 text-purple-600" />
+                        <span>Live Carrier Range &amp; Service Routing</span>
+                      </span>
+                      <span className="text-[11px] font-mono text-emerald-600">
+                        ● 100% Physical Delivery Online
+                      </span>
+                    </div>
+
+                    {/* Service Cards Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {[
+                        {
+                          name: "WhatsApp VIP",
+                          range: "22501",
+                          country: "Ivory Coast (Orange)",
+                          rate: "99.4%",
+                          status: "Online",
+                          desc: "Instant WhatsApp registration codes with zero block rate",
+                        },
+                        {
+                          name: "Telegram Ultra",
+                          range: "88017",
+                          country: "Bangladesh (Grameenphone)",
+                          rate: "98.8%",
+                          status: "Online",
+                          desc: "Direct Telegram SMS carrier line for instant account creation",
+                        },
+                        {
+                          name: "IMO Messenger",
+                          range: "62812",
+                          country: "Indonesia (Telkomsel)",
+                          rate: "97.5%",
+                          status: "Online",
+                          desc: "Physical SIM routing for IMO phone verification",
+                        },
+                        {
+                          name: "Meta Facebook",
+                          range: "44740",
+                          country: "United Kingdom (EE Physical)",
+                          rate: "99.1%",
+                          status: "Online",
+                          desc: "Official EE Carrier UK numbers for Facebook / Instagram verification",
+                        },
+                        {
+                          name: "Google / Gmail",
+                          range: "91987",
+                          country: "India (Airtel VIP)",
+                          rate: "96.8%",
+                          status: "Online",
+                          desc: "High-speed Airtel physical routes for Google Workspace / Gmail",
+                        },
+                        {
+                          name: "TikTok / ByteDance",
+                          range: "23276",
+                          country: "Sierra Leone (Orange)",
+                          rate: "95.5%",
+                          status: "Online",
+                          desc: "Fast delivery for TikTok creator accounts",
+                        },
+                      ].map((service) => (
+                        <div
+                          key={service.name}
+                          className="bg-gray-50/90 hover:bg-white border border-gray-200/90 rounded-xl p-3.5 space-y-2.5 transition shadow-2xs hover:shadow-sm"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <h4 className="font-bold text-gray-900 text-sm flex items-center gap-1.5">
+                                <span>{service.name}</span>
+                                <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                  {service.status}
+                                </span>
+                              </h4>
+                              <p className="text-[11px] text-gray-500 font-mono mt-0.5">
+                                Range Prefix:{" "}
+                                <strong className="text-gray-900">
+                                  #{service.range}
+                                </strong>{" "}
+                                ({service.country})
+                              </p>
+                            </div>
+
+                            <span className="text-xs font-mono font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                              {service.rate}
+                            </span>
+                          </div>
+
+                          <p className="text-xs text-gray-600 leading-relaxed">
+                            {service.desc}
+                          </p>
+
+                          <div className="flex items-center justify-between pt-1 border-t border-gray-200/70">
+                            <span className="text-[11px] text-gray-400 font-mono">
+                              Ready to Allocate
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRangeCustomInput(service.range);
+                                setGetNumTab("RANGE");
+                                setRangeInputError(false);
+                                handleGetNumberCustom(service.range);
+                              }}
+                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition flex items-center gap-1 shadow-2xs cursor-pointer active:scale-95"
+                            >
+                              <Zap className="w-3 h-3 text-amber-300" />
+                              <span>Use Range &amp; Get Number</span>
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* SECTION 2: ALLOCATED NUMBERS TABLE & REAL-TIME OTP DISPLAY */}
+              <div>
+                {/* Table Header with Stats and Refresh */}
+                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-white">
+                  <div className="flex items-center gap-2">
+                    <div className="text-xs font-mono font-medium text-gray-600">
+                      {getNumHistory.length > 0
+                        ? `1-${getNumHistory.length} of ${getNumHistory.length}`
+                        : "0 of 0"}
+                    </div>
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-mono font-bold border border-emerald-200 hidden sm:inline-flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      Real-time Carrier Active
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleManualRefreshConsole()}
+                      disabled={isConsoleRefreshing}
+                      className="px-3.5 py-1.5 bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs transition active:scale-95 disabled:opacity-50"
+                    >
+                      <RotateCw
+                        className={`w-3.5 h-3.5 text-gray-600 ${isConsoleRefreshing ? "animate-spin text-emerald-600" : ""}`}
+                      />
+                      <span>Refresh</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Table Column Labels */}
+                <div className="grid grid-cols-12 px-4 py-2.5 text-[11px] font-bold text-gray-500 uppercase tracking-wider bg-gray-50/70 border-b border-gray-200">
+                  <div className="col-span-5 sm:col-span-4">NUMBER INFO</div>
+                  <div className="col-span-4 sm:col-span-5">
+                    COUNTRY / OPERATOR
+                  </div>
+                  <div className="col-span-3 text-right">ACTIVITY</div>
+                </div>
+
+                {/* Table Rows or Clean Empty State */}
+                {getNumHistory.length === 0 ? (
+                  <div className="py-12 px-4 text-center space-y-2 bg-white">
+                    <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto shadow-2xs">
+                      <Smartphone className="w-5 h-5" />
+                    </div>
+                    <p className="text-sm font-bold text-gray-800">
+                      No allocated numbers yet
+                    </p>
+                    <p className="text-xs text-gray-400 max-w-md mx-auto leading-relaxed">
+                      Enter a prefix range (e.g.,{" "}
+                      <strong className="text-gray-700 font-mono">88017</strong>
+                      ,{" "}
+                      <strong className="text-gray-700 font-mono">44740</strong>
+                      ,{" "}
+                      <strong className="text-gray-700 font-mono">23275</strong>
+                      ) above and click{" "}
+                      <strong className="text-emerald-700">Get Number</strong>{" "}
+                      to allocate numbers automatically.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-gray-100">
+                    {getNumHistory.map((item) => (
+                      <div
+                        key={item.id}
+                        className="grid grid-cols-12 px-4 py-4 items-center text-xs hover:bg-gray-50/80 transition gap-2 animate-in fade-in slide-in-from-top-1 duration-200"
+                      >
+                        {/* NUMBER INFO */}
+                        <div className="col-span-5 sm:col-span-4 space-y-1">
+                          <div className="font-mono text-gray-900 font-black tracking-wide text-xs sm:text-sm flex items-center gap-1.5 flex-wrap">
+                            <span>{formatNumberWithAreaCode(item.number, item.country)}</span>
+                          </div>
+
+                          {/* Status Badge & OTP Pill */}
+                          {item.otp ? (
+                            <div className="space-y-1">
+                              <span className="inline-block px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-[#d1fae5] text-[#059669] border border-[#a7f3d0] uppercase tracking-wider">
+                                SUCCESSFUL
+                              </span>
+
+                              <div className="flex items-center gap-1.5 pt-0.5">
+                                <div className="flex items-center gap-1.5 bg-[#f3f4f6] border border-gray-300 px-2.5 py-1 rounded-md text-gray-800 font-mono text-xs font-bold shadow-2xs">
+                                  <Key className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span>{item.otp}</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    copyToClipboard(item.otp!, `otp_${item.id}`)
+                                  }
+                                  className="p-1 rounded-md bg-[#f3f4f6] hover:bg-gray-200 border border-gray-300 text-gray-600 hover:text-gray-900 transition cursor-pointer"
+                                  title="Copy OTP Code"
+                                >
+                                  {copiedText === `otp_${item.id}` ? (
+                                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                  ) : (
+                                    <Copy className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div>
+                              <span className="inline-block px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-[#fef3c7] text-[#b45309] border border-[#fde68a] uppercase tracking-wider">
+                                PENDING
+                              </span>
+                            </div>
+                          )}
                         </div>
 
-                        <p className="text-xs text-gray-600 leading-relaxed">
-                          {service.desc}
-                        </p>
+                        {/* COUNTRY / OPERATOR */}
+                        <div className="col-span-4 sm:col-span-5 space-y-0.5">
+                          <div className="text-gray-900 font-medium text-xs sm:text-sm">
+                            {item.country}
+                          </div>
+                          <div className="text-gray-500 text-[11px] sm:text-xs flex items-center gap-1">
+                            <Radio className="w-3 h-3 text-gray-600 shrink-0" />
+                            <span className="truncate">{item.operator}</span>
+                          </div>
+                        </div>
 
-                        <div className="flex items-center justify-between pt-1 border-t border-gray-200/70">
-                          <span className="text-[11px] text-gray-400 font-mono">Ready to Allocate</span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setRangeCustomInput(service.range);
-                              setGetNumTab('RANGE');
-                              setRangeInputError(false);
-                              handleGetNumberCustom(service.range);
-                            }}
-                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition flex items-center gap-1 shadow-2xs cursor-pointer active:scale-95"
-                          >
-                            <Zap className="w-3 h-3 text-amber-300" />
-                            <span>Use Range &amp; Get Number</span>
-                          </button>
+                        {/* ACTIVITY */}
+                        <div className="col-span-3 text-right space-y-1">
+                          <span className="inline-block text-[11px] text-gray-600 font-mono bg-gray-100 px-2.5 py-1 rounded-md border border-gray-200 shadow-2xs">
+                            {formatRelativeActivityTime(item, nowTick)}
+                          </span>
                         </div>
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
-            </div>
-
-              {/* SECTION 2: ALLOCATED NUMBERS TABLE & REAL-TIME OTP DISPLAY */}
-              <div>
-              {/* Table Header with Stats and Refresh */}
-              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-white">
-                <div className="text-xs font-mono font-medium text-gray-600">
-                  {getNumHistory.length > 0 ? `1-${getNumHistory.length} of ${getNumHistory.length}` : '0 of 0'}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleManualRefreshConsole()}
-                  disabled={isConsoleRefreshing}
-                  className="px-3.5 py-1.5 bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs transition active:scale-95 disabled:opacity-50"
-                >
-                  <RotateCw className={`w-3.5 h-3.5 text-gray-600 ${isConsoleRefreshing ? 'animate-spin text-emerald-600' : ''}`} />
-                  <span>Refresh</span>
-                </button>
+                )}
               </div>
-
-              {/* Table Column Labels */}
-              <div className="grid grid-cols-12 px-4 py-2.5 text-[11px] font-bold text-gray-500 uppercase tracking-wider bg-gray-50/70 border-b border-gray-200">
-                <div className="col-span-5 sm:col-span-4">NUMBER INFO</div>
-                <div className="col-span-4 sm:col-span-5">COUNTRY / OPERATOR</div>
-                <div className="col-span-3 text-right">ACTIVITY</div>
-              </div>
-
-              {/* Table Rows or Clean Empty State */}
-              {getNumHistory.length === 0 ? (
-                <div className="py-12 px-4 text-center space-y-2 bg-white">
-                  <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto shadow-2xs">
-                    <Smartphone className="w-5 h-5" />
-                  </div>
-                  <p className="text-sm font-bold text-gray-800">No allocated numbers yet</p>
-                  <p className="text-xs text-gray-400 max-w-md mx-auto leading-relaxed">
-                    Enter a prefix range (e.g., <strong className="text-gray-700 font-mono">88017</strong>, <strong className="text-gray-700 font-mono">44740</strong>, <strong className="text-gray-700 font-mono">23275</strong>) above and click <strong className="text-emerald-700">Get Number</strong> to allocate numbers automatically.
-                  </p>
-                </div>
-              ) : (
-                <div className="divide-y divide-gray-100">
-                  {getNumHistory.map((item) => (
-                    <div
-                      key={item.id}
-                      className="grid grid-cols-12 px-4 py-4 items-center text-xs hover:bg-gray-50/80 transition gap-2 animate-in fade-in slide-in-from-top-1 duration-200"
-                    >
-                      {/* NUMBER INFO */}
-                      <div className="col-span-5 sm:col-span-4 space-y-1.5">
-                        <div className="font-mono text-gray-900 font-black tracking-wide text-xs sm:text-sm flex items-center gap-1.5">
-                          <span>{item.number}</span>
-                          <button
-                            type="button"
-                            onClick={() => copyToClipboard(item.number, `num_${item.id}`)}
-                            className="p-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-600 cursor-pointer transition"
-                            title="Copy Phone Number"
-                          >
-                            {copiedText === `num_${item.id}` ? (
-                              <Check className="w-3 h-3 text-emerald-600" />
-                            ) : (
-                              <Copy className="w-3 h-3" />
-                            )}
-                          </button>
-                        </div>
-
-                        {/* Status Badge & OTP Pill */}
-                        {item.otp ? (
-                          <div className="space-y-1.5">
-                            <span className="inline-block px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-[#d1fae5] text-[#059669] border border-[#a7f3d0] uppercase tracking-wider">
-                              SUCCESS
-                            </span>
-
-                            {/* Golden/Gray OTP Pill matching screenshot: 🔑 OTP [copy] */}
-                            <div className="flex items-center gap-1.5 pt-0.5">
-                              <div className="flex items-center gap-1.5 bg-[#f3f4f6] border border-gray-300 px-2.5 py-1 rounded-md text-gray-800 font-mono text-xs font-bold shadow-2xs">
-                                <Key className="w-3.5 h-3.5 text-gray-500" />
-                                <span>{item.otp}</span>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => copyToClipboard(item.otp!, `otp_${item.id}`)}
-                                className="p-1 rounded-md bg-[#f3f4f6] hover:bg-gray-200 border border-gray-300 text-gray-600 hover:text-gray-900 transition cursor-pointer"
-                                title="Copy OTP Code"
-                              >
-                                {copiedText === `otp_${item.id}` ? (
-                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
-                                ) : (
-                                  <Copy className="w-3.5 h-3.5" />
-                                )}
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div>
-                            <span className="inline-block px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-[#fef3c7] text-[#b45309] border border-[#fde68a] uppercase tracking-wider">
-                              PENDING
-                            </span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* COUNTRY / OPERATOR */}
-                      <div className="col-span-4 sm:col-span-5 space-y-0.5">
-                        <div className="text-gray-900 font-medium text-xs sm:text-sm">
-                          {item.country}
-                        </div>
-                        <div className="text-gray-500 text-[11px] sm:text-xs flex items-center gap-1">
-                          <Radio className="w-3 h-3 text-gray-600 shrink-0" />
-                          <span className="truncate">{item.operator}</span>
-                        </div>
-                      </div>
-
-                      {/* ACTIVITY */}
-                      <div className="col-span-3 text-right space-y-1">
-                        <span className="inline-block text-[11px] text-gray-600 font-mono bg-gray-100 px-2.5 py-1 rounded-md border border-gray-200 shadow-2xs">
-                          {formatRelativeActivityTime(item, nowTick)}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           </div>
-        </div>
         )}
 
         {/* -------------------- 2. CONSOLE VIEW -------------------- */}
-        {currentView === 'console' && (
+        {currentView === "console" && (
           <div className="bg-white/95 backdrop-blur-xs rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200/90 space-y-4">
             {/* Header: Live Console + Status Badge */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100">
@@ -1976,9 +3220,14 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 title="Auto-refreshing live stream"
               >
                 <span className="text-xs">
-                  Next update: <strong className="text-gray-900 font-bold">{consoleCountdown}s</strong>
+                  Next update:{" "}
+                  <strong className="text-gray-900 font-bold">
+                    {consoleCountdown}s
+                  </strong>
                 </span>
-                <RotateCw className={`w-3.5 h-3.5 text-gray-500 ${isConsoleRefreshing ? 'animate-spin text-emerald-600' : ''}`} />
+                <RotateCw
+                  className={`w-3.5 h-3.5 text-gray-500 ${isConsoleRefreshing ? "animate-spin text-emerald-600" : ""}`}
+                />
               </button>
             </div>
 
@@ -2005,17 +3254,17 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                     <div className="space-y-1">
                       <p className="text-sm font-bold text-gray-800">
                         {consoleFilter
-                          ? 'No matching live console logs found'
+                          ? "No matching live console logs found"
                           : consoleApiMeta?.code === 2941
-                          ? 'API Key Authentication Required'
-                          : 'Listening for Live SMS Stream'}
+                            ? "API Key Authentication Required"
+                            : "Listening for Live SMS Stream"}
                       </p>
                       <p className="text-xs text-gray-500 max-w-sm mx-auto font-sans">
                         {consoleFilter
-                          ? 'Try clearing your search filter.'
+                          ? "Try clearing your search filter."
                           : consoleApiMeta?.code === 2941
-                          ? 'Please update your mauthapi key above to begin streaming.'
-                          : 'Carrier gateway routes are connected. Incoming SMS events will appear here in real-time (polling every 2s).'}
+                            ? "Connecting to gateway session..."
+                            : "Carrier gateway routes are connected. Incoming SMS events will appear here in real-time (polling every 2s)."}
                       </p>
                     </div>
                   </div>
@@ -2026,65 +3275,129 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 <div className="space-y-3 pt-1">
                   {filteredHits.slice(0, 50).map((log, idx) => {
                     const extractedOtpCode = extractOtp(log.message);
+                    const ownerCheck = isHitOwnedByUser(log);
+                    const isOwner = ownerCheck.isOwner;
+
+                    // Mask OTP in message if not owned by this user
+                    const displayedMessage = isOwner
+                      ? log.message
+                      : maskOtpInMessage(log.message, extractedOtpCode);
+
+                    // Masked OTP digits representation: e.g. 088309 -> XXXXXX
+                    const maskedOtpCode = extractedOtpCode
+                      ? extractedOtpCode.replace(/\d/g, "X")
+                      : "XXXXXX";
 
                     return (
                       <div
                         key={idx}
-                        className="bg-white rounded-2xl border border-gray-200/90 border-l-[4px] border-l-emerald-500 p-4 sm:p-5 shadow-2xs space-y-2.5 hover:shadow-xs transition"
+                        className={`rounded-2xl border border-l-[4px] p-4 sm:p-5 shadow-2xs space-y-2.5 transition ${
+                          isOwner
+                            ? "bg-emerald-50/20 border-emerald-300 border-l-emerald-600 ring-1 ring-emerald-500/20 hover:shadow-xs"
+                            : "bg-white border-gray-200/90 border-l-gray-400 hover:shadow-xs"
+                        }`}
                       >
-                        {/* Top Row: Time on Left, Operator Badge & Country on Right */}
+                        {/* Top Row: Time on Left, Ownership Badge & Operator Badge on Right */}
                         <div className="flex items-start justify-between gap-2">
-                          <span className="font-mono text-xs text-gray-400 font-normal">
-                            {formatHitTime(log.time)}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-xs text-gray-400 font-normal">
+                              {formatHitTime(log.time)}
+                            </span>
+                            {isOwner ? (
+                              <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded border border-emerald-300">
+                                <CheckCircle className="w-3 h-3 text-emerald-600" />
+                                <span>আপনার নাম্বার (Your Number)</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 bg-gray-100 text-gray-500 text-[10px] font-medium px-2 py-0.5 rounded border border-gray-200">
+                                <Lock className="w-2.5 h-2.5 text-gray-400" />
+                                <span>সুরক্ষিত (Protected)</span>
+                              </span>
+                            )}
+                          </div>
+
                           <div className="flex flex-col items-end">
                             <span className="bg-gray-100/90 border border-gray-200/90 text-[10px] sm:text-[11px] font-bold text-gray-800 uppercase px-2.5 py-0.5 rounded-md tracking-tight font-sans">
-                              {log.operator || 'CARRIER GATEWAY'}
+                              {log.operator || "CARRIER GATEWAY"}
                             </span>
                             <span className="text-[11px] text-gray-400 font-normal mt-0.5 text-right">
-                              {log.country || 'Direct Route'}
+                              {log.country || "Direct Route"}
                             </span>
                           </div>
                         </div>
 
                         {/* Middle Row: Service Name in vibrant color :: Range / Number */}
                         <div className="flex items-center gap-1.5 text-xs sm:text-sm">
-                          <span className={`font-bold font-sans ${getServiceTextColor(log.sid)}`}>
+                          <span
+                            className={`font-bold font-sans ${getServiceTextColor(log.sid)}`}
+                          >
                             {log.sid}
                           </span>
-                          <span className="text-gray-300 font-mono text-xs">::</span>
+                          <span className="text-gray-300 font-mono text-xs">
+                            ::
+                          </span>
                           <span className="font-mono text-xs sm:text-[13px] font-medium text-gray-600 tracking-wider">
                             {log.range}
                           </span>
                         </div>
 
-                        {/* Bottom Row: Green Arrow + Message text */}
+                        {/* Bottom Row: Arrow + Message text */}
                         <div className="flex items-start gap-2 pt-0.5">
-                          <span className="text-emerald-500 font-bold text-sm shrink-0 leading-tight">➜</span>
+                          <span
+                            className={`font-bold text-sm shrink-0 leading-tight ${isOwner ? "text-emerald-600" : "text-gray-400"}`}
+                          >
+                            ➜
+                          </span>
                           <div className="font-mono text-xs sm:text-[13px] text-gray-800 break-words leading-relaxed flex-1">
-                            {log.message}
+                            {displayedMessage}
                           </div>
                         </div>
 
                         {/* Optional Quick Action Bar for convenience */}
                         <div className="flex items-center justify-end gap-2 pt-1 border-t border-gray-100">
-                          {extractedOtpCode && (
-                            <button
-                              type="button"
-                              onClick={() => copyToClipboard(extractedOtpCode, `otp_${idx}`)}
-                              className="px-2.5 py-1 rounded-md text-[11px] font-medium bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 font-mono transition cursor-pointer flex items-center gap-1"
-                            >
-                              <Key className="w-3 h-3 text-amber-600" />
-                              {copiedText === `otp_${idx}` ? (
-                                <span className="text-emerald-600 font-bold">Copied OTP!</span>
-                              ) : (
-                                <span>OTP: {extractedOtpCode}</span>
-                              )}
-                            </button>
-                          )}
+                          {extractedOtpCode &&
+                            (isOwner ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  copyToClipboard(
+                                    extractedOtpCode,
+                                    `otp_${idx}`,
+                                  )
+                                }
+                                className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-900 font-mono transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                                title="Copy your verified OTP"
+                              >
+                                <Key className="w-3 h-3 text-emerald-600" />
+                                {copiedText === `otp_${idx}` ? (
+                                  <span className="text-emerald-700 font-black">
+                                    Copied OTP!
+                                  </span>
+                                ) : (
+                                  <span>🔑 OTP: {extractedOtpCode}</span>
+                                )}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  showDashboardToast(
+                                    '🔒 সুরক্ষিত ওটিপি: শুধুমাত্র যে ব্যক্তি "Get Number" থেকে এই নাম্বারটি নিয়েছেন তিনি এই ওটিপি দেখতে পারবেন।',
+                                    "info",
+                                  )
+                                }
+                                className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-gray-100 hover:bg-gray-200 border border-gray-300 text-gray-600 font-mono transition cursor-pointer flex items-center gap-1 select-none"
+                                title="Protected OTP Code"
+                              >
+                                <Lock className="w-3 h-3 text-gray-500" />
+                                <span>🔒 OTP: {maskedOtpCode}</span>
+                              </button>
+                            ))}
                           <button
                             type="button"
-                            onClick={() => copyToClipboard(log.range, `range_${idx}`)}
+                            onClick={() =>
+                              copyToClipboard(log.range, `range_${idx}`)
+                            }
                             className="px-2 py-1 text-[11px] font-mono font-medium rounded-md bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-600 transition cursor-pointer flex items-center gap-1"
                             title="Copy Number/Range"
                           >
@@ -2097,9 +3410,15 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                           </button>
                           <button
                             type="button"
-                            onClick={() => copyToClipboard(log.message, `msg_${idx}`)}
+                            onClick={() =>
+                              copyToClipboard(displayedMessage, `msg_${idx}`)
+                            }
                             className="p-1 rounded-md text-gray-400 hover:text-gray-700 transition cursor-pointer"
-                            title="Copy Message"
+                            title={
+                              isOwner
+                                ? "Copy Message"
+                                : "Copy Protected Message"
+                            }
                           >
                             {copiedText === `msg_${idx}` ? (
                               <Check className="w-3.5 h-3.5 text-emerald-600" />
@@ -2115,7 +3434,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   {/* Footer matching template */}
                   <div className="text-xs text-gray-400 font-mono space-y-0.5 pt-3">
                     <div>Last Updated: {lastUpdatedTime}</div>
-                    <div>Logs: {filteredHits.length} (Max {Math.max(50, filteredHits.length)})</div>
+                    <div>
+                      Logs: {filteredHits.length} (Max{" "}
+                      {Math.max(50, filteredHits.length)})
+                    </div>
                   </div>
                 </div>
               );
@@ -2124,7 +3446,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         )}
 
         {/* -------------------- 3. SUMMARY & SUCCESS OTPS VIEW -------------------- */}
-        {currentView === 'summary' && (
+        {currentView === "summary" && (
           <div className="space-y-5">
             <div className="bg-white rounded-2xl p-5 sm:p-6 shadow-sm border border-gray-200 space-y-4">
               <h2 className="text-xl font-extrabold text-gray-900 flex items-center gap-2">
@@ -2134,23 +3456,40 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="p-4 rounded-xl bg-blue-50 border border-blue-200">
-                  <div className="text-xs text-blue-600 font-bold uppercase">Success Delivery Rate</div>
-                  <div className="text-2xl font-black text-blue-900 mt-1">
-                    {liveSuccessOtps.length > 0 || getNumHistory.some((h) => h.status === 'SUCCESS') ? '100%' : '0%'}
+                  <div className="text-xs text-blue-600 font-bold uppercase">
+                    Success Delivery Rate
                   </div>
-                  <div className="text-xs text-blue-700 mt-0.5">Carrier direct routing</div>
+                  <div className="text-2xl font-black text-blue-900 mt-1">
+                    {liveSuccessOtps.length > 0 ||
+                    getNumHistory.some((h) => h.status === "SUCCESS")
+                      ? "100%"
+                      : "0%"}
+                  </div>
+                  <div className="text-xs text-blue-700 mt-0.5">
+                    Carrier direct routing
+                  </div>
                 </div>
                 <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200">
-                  <div className="text-xs text-emerald-600 font-bold uppercase">Active Ranges</div>
-                  <div className="text-2xl font-black text-emerald-900 mt-1">{liveAccessList.length}</div>
-                  <div className="text-xs text-emerald-700 mt-0.5">Active carrier networks</div>
+                  <div className="text-xs text-emerald-600 font-bold uppercase">
+                    Active Ranges
+                  </div>
+                  <div className="text-2xl font-black text-emerald-900 mt-1">
+                    {liveAccessList.length}
+                  </div>
+                  <div className="text-xs text-emerald-700 mt-0.5">
+                    Active carrier networks
+                  </div>
                 </div>
                 <div className="p-4 rounded-xl bg-amber-50 border border-amber-200">
-                  <div className="text-xs text-amber-600 font-bold uppercase">Average Latency</div>
-                  <div className="text-2xl font-black text-amber-900 mt-1">
-                    {liveSuccessOtps.length > 0 ? '0.2s' : '0.0s'}
+                  <div className="text-xs text-amber-600 font-bold uppercase">
+                    Average Latency
                   </div>
-                  <div className="text-xs text-amber-700 mt-0.5">Instant OTP dispatch</div>
+                  <div className="text-2xl font-black text-amber-900 mt-1">
+                    {liveSuccessOtps.length > 0 ? "0.2s" : "0.0s"}
+                  </div>
+                  <div className="text-xs text-amber-700 mt-0.5">
+                    Instant OTP dispatch
+                  </div>
                 </div>
               </div>
             </div>
@@ -2175,19 +3514,52 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   <tbody className="divide-y divide-gray-100">
                     {liveSuccessOtps.length === 0 ? (
                       <tr>
-                        <td colSpan={4} className="p-8 text-center text-gray-400 font-sans text-xs">
+                        <td
+                          colSpan={4}
+                          className="p-8 text-center text-gray-400 font-sans text-xs"
+                        >
                           No delivered OTPs recorded for this session yet.
                         </td>
                       </tr>
                     ) : (
-                      liveSuccessOtps.map((o, idx) => (
-                        <tr key={idx} className="hover:bg-gray-50">
-                          <td className="p-3 text-gray-500">{o.otp_id}</td>
-                          <td className="p-3 font-bold text-blue-600">{o.number}</td>
-                          <td className="p-3 text-emerald-700 font-semibold">{o.message}</td>
-                          <td className="p-3 text-gray-500 font-sans">{new Date(o.time).toLocaleTimeString()}</td>
-                        </tr>
-                      ))
+                      liveSuccessOtps.map((o, idx) => {
+                        const ownerCheck = isHitOwnedByUser({
+                          range: o.number,
+                          message: o.message,
+                        });
+                        const isOwner = ownerCheck.isOwner;
+                        const extracted = extractOtp(o.message);
+                        const displayedMsg = isOwner
+                          ? o.message
+                          : maskOtpInMessage(o.message, extracted);
+
+                        return (
+                          <tr
+                            key={idx}
+                            className={`hover:bg-gray-50 ${isOwner ? "bg-emerald-50/25" : ""}`}
+                          >
+                            <td className="p-3 text-gray-500">{o.otp_id}</td>
+                            <td className="p-3 font-bold text-blue-600">
+                              <div className="flex items-center gap-1.5">
+                                <span>{o.number}</span>
+                                {isOwner && (
+                                  <span className="text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-200 px-1.5 py-0.2 rounded font-sans font-bold">
+                                    YOU
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td
+                              className={`p-3 font-semibold ${isOwner ? "text-emerald-700" : "text-gray-600"}`}
+                            >
+                              {displayedMsg}
+                            </td>
+                            <td className="p-3 text-gray-500 font-sans">
+                              {new Date(o.time).toLocaleTimeString()}
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
@@ -2197,7 +3569,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         )}
 
         {/* -------------------- 4. ACCESS LIST VIEW -------------------- */}
-        {currentView === 'accessList' && (
+        {currentView === "accessList" && (
           <div className="bg-white rounded-2xl p-5 sm:p-6 shadow-sm border border-gray-200 space-y-4">
             <div className="border-b pb-3">
               <h2 className="text-xl font-extrabold text-gray-900 flex items-center gap-2">
@@ -2221,19 +3593,27 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 <tbody className="divide-y divide-gray-100">
                   {liveAccessList.length === 0 ? (
                     <tr>
-                      <td colSpan={3} className="p-8 text-center text-gray-400 font-sans text-xs">
-                        No active service access rules found. Access list is currently empty.
+                      <td
+                        colSpan={3}
+                        className="p-8 text-center text-gray-400 font-sans text-xs"
+                      >
+                        No active service access rules found. Access list is
+                        currently empty.
                       </td>
                     </tr>
                   ) : (
                     liveAccessList.map((item, i) => (
                       <tr key={i} className="hover:bg-gray-50">
-                        <td className="p-3 font-bold text-blue-600">{item.sid}</td>
+                        <td className="p-3 font-bold text-blue-600">
+                          {item.sid}
+                        </td>
                         <td className="p-3 font-mono text-gray-800">
-                          {item.ranges?.join(', ') || 'N/A'}
+                          {item.ranges?.join(", ") || "N/A"}
                         </td>
                         <td className="p-3 text-gray-500 font-mono">
-                          {item.last_at ? new Date(item.last_at).toLocaleTimeString() : 'Active'}
+                          {item.last_at
+                            ? new Date(item.last_at).toLocaleTimeString()
+                            : "Active"}
                         </td>
                       </tr>
                     ))
@@ -2245,25 +3625,438 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         )}
 
         {/* -------------------- 5. SENDER / RANGE VIEW -------------------- */}
-        {currentView === 'senderRange' && (
-          <div className="bg-white rounded-2xl p-5 sm:p-6 shadow-sm border border-gray-200 space-y-4">
-            <h2 className="text-xl font-extrabold text-gray-900 flex items-center gap-2">
-              <Globe2 className="w-5 h-5 text-blue-600" />
-              <span>Sender / Range</span>
-            </h2>
-            <div className="p-8 text-center text-gray-400 text-xs font-medium">
-              No active carrier ranges available. Enter a range to allocate numbers.
+        {currentView === "senderRange" && (
+          <div className="space-y-5">
+            {/* Header & Control Section */}
+            <div className="bg-white rounded-2xl p-5 sm:p-6 shadow-sm border border-gray-200/90 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl border border-blue-200/70 shadow-2xs">
+                    <Globe2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h2 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight">
+                        Sender / Range
+                      </h2>
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-blue-50 border border-blue-200 text-blue-700">
+                        <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
+                        <span>Live Carrier Stream</span>
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Real-time carrier ranges &amp; incoming message stream.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={handleManualRefreshConsole}
+                    className="px-3.5 py-1.5 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                    title="Refresh Live Ranges"
+                  >
+                    <RotateCw
+                      className={`w-3.5 h-3.5 ${isConsoleRefreshing ? "animate-spin text-blue-600" : "text-gray-500"}`}
+                    />
+                    <span>Sync Stream</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Real-time stats cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+                <div className="p-3 bg-gray-50 rounded-xl border border-gray-200/80">
+                  <span className="text-gray-500 block text-[10px] uppercase font-bold">
+                    Active Senders
+                  </span>
+                  <span className="font-black text-blue-600 text-base">
+                    {
+                      Array.from(new Set(senderRangeList.map((s) => s.sid)))
+                        .length
+                    }{" "}
+                    Senders
+                  </span>
+                </div>
+                <div className="p-3 bg-gray-50 rounded-xl border border-gray-200/80">
+                  <span className="text-gray-500 block text-[10px] uppercase font-bold">
+                    Monitored Ranges
+                  </span>
+                  <span className="font-black text-emerald-600 text-base">
+                    {
+                      Array.from(new Set(senderRangeList.map((s) => s.range)))
+                        .length
+                    }{" "}
+                    Ranges
+                  </span>
+                </div>
+                <div className="p-3 bg-gray-50 rounded-xl border border-gray-200/80">
+                  <span className="text-gray-500 block text-[10px] uppercase font-bold">
+                    Stream Traffic Hits
+                  </span>
+                  <span className="font-black text-purple-600 text-base">
+                    {liveHits.length} Hits
+                  </span>
+                </div>
+                <div className="p-3 bg-gray-50 rounded-xl border border-gray-200/80">
+                  <span className="text-gray-500 block text-[10px] uppercase font-bold">
+                    Sync Interval
+                  </span>
+                  <span className="font-black text-amber-600 text-base">
+                    Every 2s
+                  </span>
+                </div>
+              </div>
+
+              {/* Search & Category Filter bar */}
+              <div className="space-y-2.5 pt-2 border-t border-gray-100">
+                <div className="flex flex-col sm:flex-row items-center gap-2">
+                  <div className="relative flex-1 w-full">
+                    <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={senderRangeFilter}
+                      onChange={(e) => setSenderRangeFilter(e.target.value)}
+                      placeholder="Filter by sender (e.g. WhatsApp), range (e.g. 88017), operator, country..."
+                      className="w-full pl-10 pr-4 py-2 text-xs sm:text-sm bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
+                    />
+                    {senderRangeFilter && (
+                      <button
+                        type="button"
+                        onClick={() => setSenderRangeFilter("")}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Filter chips */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
+                  <span className="text-gray-400 text-[11px] font-bold uppercase tracking-wider mr-1 shrink-0 flex items-center gap-1">
+                    <Filter className="w-3 h-3" /> Quick Filter:
+                  </span>
+                  {[
+                    "ALL",
+                    "WhatsApp",
+                    "Telegram",
+                    "Google",
+                    "Facebook",
+                    "IMO",
+                    "TikTok",
+                  ].map((cat) => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setSenderCategoryFilter(cat)}
+                      className={`px-3 py-1 rounded-lg font-bold transition cursor-pointer shrink-0 text-xs ${
+                        senderCategoryFilter === cat
+                          ? "bg-blue-600 text-white shadow-2xs"
+                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Senders & Ranges Table */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-200/90 overflow-hidden">
+              <div className="p-4 bg-gray-50/80 border-b border-gray-200/80 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-black text-gray-900 uppercase tracking-wider">
+                    Carrier Ranges &amp; Live Senders (
+                    {filteredSenderRanges.length})
+                  </span>
+                </div>
+                <span className="text-[11px] font-mono text-gray-500">
+                  Real-Time Traffic Routing
+                </span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead className="bg-gray-100/70 border-b border-gray-200 text-gray-600 font-bold uppercase tracking-wider text-[10px]">
+                    <tr>
+                      <th className="py-3 px-4">Sender / Service</th>
+                      <th className="py-3 px-4">Range Prefix</th>
+                      <th className="py-3 px-4">Operator &amp; Country</th>
+                      <th className="py-3 px-4 text-center">Stream Hits</th>
+                      <th className="py-3 px-4">Latest Message</th>
+                      <th className="py-3 px-4 text-right">Direct Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {filteredSenderRanges.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={6}
+                          className="py-10 text-center text-gray-400 text-xs"
+                        >
+                          No matching sender ranges found for "
+                          {senderRangeFilter}".
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredSenderRanges.map((item) => {
+                        const style = getServiceStyle(item.sid);
+                        const extractedOtp = extractOtp(item.latestMessage);
+                        const isOwner = isHitOwnedByUser({
+                          range: item.range,
+                        }).isOwner;
+                        const displayedLatestMessage = isOwner
+                          ? item.latestMessage
+                          : maskOtpInMessage(item.latestMessage, extractedOtp);
+                        const displayedOtp = isOwner
+                          ? extractedOtp
+                          : extractedOtp
+                            ? extractedOtp.replace(/\d/g, "X")
+                            : "XXXXXX";
+
+                        return (
+                          <tr
+                            key={item.key}
+                            className="hover:bg-blue-50/30 transition"
+                          >
+                            {/* Service */}
+                            <td className="py-3.5 px-4">
+                              <span
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black border ${style.badge}`}
+                              >
+                                <span>{item.sid}</span>
+                              </span>
+                            </td>
+
+                            {/* Range */}
+                            <td className="py-3.5 px-4 font-mono font-bold text-gray-900 text-xs sm:text-sm">
+                              <div className="flex items-center gap-1.5">
+                                <span>{item.range}</span>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    copyToClipboard(
+                                      item.range,
+                                      `range_${item.key}`,
+                                    )
+                                  }
+                                  className="text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer"
+                                  title="Copy Range"
+                                >
+                                  {copiedText === `range_${item.key}` ? (
+                                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                  ) : (
+                                    <Copy className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
+                              </div>
+                            </td>
+
+                            {/* Operator & Country */}
+                            <td className="py-3.5 px-4">
+                              <div className="font-bold text-gray-900">
+                                {item.operator}
+                              </div>
+                              <div className="text-[11px] text-gray-500">
+                                {item.country}
+                              </div>
+                            </td>
+
+                            {/* Stream Hits */}
+                            <td className="py-3.5 px-4 text-center">
+                              {item.hitsCount > 0 ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                  {item.hitsCount} hits
+                                </span>
+                              ) : (
+                                <span className="text-[11px] font-mono text-gray-400">
+                                  Idle Socket
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Latest Message */}
+                            <td className="py-3.5 px-4 max-w-xs">
+                              <div className="truncate font-mono text-gray-700 text-[11px]">
+                                {displayedLatestMessage}
+                              </div>
+                              {extractedOtp && (
+                                <span
+                                  className={`inline-block mt-0.5 px-1.5 py-0.2 rounded text-[10px] font-mono font-bold ${
+                                    isOwner
+                                      ? "bg-emerald-100 text-emerald-900 border border-emerald-300"
+                                      : "bg-gray-100 text-gray-500 border border-gray-200"
+                                  }`}
+                                >
+                                  {isOwner
+                                    ? `🔑 OTP: ${displayedOtp}`
+                                    : `🔒 OTP: ${displayedOtp}`}
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Action Button */}
+                            <td className="py-3.5 px-4 text-right">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleAllocateFromSenderRange(item.range)
+                                }
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold text-xs shadow-2xs transition cursor-pointer"
+                                title={`Allocate number from range ${item.range}`}
+                              >
+                                <Smartphone className="w-3.5 h-3.5" />
+                                <span>Get Number</span>
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Live Message Feed dedicated to Senders & Ranges */}
+            <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-200/90 space-y-3">
+              <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <Radio className="w-4 h-4 text-emerald-600 animate-pulse" />
+                  <h3 className="text-sm font-black text-gray-900 uppercase tracking-wide">
+                    Real-Time Incoming Stream Feed
+                  </h3>
+                </div>
+                <span className="text-xs font-mono text-gray-500">
+                  Active Messages: {liveHits.length}
+                </span>
+              </div>
+
+              <div className="space-y-2.5 max-h-96 overflow-y-auto pr-1">
+                {liveHits.length === 0 ? (
+                  <div className="py-8 text-center text-gray-400 text-xs">
+                    <Radio className="w-6 h-6 mx-auto mb-2 text-gray-300 animate-pulse" />
+                    Waiting for incoming messages on live stream...
+                  </div>
+                ) : (
+                  liveHits.slice(0, 25).map((hit, idx) => {
+                    const otpCode = extractOtp(hit.message);
+                    const ownerCheck = isHitOwnedByUser(hit);
+                    const isOwner = ownerCheck.isOwner;
+                    const displayedMessage = isOwner
+                      ? hit.message
+                      : maskOtpInMessage(hit.message, otpCode);
+                    const maskedOtp = otpCode
+                      ? otpCode.replace(/\d/g, "X")
+                      : "XXXXXX";
+
+                    return (
+                      <div
+                        key={idx}
+                        className={`p-3.5 rounded-xl border transition flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 ${
+                          isOwner
+                            ? "border-emerald-300 bg-emerald-50/30"
+                            : "border-gray-200/80 bg-gray-50/70 hover:bg-white hover:shadow-2xs"
+                        }`}
+                      >
+                        <div className="space-y-1 min-w-0 flex-1">
+                          <div className="flex items-center gap-2 text-xs flex-wrap">
+                            <span className="font-mono text-gray-400 text-[11px]">
+                              {formatHitTime(hit.time)}
+                            </span>
+                            <span
+                              className={`font-bold ${getServiceTextColor(hit.sid)}`}
+                            >
+                              {hit.sid}
+                            </span>
+                            <span className="text-gray-300 font-mono">::</span>
+                            <span className="font-mono text-gray-700 font-bold bg-white px-2 py-0.5 rounded border border-gray-200">
+                              {hit.range}
+                            </span>
+                            {isOwner && (
+                              <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-1.5 py-0.2 rounded border border-emerald-200">
+                                YOU
+                              </span>
+                            )}
+                            <span className="text-[11px] text-gray-500 font-normal">
+                              {hit.operator ||
+                                resolveCarrierDetails(hit.range).operator}{" "}
+                              (
+                              {hit.country ||
+                                resolveCarrierDetails(hit.range).country}
+                              )
+                            </span>
+                          </div>
+                          <div className="text-xs font-mono text-gray-800 break-words">
+                            ➜ {displayedMessage}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                          {otpCode &&
+                            (isOwner ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  copyToClipboard(otpCode, `sender_otp_${idx}`)
+                                }
+                                className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-900 font-mono transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                                title="Copy your verified OTP"
+                              >
+                                <Key className="w-3 h-3 text-emerald-600" />
+                                {copiedText === `sender_otp_${idx}`
+                                  ? "Copied!"
+                                  : `OTP: ${otpCode}`}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  showDashboardToast(
+                                    '🔒 সুরক্ষিত ওটিপি: শুধুমাত্র যে ব্যক্তি "Get Number" থেকে এই নাম্বারটি নিয়েছেন তিনি এই ওটিপি দেখতে পারবেন।',
+                                    "info",
+                                  )
+                                }
+                                className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-gray-100 hover:bg-gray-200 border border-gray-300 text-gray-600 font-mono transition cursor-pointer flex items-center gap-1 select-none"
+                                title="Protected OTP Code"
+                              >
+                                <Lock className="w-3 h-3 text-gray-500" />
+                                <span>OTP: {maskedOtp}</span>
+                              </button>
+                            ))}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleAllocateFromSenderRange(hit.range)
+                            }
+                            className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 transition cursor-pointer flex items-center gap-1"
+                          >
+                            <Smartphone className="w-3 h-3" />
+                            <span>Allocate Range</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
             </div>
           </div>
         )}
 
         {/* -------------------- 6. TERMINAL VIEW -------------------- */}
-        {currentView === 'terminal' && (
+        {currentView === "terminal" && (
           <div className="bg-[#1e293b] text-gray-200 rounded-2xl p-5 shadow-lg border border-gray-700 space-y-4 font-mono">
             <div className="flex items-center justify-between border-b border-gray-700 pb-3">
               <div className="flex items-center gap-2">
                 <Circle className="w-3 h-3 text-red-500 fill-red-500" />
-                <span className="font-bold text-white text-sm">Network Terminal</span>
+                <span className="font-bold text-white text-sm">
+                  Network Terminal
+                </span>
               </div>
               <span className="text-xs text-emerald-400">ACTIVE</span>
             </div>
@@ -2271,117 +4064,241 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             <div className="bg-black/50 p-4 rounded-xl h-80 overflow-y-auto space-y-2 text-xs">
               {liveHits.length === 0 ? (
                 <div className="space-y-2 text-gray-400">
-                  <div className="text-emerald-400">[SYSTEM] Terminal initialized. Gateway connection active.</div>
-                  <div className="text-gray-400">[SYSTEM] Listening for carrier socket events...</div>
-                  <div className="text-gray-500 text-[11px]">[SYSTEM] Ready. No packets received yet.</div>
+                  <div className="text-emerald-400">
+                    [SYSTEM] Terminal initialized. Gateway connection active.
+                  </div>
+                  <div className="text-gray-400">
+                    [SYSTEM] Listening for carrier socket events...
+                  </div>
+                  <div className="text-gray-500 text-[11px]">
+                    [SYSTEM] Ready. No packets received yet.
+                  </div>
                 </div>
               ) : (
-                liveHits.map((h, i) => (
-                  <div key={i} className="flex items-center gap-2 text-gray-300">
-                    <span className="text-gray-500">[{new Date(h.time || Date.now()).toLocaleTimeString()}]</span>
-                    <span className="text-amber-400">[{h.sid}]</span>
-                    <span className="text-blue-400">RANGE:{h.range}</span>
-                    <span className="text-emerald-400">{h.message}</span>
-                  </div>
-                ))
+                liveHits.map((h, i) => {
+                  const isOwner = isHitOwnedByUser(h).isOwner;
+                  const displayedMsg = isOwner
+                    ? h.message
+                    : maskOtpInMessage(h.message, extractOtp(h.message));
+                  return (
+                    <div
+                      key={i}
+                      className="flex items-center gap-2 text-gray-300"
+                    >
+                      <span className="text-gray-500">
+                        [{new Date(h.time || Date.now()).toLocaleTimeString()}]
+                      </span>
+                      <span className="text-amber-400">[{h.sid}]</span>
+                      <span className="text-blue-400">RANGE:{h.range}</span>
+                      {isOwner && (
+                        <span className="text-emerald-300 font-bold">
+                          [OWNER]
+                        </span>
+                      )}
+                      <span
+                        className={
+                          isOwner
+                            ? "text-emerald-400 font-bold"
+                            : "text-gray-400"
+                        }
+                      >
+                        {displayedMsg}
+                      </span>
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>
         )}
 
         {/* -------------------- 7. PROFILE VIEW -------------------- */}
-        {currentView === 'profile' && (
-          <div className="bg-white rounded-2xl p-5 sm:p-6 shadow-sm border border-gray-200 space-y-5">
-            <h2 className="text-xl font-extrabold text-gray-900 flex items-center gap-2">
-              <User className="w-5 h-5 text-blue-600" />
-              <span>User Profile</span>
-            </h2>
-
-            <div className="p-4 rounded-xl bg-gray-50 border border-gray-200 space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                <div>
-                  <span className="text-gray-500 font-bold">User Full Name:</span>
-                  <p className="text-sm font-extrabold text-gray-900">{user.name}</p>
+        {currentView === "profile" && (
+          <div className="space-y-6">
+            {/* Header Title Card */}
+            <div className="bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 rounded-2xl p-5 sm:p-6 text-white shadow-xl border border-slate-700/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center text-slate-950 font-black text-2xl shadow-lg shadow-amber-500/20 shrink-0">
+                  {(profileName || user.name || "U")[0].toUpperCase()}
                 </div>
                 <div>
-                  <span className="text-gray-500 font-bold">Account Email:</span>
-                  <p className="text-sm font-extrabold text-gray-900">{user.email}</p>
-                </div>
-                <div>
-                  <span className="text-gray-500 font-bold">Account Code:</span>
-                  <p className="text-sm font-mono font-extrabold text-amber-600">{accountCode}</p>
-                </div>
-                <div>
-                  <span className="text-gray-500 font-bold">Account Status:</span>
-                  <p className="text-xs font-semibold text-emerald-600">Active / Verified</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                      {profileName || user.name || "Agent User"}
+                    </h2>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-400/40">
+                      Agent
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/40">
+                      Active
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 font-mono mt-1 flex items-center gap-2">
+                    <span>Email: {user.email}</span>
+                    <span className="text-slate-500">•</span>
+                    <span>Code: <strong className="text-amber-400">{accountCode}</strong></span>
+                  </p>
                 </div>
               </div>
             </div>
 
-            {/* Secret Key Configuration */}
-            <div className="p-4 rounded-xl border border-gray-200 bg-gray-50 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Key className="w-4 h-4 text-gray-700" />
-                  <span className="text-sm font-bold text-gray-900">Access Key</span>
+            {/* Toast Alerts for Profile Actions */}
+            {profileSaveSuccess && (
+              <div className="p-4 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-sm font-semibold flex items-center gap-2">
+                <CheckCircle className="w-5 h-5 text-emerald-400 shrink-0" />
+                <span>{profileSaveSuccess}</span>
+              </div>
+            )}
+            {profileSaveError && (
+              <div className="p-4 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-sm font-semibold flex items-center gap-2">
+                <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0" />
+                <span>{profileSaveError}</span>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Profile Details Form Card */}
+              <div className="bg-slate-900/90 rounded-2xl p-5 sm:p-6 border border-slate-800 shadow-xl space-y-4">
+                <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+                  <User className="w-5 h-5 text-amber-400" />
+                  <h3 className="text-lg font-bold text-white tracking-tight">
+                    Submitted Profile & Registration Info
+                  </h3>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsEditingKey(!isEditingKey);
-                    setKeyInput(apiKey);
-                  }}
-                  className="text-xs font-bold text-blue-600 hover:underline cursor-pointer"
-                >
-                  {isEditingKey ? 'Cancel' : 'Update Key'}
-                </button>
+
+                <form onSubmit={handleSaveProfileInfo} className="space-y-4 text-xs sm:text-sm">
+                  <div>
+                    <label className="block text-slate-300 font-bold mb-1">
+                      Full Name / Account Title:
+                    </label>
+                    <input
+                      type="text"
+                      value={profileName}
+                      onChange={(e) => setProfileName(e.target.value)}
+                      placeholder="Enter full name"
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-amber-400 transition"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 font-bold mb-1">
+                      Registered Email Address (Identity):
+                    </label>
+                    <input
+                      type="email"
+                      value={user.email}
+                      disabled
+                      className="w-full bg-slate-800/60 border border-slate-700/60 rounded-xl px-3.5 py-2.5 text-slate-400 cursor-not-allowed font-mono"
+                    />
+                    <span className="text-[11px] text-slate-400 mt-1 block">
+                      * Email identity is locked and verified.
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 font-bold mb-1">
+                      Phone Number / Telegram Contact:
+                    </label>
+                    <input
+                      type="text"
+                      value={profilePhone}
+                      onChange={(e) => setProfilePhone(e.target.value)}
+                      placeholder="+8801700000000 or @telegram_handle"
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-amber-400 transition font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 font-bold mb-1">
+                      Account Note / Registration Form Details:
+                    </label>
+                    <input
+                      type="text"
+                      value={profileNote}
+                      onChange={(e) => setProfileNote(e.target.value)}
+                      placeholder="Form submission details or note"
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-amber-400 transition"
+                    />
+                  </div>
+
+                  <div className="pt-2">
+                    <button
+                      type="submit"
+                      className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>Save & Sync Profile</span>
+                    </button>
+                  </div>
+                </form>
               </div>
 
-              {isEditingKey ? (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={keyInput}
-                    onChange={(e) => setKeyInput(e.target.value)}
-                    placeholder="Enter access key..."
-                    className="flex-1 p-2 rounded-lg border border-gray-300 text-xs font-mono bg-white"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleSaveApiKey}
-                    className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs cursor-pointer"
-                  >
-                    Save
-                  </button>
+              {/* Security & Change Password Card */}
+              <div className="bg-slate-900/90 rounded-2xl p-5 sm:p-6 border border-slate-800 shadow-xl space-y-4">
+                <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+                  <Key className="w-5 h-5 text-blue-400" />
+                  <h3 className="text-lg font-bold text-white tracking-tight">
+                    Update Account Password
+                  </h3>
                 </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="password"
-                    value={apiKey}
-                    readOnly
-                    className="flex-1 p-2 rounded-lg border border-gray-200 text-xs font-mono bg-white text-gray-600"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => copyToClipboard(apiKey, 'apikey')}
-                    className="p-2 rounded-lg bg-white border border-gray-300 text-gray-600 text-xs cursor-pointer"
-                    title="Copy Key"
-                  >
-                    {copiedText === 'apikey' ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-                  </button>
-                </div>
-              )}
+
+                <form onSubmit={handleUpdatePassword} className="space-y-4 text-xs sm:text-sm">
+                  <div>
+                    <label className="block text-slate-300 font-bold mb-1">
+                      New Security Password:
+                    </label>
+                    <input
+                      type="password"
+                      value={profileNewPassword}
+                      onChange={(e) => setProfileNewPassword(e.target.value)}
+                      placeholder="Enter new password (min 4 chars)"
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-blue-400 transition"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 font-bold mb-1">
+                      Confirm New Password:
+                    </label>
+                    <input
+                      type="password"
+                      value={profileConfirmPassword}
+                      onChange={(e) => setProfileConfirmPassword(e.target.value)}
+                      placeholder="Re-type new password"
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-blue-400 transition"
+                    />
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-400 space-y-1">
+                    <div className="flex items-center gap-1.5 font-bold text-amber-400">
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>Admin Sync Protection</span>
+                    </div>
+                    <p className="text-[11px] leading-relaxed">
+                      Updating your password here automatically updates your access credentials across the system and reflects in the Admin Panel.
+                    </p>
+                  </div>
+
+                  <div className="pt-2">
+                    <button
+                      type="submit"
+                      className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold transition-all shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                    >
+                      <Lock className="w-4 h-4" />
+                      <span>Update Password</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
             </div>
           </div>
         )}
-
       </main>
 
       {/* Floating Compact Toast Notification matching User Red Box Area */}
       {dashboardToast && (
         <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 bg-white border border-gray-200/90 shadow-xl px-4 py-2.5 rounded-2xl animate-in fade-in slide-in-from-bottom-2 duration-200 w-auto max-w-sm whitespace-nowrap">
-          {dashboardToast.type === 'warning' ? (
+          {dashboardToast.type === "warning" ? (
             <div className="w-5 h-5 rounded-full bg-[#fde68a] text-[#b45309] flex items-center justify-center font-bold text-xs shrink-0 select-none">
               !
             </div>

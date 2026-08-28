@@ -62,6 +62,8 @@ export const DEFAULT_USER_PERMISSIONS: UserPermissions = {
   canChat: true,
 };
 
+import { sendAdminMessage } from './supportChatService';
+
 export interface UserAccount {
   id: string;
   name: string;
@@ -75,7 +77,9 @@ export interface UserAccount {
   phoneOrTelegram?: string;
   groupLink?: string;
   note?: string;
+  adminNotice?: string;
   approvedAt?: number;
+  rejectedAt?: number;
   permissions?: UserPermissions;
 }
 
@@ -224,36 +228,13 @@ export function requestNewAccount(params: {
     return { success: false, message: 'Password must be at least 4 characters long.' };
   }
 
+  // Strict Duplicate Email Check: Prevent multiple submissions for the same email
   const existing = accounts.find((a) => a.email.toLowerCase() === cleanEmail);
   if (existing) {
-    if (existing.status === 'pending') {
-      return {
-        success: false,
-        message: 'This email is already in PENDING status. Please wait for admin approval.',
-      };
-    }
-    if (existing.status === 'approved') {
-      return {
-        success: false,
-        message: 'An approved account already exists with this email. You can directly sign in.',
-      };
-    }
-    if (existing.status === 'rejected') {
-      // Re-apply
-      existing.status = 'pending';
-      existing.password = params.password;
-      existing.name = params.name?.trim() || existing.name;
-      existing.phoneOrTelegram = params.phoneOrTelegram?.trim() || existing.phoneOrTelegram;
-      existing.groupLink = params.groupLink?.trim() || existing.groupLink;
-      existing.note = params.note?.trim() || 'Re-applied request';
-      existing.createdAt = Date.now();
-      saveAllAccounts(accounts);
-      return {
-        success: true,
-        message: 'Your account request has been re-submitted in PENDING status for admin review.',
-        account: existing,
-      };
-    }
+    return {
+      success: false,
+      message: `An account request for ${cleanEmail} has already been submitted or registered! Multiple submissions with the same email address are strictly prohibited. (এক ইমেইল একাধিকবার সাবমিট করা যাবে না)`,
+    };
   }
 
   // Generate unique 10 digit code
@@ -266,12 +247,12 @@ export function requestNewAccount(params: {
     username: cleanEmail.split('@')[0],
     password: params.password,
     accountCode: generatedCode,
-    status: 'pending', // Strictly pending!
+    status: 'pending', // Strictly pending until admin approves!
     role: 'user',
     createdAt: Date.now(),
     phoneOrTelegram: params.phoneOrTelegram?.trim() || '',
     groupLink: params.groupLink?.trim() || '',
-    note: params.note?.trim() || 'New account registration request via SMS box',
+    note: params.note?.trim() || 'Active account request via registration form',
   };
 
   accounts.unshift(newAccount);
@@ -298,10 +279,21 @@ export function approveAccount(id: string): { success: boolean; message: string;
   }
 
   saveAllAccounts(accounts);
+
+  // Send real-time live chat approval message to user
+  try {
+    sendAdminMessage(
+      target.email,
+      `🎉 Congratulations! Your account request (${target.email}) has been APPROVED by the Admin. You can now log in to the website with your password.`
+    );
+  } catch {
+    // ignore
+  }
+
   return { success: true, message: `Account for ${target.email} has been APPROVED!`, account: target };
 }
 
-export function rejectAccount(id: string, reason?: string): { success: boolean; message: string } {
+export function rejectAccount(id: string, reason?: string): { success: boolean; message: string; account?: UserAccount } {
   const accounts = getAllAccounts();
   const target = accounts.find((a) => a.id === id);
   if (!target) {
@@ -309,12 +301,55 @@ export function rejectAccount(id: string, reason?: string): { success: boolean; 
   }
 
   target.status = 'rejected';
+  target.rejectedAt = Date.now();
   if (reason) {
+    target.adminNotice = `Rejected: ${reason}`;
     target.note = `Rejected: ${reason}`;
+  } else {
+    target.adminNotice = 'Your account request was rejected by Admin.';
   }
 
   saveAllAccounts(accounts);
-  return { success: true, message: `Account request for ${target.email} has been rejected.` };
+
+  // Send live chat rejection message to user
+  try {
+    sendAdminMessage(
+      target.email,
+      `❌ Notice: Your account request (${target.email}) was REJECTED by Admin. ${reason ? 'Reason: ' + reason : 'Please contact support if you need assistance.'}`
+    );
+  } catch {
+    // ignore
+  }
+
+  return { success: true, message: `Account request for ${target.email} has been REJECTED.`, account: target };
+}
+
+export function sendAdminNoticeToUser(
+  idOrEmail: string,
+  noticeText: string
+): { success: boolean; message: string; account?: UserAccount } {
+  const accounts = getAllAccounts();
+  const clean = idOrEmail.trim().toLowerCase();
+  const target = accounts.find((a) => a.id === idOrEmail || a.email.toLowerCase() === clean);
+
+  if (!target) {
+    return { success: false, message: 'Account not found.' };
+  }
+
+  target.adminNotice = noticeText.trim();
+  saveAllAccounts(accounts);
+
+  // Send to user live support chat
+  try {
+    sendAdminMessage(
+      target.email,
+      `📢 Admin Official Notice: ${noticeText.trim()}`
+    );
+  } catch {
+    // ignore
+  }
+
+  return { success: true, message: `Notice sent to ${target.email}!`, account: target };
 }
 
 export function suspendAccount(id: string, reason?: string): { success: boolean; message: string; account?: UserAccount } {
@@ -348,6 +383,55 @@ export function updateUserPermissions(
   saveAllAccounts(accounts);
 
   return { success: true, message: `Permissions updated for ${target.email}`, account: target };
+}
+
+export function updateUserProfileAndPassword(params: {
+  email: string;
+  name?: string;
+  phoneOrTelegram?: string;
+  password?: string;
+  note?: string;
+}): { success: boolean; message: string; account?: UserAccount } {
+  const accounts = getAllAccounts();
+  const cleanEmail = params.email.trim().toLowerCase();
+  const target = accounts.find((a) => a.email.toLowerCase() === cleanEmail);
+  if (!target) {
+    return { success: false, message: 'Account not found.' };
+  }
+
+  if (params.name !== undefined && params.name.trim() !== '') {
+    target.name = params.name.trim();
+  }
+  if (params.phoneOrTelegram !== undefined) {
+    target.phoneOrTelegram = params.phoneOrTelegram.trim();
+  }
+  if (params.password !== undefined && params.password.trim() !== '') {
+    target.password = params.password.trim();
+  }
+  if (params.note !== undefined) {
+    target.note = params.note.trim();
+  }
+
+  saveAllAccounts(accounts);
+
+  if (typeof window !== 'undefined') {
+    try {
+      const storedUserRaw = localStorage.getItem('super_x_sms_logged_in_user');
+      if (storedUserRaw) {
+        const storedUser = JSON.parse(storedUserRaw);
+        if (storedUser && storedUser.email.toLowerCase() === cleanEmail) {
+          storedUser.name = target.name;
+          storedUser.phoneOrTelegram = target.phoneOrTelegram;
+          storedUser.password = target.password;
+          localStorage.setItem('super_x_sms_logged_in_user', JSON.stringify(storedUser));
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return { success: true, message: 'Profile updated successfully!', account: target };
 }
 
 export const ASIAN_COUNTRIES = [

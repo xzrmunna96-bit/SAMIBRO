@@ -43,6 +43,8 @@ export interface UserData {
   name: string;
   accountCode?: string;
   role?: string;
+  phoneOrTelegram?: string;
+  note?: string;
 }
 
 interface LoginFormProps {
@@ -308,10 +310,18 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
         <div className="flex items-start justify-between gap-2">
           {/* Left Side: Brand Tag & Title */}
           <div className="text-left flex-1">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-100/80 border border-purple-200 text-purple-800 text-xs font-extrabold uppercase tracking-wider mb-2 shadow-2xs">
-              <Sparkles className="w-3 h-3 text-purple-600" />
-              <span>SUPER X SMS</span>
+            {/* Larger Brand Name with Animated Rainbow Border & Rainbow Text Flow */}
+            <div className="relative inline-block p-[2px] rounded-2xl animate-rainbow-border animate-rainbow-pulse-box mb-2.5 shadow-md overflow-hidden group">
+              {/* Shimmer Light Beam Sweep */}
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/50 to-transparent animate-light-sweep pointer-events-none" />
+              <div className="relative px-3.5 py-1.5 sm:px-4 sm:py-2 bg-slate-950 rounded-[14px] flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-amber-400 animate-spin" style={{ animationDuration: '6s' }} />
+                <span className="text-base sm:text-lg font-black uppercase tracking-wider animate-snake-rainbow-text">
+                  SUPER X SMS
+                </span>
+              </div>
             </div>
+
             <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-normal leading-snug">
               Welcome Back
             </h1>
@@ -321,43 +331,53 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
           </div>
 
           {/* Right Side: SMS / Create Active Account / Chat Button */}
-          <div className="flex flex-col items-end pt-1">
-            <button
-              id="open-sms-box-btn"
-              type="button"
-              onClick={() => {
-                setReqError('');
-                setAccountsRefreshKey((k) => k + 1);
-                setIsRequestModalOpen(true);
-              }}
-              title={
-                requestedAccount
-                  ? requestedAccount.status === 'approved'
-                    ? 'Open Live Support Chat & Active Account details'
-                    : 'View pending status & chat with Admin'
-                  : 'Click to Create Active Account / Send message to Admin'
-              }
-              className="relative group p-2.5 sm:p-3 rounded-2xl bg-gradient-to-tr from-purple-600 via-indigo-600 to-violet-500 text-white shadow-md hover:shadow-purple-500/30 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer flex items-center justify-center border-2 border-white ring-2 ring-purple-300/60"
-            >
-              {/* Active Pulse Dot */}
-              <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500 border-2 border-white"></span>
-              </span>
+          <div className="flex flex-col items-end pt-0.5">
+            {/* Glowing Rainbow Animated Box Container around SMS Icon Button */}
+            <div className="relative p-[2.5px] rounded-2xl animate-rainbow-border animate-rainbow-pulse-box shadow-lg hover:scale-105 active:scale-95 transition-all duration-200">
+              <button
+                id="open-sms-box-btn"
+                type="button"
+                onClick={() => {
+                  setReqError('');
+                  setAccountsRefreshKey((k) => k + 1);
+                  setIsRequestModalOpen(true);
+                }}
+                title={
+                  requestedAccount
+                    ? requestedAccount.status === 'approved'
+                      ? 'Open Live Support Chat & Active Account details'
+                      : 'View pending status & chat with Admin'
+                    : 'Click to Create Active Account / Send message to Admin'
+                }
+                className="relative p-2.5 sm:p-3 rounded-[13px] bg-gradient-to-tr from-purple-700 via-indigo-700 to-violet-600 text-white cursor-pointer flex items-center justify-center overflow-hidden group"
+              >
+                {/* Light Beam Sweep inside Button */}
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent animate-light-sweep pointer-events-none" />
 
-              {requestedAccount && requestedAccount.status === 'approved' ? (
-                <MessageSquare className="w-6 h-6 text-white group-hover:rotate-6 transition-transform" />
-              ) : (
-                <MessageSquarePlus className="w-6 h-6 text-white group-hover:rotate-6 transition-transform" />
-              )}
-            </button>
-            <span className="text-[10px] font-bold text-purple-800 mt-1 tracking-tight text-center whitespace-nowrap bg-purple-50 px-2 py-0.5 rounded-md border border-purple-200/80 shadow-2xs">
-              {requestedAccount
-                ? requestedAccount.status === 'approved'
-                  ? '💬 Chat Option / Support'
-                  : '⏳ In Review (Live Chat)'
-                : 'create active account'}
-            </span>
+                {/* Active Pulse Dot */}
+                <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 z-10">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500 border-2 border-white"></span>
+                </span>
+
+                {requestedAccount && requestedAccount.status === 'approved' ? (
+                  <MessageSquare className="w-6 h-6 text-white group-hover:rotate-6 transition-transform relative z-0" />
+                ) : (
+                  <MessageSquarePlus className="w-6 h-6 text-white group-hover:rotate-6 transition-transform relative z-0" />
+                )}
+              </button>
+            </div>
+
+            {/* Label Badge with Animated Rainbow Border Accent */}
+            <div className="relative p-[1px] rounded-lg animate-rainbow-border mt-1.5 shadow-2xs">
+              <span className="block text-[10px] font-black tracking-tight text-center whitespace-nowrap bg-slate-950 text-amber-300 px-2 py-0.5 rounded-[7px]">
+                {requestedAccount
+                  ? requestedAccount.status === 'approved'
+                    ? '💬 Chat Option / Support'
+                    : '⏳ In Review (Live Chat)'
+                  : 'create active account'}
+              </span>
+            </div>
           </div>
         </div>
       </div>

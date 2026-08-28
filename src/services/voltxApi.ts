@@ -3,6 +3,7 @@
 
 export const DEFAULT_VOLTX_ENDPOINT_KEY = 'M7ANNWJY6B2';
 export const DEFAULT_MAUTH_API_KEY = 'M7ANNWJY6B2';
+export const VOLTX_BACKEND_SLUG = 'MXS47FLFX0U';
 
 export function getVoltxEndpointKey(): string {
   if (typeof window !== 'undefined') {
@@ -18,6 +19,7 @@ export function setVoltxEndpointKey(key: string): void {
     localStorage.setItem('voltx_endpoint_key', trimmed);
     localStorage.setItem('voltx_mauthapi_key', trimmed);
     window.dispatchEvent(new Event('voltx_key_updated'));
+    broadcastSystemApiKeyToServer(trimmed).catch(() => {});
   }
 }
 
@@ -26,7 +28,7 @@ export function getMauthApiKey(): string {
     const saved = localStorage.getItem('voltx_mauthapi_key') || localStorage.getItem('voltx_endpoint_key');
     if (saved && saved.trim()) return saved.trim();
   }
-  return getVoltxEndpointKey();
+  return DEFAULT_MAUTH_API_KEY;
 }
 
 export function setMauthApiKey(key: string): void {
@@ -35,12 +37,55 @@ export function setMauthApiKey(key: string): void {
     localStorage.setItem('voltx_mauthapi_key', trimmed);
     localStorage.setItem('voltx_endpoint_key', trimmed);
     window.dispatchEvent(new Event('voltx_key_updated'));
+    broadcastSystemApiKeyToServer(trimmed).catch(() => {});
+  }
+}
+
+/**
+ * Sync active system API key set by Admin from server
+ */
+export async function syncSystemApiKeyFromServer(): Promise<string> {
+  try {
+    const res = await fetch('/api/system/api-key');
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.apiKey && typeof data.apiKey === 'string') {
+        const remoteKey = data.apiKey.trim();
+        if (typeof window !== 'undefined') {
+          const current = localStorage.getItem('voltx_mauthapi_key');
+          if (current !== remoteKey) {
+            localStorage.setItem('voltx_mauthapi_key', remoteKey);
+            localStorage.setItem('voltx_endpoint_key', remoteKey);
+            window.dispatchEvent(new Event('voltx_key_updated'));
+          }
+        }
+        return remoteKey;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return getMauthApiKey();
+}
+
+/**
+ * Broadcast updated API key from Admin panel to server so all users receive it
+ */
+export async function broadcastSystemApiKeyToServer(key: string): Promise<boolean> {
+  try {
+    const res = await fetch('/api/system/api-key', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiKey: key.trim() }),
+    });
+    return res.ok;
+  } catch {
+    return false;
   }
 }
 
 export function getUpstreamBaseUrl(): string {
-  const endpointKey = getVoltxEndpointKey();
-  return `https://api.2oo9.cloud/${endpointKey}/tnevs/@public/api`;
+  return `https://api.2oo9.cloud/${VOLTX_BACKEND_SLUG}/tnevs/@public/api`;
 }
 
 export const PROXY_BASE_URL = '/api/voltx/@public/api';
@@ -297,25 +342,58 @@ export async function fetchSuccessOtps(apiKey?: string): Promise<LiveSuccessOtp[
   return [];
 }
 
+export interface AllocateNumberResult {
+  success: boolean;
+  data: AllocatedNumber | null;
+  message: string;
+  code?: number;
+}
+
 /**
  * 5. POST https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api/getnum
  * Allocate one real number from a range directly through VoltxSMS API
  */
-export async function allocateRealNumber(rangeIdOrDigits: string, apiKey?: string): Promise<AllocatedNumber | null> {
-  const cleanDigits = rangeIdOrDigits.replace(/[^0-9]/g, '');
+export async function allocateRealNumberDetailed(
+  rangeInput: string,
+  apiKey?: string
+): Promise<AllocateNumberResult> {
+  const trimmed = (rangeInput || '').trim();
+  const cleanDigits = trimmed.replace(/[^0-9]/g, '');
+  const ridToUse = trimmed || cleanDigits || '23274';
+
   try {
     const res = await callVoltxApi<AllocatedNumber>('/getnum', {
       method: 'POST',
-      body: { rid: cleanDigits || '88017' },
+      body: { rid: ridToUse, range: cleanDigits || ridToUse },
       apiKey,
     });
 
-    if (res.meta?.code === 200 && res.data) {
-      return res.data;
+    if (res.meta?.code === 200 && res.data?.full_number) {
+      return {
+        success: true,
+        data: res.data,
+        message: res.message || 'Number allocated successfully',
+        code: 200,
+      };
     }
-  } catch {
-    // API unreachable
-  }
 
-  return null;
+    return {
+      success: false,
+      data: null,
+      message: res.message || 'No numbers available in this range from carrier.',
+      code: res.meta?.code || 400,
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      data: null,
+      message: err?.message || 'Connection to carrier API failed. Please verify API key.',
+      code: 500,
+    };
+  }
+}
+
+export async function allocateRealNumber(rangeIdOrDigits: string, apiKey?: string): Promise<AllocatedNumber | null> {
+  const res = await allocateRealNumberDetailed(rangeIdOrDigits, apiKey);
+  return res.data;
 }

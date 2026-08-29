@@ -32,6 +32,8 @@ import {
   Smartphone,
   CheckCheck,
   X,
+  LayoutGrid,
+  Plus,
 } from 'lucide-react';
 import {
   getAllNotifications,
@@ -72,6 +74,14 @@ import {
   LiveConsoleHit,
   DEFAULT_VOLTX_ENDPOINT_KEY,
 } from '../services/voltxApi';
+import {
+  getTopAppsConfig,
+  saveTopAppsConfig,
+  TopAppItem,
+  DEFAULT_TOP_APPS,
+  TOP_APPS_UPDATE_EVENT,
+} from '../services/topAppsService';
+import { getBrandLogoComponent } from './BrandLogos';
 
 const ADMIN_MASTER_PASSWORD = 'MUNNA12061';
 const ADMIN_SESSION_KEY = 'super_x_admin_session_auth';
@@ -83,6 +93,7 @@ type AdminTab =
   | 'user-management'
   | 'manually-user'
   | 'user-notification'
+  | 'top-apps'
   | 'live-chat';
 
 interface AdminPortalProps {
@@ -210,7 +221,83 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
   };
 
   // =========================================================================
-  // SECTION 5: LIVE CHAT
+  // SECTION 5: TOP APPLICATIONS / SOCIAL MEDIA MANAGEMENT
+  // =========================================================================
+  const [adminTopApps, setAdminTopApps] = useState<TopAppItem[]>(() => getTopAppsConfig());
+  const [newAppName, setNewAppName] = useState('');
+  const [newAppId, setNewAppId] = useState('');
+  const [newAppRange, setNewAppRange] = useState('');
+  const [newAppStatus, setNewAppStatus] = useState<'active' | 'coming_soon'>('coming_soon');
+
+  const handleToggleAppStatus = (appId: string) => {
+    const updated = adminTopApps.map((a) =>
+      a.id === appId
+        ? { ...a, status: a.status === 'active' ? ('coming_soon' as const) : ('active' as const) }
+        : a
+    );
+    setAdminTopApps(updated);
+    saveTopAppsConfig(updated);
+    showToast('Application status updated and published to user panel!');
+  };
+
+  const handleToggleAppEnabled = (appId: string) => {
+    const updated = adminTopApps.map((a) =>
+      a.id === appId ? { ...a, isEnabled: a.isEnabled === false } : a
+    );
+    setAdminTopApps(updated);
+    saveTopAppsConfig(updated);
+    showToast('Application visibility updated!');
+  };
+
+  const handleAppRangeChange = (appId: string, newRange: string) => {
+    const updated = adminTopApps.map((a) =>
+      a.id === appId ? { ...a, range: newRange } : a
+    );
+    setAdminTopApps(updated);
+    saveTopAppsConfig(updated);
+  };
+
+  const handleAddNewTopApp = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanName = newAppName.trim();
+    if (!cleanName) return;
+    const cleanId = (newAppId.trim() || cleanName.toLowerCase().replace(/\s+/g, '_')).toLowerCase();
+    const cleanRange = newAppRange.trim() || '88017';
+
+    const newItem: TopAppItem = {
+      id: cleanId,
+      name: cleanName,
+      range: cleanRange,
+      status: newAppStatus,
+      isEnabled: true,
+    };
+
+    const updated = [...adminTopApps, newItem];
+    setAdminTopApps(updated);
+    saveTopAppsConfig(updated);
+    showToast(`Added ${cleanName} to Top Applications!`);
+    setNewAppName('');
+    setNewAppId('');
+    setNewAppRange('');
+  };
+
+  const handleDeleteTopApp = (appId: string) => {
+    const updated = adminTopApps.filter((a) => a.id !== appId);
+    setAdminTopApps(updated);
+    saveTopAppsConfig(updated);
+    showToast('Application removed from list.');
+  };
+
+  const handleResetDefaultApps = () => {
+    if (window.confirm('Reset all Top Applications to system defaults?')) {
+      setAdminTopApps(DEFAULT_TOP_APPS);
+      saveTopAppsConfig(DEFAULT_TOP_APPS);
+      showToast('Restored default applications configuration!');
+    }
+  };
+
+  // =========================================================================
+  // SECTION 6: LIVE CHAT
   // =========================================================================
   const [activeChatUserEmail, setActiveChatUserEmail] = useState<string>('');
   const [adminChatInput, setAdminChatInput] = useState('');
@@ -967,7 +1054,24 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
               </span>
             </button>
 
-            {/* 5. Live Chat */}
+            {/* 5. Top Applications (সোশ্যাল মিডিয়া অ্যাপস) */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('top-apps')}
+              className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-2 ${
+                activeTab === 'top-apps'
+                  ? 'bg-rose-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              <LayoutGrid className="w-4 h-4" />
+              <span>Top Applications</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-slate-950/60 font-mono text-rose-300 border border-rose-500/30">
+                {adminTopApps.length}
+              </span>
+            </button>
+
+            {/* 6. Live Chat */}
             <button
               type="button"
               onClick={() => setActiveTab('live-chat')}
@@ -2363,7 +2467,196 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
         )}
 
         {/* ================================================================= */}
-        {/* TAB 5: LIVE CHAT (REAL-TIME USER MESSAGES & ADMIN REPLY)          */}
+        {/* TAB 5: TOP APPLICATIONS & SOCIAL MEDIA MANAGEMENT                 */}
+        {/* ================================================================= */}
+        {activeTab === 'top-apps' && (
+          <div className="space-y-6">
+            {/* Top Header Card */}
+            <section className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-rose-500/15 border border-rose-500/30 rounded-xl text-rose-400">
+                    <LayoutGrid className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-base sm:text-lg font-black text-white">Top Applications Management</h2>
+                    <p className="text-xs text-slate-400">
+                      Configure which social media apps appear on user dashboard, toggle Active vs Coming Soon (কামিং সুন), or add custom services.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleResetDefaultApps}
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 transition cursor-pointer flex items-center gap-1.5 border border-slate-700"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Reset Defaults</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Add New App Form */}
+              <form onSubmit={handleAddNewTopApp} className="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-3">
+                <h3 className="text-xs font-black text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                  <Plus className="w-3.5 h-3.5 text-rose-400" />
+                  <span>Add New Application</span>
+                </h3>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 mb-1">App Name</label>
+                    <input
+                      type="text"
+                      value={newAppName}
+                      onChange={(e) => setNewAppName(e.target.value)}
+                      placeholder="e.g. Discord, Snapchat"
+                      className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-rose-500"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 mb-1">App ID / Logo Key</label>
+                    <input
+                      type="text"
+                      value={newAppId}
+                      onChange={(e) => setNewAppId(e.target.value)}
+                      placeholder="e.g. discord, snapchat"
+                      className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-rose-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 mb-1">Default Carrier Range</label>
+                    <input
+                      type="text"
+                      value={newAppRange}
+                      onChange={(e) => setNewAppRange(e.target.value)}
+                      placeholder="e.g. 88017"
+                      className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-rose-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 mb-1">Status</label>
+                    <div className="flex gap-2">
+                      <select
+                        value={newAppStatus}
+                        onChange={(e) => setNewAppStatus(e.target.value as any)}
+                        className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-rose-500"
+                      >
+                        <option value="active">Active (সক্রিয়)</option>
+                        <option value="coming_soon">Coming Soon (কামিং সুন)</option>
+                      </select>
+                      <button
+                        type="submit"
+                        className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-xl transition cursor-pointer shrink-0"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </form>
+            </section>
+
+            {/* List of Configured Apps */}
+            <section className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+                  <span>Configured Top Applications</span>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">
+                    {adminTopApps.length} Apps
+                  </span>
+                </h3>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                {adminTopApps.map((app) => {
+                  const isComingSoon = app.status === 'coming_soon';
+                  return (
+                    <div
+                      key={app.id}
+                      className={`p-4 rounded-xl border transition-all flex flex-col justify-between ${
+                        app.isEnabled === false
+                          ? 'bg-slate-950/50 border-slate-800/50 opacity-50'
+                          : 'bg-slate-950 border-slate-800 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3 mb-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 flex items-center justify-center p-1 rounded-xl bg-slate-900 border border-slate-800 shrink-0">
+                            {getBrandLogoComponent(app.id, 'w-8 h-8')}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-white text-sm">{app.name}</span>
+                              <span className="text-[10px] font-mono text-slate-500 bg-slate-900 px-1.5 py-0.5 rounded">
+                                {app.id}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 mt-1">
+                              <span className="text-[11px] text-slate-400 font-mono">
+                                Range:
+                              </span>
+                              <input
+                                type="text"
+                                value={app.range || ''}
+                                onChange={(e) => handleAppRangeChange(app.id, e.target.value)}
+                                className="px-2 py-0.5 text-[11px] font-mono bg-slate-900 border border-slate-800 rounded text-slate-200 w-24 focus:outline-none focus:border-rose-500"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Status Toggle Badge */}
+                        <button
+                          type="button"
+                          onClick={() => handleToggleAppStatus(app.id)}
+                          className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider transition cursor-pointer border ${
+                            isComingSoon
+                              ? 'bg-amber-950/80 text-amber-300 border-amber-500/40 hover:bg-amber-900'
+                              : 'bg-emerald-950/80 text-emerald-300 border-emerald-500/40 hover:bg-emerald-900'
+                          }`}
+                          title="Click to toggle between Active and Coming Soon"
+                        >
+                          {isComingSoon ? 'কামিং সুন (Soon)' : 'সক্রিয় (Active)'}
+                        </button>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-3 border-t border-slate-900 text-xs">
+                        <label className="flex items-center gap-1.5 cursor-pointer text-slate-400 hover:text-slate-200">
+                          <input
+                            type="checkbox"
+                            checked={app.isEnabled !== false}
+                            onChange={() => handleToggleAppEnabled(app.id)}
+                            className="rounded bg-slate-900 border-slate-700 text-rose-600 focus:ring-0"
+                          />
+                          <span className="text-[11px]">{app.isEnabled !== false ? 'Visible to Users' : 'Hidden'}</span>
+                        </label>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteTopApp(app.id)}
+                          className="text-slate-500 hover:text-rose-400 p-1 rounded hover:bg-slate-900 transition cursor-pointer"
+                          title="Delete app"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          </div>
+        )}
+
+        {/* ================================================================= */}
+        {/* TAB 6: LIVE CHAT (REAL-TIME USER MESSAGES & ADMIN REPLY)          */}
         {/* ================================================================= */}
         {activeTab === 'live-chat' && (
           <section className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">

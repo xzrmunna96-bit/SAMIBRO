@@ -737,6 +737,56 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const [nationalFormat, setNationalFormat] = useState(true);
   const [removePlus, setRemovePlus] = useState(true);
   const [showFiltersStats, setShowFiltersStats] = useState(false);
+  // Helper to sanitize allocated history and prevent fake/duplicate OTPs across numbers
+  const sanitizeAllocatedHistory = (list: any[]) => {
+    if (!Array.isArray(list)) return [];
+    const otpCounts = new Map<string, number>();
+    list.forEach((item) => {
+      if (item && item.otp) {
+        const code = String(item.otp).trim();
+        otpCounts.set(code, (otpCounts.get(code) || 0) + 1);
+      }
+    });
+
+    return list.map((item) => {
+      if (!item) return item;
+      const otp = item.otp ? String(item.otp).trim() : undefined;
+      // If duplicate OTP (shared across multiple numbers) or known false OTPs, reset to PENDING
+      const isDuplicateOrFalse =
+        otp === "247-535" ||
+        otp === "817-089" ||
+        otp === "980-424" ||
+        (otp && (otpCounts.get(otp) || 0) > 1);
+
+      if (isDuplicateOrFalse) {
+        return {
+          ...item,
+          status: "PENDING",
+          otp: undefined,
+          service: "Waiting for SMS...",
+          activity: item.activity === "Delivered just now" ? "Waiting for SMS..." : item.activity,
+        };
+      }
+      return item;
+    });
+  };
+
+  const [topAppsList, setTopAppsList] = useState<TopAppItem[]>(() =>
+    getTopAppsConfig(),
+  );
+
+  useEffect(() => {
+    const handleTopAppsUpdate = () => {
+      setTopAppsList(getTopAppsConfig());
+    };
+    window.addEventListener(TOP_APPS_UPDATE_EVENT, handleTopAppsUpdate);
+    window.addEventListener("storage", handleTopAppsUpdate);
+    return () => {
+      window.removeEventListener(TOP_APPS_UPDATE_EVENT, handleTopAppsUpdate);
+      window.removeEventListener("storage", handleTopAppsUpdate);
+    };
+  }, []);
+
   const [getNumHistory, setGetNumHistory] = useState<
     Array<{
       id: string;
@@ -757,18 +807,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          // Reconcile and clear false OTPs that were mistakenly assigned by previous prefix match
-          return parsed.map((item: any) => {
-            if (item.otp === "817-089" || item.otp === "980-424") {
-              return {
-                ...item,
-                status: "PENDING",
-                otp: undefined,
-                activity: "Waiting for SMS...",
-              };
-            }
-            return item;
-          });
+          return sanitizeAllocatedHistory(parsed);
         }
       }
     } catch {}
@@ -1012,13 +1051,13 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     const cleanHitRange = (hit.range || "").replace(/\D/g, "");
     if (!cleanHitRange) return { isOwner: false };
 
-    // If the hit range is shorter than 8 digits (e.g. 23274 or 23274XXX), it is a CARRIER / ROUTE prefix, NOT an individual phone number!
-    // In that case, only claim ownership if the message text explicitly contains the user's full number.
-    if (cleanHitRange.length < 8) {
+    // If the hit range is shorter than 10 digits (e.g. 23274 or 22901400), it is a CARRIER / ROUTE prefix, NOT an individual phone number!
+    // In that case, ONLY claim ownership if the message text explicitly contains the user's full number.
+    if (cleanHitRange.length < 10) {
       const matchedByMessage = getNumHistory.find((entry) => {
         const cleanNum = (entry.number || "").replace(/\D/g, "");
         return (
-          cleanNum.length >= 8 &&
+          cleanNum.length >= 9 &&
           Boolean(hit.message && hit.message.includes(cleanNum))
         );
       });
@@ -1039,7 +1078,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
     const matchedEntry = getNumHistory.find((entry) => {
       const cleanNum = (entry.number || "").replace(/\D/g, "");
-      if (!cleanNum || cleanNum.length < 8) return false;
+      if (!cleanNum || cleanNum.length < 9) return false;
 
       // Timing check: Must have arrived after the number was allocated
       if (entry.createdAt && hitTime < entry.createdAt - 10000) {
@@ -1051,17 +1090,17 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         return true;
       }
 
-      // 2. Both must be at least 8 digits to match prefix/suffix
-      if (cleanHitRange.length >= 8 && cleanNum.length >= 8) {
+      // 2. Exact match on full length (min 10 digits and max 3 digits international prefix difference)
+      if (cleanHitRange.length >= 10 && cleanNum.length >= 10) {
         if (
-          cleanNum.startsWith(cleanHitRange) ||
-          cleanHitRange.startsWith(cleanNum)
+          (cleanNum.endsWith(cleanHitRange) || cleanHitRange.endsWith(cleanNum)) &&
+          Math.abs(cleanNum.length - cleanHitRange.length) <= 3
         ) {
           return true;
         }
       }
 
-      // 3. Message contains the full number
+      // 3. Message explicitly contains the full number
       if (hit.message && hit.message.includes(cleanNum)) {
         return true;
       }
@@ -1341,7 +1380,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         const nextHistory = currentHistory.map((entry) => {
           if (entry.otp) return entry; // Already received real OTP
           const cleanNum = (entry.number || "").replace(/\D/g, "");
-          if (!cleanNum || cleanNum.length < 6) return entry;
+          if (!cleanNum || cleanNum.length < 8) return entry;
 
           let matchedCode: string | null = null;
           let matchedService = entry.service || "Live SMS";
@@ -1350,15 +1389,16 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           if (otps && otps.length > 0) {
             const foundSuccessOtp = otps.find((o) => {
               const cleanOtpNum = (o.number || "").replace(/\D/g, "");
-              if (!cleanOtpNum) return false;
+              if (!cleanOtpNum || cleanOtpNum.length < 9) return false;
 
-              // Exact number match or international suffix match (min 8 digits)
+              // Strict number match: Exact match or full international suffix match (min 9 digits, max 3 digits diff)
               const isMatch =
                 cleanNum === cleanOtpNum ||
-                (cleanNum.length >= 8 &&
-                  cleanOtpNum.length >= 8 &&
+                (cleanNum.length >= 9 &&
+                  cleanOtpNum.length >= 9 &&
                   (cleanNum.endsWith(cleanOtpNum) ||
-                    cleanOtpNum.endsWith(cleanNum)));
+                    cleanOtpNum.endsWith(cleanNum)) &&
+                  Math.abs(cleanNum.length - cleanOtpNum.length) <= 3);
               if (!isMatch) return false;
 
               // Timing check: OTP must have arrived around or after allocation time (60s clock skew buffer)
@@ -1375,25 +1415,31 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             });
 
             if (foundSuccessOtp) {
-              matchedCode =
-                extractOtp(foundSuccessOtp.message) || foundSuccessOtp.message;
-              matchedService = "Delivered SMS";
+              const extracted = extractOtp(foundSuccessOtp.message);
+              if (extracted) {
+                matchedCode = extracted;
+                matchedService = "Delivered SMS";
+              }
             }
           }
 
-          // 2. SECONDARY SOURCE: Live console hits (strict verification: at least 8 digits and arrived after allocation)
+          // 2. SECONDARY SOURCE: Live console hits (strict verification: range must be a full 10+ digit number, or message contains exact number)
           if (!matchedCode && consoleRes.hits && consoleRes.hits.length > 0) {
             const matchingHit = consoleRes.hits.find((hit) => {
               const cleanRange = (hit.range || "").replace(/\D/g, "");
-              if (!cleanRange || cleanRange.length < 8) return false;
+              const hitMsg = hit.message || "";
 
-              const isMatch =
-                cleanNum === cleanRange ||
-                (cleanRange.length >= 8 &&
-                  cleanNum.length >= 8 &&
-                  (cleanNum.startsWith(cleanRange) ||
-                    cleanRange.startsWith(cleanNum)));
-              if (!isMatch) return false;
+              // Do NOT match partial carrier ranges (e.g. 22901400 is an 8-digit carrier prefix, not the user's specific number)
+              const isFullNumberMatch =
+                cleanRange.length >= 10 &&
+                (cleanNum === cleanRange ||
+                  (cleanNum.endsWith(cleanRange) &&
+                    Math.abs(cleanNum.length - cleanRange.length) <= 3));
+
+              const isMessageMatch =
+                cleanNum.length >= 9 && hitMsg.includes(cleanNum);
+
+              if (!isFullNumberMatch && !isMessageMatch) return false;
 
               const hitTime =
                 typeof hit.time === "number"
@@ -1408,9 +1454,11 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             });
 
             if (matchingHit) {
-              matchedCode =
-                extractOtp(matchingHit.message) || matchingHit.message;
-              matchedService = matchingHit.sid || "Live Console";
+              const extracted = extractOtp(matchingHit.message);
+              if (extracted) {
+                matchedCode = extracted;
+                matchedService = matchingHit.sid || "Live Console";
+              }
             }
           }
 
@@ -1429,13 +1477,14 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           return entry;
         });
 
+        const sanitized = sanitizeAllocatedHistory(nextHistory);
         if (hasChange && newlyDeliveredOtp) {
           showDashboardToast(
             `🎉 আপনার নাম্বারে ওটিপি এসেছে: ${newlyDeliveredOtp}`,
             "success",
           );
         }
-        return hasChange ? nextHistory : currentHistory;
+        return hasChange ? sanitized : currentHistory;
       });
       const now = new Date();
       setLastUpdatedTime(now.toLocaleTimeString("en-GB", { hour12: false }));
@@ -2349,37 +2398,74 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 </div>
               </div>
 
-              {/* 4 Main Application Cards - Each with Individual Rainbow Rotating Border */}
-              <div className="p-3.5 sm:p-5 bg-slate-950 grid grid-cols-2 md:grid-cols-4 gap-3.5 sm:gap-4">
-                {TOP_APPLICATIONS.map((app) => {
-                  const Icon = app.icon;
-                  return (
-                    <div
-                      key={app.id}
-                      id={`app-item-${app.id}`}
-                      onClick={() => {
-                        setSelectedService(app.name);
-                        setSelectedRange(app.range);
-                        setCurrentView("getNumber");
-                      }}
-                      className="p-[3px] rounded-2xl animate-rainbow-border shadow-lg shadow-purple-900/10 hover:shadow-2xl hover:shadow-emerald-500/20 transition-all duration-300 cursor-pointer group active:scale-[0.98]"
-                    >
-                      <div className="h-full w-full bg-slate-900 rounded-[13px] p-5 sm:p-7 flex flex-col items-center justify-center text-center bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900 group-hover:from-slate-850 group-hover:to-slate-900 transition-all duration-300">
-                        <div className="w-16 h-16 sm:w-20 sm:h-20 mb-3 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 filter drop-shadow-xl">
-                          <Icon className="w-full h-full" />
-                        </div>
+              {/* Compact Sleek Top Application Cards with Dynamic Config & Coming Soon Support */}
+              <div className="p-3 sm:p-4 bg-slate-950 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 sm:gap-3">
+                {topAppsList
+                  .filter((app) => app.isEnabled !== false)
+                  .map((app) => {
+                    const isComingSoon = app.status === "coming_soon";
+                    return (
+                      <div
+                        key={app.id}
+                        id={`app-item-${app.id}`}
+                        onClick={() => {
+                          if (isComingSoon) {
+                            showDashboardToast(
+                              `⏳ ${app.name} কামিং সুন — এই সার্ভিসটি শীঘ্রই যুক্ত করা হচ্ছে!`,
+                              "info",
+                            );
+                            return;
+                          }
+                          setSelectedService(app.name);
+                          setSelectedRange(app.range);
+                          setCurrentView("getNumber");
+                          showDashboardToast(
+                            `Selected ${app.name} for number allocation`,
+                            "success",
+                          );
+                        }}
+                        className={`p-[2px] rounded-xl transition-all duration-300 group cursor-pointer ${
+                          isComingSoon
+                            ? "bg-slate-800/60 hover:bg-slate-700/60 border border-slate-700/50 hover:border-amber-500/40"
+                            : "animate-rainbow-border shadow-md shadow-purple-950/20 hover:shadow-lg hover:shadow-emerald-500/10 active:scale-[0.98]"
+                        }`}
+                      >
+                        <div className="h-full w-full bg-slate-900/95 rounded-[10px] p-3 sm:p-3.5 flex flex-col items-center justify-between text-center relative overflow-hidden">
+                          {/* Coming Soon Pill Badge */}
+                          {isComingSoon && (
+                            <div className="absolute top-1.5 right-1.5">
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                কামিং সুন
+                              </span>
+                            </div>
+                          )}
 
-                        <h3 className="text-base sm:text-lg font-bold text-white tracking-tight mt-1 group-hover:text-emerald-300 transition-colors">
-                          {app.name}
-                        </h3>
-                        <span className="text-[11px] text-emerald-400 font-semibold mt-1.5 flex items-center gap-1 font-mono">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                          Ready to Receive
-                        </span>
+                          <div className="w-10 h-10 sm:w-11 sm:h-11 my-1 flex items-center justify-center group-hover:scale-105 transition-transform duration-200 filter drop-shadow-md">
+                            {getBrandLogoComponent(
+                              app.id,
+                              "w-10 h-10 sm:w-11 sm:h-11",
+                            )}
+                          </div>
+
+                          <div className="w-full mt-1">
+                            <h3 className="text-xs sm:text-sm font-bold text-white tracking-tight truncate group-hover:text-emerald-300 transition-colors">
+                              {app.name}
+                            </h3>
+                            {isComingSoon ? (
+                              <span className="text-[10px] text-slate-400 font-medium block mt-0.5">
+                                Coming Soon
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-emerald-400 font-semibold mt-0.5 flex items-center justify-center gap-1 font-mono">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                Ready
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
               </div>
             </section>
 

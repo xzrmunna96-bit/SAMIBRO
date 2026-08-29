@@ -115,7 +115,7 @@ export function MicrosoftLogo({ className = "w-10 h-10" }: { className?: string 
 export function GoogleLogo({ className = "w-10 h-10" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="32" cy="32" r="28" fill="#FFFFFF" border="1" />
+      <circle cx="32" cy="32" r="28" fill="#FFFFFF" stroke="#E2E8F0" strokeWidth="1" />
       <path
         d="M44.5 32.5C44.5 31.4 44.4 30.5 44.2 29.5H32V34.8H39C38.7 36.4 37.7 37.9 36.3 38.8V42.1H40.7C43.3 39.7 44.8 36.2 44.8 32.5H44.5Z"
         fill="#4285F4"

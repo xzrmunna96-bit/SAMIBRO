@@ -202,37 +202,184 @@ export async function testBaseApi(apiKey?: string): Promise<ApiResponse<any>> {
 export function resolveCarrierDetails(range: string): { operator: string; country: string } {
   const digits = (range || '').replace(/\D/g, '');
 
+  // 3-digit country dialing prefixes
+  if (digits.startsWith('856')) return { operator: 'LAO TELECOM / Tplus', country: 'Laos' };
+  if (digits.startsWith('855')) return { operator: 'SMART / METFONE', country: 'Cambodia' };
+  if (digits.startsWith('852')) return { operator: 'CSL / HK TONE', country: 'Hong Kong' };
+  if (digits.startsWith('853')) return { operator: 'CTM', country: 'Macau' };
+  if (digits.startsWith('886')) return { operator: 'CHUNGHWA / TAIWAN MOBILE', country: 'Taiwan' };
+  if (digits.startsWith('880')) return { operator: 'GRAMEENPHONE / ROBI', country: 'Bangladesh' };
+  if (digits.startsWith('977')) return { operator: 'NCELL / NTC', country: 'Nepal' };
+  if (digits.startsWith('975')) return { operator: 'B-MOBILE', country: 'Bhutan' };
+  if (digits.startsWith('960')) return { operator: 'DHIRAAGU', country: 'Maldives' };
+  if (digits.startsWith('976')) return { operator: 'MOBICOM', country: 'Mongolia' };
+  if (digits.startsWith('992')) return { operator: 'TACELL', country: 'Tajikistan' };
+  if (digits.startsWith('993')) return { operator: 'TMCELL', country: 'Turkmenistan' };
+  if (digits.startsWith('994')) return { operator: 'AZERCELL', country: 'Azerbaijan' };
+  if (digits.startsWith('995')) return { operator: 'MAGTICOM', country: 'Georgia' };
+  if (digits.startsWith('996')) return { operator: 'MEGACOM', country: 'Kyrgyzstan' };
+  if (digits.startsWith('998')) return { operator: 'UCELL', country: 'Uzbekistan' };
+
+  // Middle East 3-digits
+  if (digits.startsWith('966')) return { operator: 'STC / MOBILY', country: 'Saudi Arabia' };
+  if (digits.startsWith('971')) return { operator: 'ETISALAT / DU', country: 'UAE' };
+  if (digits.startsWith('965')) return { operator: 'ZAIN / OOREDOO', country: 'Kuwait' };
+  if (digits.startsWith('974')) return { operator: 'OOREDOO / VODAFONE', country: 'Qatar' };
+  if (digits.startsWith('968')) return { operator: 'OMANTEL', country: 'Oman' };
+  if (digits.startsWith('973')) return { operator: 'BATELCO', country: 'Bahrain' };
+  if (digits.startsWith('962')) return { operator: 'ZAIN / ORANGE', country: 'Jordan' };
+  if (digits.startsWith('961')) return { operator: 'TOUCH / ALPHA', country: 'Lebanon' };
+  if (digits.startsWith('963')) return { operator: 'SYRIATEL', country: 'Syria' };
+  if (digits.startsWith('964')) return { operator: 'ASIACELL / ZAIN', country: 'Iraq' };
+  if (digits.startsWith('967')) return { operator: 'YEMEN MOBILE', country: 'Yemen' };
+  if (digits.startsWith('970')) return { operator: 'JAWWAL', country: 'Palestine' };
+  if (digits.startsWith('972')) return { operator: 'PARTNER / CELLCOM', country: 'Israel' };
+
+  // Africa 3-digits
   if (digits.startsWith('236')) return { operator: 'ORANGE CENTRAFRIQUE', country: 'Central African Republic' };
   if (digits.startsWith('261')) return { operator: 'AIRTEL', country: 'Madagascar' };
-  if (digits.startsWith('229')) return { operator: 'MOBILE', country: 'Benin' };
-  if (digits.startsWith('228')) return { operator: 'TOGO CELLULAIRE (TOGOCEL)', country: 'Togo' };
-  if (digits.startsWith('382')) return { operator: 'TELENOR', country: 'Montenegro' };
+  if (digits.startsWith('229')) return { operator: 'MTN BENIN', country: 'Benin' };
+  if (digits.startsWith('228')) return { operator: 'TOGO CELLULAIRE', country: 'Togo' };
   if (digits.startsWith('225')) return { operator: "ORANGE COTE D'IVOIRE", country: 'Ivory Coast' };
-  if (digits.startsWith('880')) return { operator: 'GRAMEENPHONE', country: 'Bangladesh' };
-  if (digits.startsWith('44')) return { operator: 'EE PHYSICAL', country: 'United Kingdom' };
-  if (digits.startsWith('62')) return { operator: 'TELKOMSEL', country: 'Indonesia' };
-  if (digits.startsWith('91')) return { operator: 'AIRTEL', country: 'India' };
-  if (digits.startsWith('1')) return { operator: 'T-MOBILE', country: 'United States' };
   if (digits.startsWith('237')) return { operator: 'ORANGE CAMEROUN', country: 'Cameroon' };
   if (digits.startsWith('221')) return { operator: 'ORANGE SENEGAL', country: 'Senegal' };
   if (digits.startsWith('234')) return { operator: 'MTN NIGERIA', country: 'Nigeria' };
   if (digits.startsWith('254')) return { operator: 'SAFARICOM', country: 'Kenya' };
   if (digits.startsWith('212')) return { operator: 'MAROC TELECOM', country: 'Morocco' };
-  if (digits.startsWith('63')) return { operator: 'SMART / GLOBE', country: 'Philippines' };
+  if (digits.startsWith('213')) return { operator: 'MOBILIS / DZEZZY', country: 'Algeria' };
+  if (digits.startsWith('216')) return { operator: 'OOREDOO / TUNISIE', country: 'Tunisia' };
+  if (digits.startsWith('218')) return { operator: 'LIBYANA', country: 'Libya' };
   if (digits.startsWith('232')) return { operator: 'ORANGE (AIRTEL)', country: 'Sierra Leone' };
   if (digits.startsWith('233')) return { operator: 'MTN GHANA', country: 'Ghana' };
   if (digits.startsWith('255')) return { operator: 'VODACOM', country: 'Tanzania' };
   if (digits.startsWith('256')) return { operator: 'MTN UGANDA', country: 'Uganda' };
-  if (digits.startsWith('92')) return { operator: 'JAZZ / TELENOR', country: 'Pakistan' };
-  if (digits.startsWith('971')) return { operator: 'ETISALAT', country: 'UAE' };
-  if (digits.startsWith('966')) return { operator: 'STC', country: 'Saudi Arabia' };
-  if (digits.startsWith('20')) return { operator: 'VODAFONE', country: 'Egypt' };
-  if (digits.startsWith('55')) return { operator: 'CLARO / VIVO', country: 'Brazil' };
-  if (digits.startsWith('7')) return { operator: 'MEGAFON / MTS', country: 'Kazakhstan / Russia' };
-  if (digits.startsWith('49')) return { operator: 'TELEKOM', country: 'Germany' };
-  if (digits.startsWith('33')) return { operator: 'ORANGE', country: 'France' };
+  if (digits.startsWith('257')) return { operator: 'LUMITEL', country: 'Burundi' };
+  if (digits.startsWith('258')) return { operator: 'VODACOM', country: 'Mozambique' };
+  if (digits.startsWith('260')) return { operator: 'AIRTEL ZAMBIA', country: 'Zambia' };
+  if (digits.startsWith('263')) return { operator: 'ECONET', country: 'Zimbabwe' };
+  if (digits.startsWith('264')) return { operator: 'MTC', country: 'Namibia' };
+  if (digits.startsWith('265')) return { operator: 'AIRTEL MALAWI', country: 'Malawi' };
+  if (digits.startsWith('242')) return { operator: 'MTN CONGO', country: 'Congo' };
+  if (digits.startsWith('243')) return { operator: 'VODACOM DRC', country: 'DR Congo' };
+  if (digits.startsWith('250')) return { operator: 'MTN RWANDA', country: 'Rwanda' };
+  if (digits.startsWith('251')) return { operator: 'ETHIO TELECOM', country: 'Ethiopia' };
+  if (digits.startsWith('252')) return { operator: 'HORMUUD', country: 'Somalia' };
 
-  return { operator: 'GLOBAL CARRIER', country: 'International' };
+  // Europe 3-digits
+  if (digits.startsWith('382')) return { operator: 'TELENOR', country: 'Montenegro' };
+  if (digits.startsWith('351')) return { operator: 'MEO / VODAFONE', country: 'Portugal' };
+  if (digits.startsWith('352')) return { operator: 'POST MOBILE', country: 'Luxembourg' };
+  if (digits.startsWith('353')) return { operator: 'VODAFONE / THREE', country: 'Ireland' };
+  if (digits.startsWith('354')) return { operator: 'SIMINN', country: 'Iceland' };
+  if (digits.startsWith('355')) return { operator: 'ONE ALBANIA', country: 'Albania' };
+  if (digits.startsWith('356')) return { operator: 'EPIC MALTA', country: 'Malta' };
+  if (digits.startsWith('357')) return { operator: 'CYTA / MTN', country: 'Cyprus' };
+  if (digits.startsWith('358')) return { operator: 'ELISA / DNA', country: 'Finland' };
+  if (digits.startsWith('359')) return { operator: 'A1 BULGARIA', country: 'Bulgaria' };
+  if (digits.startsWith('370')) return { operator: 'TELIA', country: 'Lithuania' };
+  if (digits.startsWith('371')) return { operator: 'LMT', country: 'Latvia' };
+  if (digits.startsWith('372')) return { operator: 'TELESTI', country: 'Estonia' };
+  if (digits.startsWith('373')) return { operator: 'MOLDCELL', country: 'Moldova' };
+  if (digits.startsWith('374')) return { operator: 'TEAM TELECOM', country: 'Armenia' };
+  if (digits.startsWith('375')) return { operator: 'A1 BELARUS', country: 'Belarus' };
+  if (digits.startsWith('380')) return { operator: 'KYIVSTAR', country: 'Ukraine' };
+  if (digits.startsWith('381')) return { operator: 'MTS SERBIA', country: 'Serbia' };
+  if (digits.startsWith('383')) return { operator: 'VALA KOSOVO', country: 'Kosovo' };
+  if (digits.startsWith('385')) return { operator: 'A1 CROATIA', country: 'Croatia' };
+  if (digits.startsWith('386')) return { operator: 'A1 SLOVENIA', country: 'Slovenia' };
+  if (digits.startsWith('387')) return { operator: 'BH TELECOM', country: 'Bosnia and Herzegovina' };
+  if (digits.startsWith('389')) return { operator: 'TELEKOM MK', country: 'North Macedonia' };
+  if (digits.startsWith('420')) return { operator: 'O2 / T-MOBILE', country: 'Czech Republic' };
+  if (digits.startsWith('421')) return { operator: 'ORANGE SK', country: 'Slovakia' };
+
+  // Americas 3-digits
+  if (digits.startsWith('501')) return { operator: 'DIGICELL', country: 'Belize' };
+  if (digits.startsWith('502')) return { operator: 'TIGO GUATEMALA', country: 'Guatemala' };
+  if (digits.startsWith('503')) return { operator: 'TIGO SALVADOR', country: 'El Salvador' };
+  if (digits.startsWith('504')) return { operator: 'TIGO HONDURAS', country: 'Honduras' };
+  if (digits.startsWith('505')) return { operator: 'CLARO NICARAGUA', country: 'Nicaragua' };
+  if (digits.startsWith('506')) return { operator: 'KOLBI', country: 'Costa Rica' };
+  if (digits.startsWith('507')) return { operator: 'CABLE & WIRELESS', country: 'Panama' };
+  if (digits.startsWith('509')) return { operator: 'DIGICEL HAITI', country: 'Haiti' };
+  if (digits.startsWith('591')) return { operator: 'ENTEL BOLIVIA', country: 'Bolivia' };
+  if (digits.startsWith('593')) return { operator: 'CLARO ECUADOR', country: 'Ecuador' };
+  if (digits.startsWith('595')) return { operator: 'TIGO PARAGUAY', country: 'Paraguay' };
+  if (digits.startsWith('598')) return { operator: 'ANTEL URUGUAY', country: 'Uruguay' };
+
+  // Oceania 3-digits
+  if (digits.startsWith('670')) return { operator: 'TELEMOR', country: 'East Timor' };
+  if (digits.startsWith('673')) return { operator: 'DST', country: 'Brunei' };
+  if (digits.startsWith('675')) return { operator: 'DIGICEL PNG', country: 'Papua New Guinea' };
+  if (digits.startsWith('679')) return { operator: 'VODAFONE FIJI', country: 'Fiji' };
+
+  // 2-digit prefixes
+  if (digits.startsWith('86')) return { operator: 'CHINA MOBILE / UNICOM', country: 'China' };
+  if (digits.startsWith('84')) return { operator: 'VIETTEL / VINAPHONE', country: 'Vietnam' };
+  if (digits.startsWith('81')) return { operator: 'NTT DOCOMO / SOFTBANK', country: 'Japan' };
+  if (digits.startsWith('82')) return { operator: 'SK TELECOM / KT', country: 'South Korea' };
+  if (digits.startsWith('60')) return { operator: 'CELCOM / MAXIS', country: 'Malaysia' };
+  if (digits.startsWith('62')) return { operator: 'TELKOMSEL / INDOSAT', country: 'Indonesia' };
+  if (digits.startsWith('63')) return { operator: 'SMART / GLOBE', country: 'Philippines' };
+  if (digits.startsWith('65')) return { operator: 'SINGTEL / STARHUB', country: 'Singapore' };
+  if (digits.startsWith('66')) return { operator: 'AIS / TRUE MOVE', country: 'Thailand' };
+  if (digits.startsWith('95')) return { operator: 'MPT Myanmar', country: 'Myanmar' };
+  if (digits.startsWith('94')) return { operator: 'DIALOG / MOBITEL', country: 'Sri Lanka' };
+  if (digits.startsWith('93')) return { operator: 'AWCC / ROSHAN', country: 'Afghanistan' };
+  if (digits.startsWith('92')) return { operator: 'JAZZ / TELENOR', country: 'Pakistan' };
+  if (digits.startsWith('91')) return { operator: 'JIO / AIRTEL', country: 'India' };
+  if (digits.startsWith('98')) return { operator: 'MCI / IRANCELL', country: 'Iran' };
+  if (digits.startsWith('90')) return { operator: 'TURKCELL / VODAFONE', country: 'Turkey' };
+
+  if (digits.startsWith('44')) return { operator: 'EE / VODAFONE UK', country: 'United Kingdom' };
+  if (digits.startsWith('49')) return { operator: 'TELEKOM / VODAFONE DE', country: 'Germany' };
+  if (digits.startsWith('33')) return { operator: 'ORANGE / SFR', country: 'France' };
+  if (digits.startsWith('39')) return { operator: 'TIM / VODAFONE IT', country: 'Italy' };
+  if (digits.startsWith('34')) return { operator: 'MOVISTAR / VODAFONE ES', country: 'Spain' };
+  if (digits.startsWith('31')) return { operator: 'KPN / VODAFONE NL', country: 'Netherlands' };
+  if (digits.startsWith('32')) return { operator: 'PROXIMUS / ORANGE BE', country: 'Belgium' };
+  if (digits.startsWith('41')) return { operator: 'SWISSCOM', country: 'Switzerland' };
+  if (digits.startsWith('43')) return { operator: 'A1 AUSTRIAN', country: 'Austria' };
+  if (digits.startsWith('30')) return { operator: 'COSMOTE GREECE', country: 'Greece' };
+  if (digits.startsWith('45')) return { operator: 'TDC DENMARK', country: 'Denmark' };
+  if (digits.startsWith('46')) return { operator: 'TELIA SWEDEN', country: 'Sweden' };
+  if (digits.startsWith('47')) return { operator: 'TELENOR NORWAY', country: 'Norway' };
+  if (digits.startsWith('48')) return { operator: 'ORANGE POLAND', country: 'Poland' };
+  if (digits.startsWith('40')) return { operator: 'ORANGE ROMANIA', country: 'Romania' };
+  if (digits.startsWith('36')) return { operator: 'YETTEL HUNGARY', country: 'Hungary' };
+
+  if (digits.startsWith('20')) return { operator: 'VODAFONE EGYPT', country: 'Egypt' };
+  if (digits.startsWith('27')) return { operator: 'VODACOM SOUTH AFRICA', country: 'South Africa' };
+
+  if (digits.startsWith('52')) return { operator: 'TELCEL MEXICO', country: 'Mexico' };
+  if (digits.startsWith('55')) return { operator: 'CLARO / VIVO BRAZIL', country: 'Brazil' };
+  if (digits.startsWith('54')) return { operator: 'PERSONAL ARGENTINA', country: 'Argentina' };
+  if (digits.startsWith('56')) return { operator: 'ENTEL CHILE', country: 'Chile' };
+  if (digits.startsWith('57')) return { operator: 'CLARO COLOMBIA', country: 'Colombia' };
+  if (digits.startsWith('58')) return { operator: 'DIGITEL VENEZUELA', country: 'Venezuela' };
+  if (digits.startsWith('51')) return { operator: 'CLARO PERU', country: 'Peru' };
+
+  if (digits.startsWith('61')) return { operator: 'TELSTRA AUSTRALIA', country: 'Australia' };
+  if (digits.startsWith('64')) return { operator: 'ONE NEW ZEALAND', country: 'New Zealand' };
+
+  // 1-digit prefixes
+  if (digits.startsWith('1')) return { operator: 'T-MOBILE / AT&T', country: 'United States' };
+  if (digits.startsWith('7')) return { operator: 'MEGAFON / MTS', country: 'Kazakhstan / Russia' };
+
+  return { operator: 'GLOBAL CARRIER', country: 'Global Route' };
+}
+
+export function getRealCountryName(rawCountry?: string, rangeStr?: string): string {
+  const carrier = resolveCarrierDetails(rangeStr || '');
+  if (
+    !rawCountry ||
+    !rawCountry.trim() ||
+    rawCountry.trim().toLowerCase() === 'international' ||
+    rawCountry.trim().toLowerCase() === 'global' ||
+    rawCountry.trim().toLowerCase() === 'global route'
+  ) {
+    return carrier.country;
+  }
+  return rawCountry.trim();
 }
 
 export interface FetchConsoleResponse {
@@ -291,7 +438,7 @@ export async function fetchLiveConsoleDetailed(apiKey?: string): Promise<FetchCo
         message: hit.message || hit.msg || hit.text || hit.sms || '',
         time: parsedTime,
         operator: hit.operator || carrier.operator,
-        country: hit.country || carrier.country,
+        country: getRealCountryName(hit.country, rawRange),
       };
     });
 

@@ -59,6 +59,7 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [pendingAccountNotice, setPendingAccountNotice] = useState<{ email: string; name: string } | null>(null);
+  const [suspendedNotice, setSuspendedNotice] = useState<{ email: string; name: string; reason?: string } | null>(null);
 
   // Request Active Account (SMS Box) Modal State
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
@@ -204,6 +205,13 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
           setPendingAccountNotice({
             email: authResult.user?.email || cleanIdentifier,
             name: authResult.user?.name || 'User',
+          });
+          setErrorMessage('');
+        } else if (authResult.status === 'suspended') {
+          setSuspendedNotice({
+            email: authResult.user?.email || cleanIdentifier,
+            name: authResult.user?.name || 'User',
+            reason: authResult.user?.banReason || authResult.message,
           });
           setErrorMessage('');
         } else {
@@ -1212,6 +1220,82 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
                   </div>
                 </form>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* -------------------- MODAL: SUSPENDED ACCOUNT NOTICE -------------------- */}
+      {suspendedNotice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl border border-rose-200 overflow-hidden flex flex-col">
+            <div className="p-4 bg-gradient-to-r from-rose-700 via-red-700 to-rose-800 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-white/20 border border-white/30">
+                  <AlertCircle className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base tracking-tight">Account Suspended</h3>
+                  <p className="text-[11px] text-rose-200 font-normal">অ্যাকাউন্টটি স্থগিত / ব্যান করা হয়েছে</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSuspendedNotice(null)}
+                className="p-1.5 rounded-full hover:bg-white/20 transition cursor-pointer text-white/80 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-center">
+              <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto border-4 border-rose-50 shadow-md">
+                <AlertCircle className="w-9 h-9" />
+              </div>
+
+              <div>
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-100 text-rose-800 font-extrabold text-xs uppercase tracking-wide mb-1.5">
+                  <span>Access Suspended</span>
+                </div>
+                <h4 className="text-base font-extrabold text-gray-900">
+                  {suspendedNotice.name} ({suspendedNotice.email})
+                </h4>
+              </div>
+
+              <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-left text-xs space-y-1">
+                <span className="font-extrabold text-rose-800 block">কেন অ্যাকাউন্ট স্থগিত করা হয়েছে (Reason):</span>
+                <p className="text-gray-700 leading-relaxed font-medium">
+                  {suspendedNotice.reason || 'শর্তাবলী লংঘন বা এডমিন নির্দেশের কারণে এই অ্যাকাউন্টটি স্থগিত রাখা হয়েছে।'}
+                </p>
+              </div>
+
+              <p className="text-xs text-gray-500 leading-relaxed">
+                আপনার যদি মনে হয় ভুলবশত ব্যান করা হয়েছে অথবা কোনো তথ্য জানতে চান, তাহলে সরাসরি সাপোর্ট টিম বা এডমিনের সাথে যোগাযোগ করুন।
+              </p>
+
+              <div className="pt-2 flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSavedReqEmail(suspendedNotice.email);
+                    localStorage.setItem('superx_requested_email', suspendedNotice.email);
+                    setSuspendedNotice(null);
+                    setIsRequestModalOpen(true);
+                    setModalTab('chat');
+                  }}
+                  className="w-full py-3 px-4 rounded-xl bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs transition cursor-pointer shadow-md flex items-center justify-center gap-2"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  <span>Open Live Support Chat (লাইভ সাপোর্ট চ্যাট)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSuspendedNotice(null)}
+                  className="w-full py-2.5 px-4 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs transition cursor-pointer"
+                >
+                  Close (বন্ধ করুন)
+                </button>
+              </div>
             </div>
           </div>
         </div>

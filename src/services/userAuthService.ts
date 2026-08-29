@@ -64,6 +64,14 @@ export const DEFAULT_USER_PERMISSIONS: UserPermissions = {
 
 import { sendAdminMessage } from './supportChatService';
 
+export interface BanRequestInfo {
+  requestedBy: string;
+  requestedByName: string;
+  reason: string;
+  timestamp: number;
+  status: 'pending' | 'approved' | 'rejected';
+}
+
 export interface UserAccount {
   id: string;
   name: string;
@@ -79,8 +87,15 @@ export interface UserAccount {
   note?: string;
   adminNotice?: string;
   approvedAt?: number;
+  approvedByEmail?: string;
+  approvedByName?: string;
+  createdByEmail?: string;
+  createdByName?: string;
   rejectedAt?: number;
+  rejectedByEmail?: string;
   permissions?: UserPermissions;
+  banRequest?: BanRequestInfo;
+  banReason?: string;
 }
 
 const STORAGE_KEY = 'super_x_all_user_accounts';
@@ -209,6 +224,11 @@ if (typeof window !== 'undefined') {
   });
 }
 
+export function extractPhoneDigits(phoneStr?: string): string {
+  if (!phoneStr) return '';
+  return phoneStr.replace(/\D/g, '');
+}
+
 export function requestNewAccount(params: {
   name?: string;
   email: string;
@@ -216,6 +236,8 @@ export function requestNewAccount(params: {
   phoneOrTelegram?: string;
   groupLink?: string;
   note?: string;
+  createdByEmail?: string;
+  createdByName?: string;
 }): { success: boolean; message: string; account?: UserAccount } {
   const accounts = getAllAccounts();
   const cleanEmail = params.email.trim().toLowerCase();
@@ -237,6 +259,21 @@ export function requestNewAccount(params: {
     };
   }
 
+  // Strict Duplicate Phone Number Check: One phone number per account
+  const inputPhoneDigits = extractPhoneDigits(params.phoneOrTelegram);
+  if (inputPhoneDigits.length >= 6) {
+    const existingPhone = accounts.find((a) => {
+      const d = extractPhoneDigits(a.phoneOrTelegram);
+      return d.length >= 6 && (d === inputPhoneDigits || d.endsWith(inputPhoneDigits) || inputPhoneDigits.endsWith(d));
+    });
+    if (existingPhone) {
+      return {
+        success: false,
+        message: `This phone number (${params.phoneOrTelegram}) is already registered with another account! Each phone number can only be used for one account. (একই ফোন নম্বর দিয়ে একটির বেশি অ্যাকাউন্ট খোলা সম্ভব নয়)`,
+      };
+    }
+  }
+
   // Generate unique 10 digit code
   const generatedCode = getDedicatedAccountCode(cleanEmail);
 
@@ -253,6 +290,8 @@ export function requestNewAccount(params: {
     phoneOrTelegram: params.phoneOrTelegram?.trim() || '',
     groupLink: params.groupLink?.trim() || '',
     note: params.note?.trim() || 'Active account request via registration form',
+    createdByEmail: params.createdByEmail,
+    createdByName: params.createdByName,
   };
 
   accounts.unshift(newAccount);
@@ -265,7 +304,11 @@ export function requestNewAccount(params: {
   };
 }
 
-export function approveAccount(id: string): { success: boolean; message: string; account?: UserAccount } {
+export function approveAccount(
+  id: string,
+  approvedByEmail?: string,
+  approvedByName?: string
+): { success: boolean; message: string; account?: UserAccount } {
   const accounts = getAllAccounts();
   const target = accounts.find((a) => a.id === id);
   if (!target) {
@@ -274,6 +317,9 @@ export function approveAccount(id: string): { success: boolean; message: string;
 
   target.status = 'approved';
   target.approvedAt = Date.now();
+  if (approvedByEmail) target.approvedByEmail = approvedByEmail;
+  if (approvedByName) target.approvedByName = approvedByName;
+
   if (!target.accountCode || target.accountCode.length < 8) {
     target.accountCode = getDedicatedAccountCode(target.email);
   }
@@ -362,10 +408,73 @@ export function suspendAccount(id: string, reason?: string): { success: boolean;
   target.status = 'suspended';
   if (reason) {
     target.note = `Suspended: ${reason}`;
+    target.banReason = reason;
   }
 
   saveAllAccounts(accounts);
   return { success: true, message: `Account for ${target.email} has been SUSPENDED.`, account: target };
+}
+
+export function requestBanUser(
+  id: string,
+  subAdminEmail: string,
+  subAdminName: string,
+  reason: string
+): { success: boolean; message: string; account?: UserAccount } {
+  const accounts = getAllAccounts();
+  const target = accounts.find((a) => a.id === id);
+  if (!target) {
+    return { success: false, message: 'Account not found.' };
+  }
+
+  target.banRequest = {
+    requestedBy: subAdminEmail,
+    requestedByName: subAdminName || subAdminEmail.split('@')[0],
+    reason: reason.trim(),
+    timestamp: Date.now(),
+    status: 'pending',
+  };
+
+  saveAllAccounts(accounts);
+
+  return {
+    success: true,
+    message: `Ban request submitted for ${target.email}. Reason sent to Main Admin for approval!`,
+    account: target,
+  };
+}
+
+export function approveBanRequest(id: string): { success: boolean; message: string; account?: UserAccount } {
+  const accounts = getAllAccounts();
+  const target = accounts.find((a) => a.id === id);
+  if (!target) {
+    return { success: false, message: 'Account not found.' };
+  }
+
+  target.status = 'suspended';
+  if (target.banRequest) {
+    target.banRequest.status = 'approved';
+    target.banReason = target.banRequest.reason;
+    target.note = `Suspended by Main Admin (Requested by Sub-Admin ${target.banRequest.requestedByName}). Reason: ${target.banRequest.reason}`;
+  } else {
+    target.note = 'Suspended by Main Admin';
+  }
+
+  saveAllAccounts(accounts);
+  return { success: true, message: `Ban request APPROVED! Account for ${target.email} is now SUSPENDED.`, account: target };
+}
+
+export function rejectBanRequest(id: string): { success: boolean; message: string; account?: UserAccount } {
+  const accounts = getAllAccounts();
+  const target = accounts.find((a) => a.id === id);
+  if (!target) {
+    return { success: false, message: 'Account not found.' };
+  }
+
+  delete target.banRequest;
+
+  saveAllAccounts(accounts);
+  return { success: true, message: `Ban request for ${target.email} was REJECTED by Main Admin.`, account: target };
 }
 
 export function updateUserPermissions(
@@ -610,3 +719,230 @@ export function authenticateUser(
     message: 'Login successful.',
   };
 }
+
+// =========================================================================
+// SUB-ADMIN & SUPER ADMIN AUTHENTICATION SERVICE
+// =========================================================================
+export interface SubAdminAccount {
+  id: string;
+  email: string;
+  name?: string;
+  password: string;
+  createdAt: number;
+  status: 'active' | 'inactive';
+}
+
+const SUB_ADMIN_STORAGE_KEY = 'super_x_sub_admin_accounts';
+
+const INITIAL_DEFAULT_SUB_ADMINS: SubAdminAccount[] = [
+  {
+    id: 'sub_admin_demo',
+    email: 'manager@superxsms.com',
+    name: 'Staff Manager',
+    password: 'Password123',
+    createdAt: Date.now() - 5 * 24 * 3600 * 1000,
+    status: 'active',
+  },
+];
+
+export function getAllSubAdmins(): SubAdminAccount[] {
+  if (typeof window === 'undefined') return INITIAL_DEFAULT_SUB_ADMINS;
+  try {
+    const raw = localStorage.getItem(SUB_ADMIN_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+    // Initialize default if empty
+    localStorage.setItem(SUB_ADMIN_STORAGE_KEY, JSON.stringify(INITIAL_DEFAULT_SUB_ADMINS));
+  } catch {
+    // ignore
+  }
+  return INITIAL_DEFAULT_SUB_ADMINS;
+}
+
+export function saveAllSubAdmins(subAdmins: SubAdminAccount[]) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(SUB_ADMIN_STORAGE_KEY, JSON.stringify(subAdmins));
+    window.dispatchEvent(new Event('super_x_sub_admins_updated'));
+  } catch {
+    // ignore
+  }
+}
+
+export function addSubAdmin(
+  email: string,
+  password: string,
+  name?: string
+): { success: boolean; message: string; subAdmin?: SubAdminAccount } {
+  const cleanEmail = (email || '').trim().toLowerCase();
+  const cleanPass = (password || '').trim();
+
+  if (!cleanEmail || !cleanEmail.includes('@')) {
+    return { success: false, message: 'Please provide a valid Sub-Admin email address.' };
+  }
+  if (!cleanPass || cleanPass.length < 4) {
+    return { success: false, message: 'Password must be at least 4 characters long.' };
+  }
+
+  const list = getAllSubAdmins();
+  const existing = list.find((a) => a.email.toLowerCase() === cleanEmail);
+  if (existing) {
+    return { success: false, message: `Sub-Admin with email ${cleanEmail} already exists!` };
+  }
+
+  const newSubAdmin: SubAdminAccount = {
+    id: `sub_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    email: cleanEmail,
+    name: name?.trim() || cleanEmail.split('@')[0],
+    password: cleanPass,
+    createdAt: Date.now(),
+    status: 'active',
+  };
+
+  list.unshift(newSubAdmin);
+  saveAllSubAdmins(list);
+
+  // Sync with UserAccounts so Sub-Admin can log in seamlessly on the user portal
+  try {
+    const accounts = getAllAccounts();
+    const existingAcc = accounts.find((a) => a.email.toLowerCase() === cleanEmail);
+    if (!existingAcc) {
+      const subUserAcc: UserAccount = {
+        id: `user_sub_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        name: newSubAdmin.name || cleanEmail.split('@')[0],
+        email: cleanEmail,
+        username: cleanEmail.split('@')[0],
+        password: cleanPass,
+        accountCode: Math.floor(1000000000 + Math.random() * 9000000000).toString(),
+        status: 'approved',
+        role: 'user',
+        createdAt: Date.now(),
+        approvedAt: Date.now(),
+        phoneOrTelegram: '@sub_admin',
+        note: 'Sub-Admin User Account',
+      };
+      accounts.unshift(subUserAcc);
+      saveAllAccounts(accounts);
+    } else {
+      existingAcc.password = cleanPass;
+      existingAcc.status = 'approved';
+      saveAllAccounts(accounts);
+    }
+  } catch {
+    // ignore
+  }
+
+  return {
+    success: true,
+    message: `Sub-Admin ${cleanEmail} saved! They can now log in on the website & manage user account requests.`,
+    subAdmin: newSubAdmin,
+  };
+}
+
+export function deleteSubAdmin(id: string): { success: boolean; message: string } {
+  let list = getAllSubAdmins();
+  const target = list.find((a) => a.id === id);
+  if (!target) {
+    return { success: false, message: 'Sub-Admin account not found.' };
+  }
+  list = list.filter((a) => a.id !== id);
+  saveAllSubAdmins(list);
+
+  // Clear session if active and broadcast live update
+  if (typeof window !== 'undefined') {
+    try {
+      const ADMIN_SESSION_KEY = 'super_x_admin_session';
+      const rawSess = sessionStorage.getItem(ADMIN_SESSION_KEY);
+      if (rawSess) {
+        const sess = JSON.parse(rawSess);
+        if (sess.role === 'sub_admin' && sess.email?.toLowerCase() === target.email.toLowerCase()) {
+          sessionStorage.removeItem(ADMIN_SESSION_KEY);
+        }
+      }
+      window.dispatchEvent(new Event('super_x_sub_admins_updated'));
+    } catch {}
+  }
+
+  return { success: true, message: `Sub-Admin ${target.email} removed.` };
+}
+
+export function authenticateAdminLogin(
+  emailInput: string,
+  passInput: string
+): {
+  success: boolean;
+  role?: 'super_admin' | 'sub_admin';
+  email?: string;
+  name?: string;
+  message: string;
+} {
+  const cleanEmail = (emailInput || '').trim().toLowerCase();
+  const cleanPass = (passInput || '').trim();
+
+  if (!cleanEmail || !cleanPass) {
+    return { success: false, message: 'Please enter both Email and Password.' };
+  }
+
+  // 1. Super Admin Check
+  const isSuperAdminEmail =
+    cleanEmail === 'xzrmunna33@gmail.com' ||
+    cleanEmail === 'xzrmunna96@gmail.com' ||
+    cleanEmail === 'xzrmunna';
+
+  const isSuperAdminPass =
+    cleanPass === 'XZRMUNNA12061' ||
+    cleanPass === 'MUNNA12061' ||
+    cleanPass.toUpperCase() === 'XZRMUNNA12061';
+
+  if (isSuperAdminEmail && isSuperAdminPass) {
+    return {
+      success: true,
+      role: 'super_admin',
+      email: 'xzrmunna33@gmail.com',
+      name: 'Super Admin (XZR Munna)',
+      message: 'Super Admin login successful!',
+    };
+  }
+
+  // Backwards compatibility for login with master pass + any super admin email
+  if (cleanEmail === 'xzrmunna33@gmail.com' && isSuperAdminPass) {
+    return {
+      success: true,
+      role: 'super_admin',
+      email: 'xzrmunna33@gmail.com',
+      name: 'Super Admin (XZR Munna)',
+      message: 'Super Admin login successful!',
+    };
+  }
+
+  // 2. Sub-Admin Check
+  const subAdmins = getAllSubAdmins();
+  const matchedSubAdmin = subAdmins.find(
+    (sa) => sa.email.toLowerCase() === cleanEmail && sa.status === 'active'
+  );
+
+  if (matchedSubAdmin) {
+    if (matchedSubAdmin.password === cleanPass) {
+      return {
+        success: true,
+        role: 'sub_admin',
+        email: matchedSubAdmin.email,
+        name: matchedSubAdmin.name || matchedSubAdmin.email.split('@')[0],
+        message: 'Sub-Admin login successful! Redirecting to User Management...',
+      };
+    } else {
+      return {
+        success: false,
+        message: 'Incorrect password for Sub-Admin account.',
+      };
+    }
+  }
+
+  return {
+    success: false,
+    message: 'Invalid Admin Email or Password. Access denied.',
+  };
+}
+

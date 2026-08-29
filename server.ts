@@ -14,6 +14,229 @@ async function startServer() {
   let cachedConsoleData: any = null;
   let lastConsoleCacheTime = 0;
 
+  // Multi-session collaborative storage for shared accounts (Keyed by user email)
+  interface SharedAllocatedNumber {
+    id: string;
+    number: string;
+    country: string;
+    operator: string;
+    status: "PENDING" | "SUCCESS";
+    otp?: string;
+    service?: string;
+    activity: string;
+    createdAt: number;
+    updatedAt: number;
+    allocatedBy?: string;
+  }
+
+  const sharedAccountNumbers = new Map<string, SharedAllocatedNumber[]>();
+
+  // Helper to purge items older than 24 hours
+  const purgeOldNumbers = (email: string) => {
+    const list = sharedAccountNumbers.get(email);
+    if (!list) return;
+    const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+    const filtered = list.filter((item) => item.createdAt >= oneDayAgo);
+    sharedAccountNumbers.set(email, filtered);
+  };
+
+  // Endpoint to get all shared allocated numbers & OTPs for an account email
+  app.get("/api/account/numbers", (req, res) => {
+    const rawEmail = String(req.query.email || "").trim().toLowerCase();
+    if (!rawEmail) {
+      return res.status(400).json({ error: "Email query parameter required" });
+    }
+    purgeOldNumbers(rawEmail);
+    const numbers = sharedAccountNumbers.get(rawEmail) || [];
+    res.json({
+      success: true,
+      email: rawEmail,
+      count: numbers.length,
+      numbers,
+      serverTime: Date.now(),
+    });
+  });
+
+  // Endpoint when any user/collaborator gets a new number
+  app.post("/api/account/numbers", (req, res) => {
+    const { email, entry } = req.body || {};
+    const rawEmail = String(email || "").trim().toLowerCase();
+    if (!rawEmail || !entry || !entry.number) {
+      return res.status(400).json({ error: "Invalid payload: email and valid entry required" });
+    }
+
+    purgeOldNumbers(rawEmail);
+    const list = sharedAccountNumbers.get(rawEmail) || [];
+
+    // Check if number already exists (prevent duplicates within last 3 minutes)
+    const cleanNum = String(entry.number).replace(/\D/g, "");
+    const existingIndex = list.findIndex(
+      (n) => n.id === entry.id || (n.number.replace(/\D/g, "") === cleanNum && Math.abs(n.createdAt - (entry.createdAt || Date.now())) < 180000)
+    );
+
+    const now = Date.now();
+    const newEntry: SharedAllocatedNumber = {
+      id: entry.id || `gn_${now}_${Math.floor(1000 + Math.random() * 9000)}`,
+      number: entry.number,
+      country: entry.country || "International",
+      operator: entry.operator || "Direct Route",
+      status: entry.status || "PENDING",
+      otp: entry.otp,
+      service: entry.service || "Waiting for SMS...",
+      activity: entry.activity || "Just now",
+      createdAt: entry.createdAt || now,
+      updatedAt: now,
+      allocatedBy: entry.allocatedBy || "Collaborator",
+    };
+
+    if (existingIndex >= 0) {
+      list[existingIndex] = {
+        ...list[existingIndex],
+        ...newEntry,
+        updatedAt: now,
+      };
+    } else {
+      list.unshift(newEntry);
+    }
+
+    // Keep max 200 numbers per account
+    const cappedList = list.slice(0, 200);
+    sharedAccountNumbers.set(rawEmail, cappedList);
+
+    console.log(`[Shared Account Sync] Number ${entry.number} registered for account: ${rawEmail}`);
+    res.json({
+      success: true,
+      entry: newEntry,
+      numbers: cappedList,
+    });
+  });
+
+  // Endpoint to update OTP for a specific number across all active team members on that email
+  app.post("/api/account/numbers/update-otp", (req, res) => {
+    const { email, numberId, number, otp, service, status, activity } = req.body || {};
+    const rawEmail = String(email || "").trim().toLowerCase();
+    if (!rawEmail || (!numberId && !number) || !otp) {
+      return res.status(400).json({ error: "Email, number/numberId, and otp are required" });
+    }
+
+    const list = sharedAccountNumbers.get(rawEmail) || [];
+    const cleanTargetNum = number ? String(number).replace(/\D/g, "") : "";
+
+    let updated = false;
+    let targetEntry: SharedAllocatedNumber | null = null;
+    const now = Date.now();
+
+    const updatedList = list.map((item) => {
+      const cleanItemNum = item.number.replace(/\D/g, "");
+      const isMatch =
+        (numberId && item.id === numberId) ||
+        (cleanTargetNum && (cleanItemNum === cleanTargetNum || cleanItemNum.endsWith(cleanTargetNum) || cleanTargetNum.endsWith(cleanItemNum)));
+
+      if (isMatch) {
+        updated = true;
+        targetEntry = {
+          ...item,
+          status: status || "SUCCESS",
+          otp: String(otp).trim(),
+          service: service || item.service || "Delivered SMS",
+          activity: activity || "Delivered just now",
+          updatedAt: now,
+        };
+        return targetEntry;
+      }
+      return item;
+    });
+
+    if (updated) {
+      sharedAccountNumbers.set(rawEmail, updatedList);
+      console.log(`[Shared Account Sync] OTP ${otp} updated for number ${number || numberId} on account: ${rawEmail}`);
+    }
+
+    res.json({
+      success: updated,
+      entry: targetEntry,
+      numbers: updatedList,
+    });
+  });
+
+  // Endpoint to batch sync numbers for an email (e.g. on client startup)
+  app.post("/api/account/numbers/batch-sync", (req, res) => {
+    const { email, numbers } = req.body || {};
+    const rawEmail = String(email || "").trim().toLowerCase();
+    if (!rawEmail || !Array.isArray(numbers)) {
+      return res.status(400).json({ error: "Email and numbers array required" });
+    }
+
+    purgeOldNumbers(rawEmail);
+    const existingList = sharedAccountNumbers.get(rawEmail) || [];
+    const existingMap = new Map<string, SharedAllocatedNumber>();
+
+    existingList.forEach((item) => existingMap.set(item.id, item));
+
+    const now = Date.now();
+    numbers.forEach((item: any) => {
+      if (!item || !item.number) return;
+      const cleanNum = String(item.number).replace(/\D/g, "");
+      const id = item.id || `gn_${item.createdAt || now}_${cleanNum.slice(-4)}`;
+      
+      if (existingMap.has(id)) {
+        const current = existingMap.get(id)!;
+        // Merge OTP if incoming has OTP
+        if (item.otp && !current.otp) {
+          existingMap.set(id, { ...current, ...item, otp: item.otp, status: "SUCCESS" });
+        }
+      } else {
+        existingMap.set(id, {
+          id,
+          number: item.number,
+          country: item.country || "International",
+          operator: item.operator || "Direct Route",
+          status: item.status || "PENDING",
+          otp: item.otp,
+          service: item.service || "Waiting for SMS...",
+          activity: item.activity || "Just now",
+          createdAt: item.createdAt || now,
+          updatedAt: now,
+          allocatedBy: item.allocatedBy || "Collaborator",
+        });
+      }
+    });
+
+    const mergedList = Array.from(existingMap.values())
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+      .slice(0, 200);
+
+    sharedAccountNumbers.set(rawEmail, mergedList);
+
+    res.json({
+      success: true,
+      numbers: mergedList,
+    });
+  });
+
+  // Endpoint to delete/remove a number from shared account
+  app.delete("/api/account/numbers", (req, res) => {
+    const rawEmail = String(req.query.email || "").trim().toLowerCase();
+    const numberId = String(req.query.id || "").trim();
+
+    if (!rawEmail) {
+      return res.status(400).json({ error: "Email required" });
+    }
+
+    if (numberId) {
+      const list = sharedAccountNumbers.get(rawEmail) || [];
+      const filtered = list.filter((n) => n.id !== numberId);
+      sharedAccountNumbers.set(rawEmail, filtered);
+    } else if (req.query.clearAll === "true") {
+      sharedAccountNumbers.set(rawEmail, []);
+    }
+
+    res.json({
+      success: true,
+      numbers: sharedAccountNumbers.get(rawEmail) || [],
+    });
+  });
+
   // Endpoint to fetch current active system API key
   app.get("/api/system/api-key", (req, res) => {
     res.json({

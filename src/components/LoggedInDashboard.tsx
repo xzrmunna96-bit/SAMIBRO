@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import {
   Menu,
   Clock,
+  Calendar,
   Home,
   LogOut,
   ChevronRight,
@@ -44,6 +45,8 @@ import {
   ChevronDown,
   Bell,
   Megaphone,
+  ArrowLeft,
+  ArrowUpDown,
 } from "lucide-react";
 import {
   getAllNotifications,
@@ -68,6 +71,7 @@ import {
   LiveSuccessOtp,
   AllocatedNumber,
   resolveCarrierDetails,
+  getRealCountryName,
 } from "../services/voltxApi";
 import {
   COUNTRY_OPERATOR_LIST,
@@ -75,6 +79,7 @@ import {
 } from "../data/countryOperators";
 import {
   getAllAccounts,
+  getAllSubAdmins,
   approveAccount,
   rejectAccount,
   deleteAccount,
@@ -85,6 +90,7 @@ import {
   DEFAULT_USER_PERMISSIONS,
   UserPermissions,
 } from "../services/userAuthService";
+import { triggerAdminRoute } from "../App";
 import {
   getChatMessagesForUser,
   sendUserMessage,
@@ -99,8 +105,42 @@ import {
   TopAppItem,
 } from "../services/topAppsService";
 import { getBrandLogoComponent } from "./BrandLogos";
+import { CountryFlag } from "./CountryFlags";
 
 export { getDedicatedAccountCode };
+
+export interface PortalRangeItem {
+  id: string;
+  countryCode: string;
+  country: string;
+  range: string;
+  service: string;
+  operator?: string;
+  baseHits: number;
+}
+
+export const TOP_PORTAL_RANGES: PortalRangeItem[] = [
+  { id: "1937", countryCode: "MZ", country: "MOZAMBIQUE", range: "1937", service: "WhatsApp", operator: "Vodacom", baseHits: 148 },
+  { id: "51", countryCode: "BA", country: "BOSNIA HERZEGOVINA", range: "51", service: "Facebook", operator: "BH Telecom", baseHits: 134 },
+  { id: "35467", countryCode: "EG", country: "EGYPT", range: "35467", service: "TikTok", operator: "Vodafone EG", baseHits: 122 },
+  { id: "5651", countryCode: "DZ", country: "ALGERIA", range: "5651", service: "WhatsApp", operator: "Djezzy", baseHits: 114 },
+  { id: "14322", countryCode: "TZ", country: "TANZANIA", range: "14322", service: "IMO", operator: "Vodacom TZ", baseHits: 106 },
+  { id: "14306", countryCode: "TZ", country: "TANZANIA", range: "14306", service: "Telegram", operator: "Airtel TZ", baseHits: 98 },
+  { id: "8979", countryCode: "DZ", country: "ALGERIA", range: "8979", service: "Facebook", operator: "Mobilis", baseHits: 92 },
+  { id: "14320", countryCode: "TZ", country: "TANZANIA", range: "14320", service: "WhatsApp", operator: "Tigo", baseHits: 88 },
+  { id: "88017", countryCode: "BD", country: "BANGLADESH", range: "88017", service: "WhatsApp", operator: "Grameenphone", baseHits: 85 },
+  { id: "91987", countryCode: "IN", country: "INDIA", range: "91987", service: "Telegram", operator: "Airtel India", baseHits: 81 },
+  { id: "92300", countryCode: "PK", country: "PAKISTAN", range: "92300", service: "WhatsApp", operator: "Jazz", baseHits: 78 },
+  { id: "15552", countryCode: "US", country: "UNITED STATES", range: "15552", service: "Microsoft", operator: "T-Mobile", baseHits: 74 },
+  { id: "44740", countryCode: "GB", country: "UNITED KINGDOM", range: "44740", service: "Apple", operator: "EE UK", baseHits: 70 },
+  { id: "23480", countryCode: "NG", country: "NIGERIA", range: "23480", service: "TikTok", operator: "MTN NG", baseHits: 67 },
+  { id: "62812", countryCode: "ID", country: "INDONESIA", range: "62812", service: "IMO", operator: "Telkomsel", baseHits: 64 },
+  { id: "23762", countryCode: "CM", country: "CAMEROON", range: "23762", service: "WhatsApp", operator: "Orange CM", baseHits: 60 },
+  { id: "23275", countryCode: "SL", country: "SIERRA LEONE", range: "23275", service: "Facebook", operator: "Orange SL", baseHits: 56 },
+  { id: "22501", countryCode: "CI", country: "IVORY COAST", range: "22501", service: "WhatsApp", operator: "Moov CI", baseHits: 52 },
+  { id: "63917", countryCode: "PH", country: "PHILIPPINES", range: "63917", service: "Facebook", operator: "Globe PH", baseHits: 48 },
+  { id: "25471", countryCode: "KE", country: "KENYA", range: "25471", service: "TikTok", operator: "Safaricom", baseHits: 44 },
+];
 
 const COUNTRY_DIAL_CODES: Record<string, string> = {
   "Montenegro": "382",
@@ -148,6 +188,40 @@ export function formatNumberWithAreaCode(rawNum: string, country?: string): stri
   }
 
   return clean;
+}
+
+export function stripAreaCode(rawNum: string, country?: string): string {
+  if (!rawNum) return "";
+  let clean = rawNum.replace(/^\+/, "").trim();
+  let digits = clean.replace(/\D/g, "");
+
+  if (!digits) return rawNum;
+
+  // 1. If country is provided and exists in COUNTRY_DIAL_CODES
+  if (country && COUNTRY_DIAL_CODES[country]) {
+    const dialCode = COUNTRY_DIAL_CODES[country];
+    if (digits.startsWith(dialCode) && digits.length > dialCode.length) {
+      return digits.slice(dialCode.length);
+    }
+  }
+
+  // 2. Check all dial codes in COUNTRY_DIAL_CODES sorted by longest first
+  const sortedCodes = Object.values(COUNTRY_DIAL_CODES).sort((a, b) => b.length - a.length);
+  for (const code of sortedCodes) {
+    if (digits.startsWith(code) && digits.length > code.length + 3) {
+      return digits.slice(code.length);
+    }
+  }
+
+  // 3. Fallback common country prefixes (e.g., 880, 225, 232, 233, 255, 256, 971, 966, 92, 93, 44, 49, 33, 20, 55, 1)
+  const commonPrefixes = ["880", "225", "232", "233", "255", "256", "971", "966", "92", "93", "44", "49", "33", "20", "55", "1"];
+  for (const p of commonPrefixes) {
+    if (digits.startsWith(p) && digits.length > p.length + 3) {
+      return digits.slice(p.length);
+    }
+  }
+
+  return digits;
 }
 
 export interface LoggedInDashboardProps {
@@ -478,6 +552,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     | "dashboard"
     | "getNumber"
     | "console"
+    | "smsRange"
+    | "smsNumber"
     | "summary"
     | "accessList"
     | "senderRange"
@@ -493,6 +569,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           "dashboard",
           "getNumber",
           "console",
+          "smsRange",
+          "smsNumber",
           "summary",
           "accessList",
           "senderRange",
@@ -560,6 +638,81 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const [accountCode, setAccountCode] = useState(() =>
     getDedicatedAccountCode(user.email, user.accountCode),
   );
+
+  // Live Admin Permission Check for Super Admin & Sub-Admins created by Main Admin
+  const [isAdminUser, setIsAdminUser] = useState<boolean>(() => {
+    if (!user || !user.email) return false;
+    const cleanEmail = user.email.toLowerCase();
+    const isSuperAdmin =
+      cleanEmail === "xzrmunna33@gmail.com" ||
+      cleanEmail === "xzrmunna96@gmail.com" ||
+      cleanEmail === "xzrmunna" ||
+      user.role === "admin";
+    if (isSuperAdmin) return true;
+    const subAdmins = getAllSubAdmins();
+    return subAdmins.some(
+      (sa) => sa.email.toLowerCase() === cleanEmail && sa.status === "active"
+    );
+  });
+
+  useEffect(() => {
+    const checkAdminPermission = () => {
+      if (!user || !user.email) {
+        setIsAdminUser(false);
+        return;
+      }
+      const cleanEmail = user.email.toLowerCase();
+      const isSuperAdmin =
+        cleanEmail === "xzrmunna33@gmail.com" ||
+        cleanEmail === "xzrmunna96@gmail.com" ||
+        cleanEmail === "xzrmunna" ||
+        user.role === "admin";
+      if (isSuperAdmin) {
+        setIsAdminUser(true);
+        return;
+      }
+      const subAdmins = getAllSubAdmins();
+      const isSub = subAdmins.some(
+        (sa) => sa.email.toLowerCase() === cleanEmail && sa.status === "active"
+      );
+      setIsAdminUser(isSub);
+    };
+
+    checkAdminPermission();
+
+    window.addEventListener("super_x_sub_admins_updated", checkAdminPermission);
+    window.addEventListener("super_x_accounts_updated", checkAdminPermission);
+    window.addEventListener("storage", checkAdminPermission);
+
+    return () => {
+      window.removeEventListener("super_x_sub_admins_updated", checkAdminPermission);
+      window.removeEventListener("super_x_accounts_updated", checkAdminPermission);
+      window.removeEventListener("storage", checkAdminPermission);
+    };
+  }, [user]);
+
+  const handleOpenAdminPortal = () => {
+    if (!user || !user.email) return;
+    const cleanEmail = user.email.toLowerCase();
+    const isSuperAdmin =
+      cleanEmail === "xzrmunna33@gmail.com" ||
+      cleanEmail === "xzrmunna96@gmail.com" ||
+      cleanEmail === "xzrmunna" ||
+      user.role === "admin";
+
+    const newSession = {
+      isAuthenticated: true,
+      role: isSuperAdmin ? ("super_admin" as const) : ("sub_admin" as const),
+      email: user.email,
+      name: user.name || (isSuperAdmin ? "Super Admin" : "Sub Admin"),
+    };
+
+    try {
+      sessionStorage.setItem("super_x_admin_session", JSON.stringify(newSession));
+    } catch {}
+
+    triggerAdminRoute();
+  };
   const [brandTitle, setBrandTitle] = useState(() => {
     try {
       return localStorage.getItem("super_x_site_brand_title") || "SUPER X SMS";
@@ -567,6 +720,16 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       return "SUPER X SMS";
     }
   });
+
+  // Live Timer Date and Clock State
+  const [headerCurrentTime, setHeaderCurrentTime] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setHeaderCurrentTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const [siteNoticeText, setSiteNoticeText] = useState(() => {
     try {
@@ -683,8 +846,61 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const [isEditingKey, setIsEditingKey] = useState(false);
   const [keyInput, setKeyInput] = useState("");
 
-  // Live Real Data State
-  const [liveHits, setLiveHits] = useState<LiveConsoleHit[]>([]);
+  // Live Real Data State with 24-Hour Persistence & Automatic Reset
+  const [liveHits, setLiveHits] = useState<LiveConsoleHit[]>(() => {
+    try {
+      const saved = localStorage.getItem("super_x_live_console_hits_24h");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          const now = Date.now();
+          const oneDayAgo = now - 24 * 60 * 60 * 1000;
+          // Keep only messages within the last 24 hours
+          return parsed.filter((item: any) => {
+            const t = typeof item.time === "number" ? item.time : (item.timestamp || new Date(item.time).getTime());
+            return !isNaN(t) && t >= oneDayAgo;
+          });
+        }
+      }
+    } catch {}
+    return [];
+  });
+
+  // Save live hits to localStorage and auto-clean older than 24 hours
+  useEffect(() => {
+    try {
+      const now = Date.now();
+      const oneDayAgo = now - 24 * 60 * 60 * 1000;
+      const validHits = liveHits.filter((item: any) => {
+        const t = typeof item.time === "number" ? item.time : (item.timestamp || new Date(item.time).getTime());
+        return !isNaN(t) && t >= oneDayAgo;
+      });
+      localStorage.setItem("super_x_live_console_hits_24h", JSON.stringify(validHits));
+    } catch {}
+  }, [liveHits]);
+
+  // Periodic 24-hour cleanup check every 60 seconds
+  useEffect(() => {
+    const purgeInterval = setInterval(() => {
+      setLiveHits((prev) => {
+        const now = Date.now();
+        const oneDayAgo = now - 24 * 60 * 60 * 1000;
+        const filtered = prev.filter((item: any) => {
+          const t = typeof item.time === "number" ? item.time : (item.timestamp || new Date(item.time).getTime());
+          return !isNaN(t) && t >= oneDayAgo;
+        });
+        if (filtered.length !== prev.length) {
+          try {
+            localStorage.setItem("super_x_live_console_hits_24h", JSON.stringify(filtered));
+          } catch {}
+          return filtered;
+        }
+        return prev;
+      });
+    }, 60000);
+
+    return () => clearInterval(purgeInterval);
+  }, []);
   const [liveAccessList, setLiveAccessList] = useState<LiveAccessService[]>([]);
   const [liveSuccessOtps, setLiveSuccessOtps] = useState<LiveSuccessOtp[]>([]);
   const [allocatedNumbers, setAllocatedNumbers] = useState<
@@ -787,6 +1003,98 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     };
   }, []);
 
+  const [showAllTopApps, setShowAllTopApps] = useState(false);
+  const [showAllTopRanges, setShowAllTopRanges] = useState(false);
+  const [activeAppConsoleService, setActiveAppConsoleService] = useState<string | null>(null);
+
+  // Dynamic Real-Time Top Ranges Hit Counter & Ranking linked directly to Console feed
+  const [dynamicRangeHits, setDynamicRangeHits] = useState<Record<string, number>>({});
+
+  // Sync real-time console hits to range counters whenever new SMS packet hits console
+  useEffect(() => {
+    if (!liveHits.length) return;
+    const latestHit = liveHits[0];
+    if (latestHit && (latestHit.range || latestHit.country)) {
+      const cleanR = (latestHit.range || "").replace(/\D/g, "");
+      // Extract prefix (up to 5 digits) or full match
+      const prefix = cleanR.slice(0, 5);
+      const matched = TOP_PORTAL_RANGES.find(
+        (p) =>
+          (cleanR && (cleanR.startsWith(p.range) || p.range.startsWith(cleanR))) ||
+          (latestHit.country && latestHit.country.toUpperCase().includes(p.country.toUpperCase())),
+      );
+      const keyToBump = matched ? matched.range : (prefix || cleanR);
+      if (keyToBump) {
+        setDynamicRangeHits((prev) => ({
+          ...prev,
+          [keyToBump]: (prev[keyToBump] || 0) + 2,
+        }));
+      }
+    }
+  }, [liveHits]);
+
+  // Compute live sorted top ranges strictly aggregated from real Console (liveHits) traffic
+  const sortedTopRanges = React.useMemo(() => {
+    if (!liveHits.length) {
+      return [];
+    }
+
+    // Map to aggregate ranges and their active services directly from real incoming console packets
+    const rangeMap = new Map<
+      string,
+      {
+        id: string;
+        countryCode: string;
+        country: string;
+        range: string;
+        service: string;
+        operator?: string;
+        consoleHitCount: number;
+      }
+    >();
+
+    // Aggregate strictly from real liveHits
+    liveHits.forEach((hit) => {
+      const cleanRange = (hit.range || "").replace(/\D/g, "");
+      if (!cleanRange) return;
+
+      const carrier = resolveCarrierDetails(cleanRange);
+      const hitService = hit.sid || (hit.message && hit.message.toLowerCase().includes("whatsapp") ? "WhatsApp" : "SMS Direct");
+      const hitCountry = getRealCountryName(hit.country, cleanRange).toUpperCase();
+      const hitOperator = hit.operator || carrier.operator || "Direct Route";
+
+      // Group by range or carrier prefix (first 4-6 digits)
+      const rangeKey = cleanRange.length > 7 ? cleanRange.slice(0, 5) : cleanRange;
+
+      if (rangeMap.has(rangeKey)) {
+        const entry = rangeMap.get(rangeKey)!;
+        entry.consoleHitCount += 1;
+        if (hit.sid) {
+          entry.service = hit.sid;
+        }
+      } else {
+        rangeMap.set(rangeKey, {
+          id: rangeKey,
+          countryCode: hitCountry,
+          country: hitCountry,
+          range: rangeKey,
+          service: hitService,
+          operator: hitOperator,
+          consoleHitCount: 1,
+        });
+      }
+    });
+
+    // Sort strictly descending by real received hit volume
+    return Array.from(rangeMap.values())
+      .map((item) => ({
+        ...item,
+        totalHits: item.consoleHitCount,
+        recentHits: item.consoleHitCount,
+      }))
+      .sort((a, b) => b.totalHits - a.totalHits);
+  }, [liveHits]);
+
   const [getNumHistory, setGetNumHistory] = useState<
     Array<{
       id: string;
@@ -824,8 +1132,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     } catch {}
   }, [getNumHistory, user.email]);
 
-  // Reload history when active user account changes
+  // Reload and initial batch-sync history when active user account changes
   useEffect(() => {
+    let localItems: any[] = [];
     try {
       const saved = localStorage.getItem(
         `super_x_get_num_history_${user.email}`,
@@ -833,12 +1142,30 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          setGetNumHistory(parsed);
-          return;
+          localItems = sanitizeAllocatedHistory(parsed);
+          setGetNumHistory(localItems);
         }
       }
     } catch {}
-    setGetNumHistory([]);
+
+    // Batch sync with server to ensure 4-5 collaborators on same email share all numbers & OTPs
+    if (user.email) {
+      fetch("/api/account/numbers/batch-sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: user.email,
+          numbers: localItems,
+        }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.success && Array.isArray(data.numbers)) {
+            setGetNumHistory(sanitizeAllocatedHistory(data.numbers));
+          }
+        })
+        .catch(() => {});
+    }
   }, [user.email]);
 
   // Support Chat State for User
@@ -1210,7 +1537,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           range: cleanRange,
           sid: hit.sid || "SMS",
           operator: hit.operator || carrier.operator,
-          country: hit.country || carrier.country,
+          country: getRealCountryName(hit.country, cleanRange),
           hitsCount: 1,
           latestMessage: isHitOwnedByUser(hit).isOwner
             ? hit.message
@@ -1337,10 +1664,15 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   // Poll background data from integrated upstream & console auto refresh countdown
   const fetchRealTimeData = async () => {
     try {
-      const [consoleRes, access, otps] = await Promise.all([
+      const [consoleRes, access, otps, sharedAccRes] = await Promise.all([
         fetchLiveConsoleDetailed(apiKey),
         fetchLiveAccess(apiKey),
         fetchSuccessOtps(apiKey),
+        user?.email
+          ? fetch(`/api/account/numbers?email=${encodeURIComponent(user.email)}`)
+              .then((r) => r.json())
+              .catch(() => null)
+          : Promise.resolve(null),
       ]);
 
       setConsoleApiMeta({
@@ -1363,21 +1695,75 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           const merged = [...newEntries, ...prev];
           return merged.slice(0, 100);
         });
-
       }
       if (access && access.length > 0) {
-        setLiveAccessList(access);
+        setLiveAccessList((prev) => {
+          if (
+            prev.length === access.length &&
+            prev[0]?.sid === access[0]?.sid &&
+            prev[0]?.last_at === access[0]?.last_at
+          ) {
+            return prev;
+          }
+          return access;
+        });
       }
       if (otps && otps.length > 0) {
-        setLiveSuccessOtps(otps);
+        setLiveSuccessOtps((prev) => {
+          if (
+            prev.length === otps.length &&
+            prev[0]?.otp_id === otps[0]?.otp_id &&
+            prev[0]?.time === otps[0]?.time
+          ) {
+            return prev;
+          }
+          return otps;
+        });
       }
 
-      // Real-time live OTP matching for allocated numbers waiting for SMS:
+      // Real-time live OTP matching and collaborative multi-session sync for allocated numbers
       setGetNumHistory((currentHistory) => {
         let hasChange = false;
         let newlyDeliveredOtp = "";
+        let newlyDeliveredNum = "";
 
-        const nextHistory = currentHistory.map((entry) => {
+        // 1. Merge server numbers from other teammates logged in under same email
+        let baseList = [...currentHistory];
+        if (sharedAccRes?.success && Array.isArray(sharedAccRes.numbers)) {
+          const serverNumbers: any[] = sharedAccRes.numbers;
+          const localMap = new Map(baseList.map((item) => [item.id, item]));
+
+          serverNumbers.forEach((sNum) => {
+            const cleanSNum = sNum.number.replace(/\D/g, "");
+            let found = localMap.get(sNum.id);
+            if (!found) {
+              found = baseList.find(
+                (b) => b.number.replace(/\D/g, "") === cleanSNum,
+              );
+            }
+
+            if (found) {
+              // If server has OTP delivered on another teammate's session and local was pending
+              if (sNum.otp && !found.otp) {
+                found.otp = sNum.otp;
+                found.status = "SUCCESS";
+                found.service = sNum.service || found.service;
+                found.activity = sNum.activity || "Delivered just now";
+                hasChange = true;
+                newlyDeliveredOtp = sNum.otp;
+                newlyDeliveredNum = found.number;
+              }
+            } else {
+              // Teammate took a new number from another browser/tab
+              baseList.push(sNum);
+              hasChange = true;
+            }
+          });
+          baseList.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        }
+
+        // 2. Perform live carrier / console OTP matching
+        const nextHistory = baseList.map((entry) => {
           if (entry.otp) return entry; // Already received real OTP
           const cleanNum = (entry.number || "").replace(/\D/g, "");
           if (!cleanNum || cleanNum.length < 8) return entry;
@@ -1465,6 +1851,25 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           if (matchedCode) {
             hasChange = true;
             newlyDeliveredOtp = matchedCode;
+            newlyDeliveredNum = entry.number;
+
+            // Broadcast OTP to server so all teammates on this email see it instantly
+            if (user?.email) {
+              fetch("/api/account/numbers/update-otp", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  email: user.email,
+                  numberId: entry.id,
+                  number: entry.number,
+                  otp: matchedCode,
+                  service: matchedService,
+                  status: "SUCCESS",
+                  activity: "Delivered just now",
+                }),
+              }).catch(() => {});
+            }
+
             return {
               ...entry,
               status: "SUCCESS" as const,
@@ -1480,7 +1885,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         const sanitized = sanitizeAllocatedHistory(nextHistory);
         if (hasChange && newlyDeliveredOtp) {
           showDashboardToast(
-            `🎉 আপনার নাম্বারে ওটিপি এসেছে: ${newlyDeliveredOtp}`,
+            `🎉 আপনার নাম্বারে ওটিপি এসেছে: ${newlyDeliveredOtp}${newlyDeliveredNum ? ` (${newlyDeliveredNum})` : ""}`,
             "success",
           );
         }
@@ -1531,23 +1936,50 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     }, 600);
   };
 
-  const copyToClipboard = (text: string, id: string) => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(text);
+  const copyToClipboard = (text: string, id: string, country?: string) => {
+    let textToCopy = text;
+    const isPhoneNumber =
+      id.startsWith("num_") ||
+      id.startsWith("gn_") ||
+      id.startsWith("allocated_") ||
+      id.startsWith("deliv_num_") ||
+      (!id.startsWith("otp_") &&
+        !id.startsWith("sender_otp_") &&
+        !id.startsWith("msg_") &&
+        !id.startsWith("range_") &&
+        !id.startsWith("account_code"));
+
+    if (isPhoneNumber) {
+      textToCopy = stripAreaCode(text, country);
     }
+
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      try {
+        navigator.clipboard.writeText(textToCopy).catch(() => {});
+      } catch {
+        const textArea = document.createElement("textarea");
+        textArea.value = textToCopy;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textArea);
+      }
+    }
+
     setCopiedText(id);
     if (id.startsWith("otp_") || id.startsWith("sender_otp_")) {
       showDashboardToast(`Copied OTP: ${text}`, "success");
     } else if (id.startsWith("msg_")) {
       showDashboardToast("Copied message text", "success");
+    } else if (id.startsWith("range_")) {
+      showDashboardToast(`Copied Range: ${text}`, "success");
     } else {
-      const numToDisplay = text.replace(/^\+/, "");
       showDashboardToast(
-        `Copied ${numToDisplay.startsWith("+") ? "" : "+"}${numToDisplay}`,
+        `Copied (Without Area Code): ${textToCopy}`,
         "success",
       );
     }
-    setTimeout(() => setCopiedText(null), 4000);
+    setTimeout(() => setCopiedText(null), 2500);
   };
 
   // Get Number Custom Allocation matching voltxsms / m29 UI with RANGE validation
@@ -1629,17 +2061,15 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       }
       generatedNum = formatNumberWithAreaCode(generatedNum, targetCountry);
 
-      // 2. Real-time auto copy to clipboard
+      // Strip area code for clipboard copy
+      const copiedWithoutAreaCode = stripAreaCode(generatedNum, targetCountry);
+
+      // 2. Real-time instant auto copy to clipboard (fire & forget for ultra performance)
       if (typeof navigator !== "undefined" && navigator.clipboard) {
-        try {
-          await navigator.clipboard.writeText(generatedNum);
-        } catch {
-          // ignore
-        }
+        navigator.clipboard.writeText(copiedWithoutAreaCode).catch(() => {});
       }
 
-      const numForToast = generatedNum.replace(/^\+/, "");
-      showDashboardToast(`Copied +${numForToast}`, "success");
+      showDashboardToast(`Copied ${copiedWithoutAreaCode} (No Area Code)`, "success");
 
       const newId = `gn_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
       const nowMs = Date.now();
@@ -1656,6 +2086,18 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       };
 
       setGetNumHistory((prev) => [newEntry, ...prev]);
+
+      // Broadcast new allocated number to server so all 4-5 teammates on this email see it immediately
+      if (user?.email) {
+        fetch("/api/account/numbers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: user.email,
+            entry: newEntry,
+          }),
+        }).catch(() => {});
+      }
     } catch (err: any) {
       showDashboardToast(
         err?.message || "সার্ভার এপিআই এর সাথে যোগাযোগ করা যায়নি।",
@@ -1682,6 +2124,12 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   // Delete an individual allocated number from the history
   const handleDeleteNumEntry = (entryId: string) => {
     setGetNumHistory((prev) => prev.filter((i) => i.id !== entryId));
+    if (user?.email) {
+      fetch(
+        `/api/account/numbers?email=${encodeURIComponent(user.email)}&id=${encodeURIComponent(entryId)}`,
+        { method: "DELETE" },
+      ).catch(() => {});
+    }
     showDashboardToast("Number removed from history", "info");
   };
 
@@ -1692,6 +2140,12 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       try {
         localStorage.removeItem(`super_x_get_num_history_${user.email}`);
       } catch {}
+      if (user?.email) {
+        fetch(
+          `/api/account/numbers?email=${encodeURIComponent(user.email)}&clearAll=true`,
+          { method: "DELETE" },
+        ).catch(() => {});
+      }
       showDashboardToast("All allocated numbers cleared", "info");
     }
   };
@@ -2026,25 +2480,25 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
       <aside
         id="dashboard-sidebar-drawer"
-        className={`fixed top-0 left-0 bottom-0 w-[280px] sm:w-[310px] bg-[#3f4a56] text-gray-200 z-50 shadow-2xl flex flex-col justify-between overflow-y-auto transition-transform duration-300 ease-out border-r border-gray-700/60 ${
+        className={`fixed top-0 left-0 bottom-0 w-[285px] sm:w-[315px] bg-slate-900 text-slate-100 z-50 shadow-2xl flex flex-col justify-between overflow-y-auto transition-transform duration-300 ease-out border-r border-slate-700/80 ${
           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         <div className="flex flex-col">
           {/* Top Brand Logo Banner */}
-          <div className="px-5 pt-6 pb-4 border-b border-gray-500/30 flex items-center justify-between">
+          <div className="px-5 pt-6 pb-4 bg-slate-950/90 border-b border-slate-800 flex items-center justify-between">
             <div>
-              <h2 className="text-2xl font-extrabold text-white tracking-wide font-sans">
+              <h2 className="text-2xl font-black text-white tracking-wider font-sans drop-shadow-sm">
                 SUPER X SMS
               </h2>
-              <p className="text-[10px] font-semibold text-gray-300 tracking-[0.32em] uppercase mt-0.5">
+              <p className="text-[10px] font-black text-amber-400/90 tracking-[0.35em] uppercase mt-0.5">
                 P R E M I U M &nbsp; R A T E S
               </p>
             </div>
             <button
               type="button"
               onClick={() => setIsSidebarOpen(false)}
-              className="p-1 rounded-lg hover:bg-white/10 text-gray-300 hover:text-white transition cursor-pointer"
+              className="p-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer border border-slate-700/60"
               title="Close Menu"
             >
               <X className="w-5 h-5" />
@@ -2052,33 +2506,33 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           </div>
 
           {/* User Profile Card */}
-          <div className="px-5 py-4 border-b border-gray-500/30 flex items-start gap-3.5">
-            <div className="w-11 h-14 rounded-md border-2 border-gray-400/50 bg-gray-600/30 flex flex-col items-center justify-between p-1 shrink-0">
-              <div className="w-5 h-5 rounded-full border-2 border-gray-300 flex items-center justify-center mt-0.5">
-                <div className="w-2.5 h-2.5 rounded-full bg-gray-300"></div>
+          <div className="px-5 py-4 bg-slate-900/95 border-b border-slate-800 flex items-center gap-3.5">
+            <div className="w-11 h-14 rounded-lg border-2 border-amber-500/40 bg-slate-950 flex flex-col items-center justify-between p-1 shrink-0 shadow-sm">
+              <div className="w-5 h-5 rounded-full border-2 border-amber-400 flex items-center justify-center mt-0.5">
+                <div className="w-2.5 h-2.5 rounded-full bg-amber-400"></div>
               </div>
               <div className="w-full space-y-0.5 mb-0.5">
-                <div className="w-full h-0.5 bg-gray-400/70 rounded-full"></div>
-                <div className="w-full h-0.5 bg-gray-400/70 rounded-full"></div>
+                <div className="w-full h-0.5 bg-slate-600 rounded-full"></div>
+                <div className="w-full h-0.5 bg-slate-600 rounded-full"></div>
               </div>
             </div>
 
             <div className="flex-1 min-w-0">
-              <h3 className="text-base font-bold text-[#f59e0b] uppercase tracking-wide truncate">
+              <h3 className="text-base font-black text-amber-400 uppercase tracking-wide truncate drop-shadow-xs">
                 {user.name || "SAMI"}
               </h3>
-              <p className="text-xs text-[#f59e0b]/90 font-medium mt-0.5">
-                Level : <span className="text-gray-200 font-semibold">Agent</span>
+              <p className="text-xs text-slate-300 font-semibold mt-0.5">
+                Level : <span className="text-amber-300 font-bold bg-amber-950/60 px-1.5 py-0.2 rounded border border-amber-500/30">Agent</span>
               </p>
 
-              <div className="flex items-center gap-3.5 mt-2 text-xs">
+              <div className="flex items-center gap-4 mt-2 text-xs font-bold">
                 <button
                   type="button"
                   id="sidebar-profile-link-btn"
                   onClick={() => handleNavClick("profile")}
-                  className="flex items-center gap-1 text-gray-200 hover:text-white font-medium hover:underline transition cursor-pointer"
+                  className="flex items-center gap-1 text-slate-200 hover:text-amber-300 font-bold hover:underline transition cursor-pointer"
                 >
-                  <User className="w-3.5 h-3.5 text-gray-300" />
+                  <User className="w-3.5 h-3.5 text-amber-400" />
                   <span>Profile</span>
                 </button>
 
@@ -2086,9 +2540,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   type="button"
                   id="sidebar-logout-link-btn"
                   onClick={onLogout}
-                  className="flex items-center gap-1 text-gray-200 hover:text-red-300 font-medium hover:underline transition cursor-pointer"
+                  className="flex items-center gap-1 text-rose-400 hover:text-rose-300 font-bold hover:underline transition cursor-pointer"
                 >
-                  <LogOut className="w-3.5 h-3.5 text-gray-300" />
+                  <LogOut className="w-3.5 h-3.5 text-rose-400" />
                   <span>Logout</span>
                 </button>
               </div>
@@ -2096,39 +2550,41 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           </div>
 
           {/* Account Code & Reload Bar */}
-          <div className="px-5 py-3 border-b border-gray-500/30 flex items-center justify-between text-xs font-semibold">
-            <div className="text-[#f59e0b]">
-              Account Code :{" "}
-              <span className="font-mono text-[#fbbf24]">{accountCode}</span>
+          <div className="px-5 py-3 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between text-xs font-bold">
+            <div className="text-slate-300 flex items-center gap-1.5">
+              <span className="text-slate-400">Account Code:</span>
+              <span className="font-mono text-amber-400 bg-amber-950/80 border border-amber-500/40 px-2 py-0.5 rounded-md font-extrabold text-sm">
+                {accountCode}
+              </span>
             </div>
 
             <button
               type="button"
               id="sidebar-reload-code-btn"
               onClick={handleReloadAccount}
-              className="flex items-center gap-1 text-gray-200 hover:text-white transition cursor-pointer active:scale-95"
+              className="flex items-center gap-1.5 text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-700 px-2.5 py-1 rounded-lg border border-slate-700 text-xs transition cursor-pointer active:scale-95"
               title="Reload Account Code"
             >
               <RotateCw
-                className={`w-3.5 h-3.5 ${isReloading ? "animate-spin text-[#f59e0b]" : ""}`}
+                className={`w-3.5 h-3.5 text-amber-400 ${isReloading ? "animate-spin" : ""}`}
               />
-              <span>reload</span>
+              <span className="uppercase text-[10px] tracking-wider font-extrabold">Reload</span>
             </button>
           </div>
 
           {/* Navigation Items */}
-          <div className="p-4 sm:p-5 space-y-2.5 sm:space-y-3">
+          <div className="p-3 sm:p-4 space-y-1.5 sm:space-y-2">
             <button
               type="button"
               id="sidebar-item-dashboard"
               onClick={() => handleNavClick("dashboard")}
-              className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-xl font-bold text-base transition cursor-pointer ${
+              className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-xl font-black text-base transition-all cursor-pointer ${
                 currentView === "dashboard"
-                  ? "bg-black/30 text-white shadow-inner border border-white/10"
-                  : "text-gray-200 hover:bg-black/20 hover:text-white"
+                  ? "bg-gradient-to-r from-amber-500/25 via-amber-500/15 to-transparent text-amber-300 border-l-4 border-amber-400 shadow-md"
+                  : "text-slate-200 hover:bg-slate-800/80 hover:text-white"
               }`}
             >
-              <Home className="w-5 h-5 text-[#f59e0b] shrink-0" />
+              <Home className="w-5 h-5 text-amber-400 shrink-0" />
               <span className="tracking-wide">Dashboard</span>
             </button>
 
@@ -2137,49 +2593,64 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 type="button"
                 id="sidebar-item-get-number"
                 onClick={() => handleNavClick("getNumber")}
-                className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-xl text-base font-semibold transition cursor-pointer ${
+                className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-base font-black transition-all cursor-pointer ${
                   currentView === "getNumber"
-                    ? "bg-black/30 text-white font-bold shadow-inner border border-white/10"
-                    : "text-gray-200 hover:bg-black/20 hover:text-white"
+                    ? "bg-gradient-to-r from-amber-500/25 via-amber-500/15 to-transparent text-amber-300 border-l-4 border-amber-400 shadow-md"
+                    : "text-slate-200 hover:bg-slate-800/80 hover:text-white"
                 }`}
               >
-                <Hash className="w-5 h-5 text-[#f59e0b] shrink-0" />
+                <Hash className="w-5 h-5 text-amber-400 shrink-0" />
                 <span className="tracking-wide">Get Number</span>
               </button>
             )}
 
             {userPerms.canAccessConsole && (
-              <button
-                type="button"
-                id="sidebar-item-console"
-                onClick={() => handleNavClick("console")}
-                className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-xl text-base font-semibold transition cursor-pointer ${
-                  currentView === "console"
-                    ? "bg-black/30 text-white font-bold shadow-inner border border-white/10"
-                    : "text-gray-200 hover:bg-black/20 hover:text-white"
-                }`}
-              >
-                <div className="font-mono text-[#f59e0b] font-extrabold text-base w-5 text-center shrink-0">
-                  &gt;_
-                </div>
-                <span className="tracking-wide">Console</span>
-              </button>
-            )}
+              <>
+                <button
+                  type="button"
+                  id="sidebar-item-console"
+                  onClick={() => handleNavClick("console")}
+                  className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-base font-black transition-all cursor-pointer ${
+                    currentView === "console"
+                      ? "bg-gradient-to-r from-amber-500/25 via-amber-500/15 to-transparent text-amber-300 border-l-4 border-amber-400 shadow-md"
+                      : "text-slate-200 hover:bg-slate-800/80 hover:text-white"
+                  }`}
+                >
+                  <div className="font-mono text-amber-400 font-black text-base w-5 text-center shrink-0">
+                    &gt;_
+                  </div>
+                  <span className="tracking-wide">Console</span>
+                </button>
 
-            {userPerms.canAccessSummary && (
-              <button
-                type="button"
-                id="sidebar-item-summary"
-                onClick={() => handleNavClick("summary")}
-                className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-xl text-base font-semibold transition cursor-pointer ${
-                  currentView === "summary"
-                    ? "bg-black/30 text-white font-bold shadow-inner border border-white/10"
-                    : "text-gray-200 hover:bg-black/20 hover:text-white"
-                }`}
-              >
-                <TrendingUp className="w-5 h-5 text-[#f59e0b] shrink-0" />
-                <span className="tracking-wide">Summary</span>
-              </button>
+                {/* Extra Sub-Buttons under Console */}
+                <button
+                  type="button"
+                  id="sidebar-item-sms-range"
+                  onClick={() => handleNavClick("smsRange")}
+                  className={`w-full flex items-center gap-3.5 px-4 py-2.5 rounded-xl text-sm font-extrabold transition-all cursor-pointer pl-8 ${
+                    currentView === "smsRange"
+                      ? "bg-gradient-to-r from-amber-500/25 via-amber-500/15 to-transparent text-amber-300 border-l-4 border-amber-400 shadow-md"
+                      : "text-slate-300 hover:bg-slate-800/80 hover:text-white"
+                  }`}
+                >
+                  <Radio className="w-4.5 h-4.5 text-amber-400 shrink-0" />
+                  <span className="tracking-wide">SMS Range</span>
+                </button>
+
+                <button
+                  type="button"
+                  id="sidebar-item-sms-number"
+                  onClick={() => handleNavClick("smsNumber")}
+                  className={`w-full flex items-center gap-3.5 px-4 py-2.5 rounded-xl text-sm font-extrabold transition-all cursor-pointer pl-8 ${
+                    currentView === "smsNumber"
+                      ? "bg-gradient-to-r from-amber-500/25 via-amber-500/15 to-transparent text-amber-300 border-l-4 border-amber-400 shadow-md"
+                      : "text-slate-300 hover:bg-slate-800/80 hover:text-white"
+                  }`}
+                >
+                  <Smartphone className="w-4.5 h-4.5 text-amber-400 shrink-0" />
+                  <span className="tracking-wide">SMS Number</span>
+                </button>
+              </>
             )}
 
             {userPerms.canAccessAccessList && (
@@ -2187,13 +2658,13 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 type="button"
                 id="sidebar-item-access-list"
                 onClick={() => handleNavClick("accessList")}
-                className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-xl text-base font-semibold transition cursor-pointer ${
+                className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-base font-black transition-all cursor-pointer ${
                   currentView === "accessList"
-                    ? "bg-black/30 text-white font-bold shadow-inner border border-white/10"
-                    : "text-gray-200 hover:bg-black/20 hover:text-white"
+                    ? "bg-gradient-to-r from-amber-500/25 via-amber-500/15 to-transparent text-amber-300 border-l-4 border-amber-400 shadow-md"
+                    : "text-slate-200 hover:bg-slate-800/80 hover:text-white"
                 }`}
               >
-                <List className="w-5 h-5 text-[#f59e0b] shrink-0" />
+                <List className="w-5 h-5 text-amber-400 shrink-0" />
                 <span className="tracking-wide">Access List</span>
               </button>
             )}
@@ -2203,99 +2674,124 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 type="button"
                 id="sidebar-item-sender-range"
                 onClick={() => handleNavClick("senderRange")}
-                className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-xl text-base font-semibold transition cursor-pointer ${
+                className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-base font-black transition-all cursor-pointer ${
                   currentView === "senderRange"
-                    ? "bg-black/30 text-white font-bold shadow-inner border border-white/10"
-                    : "text-gray-200 hover:bg-black/20 hover:text-white"
+                    ? "bg-gradient-to-r from-amber-500/25 via-amber-500/15 to-transparent text-amber-300 border-l-4 border-amber-400 shadow-md"
+                    : "text-slate-200 hover:bg-slate-800/80 hover:text-white"
                 }`}
               >
-                <Globe2 className="w-5 h-5 text-[#f59e0b] shrink-0" />
+                <Globe2 className="w-5 h-5 text-amber-400 shrink-0" />
                 <span className="tracking-wide">Sender / Range</span>
               </button>
             )}
 
-            {userPerms.canAccess2oo9 && (
-              <button
-                type="button"
-                id="sidebar-item-terminal"
-                onClick={() => handleNavClick("terminal")}
-                className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-xl text-base font-semibold transition cursor-pointer ${
-                  currentView === "terminal"
-                    ? "bg-black/30 text-white font-bold shadow-inner border border-white/10"
-                    : "text-gray-200 hover:bg-black/20 hover:text-white"
-                }`}
-              >
-                <div className="w-5 flex items-center justify-center shrink-0">
-                  <Circle className="w-3 h-3 text-red-500 fill-red-500" />
-                </div>
-                <span className="tracking-wide">Terminal</span>
-              </button>
-            )}
-
-            {/* User Requested: Profile Navigation Item */}
+            {/* Profile Navigation Item */}
             <button
               type="button"
               id="sidebar-item-profile"
               onClick={() => handleNavClick("profile")}
-              className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-xl text-base font-semibold transition cursor-pointer ${
+              className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-base font-black transition-all cursor-pointer ${
                 currentView === "profile"
-                  ? "bg-black/30 text-white font-bold shadow-inner border border-white/10"
-                  : "text-gray-200 hover:bg-black/20 hover:text-white"
+                  ? "bg-gradient-to-r from-amber-500/25 via-amber-500/15 to-transparent text-amber-300 border-l-4 border-amber-400 shadow-md"
+                  : "text-slate-200 hover:bg-slate-800/80 hover:text-white"
               }`}
             >
-              <User className="w-5 h-5 text-[#f59e0b] shrink-0" />
-              <span className="tracking-wide font-bold">Profile</span>
+              <User className="w-5 h-5 text-amber-400 shrink-0" />
+              <span className="tracking-wide">Profile</span>
             </button>
 
-            {/* User Requested: Logout Navigation Item */}
+            {/* Admin Navigation Item */}
+            {isAdminUser && (
+              <button
+                type="button"
+                id="sidebar-item-admin-panel"
+                onClick={() => {
+                  setIsSidebarOpen(false);
+                  handleOpenAdminPortal();
+                }}
+                className="w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-base font-black text-slate-200 hover:bg-slate-800/80 hover:text-white transition-all cursor-pointer"
+              >
+                <ShieldCheck className="w-5 h-5 text-amber-400 shrink-0" />
+                <span className="tracking-wide">Admin</span>
+              </button>
+            )}
+
+            {/* Logout Navigation Item */}
             <button
               type="button"
               id="sidebar-item-logout"
               onClick={onLogout}
-              className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-xl text-base font-semibold text-rose-300 hover:bg-rose-500/20 hover:text-white transition cursor-pointer"
+              className="w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-base font-black text-rose-400 hover:bg-rose-950/50 hover:text-rose-200 transition-all cursor-pointer border border-rose-500/20"
             >
               <LogOut className="w-5 h-5 text-rose-400 shrink-0" />
-              <span className="tracking-wide font-bold">Logout</span>
+              <span className="tracking-wide">Logout</span>
             </button>
           </div>
         </div>
 
-        <div className="p-3 border-t border-gray-600/30">
-          <div className="text-[10px] text-gray-400/80 text-center">
+        <div className="p-3 bg-slate-950/80 border-t border-slate-800">
+          <div className="text-[10px] font-bold text-slate-400/80 text-center tracking-widest uppercase">
             <span>SUPER X SMS &copy; 2026</span>
           </div>
         </div>
       </aside>
 
       {/* -------------------- TOP NAVBAR -------------------- */}
-      <header className="sticky top-0 z-40 w-full bg-gradient-to-r from-[#1e293b] via-[#334155] to-[#1e293b] text-white shadow-md border-b border-slate-700/60">
-        <div className="max-w-6xl mx-auto px-3 sm:px-6 h-12 sm:h-14 flex items-center justify-between">
+      <header className="sticky top-0 z-40 w-full bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 text-white shadow-xl border-b-4 border-cyan-400 shadow-[0_4px_25px_rgba(6,182,212,0.35)]">
+        <div className="max-w-7xl mx-auto px-2.5 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            {/* Enlarged Sidebar Toggle Button */}
             <button
               type="button"
               id="dashboard-menu-btn"
               onClick={() => setIsSidebarOpen(true)}
-              className="p-1 rounded-md hover:bg-white/10 transition active:scale-95 cursor-pointer text-white flex items-center justify-center shrink-0"
+              className="p-2 sm:p-2.5 rounded-2xl bg-gradient-to-br from-cyan-950/90 via-slate-900 to-slate-950 hover:from-cyan-900 hover:to-slate-800 text-cyan-300 hover:text-white border-2 border-cyan-400/80 hover:border-cyan-300 shadow-lg shadow-cyan-950/60 transition-all active:scale-95 cursor-pointer flex items-center justify-center shrink-0"
               aria-label="Open Navigation Sidebar"
               title="Open Navigation Menu"
             >
-              <Menu className="w-5 h-5" />
+              <Menu className="w-6 h-6 sm:w-7 sm:h-7 stroke-[2.5]" />
             </button>
-            <div className="font-black tracking-tight text-base sm:text-xl flex items-center gap-2 truncate">
-              <span className="animate-snake-rainbow-text font-black tracking-wider uppercase drop-shadow-sm select-none">
-                {brandTitle}
+
+            {/* Premium Larger Website Title */}
+            <div className="flex items-center gap-2 truncate">
+              <span className="hidden sm:flex p-1.5 rounded-xl bg-cyan-500/15 border border-cyan-400/40 text-cyan-300 shadow-inner items-center justify-center shrink-0">
+                <Zap className="w-5 h-5 text-cyan-400 animate-pulse" />
               </span>
+              <h1 className="text-lg sm:text-2xl md:text-3xl font-black tracking-wider font-mono truncate select-none">
+                <span className="bg-gradient-to-r from-cyan-300 via-emerald-300 to-cyan-400 bg-clip-text text-transparent font-black drop-shadow-[0_2px_12px_rgba(6,182,212,0.5)]">
+                  {brandTitle}
+                </span>
+              </h1>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-            {/* Live Clock Badge (Compact) */}
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            {/* Live Date & Time Timer Display */}
             <div
               id="live-clock-badge"
-              className="hidden md:flex items-center gap-1.5 text-xs font-semibold text-slate-200 bg-white/10 px-2.5 py-0.5 rounded-md backdrop-blur-xs border border-white/10 font-mono"
+              className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-slate-900/90 text-cyan-300 font-mono text-xs border border-cyan-500/40 shadow-inner shadow-cyan-950/50"
             >
-              <span>{currentDateTime || "2026-08-28 16:56:54"}</span>
-              <Clock className="w-3 h-3 text-blue-400" />
+              <div className="hidden sm:flex items-center gap-1.5 text-slate-300 border-r border-slate-700/80 pr-2">
+                <Calendar className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                <span>
+                  {headerCurrentTime.toLocaleDateString("en-GB", {
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                  })}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 text-emerald-300 font-extrabold">
+                <Clock className="w-3.5 h-3.5 text-emerald-400 shrink-0 animate-pulse" />
+                <span>
+                  {headerCurrentTime.toLocaleTimeString("en-US", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                    hour12: false,
+                  })}
+                </span>
+              </div>
             </div>
 
             {/* Sleek Compact Notification Bell Icon */}
@@ -2303,20 +2799,20 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               type="button"
               id="header-notifications-bell-btn"
               onClick={() => setIsNotifModalOpen(true)}
-              className={`relative p-1.5 rounded-md transition cursor-pointer flex items-center justify-center min-w-[32px] min-h-[32px] ${
+              className={`relative p-2 rounded-xl transition cursor-pointer flex items-center justify-center min-w-[36px] min-h-[36px] ${
                 unreadNotifCount > 0
                   ? "bg-amber-500/25 text-amber-300 border border-amber-400/50 shadow-xs animate-pulse"
-                  : "bg-white/10 hover:bg-white/20 text-slate-200 border border-white/10"
+                  : "bg-slate-800/90 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30"
               }`}
               title="📢 System Notifications & Updates"
             >
               <Bell
-                className={`w-3.5 h-3.5 ${unreadNotifCount > 0 ? "text-amber-300 animate-bounce" : "text-slate-200"}`}
+                className={`w-4 h-4 ${unreadNotifCount > 0 ? "text-amber-300 animate-bounce" : "text-cyan-300"}`}
               />
               {unreadNotifCount > 0 && (
-                <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500 text-white text-[8px] font-black items-center justify-center shadow-xs">
+                  <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-rose-500 text-white text-[9px] font-black items-center justify-center shadow-xs">
                     {unreadNotifCount}
                   </span>
                 </span>
@@ -2379,198 +2875,256 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
         {/* -------------------- 0. DASHBOARD VIEW -------------------- */}
         {currentView === "dashboard" && (
-          <>
-            {/* Top Applications Access with Animated Rainbow Borders on Each Card */}
+          <div className="space-y-5">
+            {/* Top Applications Access with Modern Slate & Blue Gradient Header */}
             <section
               id="top-applications-section"
-              className="bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-xl"
+              className="bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden"
             >
-              <div className="bg-gradient-to-r from-slate-900 via-slate-950 to-slate-900 px-5 py-3.5 text-white flex items-center justify-between border-b border-slate-800">
-                <div className="flex items-center gap-2">
-                  <MessageSquare className="w-4.5 h-4.5 text-blue-400" />
-                  <span className="font-black text-sm sm:text-base tracking-wide text-white uppercase">
+              <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 px-4 sm:px-5 py-3.5 text-white flex items-center justify-between border-b border-indigo-900/50">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
+                  <span className="font-bold text-sm sm:text-base tracking-wide text-white">
                     Top Applications Access
                   </span>
                 </div>
-                <div className="flex items-center gap-1.5 text-[11px] font-mono text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20 font-bold">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                  <span>Instant Allocate</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-mono text-indigo-200 bg-indigo-500/20 border border-indigo-400/30 px-2.5 py-0.5 rounded-full font-bold">
+                    Instant Allocate
+                  </span>
                 </div>
               </div>
 
-              {/* Compact Sleek Top Application Cards with Dynamic Config & Coming Soon Support */}
-              <div className="p-3 sm:p-4 bg-slate-950 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 sm:gap-3">
-                {topAppsList
-                  .filter((app) => app.isEnabled !== false)
-                  .map((app) => {
-                    const isComingSoon = app.status === "coming_soon";
+              {/* 2-Column Checkerboard Chessboard Grid of Apps with Grid Borders */}
+              <div
+                id="top-apps-scrollable-container"
+                className="max-h-[520px] sm:max-h-[580px] overflow-y-auto overscroll-contain bg-slate-200/80 p-0.5 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent"
+              >
+                <div className="grid grid-cols-2 gap-0 border border-slate-300/80 rounded-lg overflow-hidden bg-slate-200">
+                  {topAppsList
+                    .filter((app) => app.isEnabled !== false)
+                    .map((app, index) => {
+                      const appSearchName = app.name.toLowerCase();
+                      const realHitsForApp = liveHits.filter((h) => {
+                        const sid = (h.sid || "").toLowerCase();
+                        const msg = (h.message || "").toLowerCase();
+                        if (sid.includes(appSearchName) || appSearchName.includes(sid)) return true;
+                        if (appSearchName === "whatsapp" && (msg.includes("whatsapp") || sid.includes("wa"))) return true;
+                        if (appSearchName === "facebook" && (msg.includes("facebook") || sid.includes("fb"))) return true;
+                        if (appSearchName === "telegram" && (msg.includes("telegram") || sid.includes("tg"))) return true;
+                        if (appSearchName === "tiktok" && msg.includes("tiktok")) return true;
+                        if (appSearchName === "imo" && (msg.includes("imo") || sid.includes("imo"))) return true;
+                        if (appSearchName === "verify" && (msg.includes("verify") || msg.includes("verification") || sid.includes("verify"))) return true;
+                        if (appSearchName === "msverify" && (sid.includes("msverify") || msg.includes("msverify"))) return true;
+                        if (appSearchName === "authmsg" && (sid.includes("authmsg") || msg.includes("authmsg"))) return true;
+                        if (appSearchName === "iatsms" && (sid.includes("iat") || msg.includes("iatsms"))) return true;
+                        if (appSearchName === "amazon" && (msg.includes("amazon") || sid.includes("amazon"))) return true;
+                        if (appSearchName === "shopee" && (msg.includes("shopee") || sid.includes("shopee"))) return true;
+                        if (appSearchName === "avabet" && (msg.includes("avabet") || sid.includes("ava"))) return true;
+                        if (appSearchName === "paypal" && (msg.includes("paypal") || sid.includes("paypal"))) return true;
+                        if (appSearchName === "linkedin" && (msg.includes("linkedin") || sid.includes("linkedin"))) return true;
+                        if (appSearchName === "melbet" && (msg.includes("melbet") || sid.includes("melbet"))) return true;
+                        if (appSearchName === "bolt" && (msg.includes("bolt") || sid.includes("bolt"))) return true;
+                        if (appSearchName === "uber" && (msg.includes("uber") || sid.includes("uber"))) return true;
+                        if (appSearchName === "apple" && (msg.includes("apple") || sid.includes("apple"))) return true;
+                        if (appSearchName === "microsoft" && (msg.includes("microsoft") || sid.includes("msft"))) return true;
+                        return false;
+                      });
+                      const realCount = realHitsForApp.length;
+
+                      const row = Math.floor(index / 2);
+                      const col = index % 2;
+                      const isCheckerDark = (row + col) % 2 === 1;
+
+                      return (
+                        <div
+                          key={app.id}
+                          id={`top-app-${app.id}`}
+                          onClick={() => {
+                            setActiveAppConsoleService(app.name);
+                          }}
+                          className={`p-3.5 sm:p-4.5 flex flex-col items-center justify-center text-center transition cursor-pointer group relative select-none border-r border-b border-slate-300/80 ${
+                            isCheckerDark
+                              ? "bg-slate-100/90 hover:bg-indigo-100/70"
+                              : "bg-white hover:bg-indigo-50/70"
+                          }`}
+                        >
+                          <div className="w-9 h-9 sm:w-10 sm:h-10 mb-1.5 flex items-center justify-center group-hover:scale-110 transition-transform">
+                            {getBrandLogoComponent(
+                              app.id,
+                              "w-9 h-9 sm:w-10 sm:h-10",
+                            )}
+                          </div>
+                          <h4 className="font-bold text-slate-800 text-xs sm:text-sm tracking-tight group-hover:text-blue-600 transition-colors">
+                            {app.name}
+                          </h4>
+                          <span className="text-[11px] text-slate-500 font-normal mt-0.5">
+                            {realCount > 0
+                              ? `${realCount.toLocaleString()} message`
+                              : "0 message"}
+                          </span>
+                          <span
+                            className={`mt-1 text-[9px] font-bold px-2 py-0.5 rounded-full transition-colors flex items-center gap-1 ${
+                              realCount > 0
+                                ? "text-blue-600 bg-blue-50 group-hover:bg-blue-600 group-hover:text-white"
+                                : "text-slate-400 bg-slate-100"
+                            }`}
+                          >
+                            {realCount > 0 ? (
+                              <>
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                Live Feed
+                              </>
+                            ) : (
+                              <>
+                                <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+                                No Feed
+                              </>
+                            )}
+                          </span>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            </section>
+
+            {/* Top Ranges with Modern Slate & Blue Gradient Header & Real-Time Live Stream Ranking */}
+            <section
+              id="top-ranges-section"
+              className="bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden"
+            >
+              <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 px-4 sm:px-5 py-3.5 text-white flex items-center justify-between border-b border-indigo-900/50">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-sm sm:text-base tracking-wide text-white">
+                    Top Ranges
+                  </span>
+                  <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-extrabold uppercase tracking-wider">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                    Live Activity
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 text-[11px] font-mono text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 rounded-full font-bold shadow-2xs">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Carrier Streams</span>
+                </div>
+              </div>
+
+              {/* Dynamic Real-Time Ranked List of Active Ranges */}
+              <div className="divide-y divide-slate-100 bg-white">
+                {sortedTopRanges.length === 0 ? (
+                  <div className="py-12 px-4 text-center bg-slate-50/50">
+                    <div className="w-10 h-10 mx-auto mb-2 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
+                      <TerminalIcon className="w-5 h-5" />
+                    </div>
+                    <p className="font-bold text-slate-700 text-sm">No Active Range Traffic</p>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Ranges will appear and rank here in real-time as SMS packets arrive in Console.
+                    </p>
+                  </div>
+                ) : (
+                  (showAllTopRanges
+                    ? sortedTopRanges
+                    : sortedTopRanges.slice(0, 8)
+                  ).map((item, idx) => {
+                    const sStyle = getServiceStyle(item.service);
+                    const isTopOne = idx === 0;
+                    const isTopTwo = idx === 1;
+                    const isTopThree = idx === 2;
+
                     return (
                       <div
-                        key={app.id}
-                        id={`app-item-${app.id}`}
+                        key={`${item.country}-${item.range}-${idx}`}
+                        id={`top-range-${item.range}`}
                         onClick={() => {
-                          if (isComingSoon) {
-                            showDashboardToast(
-                              `⏳ ${app.name} কামিং সুন — এই সার্ভিসটি শীঘ্রই যুক্ত করা হচ্ছে!`,
-                              "info",
-                            );
-                            return;
-                          }
-                          setSelectedService(app.name);
-                          setSelectedRange(app.range);
+                          setSelectedService(item.service);
+                          setSelectedRange(item.range);
                           setCurrentView("getNumber");
                           showDashboardToast(
-                            `Selected ${app.name} for number allocation`,
+                            `Selected ${item.country} (${item.range}) for ${item.service}`,
                             "success",
                           );
                         }}
-                        className={`p-[2px] rounded-xl transition-all duration-300 group cursor-pointer ${
-                          isComingSoon
-                            ? "bg-slate-800/60 hover:bg-slate-700/60 border border-slate-700/50 hover:border-amber-500/40"
-                            : "animate-rainbow-border shadow-md shadow-purple-950/20 hover:shadow-lg hover:shadow-emerald-500/10 active:scale-[0.98]"
-                        }`}
+                        className="p-3 sm:p-3.5 flex items-center justify-between gap-3 hover:bg-slate-50 transition cursor-pointer group"
                       >
-                        <div className="h-full w-full bg-slate-900/95 rounded-[10px] p-3 sm:p-3.5 flex flex-col items-center justify-between text-center relative overflow-hidden">
-                          {/* Coming Soon Pill Badge */}
-                          {isComingSoon && (
-                            <div className="absolute top-1.5 right-1.5">
-                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                                কামিং সুন
+                        {/* Left: Flag + Country Name & Range */}
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-10 sm:w-11 h-6 sm:h-7 shrink-0 flex items-center justify-center">
+                            <CountryFlag
+                              countryCode={item.countryCode || item.country}
+                              className="w-10 sm:w-11 h-6 sm:h-7 rounded-sm shadow-xs border border-slate-200 object-cover"
+                            />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-slate-800 text-xs sm:text-sm uppercase tracking-wide group-hover:text-blue-600 transition-colors truncate">
+                                {item.country} {item.range}
                               </span>
-                            </div>
-                          )}
 
-                          <div className="w-10 h-10 sm:w-11 sm:h-11 my-1 flex items-center justify-center group-hover:scale-105 transition-transform duration-200 filter drop-shadow-md">
-                            {getBrandLogoComponent(
-                              app.id,
-                              "w-10 h-10 sm:w-11 sm:h-11",
+                              {/* Rank Badges */}
+                              {isTopOne && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black bg-amber-100 text-amber-900 border border-amber-300">
+                                  🥇 #1 TOP
+                                </span>
+                              )}
+                              {isTopTwo && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black bg-slate-200 text-slate-800 border border-slate-300">
+                                  🥈 #2 HOT
+                                </span>
+                              )}
+                              {isTopThree && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black bg-orange-100 text-orange-900 border border-orange-300">
+                                  🥉 #3 ACTIVE
+                                </span>
+                              )}
+                            </div>
+                            {item.operator && (
+                              <span className="text-[11px] text-slate-400 block font-normal truncate">
+                                {item.operator}
+                              </span>
                             )}
                           </div>
+                        </div>
 
-                          <div className="w-full mt-1">
-                            <h3 className="text-xs sm:text-sm font-bold text-white tracking-tight truncate group-hover:text-emerald-300 transition-colors">
-                              {app.name}
-                            </h3>
-                            {isComingSoon ? (
-                              <span className="text-[10px] text-slate-400 font-medium block mt-0.5">
-                                Coming Soon
-                              </span>
-                            ) : (
-                              <span className="text-[10px] text-emerald-400 font-semibold mt-0.5 flex items-center justify-center gap-1 font-mono">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                                Ready
-                              </span>
-                            )}
+                        {/* Right: Active Service Badge + Realtime Hits */}
+                        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                          <span
+                            className={`text-[10px] sm:text-[11px] font-extrabold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded border uppercase tracking-wide flex items-center gap-1 ${sStyle.badge}`}
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
+                            {item.service}
+                          </span>
+
+                          <div className="text-right hidden xs:block">
+                            <span className="text-[11px] font-mono font-bold text-slate-700 block">
+                              ⚡ {item.totalHits} hits
+                            </span>
+                            <span className="text-[9px] text-emerald-600 font-semibold block">
+                              ● Active
+                            </span>
                           </div>
                         </div>
                       </div>
                     );
-                  })}
-              </div>
-            </section>
-
-            {/* Live Test SMS Section with Sleek Animated Theme */}
-            <section className="bg-slate-950 rounded-2xl shadow-lg border border-slate-800 overflow-hidden">
-              <div className="bg-gradient-to-r from-slate-900 via-slate-950 to-slate-900 px-4 py-3 text-white flex items-center justify-between border-b border-slate-800/80">
-                <div className="flex items-center gap-2.5">
-                  <span className="relative flex h-2.5 w-2.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                  </span>
-                  <span className="text-white font-black text-xs sm:text-sm tracking-wider uppercase flex items-center gap-2">
-                    <span>LIVE TEST SMS</span>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold uppercase tracking-widest animate-pulse">
-                      ● REALTIME STREAM
-                    </span>
-                  </span>
-                </div>
-                <div className="text-[11px] font-mono text-slate-400 flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                  <span className="text-emerald-400 font-bold">Auto Updating</span>
-                </div>
-              </div>
-
-              <div className="p-3.5 bg-slate-900/60">
-                {senderRangeList.length === 0 ? (
-                  <div className="p-6 text-center text-slate-400 text-xs">
-                    No active carrier streams available at the moment.
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {senderRangeList.slice(0, 6).map((item, idx) => {
-                      const flag = getCountryFlagEmoji(item.country);
-                      const sStyle = getServiceStyle(item.sid);
-
-                      return (
-                        <div
-                          key={item.key || `live_sms_${idx}`}
-                          className="p-3.5 rounded-xl border border-slate-800 bg-gradient-to-b from-slate-900 to-slate-950 hover:border-emerald-500/50 transition-all duration-300 shadow-md hover:shadow-emerald-500/10 flex flex-col justify-between gap-3 group relative overflow-hidden"
-                        >
-                          {/* Ambient Glow Bar on hover */}
-                          <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-emerald-500 via-teal-400 to-blue-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-
-                          {/* Top Row: Country Flag + Name & Realtime "Just Now" Badge */}
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <span
-                                className="text-2xl sm:text-3xl leading-none shrink-0 select-none filter drop-shadow-sm"
-                                title={item.country}
-                              >
-                                {flag}
-                              </span>
-                              <div className="min-w-0">
-                                <h4 className="font-bold text-white text-xs sm:text-sm truncate tracking-tight">
-                                  {item.country}
-                                </h4>
-                                <div className="text-[11px] text-slate-400 font-medium truncate">
-                                  {item.operator}
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* "Just Now" Real-Time Animated Badge */}
-                            <div className="flex items-center gap-1.5 bg-emerald-500/15 text-emerald-300 px-2.5 py-1 rounded-full text-[10px] font-bold border border-emerald-500/30 shrink-0 shadow-xs">
-                              <span className="relative flex h-1.5 w-1.5">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400"></span>
-                              </span>
-                              <span className="tracking-wide">Just Now</span>
-                            </div>
-                          </div>
-
-                          {/* Middle Row: Service Tag & Carrier Range */}
-                          <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-800/80 text-xs">
-                            <div className="flex items-center gap-2">
-                              <span
-                                className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border uppercase tracking-wide ${sStyle.badge}`}
-                              >
-                                {item.sid}
-                              </span>
-                              <span className="font-mono font-bold text-emerald-300 text-xs tracking-wider">
-                                {item.range}
-                              </span>
-                            </div>
-                            <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
-                              <span className="w-1 h-1 rounded-full bg-emerald-400" />
-                              Hits: {item.hitsCount > 0 ? item.hitsCount : "2"}
-                            </span>
-                          </div>
-
-                          {/* Live SMS Message Box with Code Animation */}
-                          <div className="bg-slate-950/90 text-slate-200 p-2.5 rounded-lg text-[11px] font-mono flex items-center gap-2 border border-slate-800/90 shadow-inner group-hover:border-slate-700 transition-colors">
-                            <span className="text-emerald-400 text-sm shrink-0 animate-bounce">💬</span>
-                            <span className="truncate font-medium text-slate-300 tracking-tight">
-                              {item.latestMessage || "<#> Code WhatsApp: 894-102. Live carrier stream ready"}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  })
                 )}
               </div>
+
+              {/* View All Ranges Button */}
+              {sortedTopRanges.length > 8 && (
+                <div className="p-3 bg-white border-t border-slate-200 flex justify-end">
+                  <button
+                    type="button"
+                    id="toggle-view-all-ranges-btn"
+                    onClick={() => setShowAllTopRanges(!showAllTopRanges)}
+                    className="bg-[#0066FF] hover:bg-[#0052cc] text-white text-xs font-semibold px-4 py-1.5 rounded transition shadow-xs cursor-pointer"
+                  >
+                    {showAllTopRanges ? "Show Less" : "View All"}
+                  </button>
+                </div>
+              )}
             </section>
-          </>
+          </div>
         )}
 
         {/* -------------------- 1. GET NUMBER VIEW (voltxsms / m29 matching Console Light Theme) -------------------- */}
@@ -3129,15 +3683,15 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               {/* SECTION 2: ALLOCATED NUMBERS TABLE & REAL-TIME OTP DISPLAY */}
               <div>
                 {/* Table Header with Stats and Refresh */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-white">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-900 text-white">
                   <div className="flex items-center gap-2">
-                    <div className="text-xs font-mono font-medium text-gray-600">
+                    <div className="text-xs font-mono font-medium text-slate-300">
                       {getNumHistory.length > 0
                         ? `1-${getNumHistory.length} of ${getNumHistory.length}`
                         : "0 of 0"}
                     </div>
-                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-mono font-bold border border-emerald-200 hidden sm:inline-flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 font-mono font-bold border border-emerald-600/50 hidden sm:inline-flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                       Real-time Carrier Active
                     </span>
                   </div>
@@ -3147,10 +3701,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                       type="button"
                       onClick={() => handleManualRefreshConsole()}
                       disabled={isConsoleRefreshing}
-                      className="px-3.5 py-1.5 bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs transition active:scale-95 disabled:opacity-50"
+                      className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs transition active:scale-95 disabled:opacity-50"
                     >
                       <RotateCw
-                        className={`w-3.5 h-3.5 text-gray-600 ${isConsoleRefreshing ? "animate-spin text-emerald-600" : ""}`}
+                        className={`w-3.5 h-3.5 text-slate-300 ${isConsoleRefreshing ? "animate-spin text-emerald-400" : ""}`}
                       />
                       <span>Refresh</span>
                     </button>
@@ -3158,12 +3712,12 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 </div>
 
                 {/* Table Column Labels */}
-                <div className="grid grid-cols-12 px-4 py-2.5 text-[11px] font-bold text-gray-500 uppercase tracking-wider bg-gray-50/70 border-b border-gray-200">
-                  <div className="col-span-5 sm:col-span-4">NUMBER INFO</div>
-                  <div className="col-span-4 sm:col-span-5">
+                <div className="grid grid-cols-12 px-4 py-3 text-[11px] font-extrabold text-slate-200 uppercase tracking-wider bg-slate-800 border-b-2 border-slate-700">
+                  <div className="col-span-5 sm:col-span-4 border-r border-slate-700 pr-2">NUMBER INFO</div>
+                  <div className="col-span-4 sm:col-span-5 border-r border-slate-700 px-2">
                     COUNTRY / OPERATOR
                   </div>
-                  <div className="col-span-3 text-right">ACTIVITY</div>
+                  <div className="col-span-3 text-right pl-2">ACTIVITY</div>
                 </div>
 
                 {/* Table Rows or Clean Empty State */}
@@ -3188,16 +3742,32 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                     </p>
                   </div>
                 ) : (
-                  <div className="divide-y divide-gray-100">
-                    {getNumHistory.map((item) => (
+                  <div className="divide-y divide-slate-300 bg-white border border-slate-300">
+                    {getNumHistory.map((item, idx) => {
+                      const isEven = idx % 2 === 0;
+                      return (
                       <div
                         key={item.id}
-                        className="grid grid-cols-12 px-4 py-4 items-center text-xs hover:bg-gray-50/80 transition gap-2 animate-in fade-in slide-in-from-top-1 duration-200"
+                        className={`grid grid-cols-12 px-4 py-4 items-center text-xs transition gap-2 border-b border-slate-300 ${
+                          isEven ? "bg-white hover:bg-emerald-50/50" : "bg-slate-100/90 hover:bg-emerald-100/50"
+                        }`}
                       >
                         {/* NUMBER INFO */}
-                        <div className="col-span-5 sm:col-span-4 space-y-1">
+                        <div className="col-span-5 sm:col-span-4 space-y-1 border-r border-slate-300 pr-2 h-full flex flex-col justify-center">
                           <div className="font-mono text-gray-900 font-black tracking-wide text-xs sm:text-sm flex items-center gap-1.5 flex-wrap">
                             <span>{formatNumberWithAreaCode(item.number, item.country)}</span>
+                            <button
+                              type="button"
+                              onClick={() => copyToClipboard(item.number, `num_${item.id}`, item.country)}
+                              className="p-1 rounded-md bg-slate-100 hover:bg-emerald-100 text-slate-600 hover:text-emerald-900 transition cursor-pointer border border-slate-300 flex items-center gap-1"
+                              title="Copy number (without area code)"
+                            >
+                              {copiedText === `num_${item.id}` ? (
+                                <Check className="w-3.5 h-3.5 text-emerald-600 font-bold" />
+                              ) : (
+                                <Copy className="w-3.5 h-3.5" />
+                              )}
+                            </button>
                           </div>
 
                           {/* Status Badge & OTP Pill */}
@@ -3238,24 +3808,25 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         </div>
 
                         {/* COUNTRY / OPERATOR */}
-                        <div className="col-span-4 sm:col-span-5 space-y-0.5">
-                          <div className="text-gray-900 font-medium text-xs sm:text-sm">
+                        <div className="col-span-4 sm:col-span-5 space-y-0.5 border-r border-slate-300 px-2 h-full flex flex-col justify-center">
+                          <div className="text-gray-900 font-bold text-xs sm:text-sm">
                             {item.country}
                           </div>
-                          <div className="text-gray-500 text-[11px] sm:text-xs flex items-center gap-1">
+                          <div className="text-gray-600 text-[11px] sm:text-xs flex items-center gap-1">
                             <Radio className="w-3 h-3 text-gray-600 shrink-0" />
                             <span className="truncate">{item.operator}</span>
                           </div>
                         </div>
 
                         {/* ACTIVITY */}
-                        <div className="col-span-3 text-right space-y-1">
-                          <span className="inline-block text-[11px] text-gray-600 font-mono bg-gray-100 px-2.5 py-1 rounded-md border border-gray-200 shadow-2xs">
+                        <div className="col-span-3 text-right space-y-1 pl-2 h-full flex flex-col justify-center items-end">
+                          <span className="inline-block text-[11px] text-gray-700 font-mono bg-slate-200/80 px-2.5 py-1 rounded-md border border-slate-300 shadow-2xs">
                             {formatRelativeActivityTime(item, nowTick)}
                           </span>
                         </div>
                       </div>
-                    ))}
+                    );
+                    })}
                   </div>
                 )}
               </div>
@@ -3587,22 +4158,22 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 <span>Recent Delivered OTPs</span>
               </h3>
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs font-mono">
+              <div className="overflow-x-auto bg-white border border-slate-300 rounded-xl">
+                <table className="w-full text-left text-xs font-mono border-collapse">
                   <thead>
-                    <tr className="bg-gray-100 font-sans font-bold uppercase text-gray-700">
-                      <th className="p-3">OTP ID</th>
-                      <th className="p-3">Number</th>
-                      <th className="p-3">Message Body</th>
+                    <tr className="bg-slate-800 font-sans font-extrabold uppercase text-slate-200 border-b-2 border-slate-700 text-[11px]">
+                      <th className="p-3 border-r border-slate-700">OTP ID</th>
+                      <th className="p-3 border-r border-slate-700">Number</th>
+                      <th className="p-3 border-r border-slate-700">Message Body</th>
                       <th className="p-3">Time</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-slate-300 bg-white">
                     {liveSuccessOtps.length === 0 ? (
                       <tr>
                         <td
                           colSpan={4}
-                          className="p-8 text-center text-gray-400 font-sans text-xs"
+                          className="p-8 text-center text-slate-500 font-sans text-xs bg-slate-50"
                         >
                           No delivered OTPs recorded for this session yet.
                         </td>
@@ -3618,16 +4189,33 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         const displayedMsg = isOwner
                           ? o.message
                           : maskOtpInMessage(o.message, extracted);
+                        const isEven = idx % 2 === 0;
 
                         return (
                           <tr
                             key={idx}
-                            className={`hover:bg-gray-50 ${isOwner ? "bg-emerald-50/25" : ""}`}
+                            className={`transition ${
+                              isEven
+                                ? "bg-white hover:bg-emerald-50/50"
+                                : "bg-slate-100/90 hover:bg-emerald-100/50"
+                            } ${isOwner ? "ring-1 ring-emerald-500/30" : ""}`}
                           >
-                            <td className="p-3 text-gray-500">{o.otp_id}</td>
-                            <td className="p-3 font-bold text-blue-600">
+                            <td className="p-3 text-slate-600 border-r border-b border-slate-300 font-bold">{o.otp_id}</td>
+                            <td className="p-3 font-bold text-blue-700 border-r border-b border-slate-300">
                               <div className="flex items-center gap-1.5">
                                 <span>{o.number}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => copyToClipboard(o.number, `deliv_num_${idx}`)}
+                                  className="p-1 text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 rounded cursor-pointer transition"
+                                  title="Copy number (without area code)"
+                                >
+                                  {copiedText === `deliv_num_${idx}` ? (
+                                    <Check className="w-3.5 h-3.5 text-emerald-600 font-bold" />
+                                  ) : (
+                                    <Copy className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
                                 {isOwner && (
                                   <span className="text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-200 px-1.5 py-0.2 rounded font-sans font-bold">
                                     YOU
@@ -3636,11 +4224,11 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                               </div>
                             </td>
                             <td
-                              className={`p-3 font-semibold ${isOwner ? "text-emerald-700" : "text-gray-600"}`}
+                              className={`p-3 font-semibold border-r border-b border-slate-300 ${isOwner ? "text-emerald-800" : "text-slate-800"}`}
                             >
                               {displayedMsg}
                             </td>
-                            <td className="p-3 text-gray-500 font-sans">
+                            <td className="p-3 text-slate-600 font-sans border-b border-slate-300">
                               {new Date(o.time).toLocaleTimeString()}
                             </td>
                           </tr>
@@ -3656,53 +4244,56 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
         {/* -------------------- 4. ACCESS LIST VIEW -------------------- */}
         {currentView === "accessList" && (
-          <div className="bg-white rounded-2xl p-5 sm:p-6 shadow-sm border border-gray-200 space-y-4">
-            <div className="border-b pb-3">
-              <h2 className="text-xl font-extrabold text-gray-900 flex items-center gap-2">
+          <div className="bg-white rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-300 space-y-4">
+            <div className="border-b pb-3 border-slate-200">
+              <h2 className="text-xl font-extrabold text-slate-900 flex items-center gap-2">
                 <List className="w-5 h-5 text-blue-600" />
                 <span>Access List</span>
               </h2>
-              <p className="text-xs text-gray-500 mt-0.5">
+              <p className="text-xs text-slate-500 mt-0.5">
                 Active services and supported range pools.
               </p>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+            <div className="overflow-x-auto bg-white border border-slate-300 rounded-xl">
+              <table className="w-full text-left text-xs border-collapse">
                 <thead>
-                  <tr className="bg-gray-100 font-bold uppercase text-gray-700">
-                    <th className="p-3">Service Name</th>
-                    <th className="p-3">Active Ranges</th>
+                  <tr className="bg-slate-800 font-extrabold uppercase text-slate-200 border-b-2 border-slate-700 text-[11px]">
+                    <th className="p-3 border-r border-slate-700">Service Name</th>
+                    <th className="p-3 border-r border-slate-700">Active Ranges</th>
                     <th className="p-3">Last Active Hit</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-slate-300 bg-white">
                   {liveAccessList.length === 0 ? (
                     <tr>
                       <td
                         colSpan={3}
-                        className="p-8 text-center text-gray-400 font-sans text-xs"
+                        className="p-8 text-center text-slate-500 font-sans text-xs bg-slate-50"
                       >
                         No active service access rules found. Access list is
                         currently empty.
                       </td>
                     </tr>
                   ) : (
-                    liveAccessList.map((item, i) => (
-                      <tr key={i} className="hover:bg-gray-50">
-                        <td className="p-3 font-bold text-blue-600">
+                    liveAccessList.map((item, i) => {
+                      const isEven = i % 2 === 0;
+                      return (
+                      <tr key={i} className={`transition ${isEven ? 'bg-white hover:bg-indigo-50/50' : 'bg-slate-100/90 hover:bg-indigo-100/50'}`}>
+                        <td className="p-3 font-bold text-blue-700 border-r border-b border-slate-300">
                           {item.sid}
                         </td>
-                        <td className="p-3 font-mono text-gray-800">
+                        <td className="p-3 font-mono text-slate-900 font-bold border-r border-b border-slate-300">
                           {item.ranges?.join(", ") || "N/A"}
                         </td>
-                        <td className="p-3 text-gray-500 font-mono">
+                        <td className="p-3 text-slate-600 font-mono border-b border-slate-300">
                           {item.last_at
                             ? new Date(item.last_at).toLocaleTimeString()
                             : "Active"}
                         </td>
                       </tr>
-                    ))
+                    );
+                    })
                   )}
                 </tbody>
               </table>
@@ -3851,44 +4442,44 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             </div>
 
             {/* Senders & Ranges Table */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200/90 overflow-hidden">
-              <div className="p-4 bg-gray-50/80 border-b border-gray-200/80 flex items-center justify-between gap-2">
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-300 overflow-hidden">
+              <div className="p-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between gap-2 text-white">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-black text-gray-900 uppercase tracking-wider">
+                  <span className="text-xs font-black text-slate-100 uppercase tracking-wider">
                     Carrier Ranges &amp; Live Senders (
                     {filteredSenderRanges.length})
                   </span>
                 </div>
-                <span className="text-[11px] font-mono text-gray-500">
-                  Real-Time Traffic Routing
+                <span className="text-[11px] font-mono text-emerald-400">
+                  Real-Time Traffic Routing Active
                 </span>
               </div>
 
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
-                  <thead className="bg-gray-100/70 border-b border-gray-200 text-gray-600 font-bold uppercase tracking-wider text-[10px]">
+                  <thead className="bg-slate-800 border-b-2 border-slate-700 text-slate-200 font-extrabold uppercase tracking-wider text-[10px]">
                     <tr>
-                      <th className="py-3 px-4">Sender / Service</th>
-                      <th className="py-3 px-4">Range Prefix</th>
-                      <th className="py-3 px-4">Operator &amp; Country</th>
-                      <th className="py-3 px-4 text-center">Stream Hits</th>
-                      <th className="py-3 px-4">Latest Message</th>
+                      <th className="py-3 px-4 border-r border-slate-700">Sender / Service</th>
+                      <th className="py-3 px-4 border-r border-slate-700">Range Prefix</th>
+                      <th className="py-3 px-4 border-r border-slate-700">Operator &amp; Country</th>
+                      <th className="py-3 px-4 text-center border-r border-slate-700">Stream Hits</th>
+                      <th className="py-3 px-4 border-r border-slate-700">Latest Message</th>
                       <th className="py-3 px-4 text-right">Direct Action</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-slate-300 bg-white">
                     {filteredSenderRanges.length === 0 ? (
                       <tr>
                         <td
                           colSpan={6}
-                          className="py-10 text-center text-gray-400 text-xs"
+                          className="py-10 text-center text-slate-400 text-xs"
                         >
                           No matching sender ranges found for "
                           {senderRangeFilter}".
                         </td>
                       </tr>
                     ) : (
-                      filteredSenderRanges.map((item) => {
+                      filteredSenderRanges.map((item, idx) => {
                         const style = getServiceStyle(item.sid);
                         const extractedOtp = extractOtp(item.latestMessage);
                         const isOwner = isHitOwnedByUser({
@@ -3902,14 +4493,19 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                           : extractedOtp
                             ? extractedOtp.replace(/\d/g, "X")
                             : "XXXXXX";
+                        const isEven = idx % 2 === 0;
 
                         return (
                           <tr
                             key={item.key}
-                            className="hover:bg-blue-50/30 transition"
+                            className={`transition ${
+                              isEven
+                                ? "bg-white hover:bg-indigo-50/60"
+                                : "bg-slate-100/90 hover:bg-indigo-100/60"
+                            }`}
                           >
                             {/* Service */}
-                            <td className="py-3.5 px-4">
+                            <td className="py-3.5 px-4 border-r border-b border-slate-300">
                               <span
                                 className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black border ${style.badge}`}
                               >
@@ -3918,7 +4514,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                             </td>
 
                             {/* Range */}
-                            <td className="py-3.5 px-4 font-mono font-bold text-gray-900 text-xs sm:text-sm">
+                            <td className="py-3.5 px-4 font-mono font-bold text-slate-900 text-xs sm:text-sm border-r border-b border-slate-300">
                               <div className="flex items-center gap-1.5">
                                 <span>{item.range}</span>
                                 <button
@@ -3929,7 +4525,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                       `range_${item.key}`,
                                     )
                                   }
-                                  className="text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer"
+                                  className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
                                   title="Copy Range"
                                 >
                                   {copiedText === `range_${item.key}` ? (
@@ -3942,32 +4538,32 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                             </td>
 
                             {/* Operator & Country */}
-                            <td className="py-3.5 px-4">
-                              <div className="font-bold text-gray-900">
+                            <td className="py-3.5 px-4 border-r border-b border-slate-300">
+                              <div className="font-bold text-slate-900">
                                 {item.operator}
                               </div>
-                              <div className="text-[11px] text-gray-500">
+                              <div className="text-[11px] text-slate-600">
                                 {item.country}
                               </div>
                             </td>
 
                             {/* Stream Hits */}
-                            <td className="py-3.5 px-4 text-center">
+                            <td className="py-3.5 px-4 text-center border-r border-b border-slate-300">
                               {item.hitsCount > 0 ? (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
                                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                                   {item.hitsCount} hits
                                 </span>
                               ) : (
-                                <span className="text-[11px] font-mono text-gray-400">
+                                <span className="text-[11px] font-mono text-slate-400">
                                   Idle Socket
                                 </span>
                               )}
                             </td>
 
                             {/* Latest Message */}
-                            <td className="py-3.5 px-4 max-w-xs">
-                              <div className="truncate font-mono text-gray-700 text-[11px]">
+                            <td className="py-3.5 px-4 max-w-xs border-r border-b border-slate-300">
+                              <div className="truncate font-mono text-slate-800 text-[11px]">
                                 {displayedLatestMessage}
                               </div>
                               {extractedOtp && (
@@ -3975,7 +4571,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                   className={`inline-block mt-0.5 px-1.5 py-0.2 rounded text-[10px] font-mono font-bold ${
                                     isOwner
                                       ? "bg-emerald-100 text-emerald-900 border border-emerald-300"
-                                      : "bg-gray-100 text-gray-500 border border-gray-200"
+                                      : "bg-slate-200 text-slate-600 border border-slate-300"
                                   }`}
                                 >
                                   {isOwner
@@ -3986,7 +4582,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                             </td>
 
                             {/* Action Button */}
-                            <td className="py-3.5 px-4 text-right">
+                            <td className="py-3.5 px-4 text-right border-b border-slate-300">
                               <button
                                 type="button"
                                 onClick={() =>
@@ -4072,8 +4668,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                               {hit.operator ||
                                 resolveCarrierDetails(hit.range).operator}{" "}
                               (
-                              {hit.country ||
-                                resolveCarrierDetails(hit.range).country}
+                              {getRealCountryName(hit.country, hit.range)}
                               )
                             </span>
                           </div>
@@ -4194,6 +4789,80 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   );
                 })
               )}
+            </div>
+          </div>
+        )}
+
+        {/* -------------------- SMS RANGE VIEW (COMING SOON) -------------------- */}
+        {currentView === "smsRange" && (
+          <div className="w-full min-h-[70vh] flex items-center justify-center py-6 px-4 animate-fadeIn">
+            <div className="w-full max-w-2xl relative overflow-hidden rounded-3xl bg-gradient-to-b from-slate-900 via-slate-900 to-indigo-950 border border-amber-500/30 p-8 sm:p-14 text-center text-white shadow-2xl flex flex-col items-center justify-center">
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-amber-500/15 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute bottom-0 right-10 w-72 h-72 bg-indigo-500/15 rounded-full blur-3xl pointer-events-none" />
+
+              <div className="inline-flex items-center justify-center w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-gradient-to-tr from-amber-500/20 to-amber-300/10 border border-amber-400/30 shadow-inner mb-6 relative">
+                <Radio className="w-10 h-10 sm:w-12 sm:h-12 text-amber-400 animate-pulse" />
+                <span className="absolute -top-1 -right-1 flex h-4 w-4">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-4 w-4 bg-amber-500"></span>
+                </span>
+              </div>
+
+              <h1 className="text-2xl sm:text-3xl font-black tracking-wider text-slate-300 uppercase mb-2">
+                SMS Range
+              </h1>
+              
+              <div className="text-4xl sm:text-6xl font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-amber-200 to-indigo-300 py-3 drop-shadow-md">
+                COMING SOON
+              </div>
+
+              <div className="mt-8">
+                <button
+                  type="button"
+                  onClick={() => handleNavClick("dashboard")}
+                  className="px-8 py-3.5 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black rounded-2xl text-sm sm:text-base shadow-xl shadow-amber-500/20 transition active:scale-95 cursor-pointer flex items-center gap-2.5"
+                >
+                  <Home className="w-5 h-5" />
+                  <span>Home to Dashboard</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* -------------------- SMS NUMBER VIEW (COMING SOON) -------------------- */}
+        {currentView === "smsNumber" && (
+          <div className="w-full min-h-[70vh] flex items-center justify-center py-6 px-4 animate-fadeIn">
+            <div className="w-full max-w-2xl relative overflow-hidden rounded-3xl bg-gradient-to-b from-slate-900 via-slate-900 to-purple-950 border border-purple-500/30 p-8 sm:p-14 text-center text-white shadow-2xl flex flex-col items-center justify-center">
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-purple-500/15 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute bottom-0 left-10 w-72 h-72 bg-amber-500/15 rounded-full blur-3xl pointer-events-none" />
+
+              <div className="inline-flex items-center justify-center w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-gradient-to-tr from-purple-500/20 to-amber-300/10 border border-purple-400/30 shadow-inner mb-6 relative">
+                <Smartphone className="w-10 h-10 sm:w-12 sm:h-12 text-purple-400 animate-bounce" />
+                <span className="absolute -top-1 -right-1 flex h-4 w-4">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-4 w-4 bg-purple-500"></span>
+                </span>
+              </div>
+
+              <h1 className="text-2xl sm:text-3xl font-black tracking-wider text-slate-300 uppercase mb-2">
+                SMS Number
+              </h1>
+
+              <div className="text-4xl sm:text-6xl font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-amber-200 to-indigo-300 py-3 drop-shadow-md">
+                COMING SOON
+              </div>
+
+              <div className="mt-8">
+                <button
+                  type="button"
+                  onClick={() => handleNavClick("dashboard")}
+                  className="px-8 py-3.5 bg-gradient-to-r from-purple-500 via-purple-400 to-indigo-500 hover:from-purple-400 hover:to-indigo-400 text-white font-black rounded-2xl text-sm sm:text-base shadow-xl shadow-purple-500/20 transition active:scale-95 cursor-pointer flex items-center gap-2.5"
+                >
+                  <Home className="w-5 h-5" />
+                  <span>Home to Dashboard</span>
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -4399,20 +5068,230 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         </div>
       )}
 
-      {/* Footer */}
-      <footer className="w-full bg-slate-900 text-gray-400 py-2.5 text-center border-t border-slate-800/80">
+      {/* Footer matching Screenshot layout */}
+      <footer className="w-full bg-[#1e293b] text-gray-400 py-3 text-center border-t border-slate-700">
         <div className="max-w-6xl mx-auto px-4 flex items-center justify-center">
-          <span className="text-[11px] sm:text-xs text-gray-400 font-medium tracking-wide">
-            &copy; 2026 SUPER X SMS. All rights reserved.
+          <span className="text-[11px] sm:text-xs text-gray-300 font-medium tracking-wide">
+            Copyright &copy; 2018-2026 SUPER X SMS. All rights reserved.
           </span>
         </div>
       </footer>
+
+      {/* Floating Orange Chat Button matching Screenshot bottom right */}
+      <button
+        type="button"
+        id="floating-support-chat-btn"
+        onClick={() => setIsUserChatOpen(true)}
+        className="fixed bottom-6 right-6 z-40 bg-[#f97316] hover:bg-[#ea580c] text-white p-3.5 rounded-full shadow-lg shadow-orange-500/30 flex items-center justify-center transition-transform hover:scale-105 active:scale-95 cursor-pointer"
+        title="Live Support Chat"
+        aria-label="Open Live Support Chat"
+      >
+        <MessageSquare className="w-6 h-6" />
+        {userUnreadCount > 0 && (
+          <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[9px] font-bold rounded-full h-4 w-4 flex items-center justify-center animate-pulse">
+            {userUnreadCount}
+          </span>
+        )}
+      </button>
 
       {/* Live Support Chat Modal for User */}
       {isUserChatOpen && renderUserChatModal()}
 
       {/* Notifications Modal for User */}
       {isNotifModalOpen && renderNotificationModal()}
+
+      {/* Live Console Stream Full Screen View when clicking an app (e.g. WhatsApp, Facebook, TikTok) matching user's exact Screenshot */}
+      {activeAppConsoleService && (
+        <div
+          id="app-console-stream-fullscreen"
+          className="fixed inset-0 z-50 bg-white flex flex-col overflow-hidden animate-in fade-in duration-150"
+        >
+          {/* Top Premium Minimal Navigation Bar */}
+          <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 border-b border-amber-500/30 px-3 sm:px-5 py-3 flex items-center justify-between shadow-md shrink-0">
+            <div className="flex items-center gap-2.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-xs shadow-emerald-400/50" />
+              <div className="flex items-center gap-2">
+                <span className="font-black text-white text-sm sm:text-base tracking-wide uppercase">
+                  {activeAppConsoleService}
+                </span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                  Live
+                </span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              id="fullscreen-stream-close-btn"
+              onClick={() => setActiveAppConsoleService(null)}
+              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition cursor-pointer flex items-center gap-1 text-xs font-semibold"
+              title="Close Stream"
+              aria-label="Close Stream"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Full-Screen Pure Table matching Screenshot 1 */}
+          <div className="flex-1 overflow-auto bg-slate-900 p-0 relative">
+            <table className="w-full text-left text-xs sm:text-[13px] border-collapse bg-white border border-slate-300">
+              <thead className="bg-slate-900 sticky top-0 z-10 border-b-2 border-slate-700 text-slate-100 font-extrabold text-xs sm:text-[13px] uppercase tracking-wider">
+                <tr>
+                  <th className="py-3 px-3 sm:px-4 border-r border-slate-700 whitespace-nowrap bg-slate-900 text-slate-100">
+                    <div className="flex items-center gap-1">
+                      <span>Range Name</span>
+                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
+                    </div>
+                  </th>
+                  <th className="py-3 px-3 sm:px-4 border-r border-slate-700 whitespace-nowrap bg-slate-900 text-slate-100">
+                    Test Number
+                  </th>
+                  <th className="py-3 px-3 sm:px-4 border-r border-slate-700 whitespace-nowrap bg-slate-900 text-slate-100">
+                    SID
+                  </th>
+                  <th className="py-3 px-3 sm:px-4 border-r border-slate-700 bg-slate-900 text-slate-100 min-w-[200px]">
+                    Message content
+                  </th>
+                  <th className="py-3 px-3 sm:px-4 whitespace-nowrap bg-slate-900 text-slate-100">
+                    Receive time
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-300 bg-white">
+                {(() => {
+                  const filteredHits = liveHits.filter(
+                    (h) =>
+                      (h.sid || "").toLowerCase().includes(activeAppConsoleService.toLowerCase()) ||
+                      activeAppConsoleService.toLowerCase().includes((h.sid || "").toLowerCase()) ||
+                      (activeAppConsoleService.toLowerCase() === "whatsapp" && (h.message || "").toLowerCase().includes("whatsapp")) ||
+                      (activeAppConsoleService.toLowerCase() === "facebook" && (h.message || "").toLowerCase().includes("facebook")) ||
+                      (activeAppConsoleService.toLowerCase() === "telegram" && (h.message || "").toLowerCase().includes("telegram")) ||
+                      (activeAppConsoleService.toLowerCase() === "tiktok" && (h.message || "").toLowerCase().includes("tiktok")) ||
+                      (activeAppConsoleService.toLowerCase() === "imo" && (h.message || "").toLowerCase().includes("imo")),
+                  );
+
+                  if (filteredHits.length === 0) {
+                    return (
+                      <tr>
+                        <td colSpan={5} className="py-16 text-center text-slate-500 bg-slate-50/50">
+                          <div className="flex flex-col items-center justify-center gap-2">
+                            <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
+                              <TerminalIcon className="w-5 h-5" />
+                            </div>
+                            <p className="font-semibold text-slate-700 text-sm">No Message</p>
+                            <p className="text-xs text-slate-400">
+                              No active live SMS or OTP received for {activeAppConsoleService} yet.
+                            </p>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
+
+                  const dynamicRows = filteredHits.map((h) => {
+                    const carrier = resolveCarrierDetails(h.range || "");
+                    const timeMs = typeof h.time === "number"
+                      ? (h.time < 10000000000 ? h.time * 1000 : h.time)
+                      : (new Date(h.time).getTime() || Date.now());
+                    const rawTime = typeof h.time === "number"
+                      ? new Date(timeMs).toISOString().replace("T", " ").substring(0, 19)
+                      : (h.time || new Date().toISOString().replace("T", " ").substring(0, 19));
+                    
+                    // Calculate relative time (e.g. Just now, 12 mins ago, 2 hrs ago)
+                    const diffSec = Math.max(0, Math.floor((nowTick - timeMs) / 1000));
+                    let relativeStr = "Just now";
+                    if (diffSec >= 45 && diffSec < 3600) {
+                      const mins = Math.floor(diffSec / 60);
+                      relativeStr = mins === 1 ? "1 min ago" : `${mins} mins ago`;
+                    } else if (diffSec >= 3600 && diffSec < 86400) {
+                      const hrs = Math.floor(diffSec / 3600);
+                      relativeStr = hrs === 1 ? "1 hr ago" : `${hrs} hrs ago`;
+                    } else if (diffSec >= 86400) {
+                      const days = Math.floor(diffSec / 86400);
+                      relativeStr = days === 1 ? "1 day ago" : `${days} days ago`;
+                    }
+
+                    const resolvedCountry = getRealCountryName(h.country, h.range);
+                    return {
+                      country: resolvedCountry,
+                      range: h.range || "",
+                      number: formatNumberWithAreaCode(h.range || "", resolvedCountry),
+                      sid: h.sid || activeAppConsoleService,
+                      message: h.message || "",
+                      time: rawTime,
+                      relativeTime: relativeStr,
+                    };
+                  });
+
+                  return dynamicRows.map((hit, idx) => {
+                    const countryUpper = getRealCountryName(hit.country, hit.range).toUpperCase();
+                    const rangeName = hit.range
+                      ? `${countryUpper}\n${hit.range}`
+                      : countryUpper;
+
+                    const isEvenRow = idx % 2 === 0;
+
+                    return (
+                      <tr
+                        key={`${hit.number}-${hit.time}-${idx}`}
+                        className={`transition-colors ${
+                          isEvenRow
+                            ? "bg-white hover:bg-indigo-50/70"
+                            : "bg-slate-100/90 hover:bg-indigo-100/70"
+                        }`}
+                      >
+                        {/* Range Name (Uppercase Country + Range code underneath) */}
+                        <td className="py-3.5 px-3 sm:px-4 border-r border-b border-slate-300 font-extrabold text-slate-900 align-top whitespace-pre-line leading-tight">
+                          <span className="tracking-tight uppercase">
+                            {rangeName}
+                          </span>
+                        </td>
+
+                        {/* Test Number */}
+                        <td className="py-3.5 px-3 sm:px-4 border-r border-b border-slate-300 font-mono font-bold text-slate-900 align-top whitespace-nowrap">
+                          {hit.number || "—"}
+                        </td>
+
+                        {/* SID */}
+                        <td className="py-3.5 px-3 sm:px-4 border-r border-b border-slate-300 font-bold text-slate-900 align-top whitespace-nowrap">
+                          {hit.sid || activeAppConsoleService}
+                        </td>
+
+                        {/* Message content */}
+                        <td className="py-3.5 px-3 sm:px-4 border-r border-b border-slate-300 text-slate-800 text-xs sm:text-[13px] leading-relaxed max-w-xs sm:max-w-md break-words align-top font-sans">
+                          {hit.message || "—"}
+                        </td>
+
+                        {/* Receive time */}
+                        <td className="py-3.5 px-3 sm:px-4 border-b border-slate-300 text-slate-800 whitespace-nowrap align-top text-xs sm:text-[13px]">
+                          <div className="font-semibold text-slate-900">{hit.relativeTime}</div>
+                          <div className="text-[11px] text-slate-500 font-mono mt-0.5">{hit.time}</div>
+                        </td>
+                      </tr>
+                    );
+                  });
+                })()}
+              </tbody>
+            </table>
+
+            {/* Floating Orange Chat Bubble Icon matching Screenshot 1 */}
+            <div className="fixed bottom-6 right-6 z-20">
+              <button
+                type="button"
+                id="stream-floating-chat-btn"
+                onClick={() => {
+                  showDashboardToast("Super X SMS Support Desk", "info");
+                }}
+                className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-[#f97316] hover:bg-[#ea580c] text-white flex items-center justify-center shadow-lg hover:shadow-xl transition-all cursor-pointer transform hover:scale-105"
+                title="Support Chat"
+                aria-label="Support Chat"
+              >
+                <MessageSquare className="w-6 h-6" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

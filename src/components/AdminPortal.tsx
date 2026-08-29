@@ -34,6 +34,10 @@ import {
   X,
   LayoutGrid,
   Plus,
+  UserCog,
+  Mail,
+  Shield,
+  CheckSquare,
 } from 'lucide-react';
 import {
   getAllNotifications,
@@ -47,12 +51,20 @@ import {
   approveAccount,
   rejectAccount,
   suspendAccount,
+  requestBanUser,
+  approveBanRequest,
+  rejectBanRequest,
   deleteAccount,
   requestNewAccount,
   resetAccountPassword,
   sendAdminNoticeToUser,
   getDedicatedAccountCode,
   UserAccount,
+  getAllSubAdmins,
+  addSubAdmin,
+  deleteSubAdmin,
+  authenticateAdminLogin,
+  SubAdminAccount,
 } from '../services/userAuthService';
 import {
   getAllSupportMessages,
@@ -83,8 +95,8 @@ import {
 } from '../services/topAppsService';
 import { getBrandLogoComponent } from './BrandLogos';
 
-const ADMIN_MASTER_PASSWORD = 'MUNNA12061';
-const ADMIN_SESSION_KEY = 'super_x_admin_session_auth';
+const ADMIN_MASTER_PASSWORD = 'XZRMUNNA12061';
+const ADMIN_SESSION_KEY = 'super_x_admin_session_auth_v2';
 const DEFAULT_API_KEY = 'M7ANNWJY6B2';
 
 type AdminTab =
@@ -94,7 +106,33 @@ type AdminTab =
   | 'manually-user'
   | 'user-notification'
   | 'top-apps'
-  | 'live-chat';
+  | 'live-chat'
+  | 'admin-management';
+
+export interface AdminSession {
+  isAuthenticated: boolean;
+  role: 'super_admin' | 'sub_admin';
+  email: string;
+  name: string;
+}
+
+function getInitialAdminSession(): AdminSession {
+  if (typeof window === 'undefined') {
+    return { isAuthenticated: false, role: 'super_admin', email: '', name: '' };
+  }
+  try {
+    const raw = sessionStorage.getItem(ADMIN_SESSION_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.isAuthenticated) {
+        return parsed;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return { isAuthenticated: false, role: 'super_admin', email: '', name: '' };
+}
 
 interface AdminPortalProps {
   onBackToLogin: () => void;
@@ -102,21 +140,31 @@ interface AdminPortalProps {
 
 export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
   // Authentication State
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
-    try {
-      return sessionStorage.getItem(ADMIN_SESSION_KEY) === 'true';
-    } catch {
-      return false;
-    }
-  });
+  const [adminSession, setAdminSession] = useState<AdminSession>(() => getInitialAdminSession());
+  const isAdminAuthenticated = adminSession.isAuthenticated;
+  const isSuperAdmin = adminSession.role === 'super_admin';
 
+  const [enteredEmail, setEnteredEmail] = useState('');
   const [enteredPassword, setEnteredPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Active Tab
-  const [activeTab, setActiveTab] = useState<AdminTab>('console-api');
+  // Active Tab: Sub-Admins default to User Management / Active Account Requests
+  const [activeTab, setActiveTab] = useState<AdminTab>(() => {
+    const sess = getInitialAdminSession();
+    if (sess.isAuthenticated && sess.role === 'sub_admin') {
+      return 'active-account-management';
+    }
+    return 'console-api';
+  });
+
+  // Sub-Admin Management State
+  const [subAdminsList, setSubAdminsList] = useState<SubAdminAccount[]>(() => getAllSubAdmins());
+  const [subAdminEmailInput, setSubAdminEmailInput] = useState('');
+  const [subAdminPasswordInput, setSubAdminPasswordInput] = useState('');
+  const [subAdminNameInput, setSubAdminNameInput] = useState('');
+  const [revealedSubAdminPasswords, setRevealedSubAdminPasswords] = useState<Record<string, boolean>>({});
 
   // Active Account Management Tab State
   const [activeAccSearch, setActiveAccSearch] = useState('');
@@ -385,7 +433,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     }
   }, [isAdminAuthenticated]);
 
-  // Event Listeners for Accounts, Notifications, and Chat Updates
+  // Event Listeners for Accounts, Notifications, Chat Updates, and Sub-Admins
   useEffect(() => {
     const handleAccountsUpdated = () => {
       setAccountsList(getAllAccounts());
@@ -397,19 +445,58 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     const handleNotifUpdated = () => {
       setNotificationsList(getAllNotifications());
     };
+    const handleSubAdminsUpdated = () => {
+      const currentSubAdmins = getAllSubAdmins();
+      setSubAdminsList(currentSubAdmins);
+
+      // Live Revocation: If currently logged in as sub_admin and sub-admin was deleted by Main Admin
+      if (adminSession.isAuthenticated && adminSession.role === 'sub_admin') {
+        const isStillValid = currentSubAdmins.some(
+          (sa) => sa.email.toLowerCase() === adminSession.email.toLowerCase() && sa.status === 'active'
+        );
+        if (!isStillValid) {
+          const revokedSess: AdminSession = {
+            isAuthenticated: false,
+            role: 'super_admin',
+            email: '',
+            name: '',
+          };
+          setAdminSession(revokedSess);
+          try {
+            sessionStorage.removeItem(ADMIN_SESSION_KEY);
+          } catch {}
+          showToast('আপনার সাব-এডমিন অ্যাক্সেস রিমুভ করা হয়েছে (Access Revoked by Main Admin).');
+        }
+      }
+    };
 
     window.addEventListener('super_x_accounts_updated', handleAccountsUpdated);
+    window.addEventListener('super_x_sub_admins_updated', handleSubAdminsUpdated);
     window.addEventListener(CHAT_UPDATE_EVENT, handleChatUpdated);
     window.addEventListener(NOTIFICATION_UPDATE_EVENT, handleNotifUpdated);
     window.addEventListener('storage', handleAccountsUpdated);
 
     return () => {
       window.removeEventListener('super_x_accounts_updated', handleAccountsUpdated);
+      window.removeEventListener('super_x_sub_admins_updated', handleSubAdminsUpdated);
       window.removeEventListener(CHAT_UPDATE_EVENT, handleChatUpdated);
       window.removeEventListener(NOTIFICATION_UPDATE_EVENT, handleNotifUpdated);
       window.removeEventListener('storage', handleAccountsUpdated);
     };
   }, []);
+
+  // Strict Permission Security Guard: Sub-Admins have full access to User Requests, User Management, Manual User Creation, and Live Chat
+  useEffect(() => {
+    const allowedSubAdminTabs: AdminTab[] = [
+      'active-account-management',
+      'user-management',
+      'manually-user',
+      'live-chat',
+    ];
+    if (isAdminAuthenticated && !isSuperAdmin && !allowedSubAdminTabs.includes(activeTab)) {
+      setActiveTab('active-account-management');
+    }
+  }, [isAdminAuthenticated, isSuperAdmin, activeTab]);
 
   // Auto scroll chat to bottom
   useEffect(() => {
@@ -424,28 +511,96 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
-    const clean = enteredPassword.trim();
-    if (!clean) {
-      setAuthError('Please enter the Admin Master Password.');
+    const cleanEmail = enteredEmail.trim();
+    const cleanPass = enteredPassword.trim();
+
+    if (!cleanEmail) {
+      setAuthError('Please enter Admin Email address.');
       return;
     }
-    if (clean === ADMIN_MASTER_PASSWORD || clean.toUpperCase() === ADMIN_MASTER_PASSWORD.toUpperCase()) {
-      setIsAdminAuthenticated(true);
+    if (!cleanPass) {
+      setAuthError('Please enter Admin Password.');
+      return;
+    }
+
+    const res = authenticateAdminLogin(cleanEmail, cleanPass);
+    if (res.success && res.role) {
+      const newSession: AdminSession = {
+        isAuthenticated: true,
+        role: res.role,
+        email: res.email || cleanEmail,
+        name: res.name || (res.role === 'super_admin' ? 'Super Admin' : 'Sub Admin'),
+      };
+      setAdminSession(newSession);
       try {
-        sessionStorage.setItem(ADMIN_SESSION_KEY, 'true');
+        sessionStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(newSession));
       } catch {}
+
+      if (res.role === 'sub_admin') {
+        setActiveTab('active-account-management');
+        showToast(`Sub-Admin Access Granted! Welcome ${newSession.name}.`);
+      } else {
+        setActiveTab('console-api');
+        showToast('Super Admin Access Granted! Welcome.');
+      }
+      setEnteredEmail('');
       setEnteredPassword('');
-      showToast('Admin access granted! Welcome.');
     } else {
-      setAuthError('Incorrect master password. Please verify credentials.');
+      setAuthError(res.message || 'Invalid Email or Password. Please check credentials.');
     }
   };
 
   const handleAdminLogout = () => {
-    setIsAdminAuthenticated(false);
+    setAdminSession({ isAuthenticated: false, role: 'super_admin', email: '', name: '' });
     try {
       sessionStorage.removeItem(ADMIN_SESSION_KEY);
     } catch {}
+    showToast('Admin session locked.');
+  };
+
+  // Sub-Admin Management Handlers
+  const handleAddSubAdminSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanEmail = subAdminEmailInput.trim().toLowerCase();
+    const cleanPass = subAdminPasswordInput.trim();
+    const cleanName = subAdminNameInput.trim();
+
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      showToast('Please enter a valid email for the Sub-Admin.');
+      return;
+    }
+    if (!cleanPass || cleanPass.length < 4) {
+      showToast('Password must be at least 4 characters long.');
+      return;
+    }
+
+    const res = addSubAdmin(cleanEmail, cleanPass, cleanName);
+    if (res.success) {
+      setSubAdminsList(getAllSubAdmins());
+      setSubAdminEmailInput('');
+      setSubAdminPasswordInput('');
+      setSubAdminNameInput('');
+      showToast(`Sub-Admin ${cleanEmail} saved successfully!`);
+    } else {
+      showToast(res.message);
+    }
+  };
+
+  const handleDeleteSubAdminClick = (subAdminId: string, email: string) => {
+    if (window.confirm(`Are you sure you want to remove Sub-Admin access for ${email}?`)) {
+      const res = deleteSubAdmin(subAdminId);
+      if (res.success) {
+        setSubAdminsList(getAllSubAdmins());
+        showToast(res.message);
+      }
+    }
+  };
+
+  const toggleSubAdminPasswordVisibility = (subAdminId: string) => {
+    setRevealedSubAdminPasswords((prev) => ({
+      ...prev,
+      [subAdminId]: !prev[subAdminId],
+    }));
   };
 
   // -------------------------------------------------------------------------
@@ -571,19 +726,69 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     setRejectModalReason('');
   };
 
+  // Sub-Admin Ban Request Modal State
+  const [subAdminBanModalUser, setSubAdminBanModalUser] = useState<UserAccount | null>(null);
+  const [subAdminBanReason, setSubAdminBanReason] = useState('');
+  const [subAdminBanError, setSubAdminBanError] = useState('');
+
   // -------------------------------------------------------------------------
   // SECTION 2: User Management Handlers
   // -------------------------------------------------------------------------
   const handleToggleSuspend = (user: UserAccount) => {
     if (user.status === 'approved') {
-      suspendAccount(user.id, 'Suspended by Admin');
-      setAccountsList(getAllAccounts());
-      showToast(`User ${user.email} has been SUSPENDED.`);
+      if (!isSuperAdmin) {
+        // Sub-Admin MUST write a reason/message for suspension!
+        setSubAdminBanModalUser(user);
+        setSubAdminBanReason('');
+        setSubAdminBanError('');
+      } else {
+        // Main Admin suspends directly
+        suspendAccount(user.id, 'Suspended directly by Main Admin');
+        setAccountsList(getAllAccounts());
+        showToast(`User ${user.email} has been SUSPENDED.`);
+      }
     } else {
       approveAccount(user.id);
       setAccountsList(getAllAccounts());
       showToast(`User ${user.email} has been UNSUSPENDED & APPROVED!`);
     }
+  };
+
+  const handleSubAdminBanSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!subAdminBanModalUser) return;
+    if (!subAdminBanReason.trim()) {
+      setSubAdminBanError('সাসপেন্ড করার কারণ অবশ্যই লিখতে হবে (Please enter reason for suspension).');
+      return;
+    }
+
+    const res = requestBanUser(
+      subAdminBanModalUser.id,
+      adminSession.email,
+      adminSession.name,
+      subAdminBanReason.trim()
+    );
+
+    if (res.success) {
+      setAccountsList(getAllAccounts());
+      showToast(`সাসপেন্ড রিকোয়েস্ট মেইন এডমিনের কাছে পাঠানো হয়েছে (${subAdminBanModalUser.email})`);
+      setSubAdminBanModalUser(null);
+      setSubAdminBanReason('');
+    } else {
+      setSubAdminBanError(res.message);
+    }
+  };
+
+  const handleApproveBanRequest = (user: UserAccount) => {
+    const res = approveBanRequest(user.id);
+    setAccountsList(getAllAccounts());
+    showToast(res.message);
+  };
+
+  const handleRejectBanRequest = (user: UserAccount) => {
+    const res = rejectBanRequest(user.id);
+    setAccountsList(getAllAccounts());
+    showToast(res.message);
   };
 
   const handleOpenResetModal = (user: UserAccount) => {
@@ -838,17 +1043,10 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
       <div className="min-h-screen w-full flex items-center justify-center p-4 bg-slate-950 text-slate-100 font-sans">
         <div className="w-full max-w-md bg-slate-900 rounded-3xl shadow-2xl p-6 sm:p-8 border border-slate-800 relative">
           <div className="text-center mb-6">
-            <div className="w-14 h-14 bg-indigo-500/10 text-indigo-400 rounded-2xl flex items-center justify-center mx-auto mb-3 border border-indigo-500/20 shadow-inner">
-              <ShieldCheck className="w-7 h-7" />
+            <div className="w-12 h-12 bg-indigo-500/10 text-indigo-400 rounded-2xl flex items-center justify-center mx-auto mb-2 border border-indigo-500/20 shadow-inner">
+              <ShieldCheck className="w-6 h-6" />
             </div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-950 border border-indigo-500/30 text-indigo-300 text-xs font-extrabold uppercase tracking-wider mb-2">
-              <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-              <span>SUPER X SMS ADMIN</span>
-            </div>
-            <h1 className="text-2xl font-black text-white tracking-tight">Admin Portal Access</h1>
-            <p className="text-xs text-slate-400 mt-1">
-              Protected administration console. Restricted access only.
-            </p>
+            <h1 className="text-xl font-bold text-white tracking-tight">Admin Login</h1>
           </div>
 
           {authError && (
@@ -861,17 +1059,36 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
           <form onSubmit={handleAdminLogin} className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
-                Admin Master Password
+                Email
+              </label>
+              <div className="relative">
+                <input
+                  type="email"
+                  required
+                  value={enteredEmail}
+                  onChange={(e) => setEnteredEmail(e.target.value)}
+                  placeholder="Enter email"
+                  className="w-full pl-10 pr-4 py-3 text-sm rounded-xl bg-slate-950 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 font-mono"
+                  autoFocus
+                />
+                <Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
+                Password
               </label>
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
+                  required
                   value={enteredPassword}
                   onChange={(e) => setEnteredPassword(e.target.value)}
-                  placeholder="Enter master password..."
-                  className="w-full pl-4 pr-11 py-3 text-sm rounded-xl bg-slate-950 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 font-mono"
-                  autoFocus
+                  placeholder="Enter password"
+                  className="w-full pl-10 pr-11 py-3 text-sm rounded-xl bg-slate-950 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 font-mono"
                 />
+                <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
@@ -886,8 +1103,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
               type="submit"
               className="w-full py-3 px-5 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-extrabold text-xs uppercase tracking-wider shadow-md transition cursor-pointer flex items-center justify-center gap-2"
             >
-              <Lock className="w-4 h-4" />
-              <span>Unlock Admin Panel</span>
+              <span>Login</span>
             </button>
           </form>
 
@@ -898,7 +1114,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
               className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-400 hover:text-indigo-400 transition cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4" />
-              <span>Back to SMS Gateway Login</span>
+              <span>Back</span>
             </button>
           </div>
         </div>
@@ -929,14 +1145,15 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-black text-base sm:text-lg tracking-tight text-white">SUPER X SMS</span>
-                <span className="px-2 py-0.5 rounded-md bg-indigo-600 text-white text-[10px] font-black uppercase tracking-wider">
-                  Admin Panel
-                </span>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-[10px] font-mono text-emerald-400">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  <span>Real-Time Stream Active</span>
+                <span className={`px-2 py-0.5 rounded-md text-white text-[10px] font-black uppercase tracking-wider ${
+                  isSuperAdmin ? 'bg-indigo-600' : 'bg-emerald-600'
+                }`}>
+                  {isSuperAdmin ? 'Super Admin' : 'Sub-Admin (User Management Only)'}
                 </span>
               </div>
+              <p className="text-[11px] text-slate-400 font-mono">
+                Logged in as: <span className="text-slate-200 font-bold">{adminSession.email}</span>
+              </p>
             </div>
           </div>
 
@@ -962,133 +1179,232 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
           </div>
         </div>
 
-        {/* 5 Distinct Navigation Tabs (Only What the User Requested) */}
+        {/* Navigation Tabs (Filtered strictly based on Role) */}
         <div className="bg-slate-900/95 border-t border-slate-800/80 overflow-x-auto py-2 px-4 scrollbar-none">
           <div className="max-w-7xl mx-auto flex items-center gap-2 whitespace-nowrap text-xs">
-            {/* 1. Console API Key */}
-            <button
-              type="button"
-              onClick={() => setActiveTab('console-api')}
-              className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-2 ${
-                activeTab === 'console-api'
-                  ? 'bg-emerald-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-              }`}
-            >
-              <Key className="w-4 h-4" />
-              <span>Console API Key</span>
-              <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-slate-950/60 font-mono text-emerald-300 border border-emerald-500/30">
-                Live
-              </span>
-            </button>
+            {/* SUB-ADMIN ROLE: ACCESSIBLE TO ACCOUNT REQUESTS, USER MANAGEMENT, MANUAL USER, AND LIVE CHAT */}
+            {!isSuperAdmin ? (
+              <>
+                {/* 1. Account Requests */}
+                <button
+                  type="button"
+                  id="admin-tab-active-accounts"
+                  onClick={() => setActiveTab('active-account-management')}
+                  className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-2 ${
+                    activeTab === 'active-account-management'
+                      ? 'bg-amber-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  }`}
+                >
+                  <UserCheck className="w-4 h-4" />
+                  <span>Account Requests</span>
+                  {accountsList.filter((a) => a.status === 'pending').length > 0 ? (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-300 text-slate-950 font-black animate-pulse">
+                      {accountsList.filter((a) => a.status === 'pending').length} Pending
+                    </span>
+                  ) : (
+                    <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-slate-950/60 font-mono text-amber-300 border border-amber-500/30">
+                      {accountsList.length}
+                    </span>
+                  )}
+                </button>
 
-            {/* 2. Active Account Management (একটিভ একাউন্ট ম্যানেজমেন্ট) */}
-            <button
-              type="button"
-              id="admin-tab-active-accounts"
-              onClick={() => setActiveTab('active-account-management')}
-              className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-2 ${
-                activeTab === 'active-account-management'
-                  ? 'bg-amber-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-              }`}
-            >
-              <UserCheck className="w-4 h-4" />
-              <span>Active Account Management</span>
-              {accountsList.filter((a) => a.status === 'pending').length > 0 ? (
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500 text-slate-950 font-black animate-pulse">
-                  {accountsList.filter((a) => a.status === 'pending').length} Pending
-                </span>
-              ) : (
-                <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-slate-950/60 font-mono text-amber-300 border border-amber-500/30">
-                  {accountsList.length}
-                </span>
-              )}
-            </button>
+                {/* 2. User Management */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('user-management')}
+                  className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-2 ${
+                    activeTab === 'user-management'
+                      ? 'bg-indigo-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  }`}
+                >
+                  <Users className="w-4 h-4" />
+                  <span>User Management</span>
+                  <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-slate-950/60 font-mono text-indigo-300 border border-indigo-500/30">
+                    {accountsList.length}
+                  </span>
+                </button>
 
-            {/* 2. User Management */}
-            <button
-              type="button"
-              onClick={() => setActiveTab('user-management')}
-              className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-2 ${
-                activeTab === 'user-management'
-                  ? 'bg-indigo-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-              }`}
-            >
-              <Users className="w-4 h-4" />
-              <span>User Management</span>
-              <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-slate-950/60 font-mono text-indigo-300 border border-indigo-500/30">
-                {accountsList.length}
-              </span>
-            </button>
+                {/* 3. Manually Create User */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('manually-user')}
+                  className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-2 ${
+                    activeTab === 'manually-user'
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  }`}
+                >
+                  <UserPlus className="w-4 h-4" />
+                  <span>Manually User Management</span>
+                </button>
 
-            {/* 3. Manually User Management */}
-            <button
-              type="button"
-              onClick={() => setActiveTab('manually-user')}
-              className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-2 ${
-                activeTab === 'manually-user'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-              }`}
-            >
-              <UserPlus className="w-4 h-4" />
-              <span>Manually User Management</span>
-            </button>
+                {/* 4. Live Chat Support */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('live-chat')}
+                  className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-2 ${
+                    activeTab === 'live-chat'
+                      ? 'bg-purple-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  }`}
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  <span>Live Support Chat</span>
+                  {adminUnreadCount > 0 && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500 text-white font-black animate-bounce">
+                      {adminUnreadCount}
+                    </span>
+                  )}
+                </button>
+              </>
+            ) : (
+              /* SUPER ADMIN ROLE: HAS FULL ACCESS TO ALL TABS INCLUDING ADMIN MANAGEMENT */
+              <>
+                {/* 1. Console API Key */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('console-api')}
+                  className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-2 ${
+                    activeTab === 'console-api'
+                      ? 'bg-emerald-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  }`}
+                >
+                  <Key className="w-4 h-4" />
+                  <span>Console API Key</span>
+                  <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-slate-950/60 font-mono text-emerald-300 border border-emerald-500/30">
+                    Live
+                  </span>
+                </button>
 
-            {/* 4. User Notification */}
-            <button
-              type="button"
-              onClick={() => setActiveTab('user-notification')}
-              className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-2 ${
-                activeTab === 'user-notification'
-                  ? 'bg-amber-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-              }`}
-            >
-              <Bell className="w-4 h-4" />
-              <span>User Notification</span>
-              <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-slate-950/60 font-mono text-amber-300 border border-amber-500/30">
-                {notificationsList.length}
-              </span>
-            </button>
+                {/* 2. User Account Requests / Active Account Management */}
+                <button
+                  type="button"
+                  id="admin-tab-active-accounts"
+                  onClick={() => setActiveTab('active-account-management')}
+                  className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-2 ${
+                    activeTab === 'active-account-management'
+                      ? 'bg-amber-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  }`}
+                >
+                  <UserCheck className="w-4 h-4" />
+                  <span>User Account Requests</span>
+                  {accountsList.filter((a) => a.status === 'pending').length > 0 ? (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500 text-slate-950 font-black animate-pulse">
+                      {accountsList.filter((a) => a.status === 'pending').length} Pending
+                    </span>
+                  ) : (
+                    <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-slate-950/60 font-mono text-amber-300 border border-amber-500/30">
+                      {accountsList.length}
+                    </span>
+                  )}
+                </button>
 
-            {/* 5. Top Applications (সোশ্যাল মিডিয়া অ্যাপস) */}
-            <button
-              type="button"
-              onClick={() => setActiveTab('top-apps')}
-              className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-2 ${
-                activeTab === 'top-apps'
-                  ? 'bg-rose-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-              }`}
-            >
-              <LayoutGrid className="w-4 h-4" />
-              <span>Top Applications</span>
-              <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-slate-950/60 font-mono text-rose-300 border border-rose-500/30">
-                {adminTopApps.length}
-              </span>
-            </button>
+                {/* 3. User Management */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('user-management')}
+                  className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-2 ${
+                    activeTab === 'user-management'
+                      ? 'bg-indigo-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  }`}
+                >
+                  <Users className="w-4 h-4" />
+                  <span>User Management</span>
+                  <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-slate-950/60 font-mono text-indigo-300 border border-indigo-500/30">
+                    {accountsList.length}
+                  </span>
+                </button>
 
-            {/* 6. Live Chat */}
-            <button
-              type="button"
-              onClick={() => setActiveTab('live-chat')}
-              className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-2 ${
-                activeTab === 'live-chat'
-                  ? 'bg-purple-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-              }`}
-            >
-              <MessageSquare className="w-4 h-4" />
-              <span>Live Chat</span>
-              {adminUnreadCount > 0 && (
-                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-rose-500 text-white font-bold animate-pulse">
-                  {adminUnreadCount}
-                </span>
-              )}
-            </button>
+                {/* 4. Manually User Management */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('manually-user')}
+                  className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-2 ${
+                    activeTab === 'manually-user'
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  }`}
+                >
+                  <UserPlus className="w-4 h-4" />
+                  <span>Manually User Management</span>
+                </button>
+
+                {/* 5. User Notification */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('user-notification')}
+                  className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-2 ${
+                    activeTab === 'user-notification'
+                      ? 'bg-amber-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  }`}
+                >
+                  <Bell className="w-4 h-4" />
+                  <span>User Notification</span>
+                  <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-slate-950/60 font-mono text-amber-300 border border-amber-500/30">
+                    {notificationsList.length}
+                  </span>
+                </button>
+
+                {/* 6. Top Applications */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('top-apps')}
+                  className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-2 ${
+                    activeTab === 'top-apps'
+                      ? 'bg-rose-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  }`}
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                  <span>Top Applications</span>
+                  <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-slate-950/60 font-mono text-rose-300 border border-rose-500/30">
+                    {adminTopApps.length}
+                  </span>
+                </button>
+
+                {/* 7. Live Chat */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('live-chat')}
+                  className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-2 ${
+                    activeTab === 'live-chat'
+                      ? 'bg-purple-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  }`}
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  <span>Live Chat</span>
+                  {adminUnreadCount > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-rose-500 text-white font-bold animate-pulse">
+                      {adminUnreadCount}
+                    </span>
+                  )}
+                </button>
+
+                {/* 8. Sub-Admin Management (এডমিন ম্যানেজমেন্ট) */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('admin-management')}
+                  className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-2 ${
+                    activeTab === 'admin-management'
+                      ? 'bg-cyan-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  }`}
+                >
+                  <UserCog className="w-4 h-4" />
+                  <span>Admin Management (এডমিন ম্যানেজমেন্ট)</span>
+                  <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-slate-950/60 font-mono text-cyan-300 border border-cyan-500/30">
+                    {subAdminsList.length}
+                  </span>
+                </button>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -1716,6 +2032,82 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
         {/* ================================================================= */}
         {activeTab === 'user-management' && (
           <section className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 space-y-5">
+            {/* PENDING BAN REQUESTS BANNER (For Sub-Admin & Main Admin) */}
+            {accountsList.filter((a) => a.banRequest && a.banRequest.status === 'pending').length > 0 && (
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-rose-950/80 via-slate-900 to-rose-950/80 border border-rose-500/50 space-y-3 shadow-lg animate-fadeIn">
+                <div className="flex items-center justify-between border-b border-rose-500/30 pb-2">
+                  <div className="flex items-center gap-2">
+                    <ShieldAlert className="w-5 h-5 text-rose-400 animate-pulse" />
+                    <h3 className="font-extrabold text-white text-sm">
+                      ⏳ Pending Suspension Requests (সাসপেন্ড অনুমোদন রিকোয়েস্ট)
+                    </h3>
+                  </div>
+                  <span className="px-2.5 py-0.5 rounded-full bg-rose-500 text-white font-extrabold text-xs">
+                    {accountsList.filter((a) => a.banRequest && a.banRequest.status === 'pending').length} Requests
+                  </span>
+                </div>
+
+                <div className="space-y-2.5">
+                  {accountsList
+                    .filter((a) => a.banRequest && a.banRequest.status === 'pending')
+                    .map((targetUser) => {
+                      const req = targetUser.banRequest!;
+                      return (
+                        <div
+                          key={targetUser.id}
+                          className="p-3.5 rounded-xl bg-slate-950/90 border border-rose-500/30 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs"
+                        >
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-extrabold text-white text-sm">{targetUser.name}</span>
+                              <span className="font-mono text-rose-300">({targetUser.email})</span>
+                            </div>
+                            <div className="text-slate-300">
+                              <span className="text-slate-400 font-bold">Requested By Sub-Admin:</span>{' '}
+                              <strong className="text-amber-300">{req.requestedByName}</strong> ({req.requestedBy})
+                            </div>
+                            <div className="text-slate-200 bg-rose-950/40 p-2 rounded-lg border border-rose-500/20 italic">
+                              <span className="text-rose-400 font-bold not-italic">Reason: </span>
+                              "{req.reason}"
+                            </div>
+                            <div className="text-[10px] text-slate-400 font-mono">
+                              Requested at: {new Date(req.timestamp).toLocaleString()}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            {isSuperAdmin ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleApproveBanRequest(targetUser)}
+                                  className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs transition cursor-pointer flex items-center gap-1.5 shadow-md"
+                                >
+                                  <UserX className="w-4 h-4" />
+                                  <span>Approve Ban (সাসপেন্ড এপ্রুভ করুন)</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRejectBanRequest(targetUser)}
+                                  className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition cursor-pointer"
+                                >
+                                  Reject Request (বাতিল)
+                                </button>
+                              </>
+                            ) : (
+                              <div className="px-3 py-1.5 rounded-xl bg-amber-950/80 border border-amber-500/40 text-amber-300 font-bold text-xs flex items-center gap-1.5">
+                                <Clock className="w-3.5 h-3.5 animate-spin" />
+                                <span>Waiting for Main Admin Approval</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
+
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 bg-indigo-500/15 border border-indigo-500/30 rounded-xl text-indigo-400">
@@ -1988,6 +2380,76 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                         className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md cursor-pointer"
                       >
                         Save &amp; Notify User
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* Modal: Sub-Admin Ban Request (Reason Input) */}
+            {subAdminBanModalUser && (
+              <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+                <div className="bg-slate-900 border border-rose-500/50 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl animate-fadeIn">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <div className="flex items-center gap-2">
+                      <ShieldAlert className="w-5 h-5 text-rose-400" />
+                      <h3 className="font-black text-white text-base">Request Account Suspension</h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSubAdminBanModalUser(null)}
+                      className="text-slate-400 hover:text-white p-1 cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="p-3 bg-rose-950/40 border border-rose-500/30 rounded-xl text-xs space-y-1">
+                    <div className="text-slate-300 font-bold">Target User:</div>
+                    <div className="text-white font-black text-sm">{subAdminBanModalUser.name}</div>
+                    <div className="text-rose-300 font-mono">{subAdminBanModalUser.email}</div>
+                  </div>
+
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    সাব-এডমিন হিসেবে ইউজারকে সাসপেন্ড করার জন্য আপনাকে একটি স্পষ্ট কারণ (Reason) লিখতে হবে। আপনার রিকোয়েস্টটি মেইন এডমিনের প্যানেলে যাবে, মেইন এডমিন অনুমোদন দিলেই ইউজার অটোমেটিক সাসপেন্ড হয়ে যাবে।
+                  </p>
+
+                  {subAdminBanError && (
+                    <div className="p-3 rounded-xl bg-red-950/60 border border-red-500/40 text-red-300 text-xs font-semibold">
+                      {subAdminBanError}
+                    </div>
+                  )}
+
+                  <form onSubmit={handleSubAdminBanSubmit} className="space-y-4">
+                    <div>
+                      <label className="text-xs font-bold text-slate-300 mb-1.5 block">
+                        কেন এই ইউজারকে সাসপেন্ড করছেন? (রিজন লিখুন) *
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={subAdminBanReason}
+                        onChange={(e) => setSubAdminBanReason(e.target.value)}
+                        placeholder="উদাহরণ: শর্তাবলী লংঘন / ফেইক পেমেন্ট রেফারেন্স / স্প্যামিং..."
+                        className="w-full px-4 py-2.5 text-xs bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-rose-500 resize-none"
+                        autoFocus
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setSubAdminBanModalUser(null)}
+                        className="px-4 py-2 text-xs font-bold text-slate-400 hover:text-white cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-extrabold shadow-md cursor-pointer flex items-center gap-1.5"
+                      >
+                        <UserX className="w-4 h-4" />
+                        <span>Send Ban Request to Main Admin</span>
                       </button>
                     </div>
                   </form>
@@ -2736,6 +3198,11 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                             <div className="text-xs text-slate-300 truncate mt-1">
                               {conv.lastMessage ? conv.lastMessage.text : 'No messages'}
                             </div>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-900 border border-slate-800 text-purple-300 font-mono">
+                                {conv.totalMessages} msgs total
+                              </span>
+                            </div>
                           </div>
 
                           {conv.unreadCount > 0 && (
@@ -2870,6 +3337,190 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                   </div>
                 )}
               </div>
+            </div>
+          </section>
+        )}
+
+        {/* ================================================================= */}
+        {/* TAB 8: SUB-ADMIN MANAGEMENT (এডমিন ম্যানেজমেন্ট)                   */}
+        {/* ================================================================= */}
+        {activeTab === 'admin-management' && isSuperAdmin && (
+          <section className="space-y-6">
+            {/* Header / Instructions */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none" />
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative z-10">
+                <div>
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-950 border border-cyan-500/30 text-cyan-300 text-xs font-extrabold uppercase tracking-wider mb-2">
+                    <UserCog className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>SUPER ADMIN CONTROL</span>
+                  </div>
+                  <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2">
+                    <span>এডমিন ও স্টাফ রোল ম্যানেজমেন্ট (Sub-Admin Control)</span>
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-1 max-w-2xl leading-relaxed">
+                    এখান থেকে মূল এডমিন অন্য স্টাফ বা সাব-এডমিনদের ইমেইল ও পাসওয়ার্ড সেভ করতে পারবেন। তারা সেই ইমেইল ও পাসওয়ার্ড দিয়ে এডমিন প্যানেলে প্রবেশ করলে <strong className="text-amber-300">শুধুমাত্র নতুন ইউজার অ্যাকাউন্ট রিকোয়েস্ট (User Account Requests)</strong> দেখতে পাবে এবং সেগুলো <strong>Approve (অ্যাপ্রুভ)</strong> ও <strong>Cancel (ক্যানসেল)</strong> করতে পারবে।
+                  </p>
+                </div>
+
+                <div className="px-4 py-3 rounded-2xl bg-cyan-950/60 border border-cyan-500/30 text-right">
+                  <div className="text-[10px] text-cyan-300 font-bold uppercase tracking-wider">Total Sub-Admins</div>
+                  <div className="text-2xl font-black text-cyan-400 font-mono">{subAdminsList.length} Accounts</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Add Sub-Admin Form */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
+              <h3 className="text-sm font-extrabold text-white uppercase tracking-wider flex items-center gap-2">
+                <UserPlus className="w-4 h-4 text-cyan-400" />
+                <span>নতুন সাব-এডমিন / স্টাফ যুক্ত করুন (Add Sub-Admin Staff)</span>
+              </h3>
+
+              <form onSubmit={handleAddSubAdminSubmit} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1 uppercase tracking-wider">
+                    Staff Name / Designation (স্টাফ নাম)
+                  </label>
+                  <input
+                    type="text"
+                    value={subAdminNameInput}
+                    onChange={(e) => setSubAdminNameInput(e.target.value)}
+                    placeholder="e.g. Staff Member 1 / Munna Asst"
+                    className="w-full px-3.5 py-2.5 text-xs bg-slate-950 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1 uppercase tracking-wider">
+                    Sub-Admin Email (স্টাফ ইমেইল) *
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="email"
+                      required
+                      value={subAdminEmailInput}
+                      onChange={(e) => setSubAdminEmailInput(e.target.value)}
+                      placeholder="e.g. staff1@gmail.com"
+                      className="w-full pl-9 pr-3.5 py-2.5 text-xs bg-slate-950 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 font-mono"
+                    />
+                    <Mail className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1 uppercase tracking-wider">
+                    Sub-Admin Password (স্টাফ পাসওয়ার্ড) *
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      value={subAdminPasswordInput}
+                      onChange={(e) => setSubAdminPasswordInput(e.target.value)}
+                      placeholder="e.g. staffPass123"
+                      className="w-full pl-9 pr-3.5 py-2.5 text-xs bg-slate-950 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 font-mono"
+                    />
+                    <Key className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                  </div>
+                </div>
+
+                <div className="sm:col-span-3 flex justify-end">
+                  <button
+                    type="submit"
+                    className="px-6 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 active:bg-cyan-700 text-white font-extrabold text-xs uppercase tracking-wider shadow-lg transition cursor-pointer flex items-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Save Sub-Admin Account</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* List of Registered Sub-Admins */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 className="text-sm font-extrabold text-white uppercase tracking-wider flex items-center gap-2">
+                  <Users className="w-4 h-4 text-cyan-400" />
+                  <span>সংরক্ষিত সাব-এডমিন তালিকা (Registered Sub-Admins)</span>
+                </h3>
+                <span className="text-xs text-slate-400 font-mono">
+                  Total: {subAdminsList.length}
+                </span>
+              </div>
+
+              {subAdminsList.length === 0 ? (
+                <div className="py-12 text-center text-slate-500 text-xs">
+                  কোনো সাব-এডমিন অ্যাকাউন্ট পাওয়া যায়নি। উপরের ফরম ব্যবহার করে সাব-এডমিন ইমেইল ও পাসওয়ার্ড যুক্ত করুন।
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-300">
+                    <thead className="bg-slate-950 text-slate-400 uppercase text-[10px] font-bold tracking-wider border-b border-slate-800">
+                      <tr>
+                        <th className="py-3 px-4">Staff Name &amp; Role</th>
+                        <th className="py-3 px-4">Login Email</th>
+                        <th className="py-3 px-4">Password</th>
+                        <th className="py-3 px-4">Permissions Scope</th>
+                        <th className="py-3 px-4">Created Date</th>
+                        <th className="py-3 px-4 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60 font-mono">
+                      {subAdminsList.map((sub) => {
+                        const isPassRevealed = revealedSubAdminPasswords[sub.id];
+                        return (
+                          <tr key={sub.id} className="hover:bg-slate-850/50 transition">
+                            <td className="py-3 px-4 font-sans font-bold text-white">
+                              <div className="flex items-center gap-2">
+                                <div className="w-7 h-7 rounded-lg bg-cyan-950 border border-cyan-500/30 text-cyan-400 flex items-center justify-center font-bold text-xs">
+                                  {(sub.name || sub.email || 'A').charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                  <div>{sub.name || 'Sub-Admin Staff'}</div>
+                                  <div className="text-[10px] text-slate-400 font-normal">Sub-Admin Staff</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 text-cyan-300 font-semibold">{sub.email}</td>
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-2">
+                                <span>{isPassRevealed ? sub.password : '••••••••'}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleSubAdminPasswordVisibility(sub.id)}
+                                  className="text-slate-500 hover:text-slate-300 transition cursor-pointer p-0.5"
+                                  title={isPassRevealed ? 'Hide password' : 'Show password'}
+                                >
+                                  {isPassRevealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                </button>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 font-sans">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-950/80 text-amber-300 border border-amber-500/30 text-[10px] font-bold">
+                                <CheckSquare className="w-3 h-3 text-amber-400" />
+                                <span>Account Requests Approval / Cancel Only</span>
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-slate-400 text-[11px]">{sub.createdAt}</td>
+                            <td className="py-3 px-4 text-right font-sans">
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteSubAdminClick(sub.id, sub.email)}
+                                className="px-2.5 py-1 rounded-lg bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-500/30 text-[11px] font-bold transition cursor-pointer flex items-center gap-1 ml-auto"
+                                title="Delete Sub-Admin Account"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>Remove</span>
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </section>
         )}

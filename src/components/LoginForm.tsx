@@ -37,6 +37,7 @@ import {
   CHAT_UPDATE_EVENT,
   ChatMessage,
 } from '../services/supportChatService';
+import { fetchAccountsFromFirebaseDirectly } from '../services/firebaseSyncService';
 
 export interface UserData {
   email: string;
@@ -195,10 +196,20 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
 
     setIsLoading(true);
 
-    setTimeout(() => {
-      setIsLoading(false);
+    setTimeout(async () => {
+      let authResult = authenticateUser(cleanIdentifier, password);
 
-      const authResult = authenticateUser(cleanIdentifier, password);
+      // If user account is not found locally or is pending, fetch latest accounts directly from Firebase Firestore and retry!
+      if (!authResult.success && (authResult.status === 'not_found' || authResult.status === 'pending')) {
+        try {
+          await fetchAccountsFromFirebaseDirectly();
+          authResult = authenticateUser(cleanIdentifier, password);
+        } catch {
+          // ignore
+        }
+      }
+
+      setIsLoading(false);
 
       if (!authResult.success) {
         if (authResult.status === 'pending') {

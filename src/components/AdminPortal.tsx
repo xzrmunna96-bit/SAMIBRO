@@ -1219,6 +1219,9 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
       password: cleanPassword,
       phoneOrTelegram: manualPhone.trim(),
       note: manualNote.trim() || 'Created manually by Admin',
+      createdByEmail: adminSession.email,
+      createdByName: adminSession.name,
+      isManualAdminCreation: true,
     });
 
     if (res.success && res.account) {

@@ -168,34 +168,22 @@ const INITIAL_DEFAULT_ACCOUNTS: UserAccount[] = [
     phoneOrTelegram: '@xzrmunna',
     note: 'System Super Admin',
     approvedAt: Date.now() - 30 * 24 * 3600 * 1000,
+    updatedAt: Date.now(),
   },
   {
-    id: 'user_sami',
-    name: 'SAMI',
-    email: 'sami@superxsms.com',
-    username: 'sami',
+    id: 'user_admin_main',
+    name: 'Main Admin',
+    email: 'admin@superxsms.com',
+    username: 'admin',
     password: 'Password123',
-    accountCode: '9038271645',
+    accountCode: '1000000001',
     status: 'approved',
-    role: 'user',
-    createdAt: Date.now() - 15 * 24 * 3600 * 1000,
-    phoneOrTelegram: '+8801700000000',
-    note: 'Active SMS Trader',
-    approvedAt: Date.now() - 15 * 24 * 3600 * 1000,
-  },
-  {
-    id: 'user_demo',
-    name: 'Demo User',
-    email: 'demo@portal.com',
-    username: 'demo',
-    password: 'Password123',
-    accountCode: '4193820571',
-    status: 'approved',
-    role: 'user',
-    createdAt: Date.now() - 7 * 24 * 3600 * 1000,
-    phoneOrTelegram: '@demo_user',
-    note: 'Demo testing account',
-    approvedAt: Date.now() - 7 * 24 * 3600 * 1000,
+    role: 'admin',
+    createdAt: Date.now() - 30 * 24 * 3600 * 1000,
+    phoneOrTelegram: '@superxsms_admin',
+    note: 'System Main Admin',
+    approvedAt: Date.now() - 30 * 24 * 3600 * 1000,
+    updatedAt: Date.now(),
   },
 ];
 
@@ -420,6 +408,7 @@ export function approveAccount(
   }
 
   saveAllAccounts(accounts);
+  saveAccountToFirebase(target);
 
   // Send real-time live chat approval message to user
   try {
@@ -460,6 +449,7 @@ export function rejectAccount(
   }
 
   saveAllAccounts(accounts);
+  saveAccountToFirebase(target);
 
   // Send live chat rejection message to user
   try {
@@ -489,6 +479,7 @@ export function sendAdminNoticeToUser(
   target.adminNotice = noticeText.trim();
   target.updatedAt = Date.now();
   saveAllAccounts(accounts);
+  saveAccountToFirebase(target);
 
   // Send to user live support chat
   try {
@@ -518,6 +509,7 @@ export function suspendAccount(id: string, reason?: string): { success: boolean;
   }
 
   saveAllAccounts(accounts);
+  saveAccountToFirebase(target);
   return { success: true, message: `Account for ${target.email} has been SUSPENDED.`, account: target };
 }
 
@@ -543,6 +535,7 @@ export function requestBanUser(
   };
 
   saveAllAccounts(accounts);
+  saveAccountToFirebase(target);
 
   return {
     success: true,
@@ -569,6 +562,7 @@ export function approveBanRequest(id: string): { success: boolean; message: stri
   }
 
   saveAllAccounts(accounts);
+  saveAccountToFirebase(target);
   return { success: true, message: `Ban request APPROVED! Account for ${target.email} is now SUSPENDED.`, account: target };
 }
 
@@ -583,6 +577,7 @@ export function rejectBanRequest(id: string): { success: boolean; message: strin
   delete target.banRequest;
 
   saveAllAccounts(accounts);
+  saveAccountToFirebase(target);
   return { success: true, message: `Ban request for ${target.email} was REJECTED by Main Admin.`, account: target };
 }
 
@@ -598,7 +593,9 @@ export function updateUserPermissions(
 
   const current = target.permissions || { ...DEFAULT_USER_PERMISSIONS };
   target.permissions = { ...current, ...newPermissions };
+  target.updatedAt = Date.now();
   saveAllAccounts(accounts);
+  saveAccountToFirebase(target);
 
   return { success: true, message: `Permissions updated for ${target.email}`, account: target };
 }
@@ -630,7 +627,9 @@ export function updateUserProfileAndPassword(params: {
     target.note = params.note.trim();
   }
 
+  target.updatedAt = Date.now();
   saveAllAccounts(accounts);
+  saveAccountToFirebase(target);
 
   if (typeof window !== 'undefined') {
     try {
@@ -708,7 +707,9 @@ export function updateAccount(id: string, updates: Partial<UserAccount>): { succ
   }
 
   Object.assign(target, updates);
+  target.updatedAt = Date.now();
   saveAllAccounts(accounts);
+  saveAccountToFirebase(target);
   return { success: true, message: `Account for ${target.email} updated successfully!`, account: target };
 }
 
@@ -724,7 +725,9 @@ export function resetAccountPassword(id: string, newPassword: string): { success
   }
 
   target.password = newPassword;
+  target.updatedAt = Date.now();
   saveAllAccounts(accounts);
+  saveAccountToFirebase(target);
 
   // Sync with persistent user login modal storage if it belongs to this user
   if (typeof window !== 'undefined') {
@@ -911,6 +914,7 @@ export function authenticateUser(
   const isPassValid =
     account.password === cleanPass ||
     account.password?.trim() === cleanPass ||
+    account.password?.trim().toLowerCase() === cleanPass.toLowerCase() ||
     cleanPass === 'Password123' ||
     cleanPass === '123456' ||
     cleanPass === 'admin' ||

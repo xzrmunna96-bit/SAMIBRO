@@ -1,7 +1,7 @@
 // Firebase Configuration for SUPER X SMS Real-time Synchronization
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAnalytics, isSupported as isAnalyticsSupported } from "firebase/analytics";
-import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
+import { initializeFirestore, setLogLevel } from "firebase/firestore";
 import { getDatabase } from "firebase/database";
 import { getAuth } from "firebase/auth";
 
@@ -19,8 +19,18 @@ export const firebaseConfig = {
 // Initialize Firebase safely (avoid multi-instance duplication)
 export const firebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Export Firebase services
-export const firestoreDb = getFirestore(firebaseApp);
+// Suppress internal Firestore connection retry warnings
+try {
+  setLogLevel('error');
+} catch {
+  // ignore
+}
+
+// Export Firebase services with robust long-polling auto-detection for cloud/iframe containers
+export const firestoreDb = initializeFirestore(firebaseApp, {
+  experimentalAutoDetectLongPolling: true,
+});
+
 export const realtimeDb = getDatabase(firebaseApp);
 export const firebaseAuth = getAuth(firebaseApp);
 
@@ -38,3 +48,4 @@ if (typeof window !== "undefined") {
       console.warn("Firebase Analytics could not be initialized:", err);
     });
 }
+

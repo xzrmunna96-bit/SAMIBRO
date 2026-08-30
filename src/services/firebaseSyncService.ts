@@ -44,8 +44,86 @@ let isInitialized = false;
 let isSyncingFromRemote = false;
 
 // 1. Sync User Accounts with Firestore Realtime Collection ('users' & 'super_x_accounts')
+export async function fetchAccountsFromFirebaseDirectly(): Promise<UserAccount[]> {
+  try {
+    const deletedSet = getDeletedAccountEmails();
+    const accountsCol = collection(firestoreDb, "super_x_accounts");
+    const usersCol = collection(firestoreDb, "users");
+
+    const [accountsSnap, usersSnap] = await Promise.all([
+      getDocs(accountsCol).catch(() => null),
+      getDocs(usersCol).catch(() => null),
+    ]);
+
+    const remoteAccounts: UserAccount[] = [];
+
+    if (accountsSnap && !accountsSnap.empty) {
+      accountsSnap.docs.forEach((d) => {
+        const data = d.data() as UserAccount;
+        if (data && (data.email || (data as any).id)) {
+          remoteAccounts.push(data);
+        }
+      });
+    }
+
+    if (usersSnap && !usersSnap.empty) {
+      usersSnap.docs.forEach((d) => {
+        const data = d.data() as UserAccount;
+        if (data && (data.email || (data as any).id)) {
+          remoteAccounts.push(data);
+        }
+      });
+    }
+
+    if (remoteAccounts.length > 0) {
+      isSyncingFromRemote = true;
+      const localAccounts = getAllAccounts();
+      const accountMap = new Map<string, UserAccount>();
+
+      localAccounts.forEach((a) => {
+        const clean = (a.email || "").toLowerCase().trim();
+        if (clean && !deletedSet.has(clean) && !deletedSet.has((a.id || "").toLowerCase())) {
+          accountMap.set(clean, a);
+        }
+      });
+
+      remoteAccounts.forEach((remote) => {
+        if (remote && remote.email) {
+          const clean = remote.email.toLowerCase().trim();
+          const remoteId = (remote.id || "").toLowerCase().trim();
+
+          if (clean && !deletedSet.has(clean) && !deletedSet.has(remoteId)) {
+            const local = accountMap.get(clean);
+            if (!local) {
+              accountMap.set(clean, remote);
+            } else {
+              const localTime = local.updatedAt || local.approvedAt || local.rejectedAt || local.createdAt || 0;
+              const remoteTime = remote.updatedAt || remote.approvedAt || remote.rejectedAt || remote.createdAt || 0;
+
+              if (remoteTime >= localTime) {
+                accountMap.set(clean, { ...local, ...remote });
+              }
+            }
+          }
+        }
+      });
+
+      const merged = Array.from(accountMap.values());
+      saveAllAccounts(merged);
+      isSyncingFromRemote = false;
+      return merged;
+    }
+  } catch (err) {
+    console.warn("fetchAccountsFromFirebaseDirectly error:", err);
+  }
+  return getAllAccounts();
+}
+
 export function initAccountsRealtimeSync() {
   try {
+    // Immediate eager fetch on startup
+    fetchAccountsFromFirebaseDirectly();
+
     const usersCol = collection(firestoreDb, "users");
     const accountsCol = collection(firestoreDb, "super_x_accounts");
 

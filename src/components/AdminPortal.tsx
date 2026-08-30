@@ -113,6 +113,7 @@ import {
   API_CONFIGS_UPDATE_EVENT,
   KNOWN_SOCIAL_SERVICES,
 } from '../services/apiConfigService';
+import { registerUserInFirebaseAuth } from '../services/firebaseSyncService';
 import { getBrandLogoComponent } from './BrandLogos';
 
 const ADMIN_MASTER_PASSWORD = 'XZRMUNNA12061';
@@ -1227,6 +1228,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     if (res.success && res.account) {
       // Directly approve so user can sign in immediately
       approveAccount(res.account.id);
+      registerUserInFirebaseAuth(cleanEmail, cleanPassword);
       setAccountsList(getAllAccounts());
 
       setRecentlyCreatedUser({

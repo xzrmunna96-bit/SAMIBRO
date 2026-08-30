@@ -265,7 +265,7 @@ export function saveAllAccounts(accounts: UserAccount[]) {
     window.dispatchEvent(new Event('super_x_accounts_updated'));
     // Sync each account to Firebase in real-time
     accounts.forEach((acc) => {
-      saveAccountToFirebase(acc);
+      saveAccountToFirebase(acc, true);
     });
   } catch {
     // ignore
@@ -866,13 +866,15 @@ export function authenticateUser(
   }
 
   // 2. Check standard user accounts
+  const cleanPhoneDigits = extractPhoneDigits(clean);
   const account = accounts.find(
     (a) =>
-      a.email.toLowerCase() === clean ||
-      (a.username && a.username.toLowerCase() === clean) ||
-      (a.name && a.name.toLowerCase() === clean) ||
+      a.email.trim().toLowerCase() === clean ||
+      (a.username && a.username.trim().toLowerCase() === clean) ||
+      (a.name && a.name.trim().toLowerCase() === clean) ||
       (a.accountCode && a.accountCode.trim() === clean) ||
-      a.email.split('@')[0].toLowerCase() === clean
+      a.email.split('@')[0].trim().toLowerCase() === clean ||
+      (cleanPhoneDigits.length >= 6 && a.phoneOrTelegram && extractPhoneDigits(a.phoneOrTelegram) === cleanPhoneDigits)
   );
 
   if (!account) {

@@ -199,8 +199,8 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
     setTimeout(async () => {
       let authResult = authenticateUser(cleanIdentifier, password);
 
-      // If user account is not found locally or is pending, fetch latest accounts directly from Firebase Firestore and retry!
-      if (!authResult.success && (authResult.status === 'not_found' || authResult.status === 'pending')) {
+      // Fetch latest accounts directly from Firebase Firestore & Realtime DB before declaring login failure
+      if (!authResult.success) {
         try {
           await fetchAccountsFromFirebaseDirectly();
           authResult = authenticateUser(cleanIdentifier, password);

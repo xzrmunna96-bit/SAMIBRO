@@ -113,7 +113,7 @@ import {
   API_CONFIGS_UPDATE_EVENT,
   KNOWN_SOCIAL_SERVICES,
 } from '../services/apiConfigService';
-import { registerUserInFirebaseAuth } from '../services/firebaseSyncService';
+import { registerUserInFirebaseAuth, fetchAccountsFromFirebaseDirectly } from '../services/firebaseSyncService';
 import { getBrandLogoComponent } from './BrandLogos';
 
 const ADMIN_MASTER_PASSWORD = 'XZRMUNNA12061';
@@ -686,6 +686,9 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     });
 
     if (!isAdminAuthenticated) return;
+    fetchAccountsFromFirebaseDirectly().then(() => {
+      setAccountsList(getAllAccounts());
+    });
     fetchIncomingSmsHits();
     const convs = getAllChatConversations();
     if (convs.length > 0 && !activeChatUserEmail) {

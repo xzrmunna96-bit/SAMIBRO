@@ -1,3 +1,5 @@
+import { saveChatMessageToFirebase } from './firebaseSyncService';
+
 export interface ChatMessage {
   id: string;
   userEmail: string;
@@ -109,6 +111,7 @@ export function sendUserMessage(userEmail: string, userName: string, text: strin
 
   all.push(msg);
   saveAllSupportMessages(all);
+  saveChatMessageToFirebase(msg);
   return msg;
 }
 
@@ -131,6 +134,7 @@ export function sendAdminMessage(userEmail: string, text: string): ChatMessage {
 
   all.push(msg);
   saveAllSupportMessages(all);
+  saveChatMessageToFirebase(msg);
   return msg;
 }
 
@@ -144,6 +148,7 @@ export function markChatAsReadByAdmin(userEmail: string) {
     if (m.userEmail.toLowerCase() === clean && !m.readByAdmin) {
       m.readByAdmin = true;
       modified = true;
+      saveChatMessageToFirebase(m);
     }
   });
 
@@ -162,6 +167,7 @@ export function markChatAsReadByUser(userEmail: string) {
     if (m.userEmail.toLowerCase() === clean && !m.readByUser) {
       m.readByUser = true;
       modified = true;
+      saveChatMessageToFirebase(m);
     }
   });
 

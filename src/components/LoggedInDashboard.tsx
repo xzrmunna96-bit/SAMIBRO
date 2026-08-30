@@ -697,8 +697,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     const isSuperAdmin =
       cleanEmail === "xzrmunna33@gmail.com" ||
       cleanEmail === "xzrmunna96@gmail.com" ||
-      cleanEmail === "xzrmunna" ||
-      user.role === "admin";
+      cleanEmail === "xzrmunna";
 
     const newSession = {
       isAuthenticated: true,
@@ -708,6 +707,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     };
 
     try {
+      sessionStorage.setItem("super_x_admin_session_auth_v2", JSON.stringify(newSession));
       sessionStorage.setItem("super_x_admin_session", JSON.stringify(newSession));
     } catch {}
 
@@ -2041,7 +2041,11 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 ? "Mobile"
                 : "Carrier Route");
 
-      const res = await allocateRealNumberDetailed(rangeToUse || prefix, apiKey);
+      const res = await allocateRealNumberDetailed(
+        rangeToUse || prefix,
+        apiKey,
+        activeAppConsoleService || undefined
+      );
       if (!res.success || !res.data?.full_number) {
         showDashboardToast(
           res.message || "এই রেঞ্জে কোনো নাম্বার পাওয়া যায়নি। অন্য রেঞ্জ চেষ্টা করুন।",
@@ -2480,67 +2484,66 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
       <aside
         id="dashboard-sidebar-drawer"
-        className={`fixed top-0 left-0 bottom-0 w-[285px] sm:w-[315px] bg-slate-900 text-slate-100 z-50 shadow-2xl flex flex-col justify-between overflow-y-auto transition-transform duration-300 ease-out border-r border-slate-700/80 ${
+        className={`fixed top-0 left-0 bottom-0 w-[280px] sm:w-[300px] bg-slate-900 text-slate-100 z-50 shadow-2xl flex flex-col justify-between overflow-y-auto transition-transform duration-300 ease-out border-r border-slate-800 ${
           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         <div className="flex flex-col">
-          {/* Top Brand Logo Banner */}
-          <div className="px-5 pt-6 pb-4 bg-slate-950/90 border-b border-slate-800 flex items-center justify-between">
+          {/* Top Brand Header */}
+          <div className="px-5 pt-5 pb-4 bg-slate-950 border-b border-slate-800/80 flex items-center justify-between">
             <div>
-              <h2 className="text-2xl font-black text-white tracking-wider font-sans drop-shadow-sm">
+              <h2 className="text-xl font-bold text-white tracking-wide font-sans">
                 SUPER X SMS
               </h2>
-              <p className="text-[10px] font-black text-amber-400/90 tracking-[0.35em] uppercase mt-0.5">
-                P R E M I U M &nbsp; R A T E S
+              <p className="text-[10px] font-medium text-slate-400 tracking-[0.25em] uppercase mt-0.5">
+                Premium Rates Portal
               </p>
             </div>
             <button
               type="button"
               onClick={() => setIsSidebarOpen(false)}
-              className="p-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer border border-slate-700/60"
+              className="p-1.5 rounded-lg bg-slate-800/60 hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer border border-slate-700/40"
               title="Close Menu"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
           </div>
 
           {/* User Profile Card */}
-          <div className="px-5 py-4 bg-slate-900/95 border-b border-slate-800 flex items-center gap-3.5">
-            <div className="w-11 h-14 rounded-lg border-2 border-amber-500/40 bg-slate-950 flex flex-col items-center justify-between p-1 shrink-0 shadow-sm">
-              <div className="w-5 h-5 rounded-full border-2 border-amber-400 flex items-center justify-center mt-0.5">
-                <div className="w-2.5 h-2.5 rounded-full bg-amber-400"></div>
-              </div>
-              <div className="w-full space-y-0.5 mb-0.5">
-                <div className="w-full h-0.5 bg-slate-600 rounded-full"></div>
-                <div className="w-full h-0.5 bg-slate-600 rounded-full"></div>
-              </div>
+          <div className="px-5 py-4 bg-slate-900/60 border-b border-slate-800/80 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 font-semibold text-sm shrink-0">
+              {user.name ? user.name.charAt(0).toUpperCase() : "U"}
             </div>
 
             <div className="flex-1 min-w-0">
-              <h3 className="text-base font-black text-amber-400 uppercase tracking-wide truncate drop-shadow-xs">
+              <h3 className="text-sm font-semibold text-slate-100 uppercase tracking-wide truncate">
                 {user.name || "SAMI"}
               </h3>
-              <p className="text-xs text-slate-300 font-semibold mt-0.5">
-                Level : <span className="text-amber-300 font-bold bg-amber-950/60 px-1.5 py-0.2 rounded border border-amber-500/30">Agent</span>
+              <p className="text-xs text-slate-400 font-normal mt-0.5 flex items-center gap-1.5">
+                <span>Level:</span>
+                <span className="text-emerald-400 font-medium bg-emerald-950/40 px-1.5 py-0.2 rounded border border-emerald-500/20 text-[11px]">
+                  Agent
+                </span>
               </p>
 
-              <div className="flex items-center gap-4 mt-2 text-xs font-bold">
+              <div className="flex items-center gap-3 mt-1.5 text-xs">
                 <button
                   type="button"
                   id="sidebar-profile-link-btn"
                   onClick={() => handleNavClick("profile")}
-                  className="flex items-center gap-1 text-slate-200 hover:text-amber-300 font-bold hover:underline transition cursor-pointer"
+                  className="flex items-center gap-1 text-slate-400 hover:text-slate-200 transition cursor-pointer"
                 >
-                  <User className="w-3.5 h-3.5 text-amber-400" />
+                  <User className="w-3.5 h-3.5 text-slate-400" />
                   <span>Profile</span>
                 </button>
+
+                <span className="text-slate-600">•</span>
 
                 <button
                   type="button"
                   id="sidebar-logout-link-btn"
                   onClick={onLogout}
-                  className="flex items-center gap-1 text-rose-400 hover:text-rose-300 font-bold hover:underline transition cursor-pointer"
+                  className="flex items-center gap-1 text-rose-400/90 hover:text-rose-300 transition cursor-pointer"
                 >
                   <LogOut className="w-3.5 h-3.5 text-rose-400" />
                   <span>Logout</span>
@@ -2550,10 +2553,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           </div>
 
           {/* Account Code & Reload Bar */}
-          <div className="px-5 py-3 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between text-xs font-bold">
-            <div className="text-slate-300 flex items-center gap-1.5">
-              <span className="text-slate-400">Account Code:</span>
-              <span className="font-mono text-amber-400 bg-amber-950/80 border border-amber-500/40 px-2 py-0.5 rounded-md font-extrabold text-sm">
+          <div className="px-5 py-2.5 bg-slate-950/60 border-b border-slate-800/80 flex items-center justify-between text-xs">
+            <div className="text-slate-400 flex items-center gap-2">
+              <span className="text-slate-400 text-[11px]">Account:</span>
+              <span className="font-mono text-slate-200 bg-slate-800/90 border border-slate-700/80 px-2 py-0.5 rounded text-xs font-semibold tracking-wider">
                 {accountCode}
               </span>
             </div>
@@ -2562,30 +2565,30 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               type="button"
               id="sidebar-reload-code-btn"
               onClick={handleReloadAccount}
-              className="flex items-center gap-1.5 text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-700 px-2.5 py-1 rounded-lg border border-slate-700 text-xs transition cursor-pointer active:scale-95"
+              className="flex items-center gap-1 text-slate-400 hover:text-slate-200 bg-slate-800/60 hover:bg-slate-800 px-2 py-1 rounded border border-slate-700/50 text-[11px] transition cursor-pointer active:scale-95"
               title="Reload Account Code"
             >
               <RotateCw
-                className={`w-3.5 h-3.5 text-amber-400 ${isReloading ? "animate-spin" : ""}`}
+                className={`w-3 h-3 text-slate-400 ${isReloading ? "animate-spin text-emerald-400" : ""}`}
               />
-              <span className="uppercase text-[10px] tracking-wider font-extrabold">Reload</span>
+              <span className="font-medium">Reload</span>
             </button>
           </div>
 
           {/* Navigation Items */}
-          <div className="p-3 sm:p-4 space-y-1.5 sm:space-y-2">
+          <div className="p-3 space-y-1">
             <button
               type="button"
               id="sidebar-item-dashboard"
               onClick={() => handleNavClick("dashboard")}
-              className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-xl font-black text-base transition-all cursor-pointer ${
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer ${
                 currentView === "dashboard"
-                  ? "bg-gradient-to-r from-amber-500/25 via-amber-500/15 to-transparent text-amber-300 border-l-4 border-amber-400 shadow-md"
-                  : "text-slate-200 hover:bg-slate-800/80 hover:text-white"
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-slate-300 hover:bg-slate-800/70 hover:text-white"
               }`}
             >
-              <Home className="w-5 h-5 text-amber-400 shrink-0" />
-              <span className="tracking-wide">Dashboard</span>
+              <Home className="w-4.5 h-4.5 shrink-0 opacity-90" />
+              <span>Dashboard</span>
             </button>
 
             {userPerms.canGetNumber && (
@@ -2593,62 +2596,47 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 type="button"
                 id="sidebar-item-get-number"
                 onClick={() => handleNavClick("getNumber")}
-                className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-base font-black transition-all cursor-pointer ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer ${
                   currentView === "getNumber"
-                    ? "bg-gradient-to-r from-amber-500/25 via-amber-500/15 to-transparent text-amber-300 border-l-4 border-amber-400 shadow-md"
-                    : "text-slate-200 hover:bg-slate-800/80 hover:text-white"
+                    ? "bg-blue-600 text-white shadow-sm"
+                    : "text-slate-300 hover:bg-slate-800/70 hover:text-white"
                 }`}
               >
-                <Hash className="w-5 h-5 text-amber-400 shrink-0" />
-                <span className="tracking-wide">Get Number</span>
+                <Hash className="w-4.5 h-4.5 shrink-0 opacity-90" />
+                <span>Get Number</span>
               </button>
             )}
 
             {userPerms.canAccessConsole && (
               <>
-                <button
-                  type="button"
-                  id="sidebar-item-console"
-                  onClick={() => handleNavClick("console")}
-                  className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-base font-black transition-all cursor-pointer ${
-                    currentView === "console"
-                      ? "bg-gradient-to-r from-amber-500/25 via-amber-500/15 to-transparent text-amber-300 border-l-4 border-amber-400 shadow-md"
-                      : "text-slate-200 hover:bg-slate-800/80 hover:text-white"
-                  }`}
-                >
-                  <div className="font-mono text-amber-400 font-black text-base w-5 text-center shrink-0">
-                    &gt;_
-                  </div>
-                  <span className="tracking-wide">Console</span>
-                </button>
-
-                {/* Extra Sub-Buttons under Console */}
+                {/* SMS Range */}
                 <button
                   type="button"
                   id="sidebar-item-sms-range"
                   onClick={() => handleNavClick("smsRange")}
-                  className={`w-full flex items-center gap-3.5 px-4 py-2.5 rounded-xl text-sm font-extrabold transition-all cursor-pointer pl-8 ${
+                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer ${
                     currentView === "smsRange"
-                      ? "bg-gradient-to-r from-amber-500/25 via-amber-500/15 to-transparent text-amber-300 border-l-4 border-amber-400 shadow-md"
-                      : "text-slate-300 hover:bg-slate-800/80 hover:text-white"
+                      ? "bg-blue-600 text-white shadow-sm"
+                      : "text-slate-300 hover:bg-slate-800/70 hover:text-white"
                   }`}
                 >
-                  <Radio className="w-4.5 h-4.5 text-amber-400 shrink-0" />
-                  <span className="tracking-wide">SMS Range</span>
+                  <Radio className="w-4.5 h-4.5 shrink-0 opacity-90" />
+                  <span>SMS Range</span>
                 </button>
 
+                {/* SMS Number */}
                 <button
                   type="button"
                   id="sidebar-item-sms-number"
                   onClick={() => handleNavClick("smsNumber")}
-                  className={`w-full flex items-center gap-3.5 px-4 py-2.5 rounded-xl text-sm font-extrabold transition-all cursor-pointer pl-8 ${
+                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer ${
                     currentView === "smsNumber"
-                      ? "bg-gradient-to-r from-amber-500/25 via-amber-500/15 to-transparent text-amber-300 border-l-4 border-amber-400 shadow-md"
-                      : "text-slate-300 hover:bg-slate-800/80 hover:text-white"
+                      ? "bg-blue-600 text-white shadow-sm"
+                      : "text-slate-300 hover:bg-slate-800/70 hover:text-white"
                   }`}
                 >
-                  <Smartphone className="w-4.5 h-4.5 text-amber-400 shrink-0" />
-                  <span className="tracking-wide">SMS Number</span>
+                  <Smartphone className="w-4.5 h-4.5 shrink-0 opacity-90" />
+                  <span>SMS Number</span>
                 </button>
               </>
             )}
@@ -2658,14 +2646,14 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 type="button"
                 id="sidebar-item-access-list"
                 onClick={() => handleNavClick("accessList")}
-                className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-base font-black transition-all cursor-pointer ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer ${
                   currentView === "accessList"
-                    ? "bg-gradient-to-r from-amber-500/25 via-amber-500/15 to-transparent text-amber-300 border-l-4 border-amber-400 shadow-md"
-                    : "text-slate-200 hover:bg-slate-800/80 hover:text-white"
+                    ? "bg-blue-600 text-white shadow-sm"
+                    : "text-slate-300 hover:bg-slate-800/70 hover:text-white"
                 }`}
               >
-                <List className="w-5 h-5 text-amber-400 shrink-0" />
-                <span className="tracking-wide">Access List</span>
+                <List className="w-4.5 h-4.5 shrink-0 opacity-90" />
+                <span>Access List</span>
               </button>
             )}
 
@@ -2674,14 +2662,14 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 type="button"
                 id="sidebar-item-sender-range"
                 onClick={() => handleNavClick("senderRange")}
-                className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-base font-black transition-all cursor-pointer ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer ${
                   currentView === "senderRange"
-                    ? "bg-gradient-to-r from-amber-500/25 via-amber-500/15 to-transparent text-amber-300 border-l-4 border-amber-400 shadow-md"
-                    : "text-slate-200 hover:bg-slate-800/80 hover:text-white"
+                    ? "bg-blue-600 text-white shadow-sm"
+                    : "text-slate-300 hover:bg-slate-800/70 hover:text-white"
                 }`}
               >
-                <Globe2 className="w-5 h-5 text-amber-400 shrink-0" />
-                <span className="tracking-wide">Sender / Range</span>
+                <Globe2 className="w-4.5 h-4.5 shrink-0 opacity-90" />
+                <span>Sender / Range</span>
               </button>
             )}
 
@@ -2690,14 +2678,14 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               type="button"
               id="sidebar-item-profile"
               onClick={() => handleNavClick("profile")}
-              className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-base font-black transition-all cursor-pointer ${
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer ${
                 currentView === "profile"
-                  ? "bg-gradient-to-r from-amber-500/25 via-amber-500/15 to-transparent text-amber-300 border-l-4 border-amber-400 shadow-md"
-                  : "text-slate-200 hover:bg-slate-800/80 hover:text-white"
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-slate-300 hover:bg-slate-800/70 hover:text-white"
               }`}
             >
-              <User className="w-5 h-5 text-amber-400 shrink-0" />
-              <span className="tracking-wide">Profile</span>
+              <User className="w-4.5 h-4.5 shrink-0 opacity-90" />
+              <span>Profile</span>
             </button>
 
             {/* Admin Navigation Item */}
@@ -2709,28 +2697,30 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   setIsSidebarOpen(false);
                   handleOpenAdminPortal();
                 }}
-                className="w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-base font-black text-slate-200 hover:bg-slate-800/80 hover:text-white transition-all cursor-pointer"
+                className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm text-slate-300 hover:bg-slate-800/70 hover:text-white transition-colors cursor-pointer"
               >
-                <ShieldCheck className="w-5 h-5 text-amber-400 shrink-0" />
-                <span className="tracking-wide">Admin</span>
+                <ShieldCheck className="w-4.5 h-4.5 shrink-0 text-slate-400" />
+                <span>Admin</span>
               </button>
             )}
 
             {/* Logout Navigation Item */}
-            <button
-              type="button"
-              id="sidebar-item-logout"
-              onClick={onLogout}
-              className="w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-base font-black text-rose-400 hover:bg-rose-950/50 hover:text-rose-200 transition-all cursor-pointer border border-rose-500/20"
-            >
-              <LogOut className="w-5 h-5 text-rose-400 shrink-0" />
-              <span className="tracking-wide">Logout</span>
-            </button>
+            <div className="pt-2">
+              <button
+                type="button"
+                id="sidebar-item-logout"
+                onClick={onLogout}
+                className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm text-rose-400 hover:bg-rose-950/40 hover:text-rose-200 transition-colors cursor-pointer"
+              >
+                <LogOut className="w-4.5 h-4.5 shrink-0 opacity-90" />
+                <span>Logout</span>
+              </button>
+            </div>
           </div>
         </div>
 
-        <div className="p-3 bg-slate-950/80 border-t border-slate-800">
-          <div className="text-[10px] font-bold text-slate-400/80 text-center tracking-widest uppercase">
+        <div className="p-3 bg-slate-950/90 border-t border-slate-800/80">
+          <div className="text-[11px] font-normal text-slate-500 text-center tracking-wider">
             <span>SUPER X SMS &copy; 2026</span>
           </div>
         </div>

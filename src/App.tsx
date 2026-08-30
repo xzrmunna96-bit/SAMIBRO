@@ -4,6 +4,7 @@ import { LoginForm, UserData } from './components/LoginForm';
 import { LoggedInDashboard } from './components/LoggedInDashboard';
 import { AdminPortal } from './components/AdminPortal';
 import { CheckCircle2 } from 'lucide-react';
+import { initializeFirebaseSync } from './services/firebaseSyncService';
 
 const STORAGE_KEY_USER = 'super_x_user';
 
@@ -55,6 +56,11 @@ export default function App() {
     return null;
   });
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Initialize Firebase Real-Time Synchronization on App boot
+  useEffect(() => {
+    initializeFirebaseSync();
+  }, []);
 
   // Check for SPA 404 redirect fallback state from static hosts (Vercel, Netlify, S3, etc.)
   useEffect(() => {

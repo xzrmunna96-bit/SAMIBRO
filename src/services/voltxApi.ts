@@ -1,6 +1,12 @@
 // Official VoltxSMS / 2oo9 Live API Integration Layer
 // Upstream Source: https://voltxsms.com/m29/#/doc/api
 
+import {
+  getActiveApiConfigs,
+  getActiveApiForService,
+  ApiConfigItem,
+} from './apiConfigService';
+
 export const DEFAULT_VOLTX_ENDPOINT_KEY = 'M7ANNWJY6B2';
 export const DEFAULT_MAUTH_API_KEY = 'M7ANNWJY6B2';
 export const VOLTX_BACKEND_SLUG = 'MXS47FLFX0U';
@@ -131,7 +137,7 @@ export interface ApiResponse<T> {
 }
 
 /**
- * Generic Fetcher executing requests to Voltx / 2oo9 endpoints
+ * Generic Fetcher executing requests to Voltx / 2oo9 or any custom SMS API endpoints
  */
 export async function callVoltxApi<T>(
   endpoint: string,
@@ -139,11 +145,13 @@ export async function callVoltxApi<T>(
     method?: 'GET' | 'POST';
     body?: any;
     apiKey?: string;
+    customEndpoint?: string;
   } = {}
 ): Promise<ApiResponse<T>> {
   const method = options.method || 'GET';
   const apiKey = options.apiKey || getMauthApiKey();
   const endpointKey = getVoltxEndpointKey();
+  const customEndpoint = options.customEndpoint;
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -151,6 +159,10 @@ export async function callVoltxApi<T>(
     'mauthapi': apiKey,
     'x-voltx-endpoint-key': endpointKey,
   };
+
+  if (customEndpoint) {
+    headers['x-custom-endpoint'] = customEndpoint;
+  }
 
   const fetchOptions: RequestInit = {
     method,
@@ -161,24 +173,38 @@ export async function callVoltxApi<T>(
     fetchOptions.body = JSON.stringify(options.body);
   }
 
-  // 1. Try local dev proxy route first to avoid CORS in all browser modes
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+
+  // 1. If custom endpoint is passed, use Universal Proxy
+  if (customEndpoint) {
+    try {
+      const res = await fetch(`/api/universal-proxy${cleanEndpoint}`, fetchOptions);
+      const json = await res.json();
+      if (json && (json.meta || json.data !== undefined || json.hits !== undefined)) {
+        return json;
+      }
+    } catch {
+      // fallback
+    }
+  }
+
+  // 2. Try local dev proxy route first to avoid CORS
   try {
-    const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
     const res = await fetch(`${PROXY_BASE_URL}${cleanEndpoint}`, fetchOptions);
     const json = await res.json();
-    if (json && (json.meta || json.data !== undefined)) {
+    if (json && (json.meta || json.data !== undefined || json.hits !== undefined)) {
       return json;
     }
   } catch {
     // try direct fetch fallback
   }
 
-  // 2. Direct HTTPS fetch to upstream CDN/API
+  // 3. Direct HTTPS fetch to upstream CDN/API
   try {
-    const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-    const directRes = await fetch(`${getUpstreamBaseUrl()}${cleanEndpoint}`, fetchOptions);
+    const targetBase = customEndpoint || getUpstreamBaseUrl();
+    const directRes = await fetch(`${targetBase}${cleanEndpoint}`, fetchOptions);
     const json = await directRes.json();
-    if (json && (json.meta || json.data !== undefined)) {
+    if (json && (json.meta || json.data !== undefined || json.hits !== undefined)) {
       return json;
     }
   } catch {
@@ -188,7 +214,7 @@ export async function callVoltxApi<T>(
   return {
     meta: { code: 500, status: 'network_error' },
     data: null,
-    message: 'Unable to reach VoltxSMS server'
+    message: 'Unable to reach SMS gateway server'
   };
 }
 
@@ -391,102 +417,278 @@ export interface FetchConsoleResponse {
 }
 
 /**
- * 2. GET https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api/console
- * Real-time global live feed of recent hits & sales across the network
- * Expected schema: { meta: { code: 200, status: "ok" }, data: { cached: false, hits: [...] }, message: "ok", rid: "..." }
+ * Standardize and clean service ID / social media category
  */
-export async function fetchLiveConsoleDetailed(apiKey?: string): Promise<FetchConsoleResponse> {
-  try {
-    const res = await callVoltxApi<{ hits?: any[]; cached?: boolean }>('/console', { apiKey });
-    
-    const code = res.meta?.code ?? 500;
-    const status = res.meta?.status ?? 'error';
-    const message = res.message;
-    const rid = res.rid;
+export function normalizeServiceId(rawSid: string, rawMessage: string): string {
+  const sid = (rawSid || '').trim();
+  const msg = (rawMessage || '').toLowerCase();
 
-    let rawHits: any[] = [];
-    if (res.data) {
-      if (res.data.hits && Array.isArray(res.data.hits)) {
-        rawHits = res.data.hits;
-      } else if (Array.isArray(res.data)) {
-        rawHits = res.data;
-      }
-    } else if ((res as any).hits && Array.isArray((res as any).hits)) {
-      rawHits = (res as any).hits;
-    }
+  if (sid.toLowerCase().includes('whatsapp') || msg.includes('whatsapp')) return 'WhatsApp';
+  if (sid.toLowerCase().includes('facebook') || msg.includes('facebook') || msg.includes('fb-') || msg.includes('meta')) return 'Facebook';
+  if (sid.toLowerCase().includes('telegram') || msg.includes('telegram')) return 'Telegram';
+  if (sid.toLowerCase().includes('google') || msg.includes('google') || msg.includes('g-') || msg.includes('gsuite')) return 'Google';
+  if (sid.toLowerCase().includes('imo') || msg.includes('imo code') || msg.includes('imo verification')) return 'IMO';
+  if (sid.toLowerCase().includes('tiktok') || msg.includes('tiktok')) return 'TikTok';
+  if (sid.toLowerCase().includes('instagram') || msg.includes('instagram')) return 'Instagram';
+  if (sid.toLowerCase().includes('twitter') || sid.toLowerCase().includes('x.com') || msg.includes('twitter')) return 'Twitter / X';
+  if (sid.toLowerCase().includes('amazon') || msg.includes('amazon')) return 'Amazon';
+  if (sid.toLowerCase().includes('apple') || msg.includes('apple')) return 'Apple';
+  if (sid.toLowerCase().includes('snapchat') || msg.includes('snapchat')) return 'Snapchat';
+  if (sid.toLowerCase().includes('viber') || msg.includes('viber')) return 'Viber';
+  if (sid.toLowerCase().includes('discord') || msg.includes('discord')) return 'Discord';
 
-    const hits: LiveConsoleHit[] = rawHits.map(hit => {
-      const rawRange = hit.range || hit.number || hit.phone || '';
-      const carrier = resolveCarrierDetails(rawRange);
-      
-      // Parse time cleanly (seconds vs milliseconds vs string)
-      let parsedTime = Date.now();
-      if (typeof hit.time === 'number') {
-        parsedTime = hit.time < 10000000000 ? hit.time * 1000 : hit.time;
-      } else if (typeof hit.time === 'string') {
-        const n = Number(hit.time);
-        if (!isNaN(n) && n > 0) {
-          parsedTime = n < 10000000000 ? n * 1000 : n;
-        } else {
-          parsedTime = new Date(hit.time).getTime() || Date.now();
-        }
-      }
-
-      return {
-        range: rawRange,
-        sid: hit.sid || hit.service || hit.service_name || 'Service',
-        message: hit.message || hit.msg || hit.text || hit.sms || '',
-        time: parsedTime,
-        operator: hit.operator || carrier.operator,
-        country: getRealCountryName(hit.country, rawRange),
-      };
-    });
-
-    return { hits, code, status, message, rid };
-  } catch (err: any) {
-    return { hits: [], code: 500, status: 'network_error', message: err?.message || 'Network request failed' };
-  }
+  return sid || 'Service';
 }
 
-export async function fetchLiveConsole(apiKey?: string): Promise<LiveConsoleHit[]> {
-  const result = await fetchLiveConsoleDetailed(apiKey);
+/**
+ * 2. Real-time global live feed of recent hits & OTPs across all active configured APIs
+ * Aggregates across all active API routes in real-time
+ */
+export async function fetchLiveConsoleDetailed(apiKey?: string, customEndpoint?: string): Promise<FetchConsoleResponse> {
+  // If specific key or endpoint is passed, query single route
+  if (apiKey || customEndpoint) {
+    try {
+      const res = await callVoltxApi<{ hits?: any[]; cached?: boolean }>('/console', {
+        apiKey,
+        customEndpoint,
+      });
+
+      const code = res.meta?.code ?? 200;
+      const status = res.meta?.status ?? 'ok';
+      const message = res.message;
+      const rid = res.rid;
+
+      let rawHits: any[] = [];
+      if (res.data) {
+        if (res.data.hits && Array.isArray(res.data.hits)) {
+          rawHits = res.data.hits;
+        } else if (Array.isArray(res.data)) {
+          rawHits = res.data;
+        }
+      } else if ((res as any).hits && Array.isArray((res as any).hits)) {
+        rawHits = (res as any).hits;
+      }
+
+      const hits: LiveConsoleHit[] = rawHits.map((hit) => {
+        const rawRange = hit.range || hit.number || hit.phone || '';
+        const carrier = resolveCarrierDetails(rawRange);
+        const rawMsg = hit.message || hit.msg || hit.text || hit.sms || '';
+
+        let parsedTime = Date.now();
+        if (typeof hit.time === 'number') {
+          parsedTime = hit.time < 10000000000 ? hit.time * 1000 : hit.time;
+        } else if (typeof hit.time === 'string') {
+          const n = Number(hit.time);
+          if (!isNaN(n) && n > 0) {
+            parsedTime = n < 10000000000 ? n * 1000 : n;
+          } else {
+            parsedTime = new Date(hit.time).getTime() || Date.now();
+          }
+        }
+
+        return {
+          range: rawRange,
+          sid: normalizeServiceId(hit.sid || hit.service || hit.service_name || '', rawMsg),
+          message: rawMsg,
+          time: parsedTime,
+          operator: hit.operator || carrier.operator,
+          country: getRealCountryName(hit.country, rawRange),
+        };
+      });
+
+      return { hits, code, status, message, rid };
+    } catch (err: any) {
+      return { hits: [], code: 500, status: 'network_error', message: err?.message || 'Network request failed' };
+    }
+  }
+
+  // Multi-API Pool Mode: Query all active configured APIs concurrently
+  const activeConfigs = getActiveApiConfigs();
+  const allHitsMap = new Map<string, LiveConsoleHit>();
+
+  const results = await Promise.allSettled(
+    activeConfigs.map((cfg) =>
+      callVoltxApi<{ hits?: any[]; cached?: boolean }>('/console', {
+        apiKey: cfg.apiKey,
+        customEndpoint: cfg.endpoint,
+      })
+    )
+  );
+
+  let successCount = 0;
+  results.forEach((result) => {
+    if (result.status === 'fulfilled' && result.value) {
+      const res = result.value;
+      let rawHits: any[] = [];
+      if (res.data) {
+        if (res.data.hits && Array.isArray(res.data.hits)) {
+          rawHits = res.data.hits;
+        } else if (Array.isArray(res.data)) {
+          rawHits = res.data;
+        }
+      } else if ((res as any).hits && Array.isArray((res as any).hits)) {
+        rawHits = (res as any).hits;
+      }
+
+      if (rawHits.length > 0) {
+        successCount++;
+        rawHits.forEach((hit) => {
+          const rawRange = hit.range || hit.number || hit.phone || '';
+          const carrier = resolveCarrierDetails(rawRange);
+          const rawMsg = hit.message || hit.msg || hit.text || hit.sms || '';
+
+          let parsedTime = Date.now();
+          if (typeof hit.time === 'number') {
+            parsedTime = hit.time < 10000000000 ? hit.time * 1000 : hit.time;
+          } else if (typeof hit.time === 'string') {
+            const n = Number(hit.time);
+            if (!isNaN(n) && n > 0) {
+              parsedTime = n < 10000000000 ? n * 1000 : n;
+            } else {
+              parsedTime = new Date(hit.time).getTime() || Date.now();
+            }
+          }
+
+          const sid = normalizeServiceId(hit.sid || hit.service || hit.service_name || '', rawMsg);
+          const itemKey = `${rawRange}_${parsedTime}_${sid}_${rawMsg.substring(0, 30)}`;
+
+          if (!allHitsMap.has(itemKey)) {
+            allHitsMap.set(itemKey, {
+              range: rawRange,
+              sid,
+              message: rawMsg,
+              time: parsedTime,
+              operator: hit.operator || carrier.operator,
+              country: getRealCountryName(hit.country, rawRange),
+            });
+          }
+        });
+      }
+    }
+  });
+
+  const mergedHits = Array.from(allHitsMap.values()).sort(
+    (a, b) => Number(b.time) - Number(a.time)
+  );
+
+  return {
+    hits: mergedHits,
+    code: 200,
+    status: 'ok',
+    message: `${mergedHits.length} live stream packets aggregated across ${successCount || activeConfigs.length} API routes`,
+  };
+}
+
+export async function fetchLiveConsole(apiKey?: string, customEndpoint?: string): Promise<LiveConsoleHit[]> {
+  const result = await fetchLiveConsoleDetailed(apiKey, customEndpoint);
   return result.hits;
 }
 
 /**
- * 3. GET https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api/liveaccess
- * Recently-active services and active ranges cache
+ * 3. GET liveaccess across all active configured APIs
+ * Aggregates recently-active services and active ranges cache
  */
 export async function fetchLiveAccess(apiKey?: string): Promise<LiveAccessService[]> {
-  try {
-    const res = await callVoltxApi<{ services: LiveAccessService[]; cached: boolean }>('/liveaccess', { apiKey });
-    if (res.meta?.code === 200 && res.data?.services && Array.isArray(res.data.services) && res.data.services.length > 0) {
-      return res.data.services;
+  if (apiKey) {
+    try {
+      const res = await callVoltxApi<{ services: LiveAccessService[]; cached: boolean }>('/liveaccess', { apiKey });
+      if (res.meta?.code === 200 && res.data?.services && Array.isArray(res.data.services)) {
+        return res.data.services;
+      }
+    } catch {
+      // ignore
     }
-  } catch {
-    // API unreachable or network error
+    return [];
   }
 
-  // Return empty list when no live access data is returned
-  return [];
+  // Multi-API Pool
+  const activeConfigs = getActiveApiConfigs();
+  const servicesMap = new Map<string, LiveAccessService>();
+
+  const results = await Promise.allSettled(
+    activeConfigs.map((cfg) =>
+      callVoltxApi<{ services: LiveAccessService[]; cached: boolean }>('/liveaccess', {
+        apiKey: cfg.apiKey,
+        customEndpoint: cfg.endpoint,
+      })
+    )
+  );
+
+  results.forEach((result) => {
+    if (result.status === 'fulfilled' && result.value?.data?.services) {
+      const services = result.value.data.services;
+      if (Array.isArray(services)) {
+        services.forEach((s) => {
+          if (!s || !s.sid) return;
+          const cleanSid = normalizeServiceId(s.sid, '');
+          const existing = servicesMap.get(cleanSid);
+          if (existing) {
+            const mergedRanges = Array.from(new Set([...(existing.ranges || []), ...(s.ranges || [])]));
+            servicesMap.set(cleanSid, {
+              sid: cleanSid,
+              last_at: Math.max(existing.last_at || 0, s.last_at || 0),
+              ranges: mergedRanges,
+            });
+          } else {
+            servicesMap.set(cleanSid, {
+              sid: cleanSid,
+              last_at: s.last_at || Date.now(),
+              ranges: s.ranges || [],
+            });
+          }
+        });
+      }
+    }
+  });
+
+  return Array.from(servicesMap.values());
 }
 
 /**
- * 4. GET https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api/success-otp
- * User's own last 50 successful delivered OTPs
+ * 4. GET success-otp across active APIs
  */
 export async function fetchSuccessOtps(apiKey?: string): Promise<LiveSuccessOtp[]> {
-  try {
-    const res = await callVoltxApi<{ otps: LiveSuccessOtp[]; cached: boolean }>('/success-otp', { apiKey });
-    if (res.meta?.code === 200 && res.data?.otps && Array.isArray(res.data.otps) && res.data.otps.length > 0) {
-      return res.data.otps;
+  if (apiKey) {
+    try {
+      const res = await callVoltxApi<{ otps: LiveSuccessOtp[]; cached: boolean }>('/success-otp', { apiKey });
+      if (res.meta?.code === 200 && res.data?.otps && Array.isArray(res.data.otps)) {
+        return res.data.otps;
+      }
+    } catch {
+      // ignore
     }
-  } catch {
-    // API unreachable or network error
+    return [];
   }
 
-  // Return empty list when no delivered OTPs are returned
-  return [];
+  const activeConfigs = getActiveApiConfigs();
+  const otpsMap = new Map<string, LiveSuccessOtp>();
+
+  const results = await Promise.allSettled(
+    activeConfigs.map((cfg) =>
+      callVoltxApi<{ otps: LiveSuccessOtp[]; cached: boolean }>('/success-otp', {
+        apiKey: cfg.apiKey,
+        customEndpoint: cfg.endpoint,
+      })
+    )
+  );
+
+  results.forEach((result) => {
+    if (result.status === 'fulfilled' && result.value?.data?.otps) {
+      const otps = result.value.data.otps;
+      if (Array.isArray(otps)) {
+        otps.forEach((item) => {
+          if (item && (item.otp_id || item.number)) {
+            const key = item.otp_id || `${item.number}_${item.time}`;
+            if (!otpsMap.has(key)) {
+              otpsMap.set(key, item);
+            }
+          }
+        });
+      }
+    }
+  });
+
+  return Array.from(otpsMap.values()).sort((a, b) => Number(b.time) - Number(a.time));
 }
 
 export interface AllocateNumberResult {
@@ -497,50 +699,100 @@ export interface AllocateNumberResult {
 }
 
 /**
- * 5. POST https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api/getnum
- * Allocate one real number from a range directly through VoltxSMS API
+ * 5. Allocate one real number from a range with Multi-API dynamic routing & failover
  */
 export async function allocateRealNumberDetailed(
   rangeInput: string,
-  apiKey?: string
+  apiKey?: string,
+  serviceType?: string
 ): Promise<AllocateNumberResult> {
   const trimmed = (rangeInput || '').trim();
   const cleanDigits = trimmed.replace(/[^0-9]/g, '');
   const ridToUse = trimmed || cleanDigits || '23274';
 
-  try {
-    const res = await callVoltxApi<AllocatedNumber>('/getnum', {
-      method: 'POST',
-      body: { rid: ridToUse, range: cleanDigits || ridToUse },
-      apiKey,
-    });
+  // If specific key provided, call directly
+  if (apiKey) {
+    try {
+      const res = await callVoltxApi<AllocatedNumber>('/getnum', {
+        method: 'POST',
+        body: { rid: ridToUse, range: cleanDigits || ridToUse },
+        apiKey,
+      });
 
-    if (res.meta?.code === 200 && res.data?.full_number) {
+      if (res.meta?.code === 200 && res.data?.full_number) {
+        return {
+          success: true,
+          data: res.data,
+          message: res.message || 'Number allocated successfully',
+          code: 200,
+        };
+      }
+
       return {
-        success: true,
-        data: res.data,
-        message: res.message || 'Number allocated successfully',
-        code: 200,
+        success: false,
+        data: null,
+        message: res.message || 'No numbers available in this range from carrier.',
+        code: res.meta?.code || 400,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        data: null,
+        message: err?.message || 'Connection to carrier API failed.',
+        code: 500,
       };
     }
-
-    return {
-      success: false,
-      data: null,
-      message: res.message || 'No numbers available in this range from carrier.',
-      code: res.meta?.code || 400,
-    };
-  } catch (err: any) {
-    return {
-      success: false,
-      data: null,
-      message: err?.message || 'Connection to carrier API failed. Please verify API key.',
-      code: 500,
-    };
   }
+
+  // Multi-API dynamic route selection with automatic failover
+  const preferredApi = getActiveApiForService(serviceType || 'ALL');
+  const allActiveApis = getActiveApiConfigs();
+  const apisToTry = [
+    preferredApi,
+    ...allActiveApis.filter((c) => c.id !== preferredApi.id),
+  ];
+
+  let lastErrorMessage = 'No numbers available in this range.';
+
+  for (const targetApi of apisToTry) {
+    try {
+      const res = await callVoltxApi<AllocatedNumber>('/getnum', {
+        method: 'POST',
+        body: { rid: ridToUse, range: cleanDigits || ridToUse },
+        apiKey: targetApi.apiKey,
+        customEndpoint: targetApi.endpoint,
+      });
+
+      if (res.meta?.code === 200 && res.data?.full_number) {
+        return {
+          success: true,
+          data: res.data,
+          message: res.message || `Number allocated via ${targetApi.serviceType} API`,
+          code: 200,
+        };
+      }
+
+      if (res.message) {
+        lastErrorMessage = res.message;
+      }
+    } catch (err: any) {
+      lastErrorMessage = err?.message || lastErrorMessage;
+    }
+  }
+
+  return {
+    success: false,
+    data: null,
+    message: lastErrorMessage,
+    code: 400,
+  };
 }
 
-export async function allocateRealNumber(rangeIdOrDigits: string, apiKey?: string): Promise<AllocatedNumber | null> {
-  const res = await allocateRealNumberDetailed(rangeIdOrDigits, apiKey);
+export async function allocateRealNumber(
+  rangeIdOrDigits: string,
+  apiKey?: string,
+  serviceType?: string
+): Promise<AllocatedNumber | null> {
+  const res = await allocateRealNumberDetailed(rangeIdOrDigits, apiKey, serviceType);
   return res.data;
 }

@@ -263,14 +263,81 @@ async function startServer() {
     }
   });
 
+  // Universal Proxy route supporting any custom SMS endpoint & API key
+  app.use("/api/universal-proxy", async (req, res) => {
+    try {
+      const customEndpoint = (req.headers["x-custom-endpoint"] as string) || (req.query.endpoint as string);
+      const clientAuthKey = req.headers["mauthapi"] || req.headers["x-api-key"] || activeSystemApiKey;
+      
+      if (!customEndpoint) {
+        return res.status(400).json({ error: "x-custom-endpoint header or endpoint query parameter required" });
+      }
+
+      let targetUrl = customEndpoint.trim();
+      const subPath = req.url.startsWith("/") && req.url !== "/" ? req.url : "";
+      if (subPath) {
+        // Append subpath if not already present in endpoint
+        const baseWithoutTrailing = targetUrl.replace(/\/+$/, "");
+        if (!baseWithoutTrailing.endsWith(subPath.replace(/^\/+/, ""))) {
+          targetUrl = `${baseWithoutTrailing}${subPath}`;
+        }
+      }
+
+      const headers: Record<string, string> = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "Accept": "application/json",
+        "mauthapi": String(clientAuthKey).trim(),
+      };
+
+      if (req.headers["content-type"]) {
+        headers["Content-Type"] = String(req.headers["content-type"]);
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+      const fetchOptions: RequestInit = {
+        method: req.method,
+        headers,
+        signal: controller.signal,
+      };
+
+      if (["POST", "PUT", "PATCH"].includes(req.method) && req.body && Object.keys(req.body).length > 0) {
+        fetchOptions.body = JSON.stringify(req.body);
+      }
+
+      const response = await fetch(targetUrl, fetchOptions);
+      clearTimeout(timeoutId);
+
+      const contentType = response.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        const data = await response.json();
+        res.status(response.status).json(data);
+      } else {
+        const text = await response.text();
+        res.status(response.status).send(text);
+      }
+    } catch (err: any) {
+      res.status(500).json({
+        meta: { code: 500, status: "error" },
+        message: err?.message || "Universal proxy connection error",
+      });
+    }
+  });
+
   // Proxy route for Voltx API using Express middleware
   app.use("/api/voltx", async (req, res) => {
     try {
       const isConsoleRoute = req.url.includes("/console");
       const clientAuthKey = req.headers["mauthapi"] || req.headers["x-voltx-endpoint-key"];
+      const customEndpointHeader = req.headers["x-custom-endpoint"] as string;
       const apiKeyToUse = clientAuthKey && String(clientAuthKey).trim() ? String(clientAuthKey).trim() : activeSystemApiKey;
 
-      const targetUrl = `https://api.2oo9.cloud/${VOLTX_BACKEND_SLUG}/tnevs${req.url}`;
+      let targetUrl = `https://api.2oo9.cloud/${VOLTX_BACKEND_SLUG}/tnevs${req.url}`;
+      if (customEndpointHeader && customEndpointHeader.startsWith("http")) {
+        const baseClean = customEndpointHeader.replace(/\/+$/, "");
+        targetUrl = `${baseClean}${req.url}`;
+      }
 
       const headers: Record<string, string> = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",

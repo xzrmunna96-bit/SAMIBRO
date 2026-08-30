@@ -1,3 +1,5 @@
+import { saveNotificationToFirebase, deleteNotificationFromFirebase } from './firebaseSyncService';
+
 // Notification & Updates Service for SUPER X SMS
 
 export interface NotificationItem {
@@ -62,6 +64,7 @@ export function addNotification(
   };
   const updated = [newNotif, ...current];
   saveAllNotifications(updated);
+  saveNotificationToFirebase(newNotif);
   return newNotif;
 }
 
@@ -69,6 +72,7 @@ export function deleteNotification(id: string): void {
   const current = getAllNotifications();
   const updated = current.filter((n) => n.id !== id);
   saveAllNotifications(updated);
+  deleteNotificationFromFirebase(id);
 }
 
 export function getReadNotificationIdsForUser(userEmail: string): string[] {

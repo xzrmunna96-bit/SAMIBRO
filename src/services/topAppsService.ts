@@ -1,4 +1,5 @@
 import React from 'react';
+import { saveTopAppsToFirebase } from './firebaseSyncService';
 
 export interface TopAppItem {
   id: string;
@@ -66,6 +67,7 @@ export function saveTopAppsConfig(apps: TopAppItem[]) {
   try {
     localStorage.setItem(TOP_APPS_STORAGE_KEY, JSON.stringify(apps));
     window.dispatchEvent(new Event(TOP_APPS_UPDATE_EVENT));
+    saveTopAppsToFirebase(apps);
   } catch (err) {
     console.error('Failed to save top apps config', err);
   }

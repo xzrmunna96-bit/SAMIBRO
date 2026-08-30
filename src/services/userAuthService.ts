@@ -68,6 +68,7 @@ import {
   deleteAccountFromFirebase,
   saveSubAdminToFirebase,
   deleteSubAdminFromFirebase,
+  registerUserInFirebaseAuth,
 } from './firebaseSyncService';
 
 export interface BanRequestInfo {
@@ -409,6 +410,9 @@ export function approveAccount(
 
   saveAllAccounts(accounts);
   saveAccountToFirebase(target);
+  if (target.email && target.password) {
+    registerUserInFirebaseAuth(target.email, target.password);
+  }
 
   // Send real-time live chat approval message to user
   try {

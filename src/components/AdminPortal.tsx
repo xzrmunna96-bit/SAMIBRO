@@ -677,7 +677,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     return () => clearInterval(timer);
   }, [isAdminAuthenticated, isAutoStreamActive, apiKeyInput]);
 
-  // Initial Fetch & Chat Conversation Selection on Mount / Auth
+  // Initial Fetch & Periodic Auto-Sync for User Accounts and Pending Requests
   useEffect(() => {
     syncSystemApiKeyFromServer().then((remoteKey) => {
       if (remoteKey && remoteKey.trim()) {
@@ -686,15 +686,33 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     });
 
     if (!isAdminAuthenticated) return;
-    fetchAccountsFromFirebaseDirectly().then(() => {
-      setAccountsList(getAllAccounts());
-    });
+
+    const syncAccounts = () => {
+      fetchAccountsFromFirebaseDirectly().then(() => {
+        setAccountsList(getAllAccounts());
+      });
+    };
+
+    syncAccounts();
     fetchIncomingSmsHits();
     const convs = getAllChatConversations();
     if (convs.length > 0 && !activeChatUserEmail) {
       setActiveChatUserEmail(convs[0].userEmail);
     }
+
+    // Auto-poll accounts & pending requests every 5 seconds from Firebase
+    const syncInterval = setInterval(syncAccounts, 5000);
+    return () => clearInterval(syncInterval);
   }, [isAdminAuthenticated]);
+
+  // Re-fetch accounts on tab change
+  useEffect(() => {
+    if (isAdminAuthenticated && (activeTab === 'active-account-management' || activeTab === 'user-management' || activeTab === 'manually-user')) {
+      fetchAccountsFromFirebaseDirectly().then(() => {
+        setAccountsList(getAllAccounts());
+      });
+    }
+  }, [activeTab, isAdminAuthenticated]);
 
   // Event Listeners for Accounts, Notifications, Chat Updates, and Sub-Admins
   useEffect(() => {

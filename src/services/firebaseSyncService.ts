@@ -2,18 +2,20 @@
 import {
   collection,
   doc,
+  getDoc,
   setDoc,
   deleteDoc,
   onSnapshot,
   getDocs,
   writeBatch,
   query,
+  where,
   orderBy,
   limit,
 } from "firebase/firestore";
 import { ref, set, get, remove, onValue } from "firebase/database";
 import { initializeApp, getApps } from "firebase/app";
-import { getAuth, createUserWithEmailAndPassword } from "firebase/auth";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth";
 import { firestoreDb, realtimeDb, firebaseConfig } from "./firebaseConfig";
 import {
   UserAccount,
@@ -24,6 +26,7 @@ import {
   saveAllSubAdmins,
   syncSubAdminToUserAccount,
   getDeletedAccountEmails,
+  getDedicatedAccountCode,
 } from "./userAuthService";
 import {
   ChatMessage,
@@ -146,6 +149,158 @@ export async function fetchAccountsFromFirebaseDirectly(): Promise<UserAccount[]
   return getAllAccounts();
 }
 
+// Target lookup for specific user across Firestore docs, queries, RTDB, and Firebase Auth
+export async function fetchSpecificUserFromFirebase(
+  identifier: string,
+  password?: string
+): Promise<UserAccount | null> {
+  const clean = (identifier || "").trim().toLowerCase();
+  if (!clean) return null;
+
+  const deletedSet = getDeletedAccountEmails();
+  if (deletedSet.has(clean)) return null;
+
+  const safeDocId = clean.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const candidates = [safeDocId];
+
+  if (!clean.includes("@")) {
+    candidates.push(`${clean}@gmail.com`.replace(/[^a-zA-Z0-9_-]/g, "_"));
+  }
+
+  let foundAccount: UserAccount | null = null;
+
+  // 1. Direct document lookups in Firestore super_x_accounts, users, pending_accounts
+  for (const docId of candidates) {
+    if (foundAccount) break;
+    const collectionsToTry = ["super_x_accounts", "users", "pending_accounts"];
+    for (const colName of collectionsToTry) {
+      try {
+        const dSnap = await getDoc(doc(firestoreDb, colName, docId));
+        if (dSnap.exists()) {
+          const data = dSnap.data() as UserAccount;
+          if (data && (data.email || data.id)) {
+            foundAccount = data;
+            break;
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  // 2. Direct Firestore queries by email or username
+  if (!foundAccount) {
+    const cols = ["super_x_accounts", "users", "pending_accounts"];
+    for (const colName of cols) {
+      if (foundAccount) break;
+      try {
+        const colRef = collection(firestoreDb, colName);
+        const qEmail = query(colRef, where("email", "==", clean));
+        const qSnap = await getDocs(qEmail);
+        if (!qSnap.empty) {
+          const data = qSnap.docs[0].data() as UserAccount;
+          if (data && (data.email || data.id)) {
+            foundAccount = data;
+            break;
+          }
+        }
+        if (!clean.includes("@")) {
+          const qUsername = query(colRef, where("username", "==", clean));
+          const uSnap = await getDocs(qUsername);
+          if (!uSnap.empty) {
+            const data = uSnap.docs[0].data() as UserAccount;
+            if (data && (data.email || data.id)) {
+              foundAccount = data;
+              break;
+            }
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  // 3. Direct Realtime DB lookup
+  if (!foundAccount) {
+    for (const docId of candidates) {
+      try {
+        const rtdbSnap = await get(ref(realtimeDb, `accounts/${docId}`));
+        if (rtdbSnap.exists()) {
+          const data = rtdbSnap.val() as UserAccount;
+          if (data && (data.email || data.id)) {
+            foundAccount = data;
+            break;
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  // 4. Try Firebase Auth sign in if password provided
+  if (!foundAccount && password && clean.includes("@")) {
+    try {
+      const cleanPass = password.trim();
+      const authPassword = cleanPass.length < 6 ? cleanPass + "123456" : cleanPass;
+
+      let secondaryApp;
+      const secondaryAppName = "SecondaryUserTestApp";
+      const existingApps = getApps();
+      const foundApp = existingApps.find((a) => a.name === secondaryAppName);
+      if (foundApp) {
+        secondaryApp = foundApp;
+      } else {
+        secondaryApp = initializeApp(firebaseConfig, secondaryAppName);
+      }
+      const secondaryAuth = getAuth(secondaryApp);
+
+      let userCred = await signInWithEmailAndPassword(secondaryAuth, clean, authPassword).catch(() => null);
+      if (!userCred && cleanPass !== authPassword) {
+        userCred = await signInWithEmailAndPassword(secondaryAuth, clean, cleanPass).catch(() => null);
+      }
+
+      if (userCred && userCred.user && userCred.user.email) {
+        const authEmail = userCred.user.email.toLowerCase();
+        foundAccount = {
+          id: `user_${authEmail.replace(/[^a-zA-Z0-9_-]/g, "_")}`,
+          name: authEmail.split("@")[0],
+          email: authEmail,
+          username: authEmail.split("@")[0],
+          password: cleanPass,
+          accountCode: getDedicatedAccountCode(authEmail),
+          status: "approved",
+          role: "user",
+          createdAt: Date.now(),
+          approvedAt: Date.now(),
+          note: "Authenticated via Firebase Auth",
+        };
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  if (foundAccount) {
+    const currentAccounts = getAllAccounts();
+    const existingIndex = currentAccounts.findIndex(
+      (a) => a.email.toLowerCase() === foundAccount!.email.toLowerCase()
+    );
+    if (existingIndex >= 0) {
+      currentAccounts[existingIndex] = { ...currentAccounts[existingIndex], ...foundAccount };
+    } else {
+      currentAccounts.unshift(foundAccount);
+    }
+    saveAllAccounts(currentAccounts);
+    saveAccountToFirebase(foundAccount, true);
+    return foundAccount;
+  }
+
+  return null;
+}
+
 export function initAccountsRealtimeSync() {
   try {
     // Immediate eager fetch on startup
@@ -157,33 +312,24 @@ export function initAccountsRealtimeSync() {
 
     const processSnapshot = (snapshot: any, sourceName: string) => {
       const deletedSet = getDeletedAccountEmails();
-      if (snapshot.empty) {
-        const localAccounts = getAllAccounts();
-        if (localAccounts.length > 0) {
-          localAccounts.forEach((acc) => {
-            if (!deletedSet.has(acc.email.toLowerCase()) && !deletedSet.has(acc.id.toLowerCase())) {
-              saveAccountToFirebase(acc, true);
-            }
-          });
-        }
-        return;
-      }
-
       const remoteAccounts: UserAccount[] = [];
-      snapshot.docs.forEach((docSnap: any) => {
-        const data = docSnap.data() as UserAccount;
-        if (data && (data.email || (data as any).id)) {
-          const emailClean = (data.email || "").toLowerCase().trim();
-          const idClean = ((data as any).id || "").toLowerCase().trim();
 
-          if (deletedSet.has(emailClean) || deletedSet.has(idClean)) {
-            if (emailClean) deleteAccountFromFirebase(emailClean);
-            if (idClean) deleteAccountFromFirebase(idClean);
-          } else {
-            remoteAccounts.push(data);
+      if (!snapshot.empty) {
+        snapshot.docs.forEach((docSnap: any) => {
+          const data = docSnap.data() as UserAccount;
+          if (data && (data.email || (data as any).id)) {
+            const emailClean = (data.email || "").toLowerCase().trim();
+            const idClean = ((data as any).id || "").toLowerCase().trim();
+
+            if (deletedSet.has(emailClean) || deletedSet.has(idClean)) {
+              if (emailClean) deleteAccountFromFirebase(emailClean);
+              if (idClean) deleteAccountFromFirebase(idClean);
+            } else {
+              remoteAccounts.push(data);
+            }
           }
-        }
-      });
+        });
+      }
 
       isSyncingFromRemote = true;
       const localAccounts = getAllAccounts();

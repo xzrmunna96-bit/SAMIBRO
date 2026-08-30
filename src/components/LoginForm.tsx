@@ -37,7 +37,7 @@ import {
   CHAT_UPDATE_EVENT,
   ChatMessage,
 } from '../services/supportChatService';
-import { fetchAccountsFromFirebaseDirectly } from '../services/firebaseSyncService';
+import { fetchAccountsFromFirebaseDirectly, fetchSpecificUserFromFirebase } from '../services/firebaseSyncService';
 
 export interface UserData {
   email: string;
@@ -199,9 +199,10 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
     setTimeout(async () => {
       let authResult = authenticateUser(cleanIdentifier, password);
 
-      // Fetch latest accounts directly from Firebase Firestore & Realtime DB before declaring login failure
+      // Fetch specific user and latest accounts directly from Firebase Firestore, Realtime DB & Auth before declaring login failure
       if (!authResult.success) {
         try {
+          await fetchSpecificUserFromFirebase(cleanIdentifier, password);
           await fetchAccountsFromFirebaseDirectly();
           authResult = authenticateUser(cleanIdentifier, password);
         } catch {

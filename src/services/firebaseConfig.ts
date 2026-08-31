@@ -1,7 +1,7 @@
 // Firebase Configuration for SUPER X SMS Real-time Synchronization
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAnalytics, isSupported as isAnalyticsSupported } from "firebase/analytics";
-import { initializeFirestore, setLogLevel } from "firebase/firestore";
+import { initializeFirestore, getFirestore, setLogLevel } from "firebase/firestore";
 import { getDatabase } from "firebase/database";
 import { getAuth } from "firebase/auth";
 
@@ -27,12 +27,35 @@ try {
 }
 
 // Export Firebase services with robust long-polling auto-detection for cloud/iframe containers
-export const firestoreDb = initializeFirestore(firebaseApp, {
-  experimentalAutoDetectLongPolling: true,
-});
+let db: any;
+try {
+  db = getFirestore(firebaseApp);
+} catch {
+  try {
+    db = initializeFirestore(firebaseApp, {
+      experimentalAutoDetectLongPolling: true,
+    });
+  } catch {
+    db = getFirestore(firebaseApp);
+  }
+}
+export const firestoreDb = db;
 
-export const realtimeDb = getDatabase(firebaseApp);
-export const firebaseAuth = getAuth(firebaseApp);
+let rtdb: any;
+try {
+  rtdb = getDatabase(firebaseApp);
+} catch (e) {
+  rtdb = null;
+}
+export const realtimeDb = rtdb;
+
+let auth: any;
+try {
+  auth = getAuth(firebaseApp);
+} catch (e) {
+  auth = null;
+}
+export const firebaseAuth = auth;
 
 // Initialize Analytics if supported in current browser environment
 export let analyticsInstance: any = null;

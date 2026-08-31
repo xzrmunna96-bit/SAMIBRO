@@ -1,7 +1,6 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
-import { createServer as createViteServer } from "vite";
 
 async function startServer() {
   const app = express();
@@ -26,6 +25,8 @@ async function startServer() {
   const SUBADMINS_FILE = path.join(DATA_DIR, "subadmins.json");
   const DELETED_ACCOUNTS_FILE = path.join(DATA_DIR, "deleted_accounts.json");
   const NOTICE_FILE = path.join(DATA_DIR, "site_notice.json");
+  const NOTIFICATIONS_FILE = path.join(DATA_DIR, "notifications.json");
+  const LIVE_CHATS_FILE = path.join(DATA_DIR, "live_chats.json");
 
   const DEFAULT_NOTICE_TEXT = "SMS Portal - Premium Carrier Rates 📲 Instant Verification Codes & Physical Carrier Routes Active";
 
@@ -47,6 +48,44 @@ async function startServer() {
       fs.writeFileSync(NOTICE_FILE, JSON.stringify({ noticeText, updatedAt: Date.now() }, null, 2), "utf-8");
     } catch (e) {
       console.warn("Error writing site_notice.json:", e);
+    }
+  }
+
+  function loadServerNotifications(): any[] {
+    try {
+      if (fs.existsSync(NOTIFICATIONS_FILE)) {
+        const raw = fs.readFileSync(NOTIFICATIONS_FILE, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return [];
+  }
+
+  function saveServerNotifications(list: any[]) {
+    try {
+      fs.writeFileSync(NOTIFICATIONS_FILE, JSON.stringify(list, null, 2), "utf-8");
+    } catch (e) {
+      console.warn("Error writing notifications.json:", e);
+    }
+  }
+
+  function loadServerLiveChats(): any[] {
+    try {
+      if (fs.existsSync(LIVE_CHATS_FILE)) {
+        const raw = fs.readFileSync(LIVE_CHATS_FILE, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return [];
+  }
+
+  function saveServerLiveChats(list: any[]) {
+    try {
+      fs.writeFileSync(LIVE_CHATS_FILE, JSON.stringify(list, null, 2), "utf-8");
+    } catch (e) {
+      console.warn("Error writing live_chats.json:", e);
     }
   }
 
@@ -909,6 +948,142 @@ async function startServer() {
     }
   });
 
+  // User Notifications endpoints (Broadcast & Individual Targeting)
+  app.get("/api/notifications", (req, res) => {
+    const allNotifs = loadServerNotifications();
+    const rawEmail = String(req.query.userEmail || "").trim().toLowerCase();
+    let filtered = allNotifs;
+    if (rawEmail) {
+      filtered = allNotifs.filter((n) => {
+        if (!n.targetUserEmail || n.targetUserEmail === "all" || n.targetUserEmail.toLowerCase() === "all") {
+          return true;
+        }
+        return n.targetUserEmail.toLowerCase() === rawEmail;
+      });
+    }
+    res.json({ success: true, count: filtered.length, notifications: filtered });
+  });
+
+  app.post("/api/notifications", (req, res) => {
+    const { notification, notifications: incomingList } = req.body || {};
+    const toMerge: any[] = [];
+    if (notification && notification.title && notification.message) {
+      toMerge.push(notification);
+    }
+    if (Array.isArray(incomingList)) {
+      incomingList.forEach((n) => {
+        if (n && n.title && n.message) toMerge.push(n);
+      });
+    }
+
+    if (toMerge.length === 0) {
+      return res.status(400).json({ error: "Valid notification payload required" });
+    }
+
+    const current = loadServerNotifications();
+    const notifMap = new Map<string, any>();
+    current.forEach((n) => notifMap.set(n.id || `notif_${n.timestamp}`, n));
+
+    toMerge.forEach((n) => {
+      const id = n.id || `notif_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      notifMap.set(id, { ...n, id, timestamp: n.timestamp || Date.now() });
+    });
+
+    const updated = Array.from(notifMap.values()).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    saveServerNotifications(updated);
+
+    res.json({ success: true, count: updated.length, notifications: updated });
+  });
+
+  app.delete("/api/notifications", (req, res) => {
+    const rawId = String(req.body?.id || req.query.id || "").trim();
+    if (!rawId) {
+      return res.status(400).json({ error: "Notification ID required" });
+    }
+
+    const current = loadServerNotifications();
+    const filtered = current.filter((n) => n.id !== rawId);
+    saveServerNotifications(filtered);
+
+    res.json({ success: true, count: filtered.length, notifications: filtered });
+  });
+
+  // Live Support Chat endpoints
+  app.get("/api/live-chat", (req, res) => {
+    const allChats = loadServerLiveChats();
+    const rawEmail = String(req.query.userEmail || "").trim().toLowerCase();
+    let filtered = allChats;
+    if (rawEmail) {
+      filtered = allChats.filter((c) => c.userEmail && c.userEmail.toLowerCase() === rawEmail);
+    }
+    filtered.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+    res.json({ success: true, count: filtered.length, messages: filtered });
+  });
+
+  app.post("/api/live-chat", (req, res) => {
+    const { message, messages: incomingList } = req.body || {};
+    const toMerge: any[] = [];
+    if (message && message.userEmail && message.text) {
+      toMerge.push(message);
+    }
+    if (Array.isArray(incomingList)) {
+      incomingList.forEach((m) => {
+        if (m && m.userEmail && m.text) toMerge.push(m);
+      });
+    }
+
+    if (toMerge.length === 0) {
+      return res.status(400).json({ error: "Valid chat message payload required" });
+    }
+
+    const current = loadServerLiveChats();
+    const chatMap = new Map<string, any>();
+    current.forEach((m) => chatMap.set(m.id || `msg_${m.timestamp}`, m));
+
+    toMerge.forEach((m) => {
+      const id = m.id || `msg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      chatMap.set(id, { ...m, id, timestamp: m.timestamp || Date.now() });
+    });
+
+    const updated = Array.from(chatMap.values()).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+    saveServerLiveChats(updated);
+
+    res.json({ success: true, count: updated.length, messages: updated });
+  });
+
+  app.post("/api/live-chat/read", (req, res) => {
+    const { userEmail, readBy } = req.body || {};
+    const rawEmail = String(userEmail || "").trim().toLowerCase();
+    const cleanReadBy = String(readBy || "").trim().toLowerCase(); // 'admin' or 'user'
+
+    if (!rawEmail || !cleanReadBy) {
+      return res.status(400).json({ error: "userEmail and readBy ('admin'|'user') required" });
+    }
+
+    const current = loadServerLiveChats();
+    let modified = false;
+
+    const updated = current.map((m) => {
+      if (m.userEmail && m.userEmail.toLowerCase() === rawEmail) {
+        if (cleanReadBy === "admin" && !m.readByAdmin) {
+          modified = true;
+          return { ...m, readByAdmin: true };
+        }
+        if (cleanReadBy === "user" && !m.readByUser) {
+          modified = true;
+          return { ...m, readByUser: true };
+        }
+      }
+      return m;
+    });
+
+    if (modified) {
+      saveServerLiveChats(updated);
+    }
+
+    res.json({ success: true, count: updated.length, messages: updated });
+  });
+
   // Health check endpoint
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
@@ -916,6 +1091,7 @@ async function startServer() {
 
   // Vite middleware for dev / static files for production
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",

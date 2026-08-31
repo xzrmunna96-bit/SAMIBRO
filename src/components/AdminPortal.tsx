@@ -502,6 +502,8 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
   const [notifTitle, setNotifTitle] = useState('');
   const [notifMessage, setNotifMessage] = useState('');
   const [notifType, setNotifType] = useState<NotificationItem['type']>('update');
+  const [notifTargetUser, setNotifTargetUser] = useState<string>('all');
+  const [customTargetEmail, setCustomTargetEmail] = useState<string>('');
 
   // Top Marquee Notice Banner State
   const [adminNoticeInput, setAdminNoticeInput] = useState(() => {
@@ -1334,11 +1336,24 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
       return;
     }
 
-    addNotification(notifTitle.trim(), notifMessage.trim(), notifType);
+    const target = notifTargetUser === 'custom' ? customTargetEmail.trim() : notifTargetUser;
+    if (notifTargetUser === 'custom' && !target) {
+      showToast('Please enter target user email/phone.');
+      return;
+    }
+
+    addNotification(
+      notifTitle.trim(),
+      notifMessage.trim(),
+      notifType,
+      target,
+      adminSession.name || 'Admin'
+    );
     setNotificationsList(getAllNotifications());
     setNotifTitle('');
     setNotifMessage('');
-    showToast('Notification broadcasted to all users successfully!');
+    setCustomTargetEmail('');
+    showToast(`Notification sent successfully (${target === 'all' ? 'To All Users' : `To User: ${target}`})!`);
   };
 
   const handleDeleteNotification = (id: string) => {
@@ -3488,37 +3503,76 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
               </div>
 
               <form onSubmit={handleBroadcastNotification} className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  {/* Title */}
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                  {/* Target Recipient */}
                   <div className="sm:col-span-2">
                     <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
-                      Notification Title <span className="text-rose-400">*</span>
+                      Target User (কাকে নোটিফিকেশন পাঠাবেন)
                     </label>
-                    <input
-                      type="text"
-                      required
-                      value={notifTitle}
-                      onChange={(e) => setNotifTitle(e.target.value)}
-                      placeholder="e.g. সিস্টেম আপডেট - নতুন রেঞ্জ যোগ করা হয়েছে"
-                      className="w-full px-4 py-2.5 text-xs sm:text-sm bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500"
-                    />
+                    <select
+                      value={notifTargetUser}
+                      onChange={(e) => setNotifTargetUser(e.target.value)}
+                      className="w-full px-3 py-2.5 text-xs sm:text-sm bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 font-bold"
+                    >
+                      <option value="all">📢 All Users (সব ইউজারকে পাঠান)</option>
+                      <option value="custom">✍️ Enter Custom Email / Phone...</option>
+                      <optgroup label="Registered Active Users">
+                        {accountsList.map((usr) => (
+                          <option key={usr.id} value={usr.email}>
+                            👤 {usr.name || usr.email} ({usr.accountCode || usr.email})
+                          </option>
+                        ))}
+                      </optgroup>
+                    </select>
                   </div>
 
                   {/* Priority / Type */}
-                  <div>
+                  <div className="sm:col-span-2">
                     <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
                       Notice Type
                     </label>
                     <select
                       value={notifType}
                       onChange={(e) => setNotifType(e.target.value as any)}
-                      className="w-full px-3 py-2.5 text-xs sm:text-sm bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500"
+                      className="w-full px-3 py-2.5 text-xs sm:text-sm bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 font-bold"
                     >
                       <option value="update">Update / Announcement</option>
                       <option value="urgent">Urgent / Alert</option>
-                      <option value="info">General Info</option>
+                      <option value="info font-bold">General Info</option>
                     </select>
                   </div>
+                </div>
+
+                {/* Custom Target Input if selected */}
+                {notifTargetUser === 'custom' && (
+                  <div>
+                    <label className="block text-xs font-bold text-amber-400 mb-1.5 uppercase tracking-wider">
+                      Specific User Email or Phone Number <span className="text-rose-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={customTargetEmail}
+                      onChange={(e) => setCustomTargetEmail(e.target.value)}
+                      placeholder="e.g. user@gmail.com or 01700000000"
+                      className="w-full px-4 py-2.5 text-xs sm:text-sm bg-slate-950 border border-amber-500/50 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+                    />
+                  </div>
+                )}
+
+                {/* Title */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
+                    Notification Title <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={notifTitle}
+                    onChange={(e) => setNotifTitle(e.target.value)}
+                    placeholder="e.g. সিস্টেম আপডেট - নতুন রেঞ্জ যোগ করা হয়েছে"
+                    className="w-full px-4 py-2.5 text-xs sm:text-sm bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500"
+                  />
                 </div>
 
                 {/* Message Body */}

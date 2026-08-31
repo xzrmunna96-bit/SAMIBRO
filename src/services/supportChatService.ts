@@ -88,8 +88,69 @@ export function getChatMessagesForUser(userEmail: string): ChatMessage[] {
   if (!clean) return [];
   const all = getAllSupportMessages();
   return all
-    .filter((m) => m.userEmail.toLowerCase() === clean)
+    .filter((m) => m && m.userEmail && m.userEmail.toLowerCase() === clean)
     .sort((a, b) => a.timestamp - b.timestamp);
+}
+
+// Save chat message to server database
+export async function saveChatMessageToServer(msg: ChatMessage) {
+  try {
+    await fetch('/api/live-chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg }),
+    });
+  } catch (err) {
+    console.warn('Failed to save chat message to server:', err);
+  }
+}
+
+// Fetch live chats from server and merge with local storage
+export async function fetchLiveChatsFromServer(): Promise<ChatMessage[]> {
+  try {
+    const res = await fetch('/api/live-chat');
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (data && data.success && Array.isArray(data.messages)) {
+      const serverMsgs: ChatMessage[] = data.messages;
+      const current = getAllSupportMessages();
+      const msgMap = new Map<string, ChatMessage>();
+
+      current.forEach((m) => {
+        if (m && m.id) msgMap.set(m.id, m);
+      });
+
+      let hasNew = false;
+      serverMsgs.forEach((m) => {
+        if (m && m.id) {
+          const existing = msgMap.get(m.id);
+          if (!existing) {
+            hasNew = true;
+            msgMap.set(m.id, m);
+          } else {
+            // Update read flags if server has newer read state
+            if (m.readByAdmin && !existing.readByAdmin) {
+              existing.readByAdmin = true;
+              hasNew = true;
+            }
+            if (m.readByUser && !existing.readByUser) {
+              existing.readByUser = true;
+              hasNew = true;
+            }
+          }
+        }
+      });
+
+      if (hasNew) {
+        const merged = Array.from(msgMap.values()).sort((a, b) => a.timestamp - b.timestamp);
+        saveAllSupportMessages(merged);
+        return merged;
+      }
+    }
+  } catch (err) {
+    // console.warn('Failed to fetch live chats from server:', err);
+  }
+  return [];
 }
 
 // User sends a message to Admin
@@ -112,6 +173,7 @@ export function sendUserMessage(userEmail: string, userName: string, text: strin
   all.push(msg);
   saveAllSupportMessages(all);
   saveChatMessageToFirebase(msg);
+  saveChatMessageToServer(msg);
   return msg;
 }
 
@@ -135,6 +197,7 @@ export function sendAdminMessage(userEmail: string, text: string): ChatMessage {
   all.push(msg);
   saveAllSupportMessages(all);
   saveChatMessageToFirebase(msg);
+  saveChatMessageToServer(msg);
   return msg;
 }
 
@@ -145,7 +208,7 @@ export function markChatAsReadByAdmin(userEmail: string) {
   let modified = false;
 
   all.forEach((m) => {
-    if (m.userEmail.toLowerCase() === clean && !m.readByAdmin) {
+    if (m && m.userEmail && m.userEmail.toLowerCase() === clean && !m.readByAdmin) {
       m.readByAdmin = true;
       modified = true;
       saveChatMessageToFirebase(m);
@@ -154,6 +217,11 @@ export function markChatAsReadByAdmin(userEmail: string) {
 
   if (modified) {
     saveAllSupportMessages(all);
+    fetch('/api/live-chat/read', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userEmail: clean, readBy: 'admin' }),
+    }).catch(() => {});
   }
 }
 
@@ -164,7 +232,7 @@ export function markChatAsReadByUser(userEmail: string) {
   let modified = false;
 
   all.forEach((m) => {
-    if (m.userEmail.toLowerCase() === clean && !m.readByUser) {
+    if (m && m.userEmail && m.userEmail.toLowerCase() === clean && !m.readByUser) {
       m.readByUser = true;
       modified = true;
       saveChatMessageToFirebase(m);
@@ -173,20 +241,33 @@ export function markChatAsReadByUser(userEmail: string) {
 
   if (modified) {
     saveAllSupportMessages(all);
+    fetch('/api/live-chat/read', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userEmail: clean, readBy: 'user' }),
+    }).catch(() => {});
   }
+}
+
+// Automatic real-time background sync for live chat across sub-admins and users (every 3 seconds)
+if (typeof window !== 'undefined') {
+  fetchLiveChatsFromServer();
+  setInterval(() => {
+    fetchLiveChatsFromServer();
+  }, 3000);
 }
 
 // Get total unread count for Admin across all users
 export function getAdminUnreadChatCount(): number {
   const all = getAllSupportMessages();
-  return all.filter((m) => m.sender === 'user' && !m.readByAdmin).length;
+  return all.filter((m) => m && m.sender === 'user' && !m.readByAdmin).length;
 }
 
 // Get total unread count for a specific user (admin messages unread by user)
 export function getUserUnreadChatCount(userEmail: string): number {
   const clean = (userEmail || '').trim().toLowerCase();
   const all = getAllSupportMessages();
-  return all.filter((m) => m.userEmail.toLowerCase() === clean && m.sender === 'admin' && !m.readByUser).length;
+  return all.filter((m) => m && m.userEmail && m.userEmail.toLowerCase() === clean && m.sender === 'admin' && !m.readByUser).length;
 }
 
 // Get list of active conversations for Admin
@@ -203,11 +284,13 @@ export function getAllChatConversations(): ChatConversationSummary[] {
   const grouped = new Map<string, ChatMessage[]>();
 
   all.forEach((m) => {
-    const key = m.userEmail.toLowerCase();
-    if (!grouped.has(key)) {
-      grouped.set(key, []);
+    if (m && m.userEmail) {
+      const key = m.userEmail.toLowerCase();
+      if (!grouped.has(key)) {
+        grouped.set(key, []);
+      }
+      grouped.get(key)!.push(m);
     }
-    grouped.get(key)!.push(m);
   });
 
   const list: ChatConversationSummary[] = [];

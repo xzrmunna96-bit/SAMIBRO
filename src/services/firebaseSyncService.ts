@@ -56,13 +56,13 @@ export async function fetchAccountsFromFirebaseDirectly(): Promise<UserAccount[]
     const accountsCol = collection(firestoreDb, "super_x_accounts");
     const usersCol = collection(firestoreDb, "users");
     const pendingCol = collection(firestoreDb, "pending_accounts");
-    const rtdbAccountsRef = ref(realtimeDb, "accounts");
+    const rtdbAccountsRef = realtimeDb ? ref(realtimeDb, "accounts") : null;
 
     const [accountsSnap, usersSnap, pendingSnap, rtdbSnap] = await Promise.all([
       getDocs(accountsCol).catch(() => null),
       getDocs(usersCol).catch(() => null),
       getDocs(pendingCol).catch(() => null),
-      get(rtdbAccountsRef).catch(() => null),
+      rtdbAccountsRef ? get(rtdbAccountsRef).catch(() => null) : Promise.resolve(null),
     ]);
 
     const remoteAccounts: UserAccount[] = [];
@@ -223,11 +223,11 @@ export async function fetchSpecificUserFromFirebase(
   }
 
   // 3. Direct Realtime DB lookup
-  if (!foundAccount) {
+  if (!foundAccount && realtimeDb) {
     for (const docId of candidates) {
       try {
         const rtdbSnap = await get(ref(realtimeDb, `accounts/${docId}`));
-        if (rtdbSnap.exists()) {
+        if (rtdbSnap && rtdbSnap.exists()) {
           const data = rtdbSnap.val() as UserAccount;
           if (data && (data.email || data.id)) {
             foundAccount = data;
@@ -500,14 +500,17 @@ export async function saveAccountToFirebase(account: UserAccount, force = true) 
     const accountRef = doc(firestoreDb, "super_x_accounts", safeDocId);
     const usersRef = doc(firestoreDb, "users", safeDocId);
     const pendingRef = doc(firestoreDb, "pending_accounts", safeDocId);
-    const rtdbRef = ref(realtimeDb, `accounts/${safeDocId}`);
     const payload = { ...account, lastSyncedAt: Date.now(), updatedAt: account.updatedAt || Date.now() };
 
     const promises: Promise<any>[] = [
       setDoc(accountRef, payload, { merge: true }).catch(() => null),
       setDoc(usersRef, payload, { merge: true }).catch(() => null),
-      set(rtdbRef, payload).catch(() => null),
     ];
+
+    if (realtimeDb) {
+      const rtdbRef = ref(realtimeDb, `accounts/${safeDocId}`);
+      promises.push(set(rtdbRef, payload).catch(() => null));
+    }
 
     if (account.status === 'pending') {
       promises.push(setDoc(pendingRef, payload, { merge: true }).catch(() => null));
@@ -533,14 +536,19 @@ export async function deleteAccountFromFirebase(accountEmail: string) {
     const accountRef = doc(firestoreDb, "super_x_accounts", safeDocId);
     const usersRef = doc(firestoreDb, "users", safeDocId);
     const pendingRef = doc(firestoreDb, "pending_accounts", safeDocId);
-    const rtdbRef = ref(realtimeDb, `accounts/${safeDocId}`);
 
-    await Promise.all([
+    const promises: Promise<any>[] = [
       deleteDoc(accountRef).catch(() => null),
       deleteDoc(usersRef).catch(() => null),
       deleteDoc(pendingRef).catch(() => null),
-      remove(rtdbRef).catch(() => null),
-    ]);
+    ];
+
+    if (realtimeDb) {
+      const rtdbRef = ref(realtimeDb, `accounts/${safeDocId}`);
+      promises.push(remove(rtdbRef).catch(() => null));
+    }
+
+    await Promise.all(promises);
   } catch (err) {
     console.warn("Firebase deleteAccount error:", err);
   }

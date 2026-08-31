@@ -56,6 +56,7 @@ import { LiveTestSmsView, SmsTestRecord } from "./LiveTestSmsView";
 import { SmsTestHistoryView } from "./SmsTestHistoryView";
 import {
   getAllNotifications,
+  getNotificationsForUser,
   getUnreadNotificationCountForUser,
   markNotificationsAsReadForUser,
   NOTIFICATION_UPDATE_EVENT,
@@ -86,6 +87,7 @@ import {
 import {
   getAllAccounts,
   getAllSubAdmins,
+  getDeletedAccountEmails,
   approveAccount,
   rejectAccount,
   deleteAccount,
@@ -1062,16 +1064,68 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   };
 
   // Dynamic User Role / Level calculation
-  const currentUserDisplayRole = React.useMemo(() => {
-    if (user.role === 'admin' || user.role === 'super_admin' || isAdminUser) return 'Admin';
-    if (user.role === 'sub_admin') return 'Sub-Admin';
+  const currentUserDisplayRole: string = React.useMemo(() => {
+    if (user.role === 'admin' || user.role === 'super_admin' || (user.role as string) === 'sub_admin' || isAdminUser) return 'Admin';
     try {
       const accounts = getAllAccounts();
       const match = accounts.find((a) => a.email.toLowerCase() === user.email.toLowerCase());
-      if (match && match.role === 'admin') return 'Admin';
+      if (match && (match.role === 'admin' || (match.role as string) === 'sub_admin')) return 'Admin';
+      const subAdmins = getAllSubAdmins();
+      const isSub = subAdmins.some((sa) => sa.email.toLowerCase() === user.email.toLowerCase());
+      if (isSub) return 'Admin';
     } catch {}
     return 'Agent';
-  }, [user, isAdminUser]);
+  }, [user, isAdminUser, allUsersList]);
+
+  // Real-time Account Status & Privilege Monitor (revokes suspended/deleted users instantly)
+  useEffect(() => {
+    const monitorAccountState = () => {
+      if (!user || !user.email) return;
+      try {
+        const cleanEmail = user.email.toLowerCase().trim();
+        const deletedSet = getDeletedAccountEmails();
+        if (deletedSet.has(cleanEmail)) {
+          onLogout();
+          return;
+        }
+
+        const accounts = getAllAccounts();
+        const currentAcc = accounts.find(
+          (a) => a.email.toLowerCase().trim() === cleanEmail
+        );
+
+        const subAdmins = getAllSubAdmins();
+        const isSubAdmin = subAdmins.some((sa) => sa.email.toLowerCase().trim() === cleanEmail);
+
+        // Check if explicitly suspended or rejected
+        if (currentAcc) {
+          if (currentAcc.status === 'suspended' || currentAcc.status === 'rejected') {
+            onLogout();
+            return;
+          }
+          if (currentAcc.role === 'admin' && user.role !== 'admin') {
+            user.role = 'admin';
+          }
+        }
+
+        if (isSubAdmin && user.role !== 'admin') {
+          user.role = 'admin';
+        }
+      } catch {}
+    };
+
+    window.addEventListener('super_x_accounts_updated', monitorAccountState);
+    window.addEventListener('super_x_sub_admins_updated', monitorAccountState);
+    window.addEventListener('storage', monitorAccountState);
+    const interval = setInterval(monitorAccountState, 2500);
+
+    return () => {
+      window.removeEventListener('super_x_accounts_updated', monitorAccountState);
+      window.removeEventListener('super_x_sub_admins_updated', monitorAccountState);
+      window.removeEventListener('storage', monitorAccountState);
+      clearInterval(interval);
+    };
+  }, [user, onLogout]);
 
   const [topAppsList, setTopAppsList] = useState<TopAppItem[]>(() =>
     getTopAppsConfig(),
@@ -1268,7 +1322,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   // Notification Modal & Unread Count State
   const [isNotifModalOpen, setIsNotifModalOpen] = useState(false);
   const [notifList, setNotifList] = useState<NotificationItem[]>(() =>
-    getAllNotifications(),
+    getNotificationsForUser(user.email),
   );
   const [unreadNotifCount, setUnreadNotifCount] = useState<number>(() =>
     getUnreadNotificationCountForUser(user.email),
@@ -1277,7 +1331,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   // Sync Notifications updates in real-time
   useEffect(() => {
     const handleNotifUpdate = () => {
-      setNotifList(getAllNotifications());
+      setNotifList(getNotificationsForUser(user.email));
       setUnreadNotifCount(getUnreadNotificationCountForUser(user.email));
     };
     window.addEventListener(NOTIFICATION_UPDATE_EVENT, handleNotifUpdate);

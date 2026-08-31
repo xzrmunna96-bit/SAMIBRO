@@ -43,7 +43,65 @@ export function triggerAdminRoute(): void {
   window.dispatchEvent(new Event('navigate_admin'));
 }
 
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('App Error Boundary caught error:', error, errorInfo);
+  }
+
+  handleReload = () => {
+    try {
+      localStorage.removeItem('super_x_current_view');
+    } catch {}
+    window.location.reload();
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen w-full bg-slate-950 text-white flex flex-col items-center justify-center p-6 text-center font-sans">
+          <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
+            <div className="w-12 h-12 rounded-full bg-rose-500/10 border border-rose-500/20 flex items-center justify-center mx-auto text-rose-400">
+              <span className="text-xl font-bold">!</span>
+            </div>
+            <h2 className="text-lg font-bold text-white">SUPER X SMS Portal</h2>
+            <p className="text-xs text-slate-400">
+              An unexpected application state occurred. Click below to refresh the workspace.
+            </p>
+            <button
+              onClick={this.handleReload}
+              className="w-full py-3 px-4 bg-purple-600 hover:bg-purple-500 text-white font-bold text-sm rounded-xl transition shadow-lg"
+            >
+              🔄 Reload Application
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
+  return (
+    <ErrorBoundary>
+      <AppContent />
+    </ErrorBoundary>
+  );
+}
+
+function AppContent() {
   const [isAdminRoute, setIsAdminRoute] = useState<boolean>(() => checkIsAdminRoute());
   const [currentUser, setCurrentUser] = useState<UserData | null>(() => {
     try {

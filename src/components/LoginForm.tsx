@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import {
   authenticateUser,
+  authenticateUserAsync,
   requestNewAccount,
   getAllAccounts,
   UserAccount,
@@ -38,6 +39,7 @@ import {
   ChatMessage,
 } from '../services/supportChatService';
 import { fetchAccountsFromFirebaseDirectly, fetchSpecificUserFromFirebase } from '../services/firebaseSyncService';
+import { fetchAccountsFromServer } from '../services/serverAuthSync';
 
 export interface UserData {
   email: string;
@@ -163,7 +165,7 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
     setChatUpdateCount((c) => c + 1);
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
     setPendingAccountNotice(null);
@@ -196,19 +198,8 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
 
     setIsLoading(true);
 
-    setTimeout(async () => {
-      let authResult = authenticateUser(cleanIdentifier, password);
-
-      // Fetch specific user and latest accounts directly from Firebase Firestore, Realtime DB & Auth before declaring login failure
-      if (!authResult.success) {
-        try {
-          await fetchSpecificUserFromFirebase(cleanIdentifier, password);
-          await fetchAccountsFromFirebaseDirectly();
-          authResult = authenticateUser(cleanIdentifier, password);
-        } catch {
-          // ignore
-        }
-      }
+    try {
+      const authResult = await authenticateUserAsync(cleanIdentifier, password);
 
       setIsLoading(false);
 
@@ -241,7 +232,11 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
           role: authResult.user.role,
         });
       }
-    }, 500);
+    } catch {
+      setIsLoading(false);
+      setErrorMessage('Login failed. Please try again.');
+      generateNewCaptcha();
+    }
   };
 
   const handleRequestSubmit = (e: React.FormEvent) => {

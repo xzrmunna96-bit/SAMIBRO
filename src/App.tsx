@@ -5,6 +5,7 @@ import { LoggedInDashboard } from './components/LoggedInDashboard';
 import { AdminPortal } from './components/AdminPortal';
 import { CheckCircle2 } from 'lucide-react';
 import { initializeFirebaseSync } from './services/firebaseSyncService';
+import { initServerRealtimeSync } from './services/serverAuthSync';
 
 const STORAGE_KEY_USER = 'super_x_user';
 
@@ -57,8 +58,9 @@ export default function App() {
   });
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Initialize Firebase Real-Time Synchronization on App boot
+  // Initialize Server-Side & Firebase Real-Time Synchronization on App boot
   useEffect(() => {
+    initServerRealtimeSync();
     initializeFirebaseSync();
   }, []);
 

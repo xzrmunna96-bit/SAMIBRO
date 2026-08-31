@@ -72,6 +72,8 @@ import {
   updateSubAdminPassword,
   deleteSubAdmin,
   authenticateAdminLogin,
+  authenticateAdminLoginAsync,
+  toggleUserAdminRole,
   SubAdminAccount,
 } from '../services/userAuthService';
 import {
@@ -114,6 +116,7 @@ import {
   KNOWN_SOCIAL_SERVICES,
 } from '../services/apiConfigService';
 import { registerUserInFirebaseAuth, fetchAccountsFromFirebaseDirectly } from '../services/firebaseSyncService';
+import { fetchAccountsFromServer, approveAccountOnServer, saveAccountToServer } from '../services/serverAuthSync';
 import { getBrandLogoComponent } from './BrandLogos';
 
 const ADMIN_MASTER_PASSWORD = 'XZRMUNNA12061';
@@ -513,7 +516,22 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
   });
   const [isNoticeSaved, setIsNoticeSaved] = useState(false);
 
-  const handleSaveMarqueeNotice = (e: React.FormEvent) => {
+  useEffect(() => {
+    fetch('/api/site-notice')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.success && data.noticeText) {
+          setAdminNoticeInput(data.noticeText);
+          try {
+            localStorage.setItem("super_x_site_marquee_notice", data.noticeText);
+            window.dispatchEvent(new Event("super_x_marquee_notice_updated"));
+          } catch {}
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleSaveMarqueeNotice = async (e: React.FormEvent) => {
     e.preventDefault();
     const clean = adminNoticeInput.trim();
     if (!clean) return;
@@ -523,6 +541,13 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
       setIsNoticeSaved(true);
       showToast("Top Notice Banner text updated & published to all user panels!");
       setTimeout(() => setIsNoticeSaved(false), 3000);
+
+      // Also persist to server database
+      fetch('/api/site-notice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ noticeText: clean }),
+      }).catch(() => {});
     } catch {
       showToast("Failed to save notice banner.");
     }
@@ -687,10 +712,16 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
 
     if (!isAdminAuthenticated) return;
 
-    const syncAccounts = () => {
-      fetchAccountsFromFirebaseDirectly().then(() => {
+    const syncAccounts = async () => {
+      try {
+        await Promise.allSettled([
+          fetchAccountsFromServer(),
+          fetchAccountsFromFirebaseDirectly(),
+        ]);
         setAccountsList(getAllAccounts());
-      });
+      } catch {
+        setAccountsList(getAllAccounts());
+      }
     };
 
     syncAccounts();
@@ -700,15 +731,18 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
       setActiveChatUserEmail(convs[0].userEmail);
     }
 
-    // Auto-poll accounts & pending requests every 5 seconds from Firebase
-    const syncInterval = setInterval(syncAccounts, 5000);
+    // Auto-poll accounts & pending requests every 2.5 seconds from Server & Firebase
+    const syncInterval = setInterval(syncAccounts, 2500);
     return () => clearInterval(syncInterval);
   }, [isAdminAuthenticated]);
 
   // Re-fetch accounts on tab change
   useEffect(() => {
     if (isAdminAuthenticated && (activeTab === 'active-account-management' || activeTab === 'user-management' || activeTab === 'manually-user')) {
-      fetchAccountsFromFirebaseDirectly().then(() => {
+      Promise.allSettled([
+        fetchAccountsFromServer(),
+        fetchAccountsFromFirebaseDirectly(),
+      ]).then(() => {
         setAccountsList(getAllAccounts());
       });
     }
@@ -794,7 +828,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
   // -------------------------------------------------------------------------
   // Auth Handlers
   // -------------------------------------------------------------------------
-  const handleAdminLogin = (e: React.FormEvent) => {
+  const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
     const cleanEmail = enteredEmail.trim();
@@ -809,7 +843,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
       return;
     }
 
-    const res = authenticateAdminLogin(cleanEmail, cleanPass);
+    const res = await authenticateAdminLoginAsync(cleanEmail, cleanPass);
     if (res.success && res.role) {
       const newSession: AdminSession = {
         isAuthenticated: true,
@@ -820,6 +854,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
       setAdminSession(newSession);
       try {
         sessionStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(newSession));
+        sessionStorage.setItem('super_x_admin_session', JSON.stringify(newSession));
       } catch {}
 
       if (res.role === 'sub_admin') {
@@ -840,6 +875,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     setAdminSession({ isAuthenticated: false, role: 'super_admin', email: '', name: '' });
     try {
       sessionStorage.removeItem(ADMIN_SESSION_KEY);
+      sessionStorage.removeItem('super_x_admin_session');
     } catch {}
     showToast('Admin session locked.');
   };
@@ -1030,8 +1066,9 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
   // -------------------------------------------------------------------------
   // ACTIVE ACCOUNT MANAGEMENT HANDLERS
   // -------------------------------------------------------------------------
-  const handleApproveActiveAccount = (user: UserAccount) => {
+  const handleApproveActiveAccount = async (user: UserAccount) => {
     approveAccount(user.id, adminSession.email, adminSession.name);
+    await approveAccountOnServer(user.id, adminSession.email, adminSession.name);
     setAccountsList(getAllAccounts());
     showToast(`Account for ${user.email} has been APPROVED & ACTIVATED!`);
   };
@@ -1199,6 +1236,20 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     }
   };
 
+  const handleToggleAdminRole = (user: UserAccount) => {
+    const isCurrentlyAdmin = user.role === 'admin';
+    const actionText = isCurrentlyAdmin ? 'revoking Admin permission for' : 'granting Admin permission to';
+    if (window.confirm(`Are you sure you want to proceed with ${actionText} ${user.email}?`)) {
+      const res = toggleUserAdminRole(user.id);
+      if (res.success) {
+        setAccountsList(getAllAccounts());
+        showToast(res.message);
+      } else {
+        showToast(res.message);
+      }
+    }
+  };
+
   const togglePasswordVisibility = (userId: string) => {
     setRevealedPasswords((prev) => ({
       ...prev,
@@ -1248,7 +1299,8 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
 
     if (res.success && res.account) {
       // Directly approve so user can sign in immediately
-      approveAccount(res.account.id);
+      approveAccount(res.account.id, adminSession.email, adminSession.name);
+      approveAccountOnServer(res.account.id, adminSession.email, adminSession.name);
       registerUserInFirebaseAuth(cleanEmail, cleanPassword);
       setAccountsList(getAllAccounts());
 
@@ -2776,7 +2828,18 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                           <tr key={user.id} className="hover:bg-slate-900/60 transition">
                             {/* User Details */}
                             <td className="py-3.5 px-4">
-                              <div className="font-bold text-white text-xs sm:text-sm">{user.name}</div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-bold text-white text-xs sm:text-sm">{user.name}</span>
+                                {user.role === 'admin' ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-400/40">
+                                    👑 Admin
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-slate-800 text-slate-400 border border-slate-700">
+                                    Agent
+                                  </span>
+                                )}
+                              </div>
                               <div className="text-slate-400 text-xs font-mono">{user.email}</div>
                               {user.phoneOrTelegram && (
                                 <div className="text-[11px] text-slate-500 mt-0.5">
@@ -2891,6 +2954,23 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                                   <Key className="w-3.5 h-3.5" />
                                   <span>New Password</span>
                                 </button>
+
+                                {/* 4. Make Admin / Revoke Admin Permission */}
+                                {isSuperAdmin && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleAdminRole(user)}
+                                    className={`px-2.5 py-1.5 rounded-lg font-bold text-xs transition cursor-pointer flex items-center gap-1 border ${
+                                      user.role === 'admin'
+                                        ? 'bg-amber-950/90 text-amber-300 hover:bg-amber-900 border-amber-500/40'
+                                        : 'bg-purple-950/80 text-purple-300 hover:bg-purple-900 border-purple-500/30'
+                                    }`}
+                                    title={user.role === 'admin' ? 'Revoke Admin permission' : 'Grant Admin permission'}
+                                  >
+                                    <ShieldCheck className="w-3.5 h-3.5" />
+                                    <span>{user.role === 'admin' ? 'Admin (Revoke)' : 'Make Admin'}</span>
+                                  </button>
+                                )}
 
                                 {/* Delete User */}
                                 <button

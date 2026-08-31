@@ -47,7 +47,13 @@ import {
   Megaphone,
   ArrowLeft,
   ArrowUpDown,
+  History,
+  Download,
+  Receipt,
+  Gauge,
 } from "lucide-react";
+import { LiveTestSmsView, SmsTestRecord } from "./LiveTestSmsView";
+import { SmsTestHistoryView } from "./SmsTestHistoryView";
 import {
   getAllNotifications,
   getUnreadNotificationCountForUser,
@@ -560,6 +566,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     | "terminal"
     | "profile"
     | "adminRequests"
+    | "liveTestSms"
+    | "smsTestHistory"
   >(() => {
     try {
       const savedView = localStorage.getItem("super_x_current_view");
@@ -577,6 +585,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           "terminal",
           "profile",
           "adminRequests",
+          "liveTestSms",
+          "smsTestHistory",
         ].includes(savedView)
       ) {
         return savedView as any;
@@ -586,6 +596,51 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     }
     return "dashboard";
   });
+
+  // Sidebar Expandable Groups
+  const [isTestSystemOpen, setIsTestSystemOpen] = useState(true);
+
+  // SMS Test History State (Only Real Records, No Demo Data)
+  const [smsTestHistoryList, setSmsTestHistoryList] = useState<SmsTestRecord[]>(() => {
+    try {
+      const saved = localStorage.getItem(`super_x_sms_test_history_${user.email}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Filter out legacy hardcoded demo IDs (TST-...) so user only sees real test records
+          const realOnly = parsed.filter(
+            (item: any) =>
+              item &&
+              item.id &&
+              !item.id.toString().startsWith("TST-") &&
+              !item.id.toString().startsWith("p_") &&
+              !item.id.toString().startsWith("t_")
+          );
+          return realOnly;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return [];
+  });
+
+  const handleAddTestRecord = (record: SmsTestRecord) => {
+    setSmsTestHistoryList((prev) => {
+      const updated = [record, ...prev];
+      try {
+        localStorage.setItem(`super_x_sms_test_history_${user.email}`, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
+
+  const handleClearTestHistory = () => {
+    setSmsTestHistoryList([]);
+    try {
+      localStorage.removeItem(`super_x_sms_test_history_${user.email}`);
+    } catch {}
+  };
 
   // Admin User Approvals State
   const [allUsersList, setAllUsersList] = useState<UserAccount[]>(() =>
@@ -759,11 +814,30 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         // ignore
       }
     };
+
+    const fetchServerNotice = () => {
+      fetch("/api/site-notice")
+        .then((res) => res.json())
+        .then((data) => {
+          if (data && data.success && data.noticeText) {
+            setSiteNoticeText(data.noticeText);
+            try {
+              localStorage.setItem("super_x_site_marquee_notice", data.noticeText);
+            } catch {}
+          }
+        })
+        .catch(() => {});
+    };
+
+    fetchServerNotice();
+    const noticeInterval = setInterval(fetchServerNotice, 10000);
+
     window.addEventListener("super_x_brand_title_updated", handleTitleUpdate);
     window.addEventListener("super_x_marquee_notice_updated", handleNoticeUpdate);
     window.addEventListener("storage", handleTitleUpdate);
     window.addEventListener("storage", handleNoticeUpdate);
     return () => {
+      clearInterval(noticeInterval);
       window.removeEventListener("super_x_brand_title_updated", handleTitleUpdate);
       window.removeEventListener("super_x_marquee_notice_updated", handleNoticeUpdate);
       window.removeEventListener("storage", handleTitleUpdate);
@@ -986,6 +1060,18 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       return item;
     });
   };
+
+  // Dynamic User Role / Level calculation
+  const currentUserDisplayRole = React.useMemo(() => {
+    if (user.role === 'admin' || user.role === 'super_admin' || isAdminUser) return 'Admin';
+    if (user.role === 'sub_admin') return 'Sub-Admin';
+    try {
+      const accounts = getAllAccounts();
+      const match = accounts.find((a) => a.email.toLowerCase() === user.email.toLowerCase());
+      if (match && match.role === 'admin') return 'Admin';
+    } catch {}
+    return 'Agent';
+  }, [user, isAdminUser]);
 
   const [topAppsList, setTopAppsList] = useState<TopAppItem[]>(() =>
     getTopAppsConfig(),
@@ -2521,8 +2607,14 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               </h3>
               <p className="text-xs text-slate-400 font-normal mt-0.5 flex items-center gap-1.5">
                 <span>Level:</span>
-                <span className="text-emerald-400 font-medium bg-emerald-950/40 px-1.5 py-0.2 rounded border border-emerald-500/20 text-[11px]">
-                  Agent
+                <span className={`font-medium px-1.5 py-0.2 rounded border text-[11px] ${
+                  currentUserDisplayRole === 'Admin'
+                    ? 'text-amber-300 bg-amber-950/60 border-amber-500/40 font-bold'
+                    : currentUserDisplayRole === 'Sub-Admin'
+                    ? 'text-indigo-300 bg-indigo-950/60 border-indigo-500/40 font-bold'
+                    : 'text-emerald-400 bg-emerald-950/40 border-emerald-500/20'
+                }`}>
+                  {currentUserDisplayRole}
                 </span>
               </p>
 
@@ -2577,6 +2669,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
           {/* Navigation Items */}
           <div className="p-3 space-y-1">
+            {/* Dashboard */}
             <button
               type="button"
               id="sidebar-item-dashboard"
@@ -2672,6 +2765,68 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 <span>Sender / Range</span>
               </button>
             )}
+
+            {/* Test System Dropdown (Opens ONLY Live Test SMS and SMS test history) */}
+            <div className="rounded-lg overflow-hidden">
+              <button
+                type="button"
+                id="sidebar-group-test-system"
+                onClick={() => setIsTestSystemOpen(!isTestSystemOpen)}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer ${
+                  currentView === "liveTestSms" || currentView === "smsTestHistory"
+                    ? "bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30"
+                    : "text-slate-300 hover:bg-slate-800/70 hover:text-white"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Activity className="w-4.5 h-4.5 shrink-0 opacity-90" />
+                  <span>Test System</span>
+                </div>
+                {isTestSystemOpen ? (
+                  <ChevronDown className="w-4 h-4 text-slate-400" />
+                ) : (
+                  <ChevronRight className="w-4 h-4 text-slate-400" />
+                )}
+              </button>
+
+              {isTestSystemOpen && (
+                <div className="mt-1 ml-4 pl-3 border-l border-slate-700/60 space-y-1 text-xs">
+                  {/* Live Test SMS */}
+                  <button
+                    type="button"
+                    id="sidebar-item-live-test-sms"
+                    onClick={() => handleNavClick("liveTestSms")}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg font-medium transition cursor-pointer ${
+                      currentView === "liveTestSms"
+                        ? "bg-blue-600 text-white font-bold"
+                        : "text-slate-300 hover:bg-slate-800/70 hover:text-white"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Circle className={`w-2.5 h-2.5 ${currentView === "liveTestSms" ? "fill-current text-white" : "text-slate-400"}`} />
+                      <span>Live Test SMS</span>
+                    </div>
+                  </button>
+
+                  {/* SMS test history */}
+                  <button
+                    type="button"
+                    id="sidebar-item-sms-test-history"
+                    onClick={() => handleNavClick("smsTestHistory")}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg font-medium transition cursor-pointer ${
+                      currentView === "smsTestHistory"
+                        ? "bg-blue-600 text-white font-bold"
+                        : "text-slate-300 hover:bg-slate-800/70 hover:text-white"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Circle className={`w-2.5 h-2.5 ${currentView === "smsTestHistory" ? "fill-current text-white" : "text-slate-400"}`} />
+                      <span>SMS test history</span>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* Profile Navigation Item */}
             <button
@@ -4871,8 +5026,14 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                     <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
                       {profileName || user.name || "Agent User"}
                     </h2>
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-400/40">
-                      Agent
+                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-mono font-bold ${
+                      currentUserDisplayRole === 'Admin'
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-400/40'
+                        : currentUserDisplayRole === 'Sub-Admin'
+                        ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-400/40'
+                        : 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40'
+                    }`}>
+                      {currentUserDisplayRole}
                     </span>
                     <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/40">
                       Active
@@ -5037,6 +5198,25 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Live Test SMS View */}
+        {currentView === "liveTestSms" && (
+          <LiveTestSmsView
+            userEmail={user.email}
+            liveHits={liveHits}
+            onAddTestHistory={handleAddTestRecord}
+            onRefreshHits={fetchRealTimeData}
+          />
+        )}
+
+        {/* SMS Test History View */}
+        {currentView === "smsTestHistory" && (
+          <SmsTestHistoryView
+            userEmail={user.email}
+            records={smsTestHistoryList}
+            onClearHistory={handleClearTestHistory}
+          />
         )}
       </main>
 

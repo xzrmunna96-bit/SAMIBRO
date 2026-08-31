@@ -408,6 +408,39 @@ export function CountryFlag({ countryCode, className = "w-12 h-8 rounded-sm shad
         </svg>
       );
 
+    case 'YE':
+    case 'YEMEN':
+      return (
+        <svg className={className} viewBox="0 0 60 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="60" height="13.3" fill="#CE1126" />
+          <rect y="13.3" width="60" height="13.4" fill="#FFFFFF" />
+          <rect y="26.7" width="60" height="13.3" fill="#000000" />
+        </svg>
+      );
+
+    case 'IQ':
+    case 'IRAQ':
+      return (
+        <svg className={className} viewBox="0 0 60 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="60" height="13.3" fill="#CE1126" />
+          <rect y="13.3" width="60" height="13.4" fill="#FFFFFF" />
+          <rect y="26.7" width="60" height="13.3" fill="#000000" />
+          <text x="30" y="24" fontSize="7" fill="#007A3D" fontWeight="bold" textAnchor="middle" fontFamily="sans-serif">الله أكبر</text>
+        </svg>
+      );
+
+    case 'LK':
+    case 'SRI LANKA':
+      return (
+        <svg className={className} viewBox="0 0 60 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="60" height="40" fill="#FFBE29" />
+          <rect x="3" y="3" width="8" height="34" fill="#00534E" />
+          <rect x="13" y="3" width="8" height="34" fill="#EB7400" />
+          <rect x="23" y="3" width="34" height="34" fill="#8D153A" />
+          <circle cx="40" cy="20" r="8" fill="#FFBE29" />
+        </svg>
+      );
+
     case 'MW':
     case 'MALAWI':
       return (

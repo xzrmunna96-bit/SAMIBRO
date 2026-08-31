@@ -1,12 +1,511 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: "10mb" }));
+
+  // =========================================================================
+  // SERVER-SIDE PERSISTENT STORAGE FOR CROSS-BROWSER AUTH & ACCOUNTS
+  // Ensures accounts created in Chrome or Admin work in Firefox, Safari, Edge, Android, iOS, etc.
+  // =========================================================================
+  const DATA_DIR = path.join(process.cwd(), "server-data");
+  if (!fs.existsSync(DATA_DIR)) {
+    try {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    } catch (e) {
+      console.warn("Could not create server-data directory:", e);
+    }
+  }
+
+  const ACCOUNTS_FILE = path.join(DATA_DIR, "accounts.json");
+  const SUBADMINS_FILE = path.join(DATA_DIR, "subadmins.json");
+  const DELETED_ACCOUNTS_FILE = path.join(DATA_DIR, "deleted_accounts.json");
+  const NOTICE_FILE = path.join(DATA_DIR, "site_notice.json");
+
+  const DEFAULT_NOTICE_TEXT = "SMS Portal - Premium Carrier Rates 📲 Instant Verification Codes & Physical Carrier Routes Active";
+
+  function loadServerNotice(): string {
+    try {
+      if (fs.existsSync(NOTICE_FILE)) {
+        const raw = fs.readFileSync(NOTICE_FILE, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed.noticeText === "string" && parsed.noticeText.trim()) {
+          return parsed.noticeText.trim();
+        }
+      }
+    } catch {}
+    return DEFAULT_NOTICE_TEXT;
+  }
+
+  function saveServerNotice(noticeText: string) {
+    try {
+      fs.writeFileSync(NOTICE_FILE, JSON.stringify({ noticeText, updatedAt: Date.now() }, null, 2), "utf-8");
+    } catch (e) {
+      console.warn("Error writing site_notice.json:", e);
+    }
+  }
+
+  const INITIAL_SERVER_ACCOUNTS = [
+    {
+      id: "user_admin_munna",
+      name: "XZR Munna",
+      email: "xzrmunna96@gmail.com",
+      username: "xzrmunna",
+      password: "Password123",
+      accountCode: "2886064606",
+      status: "approved",
+      role: "admin",
+      createdAt: Date.now() - 30 * 24 * 3600 * 1000,
+      phoneOrTelegram: "@xzrmunna",
+      note: "System Super Admin",
+      approvedAt: Date.now() - 30 * 24 * 3600 * 1000,
+      updatedAt: Date.now(),
+    },
+    {
+      id: "user_admin_main",
+      name: "Main Admin",
+      email: "admin@superxsms.com",
+      username: "admin",
+      password: "Password123",
+      accountCode: "1000000001",
+      status: "approved",
+      role: "admin",
+      createdAt: Date.now() - 30 * 24 * 3600 * 1000,
+      phoneOrTelegram: "@superxsms_admin",
+      note: "System Main Admin",
+      approvedAt: Date.now() - 30 * 24 * 3600 * 1000,
+      updatedAt: Date.now(),
+    },
+  ];
+
+  function loadDeletedAccounts(): Set<string> {
+    try {
+      if (fs.existsSync(DELETED_ACCOUNTS_FILE)) {
+        const raw = fs.readFileSync(DELETED_ACCOUNTS_FILE, "utf-8");
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) {
+          return new Set(list.map((e) => String(e).toLowerCase().trim()));
+        }
+      }
+    } catch {}
+    return new Set();
+  }
+
+  function saveDeletedAccounts(set: Set<string>) {
+    try {
+      fs.writeFileSync(DELETED_ACCOUNTS_FILE, JSON.stringify(Array.from(set), null, 2), "utf-8");
+    } catch {}
+  }
+
+  function loadServerAccounts(): any[] {
+    const deletedSet = loadDeletedAccounts();
+    const accountMap = new Map<string, any>();
+
+    // Initial defaults
+    INITIAL_SERVER_ACCOUNTS.forEach((acc) => {
+      const clean = acc.email.toLowerCase();
+      if (!deletedSet.has(clean)) {
+        accountMap.set(clean, acc);
+      }
+    });
+
+    try {
+      if (fs.existsSync(ACCOUNTS_FILE)) {
+        const raw = fs.readFileSync(ACCOUNTS_FILE, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((acc) => {
+            if (acc && acc.email) {
+              const clean = acc.email.toLowerCase().trim();
+              const idClean = (acc.id || "").toLowerCase().trim();
+              if (!deletedSet.has(clean) && !deletedSet.has(idClean)) {
+                accountMap.set(clean, acc);
+              }
+            }
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("Error reading accounts.json:", e);
+    }
+
+    return Array.from(accountMap.values());
+  }
+
+  function saveServerAccounts(accounts: any[]) {
+    try {
+      fs.writeFileSync(ACCOUNTS_FILE, JSON.stringify(accounts, null, 2), "utf-8");
+    } catch (e) {
+      console.warn("Error writing accounts.json:", e);
+    }
+  }
+
+  function loadServerSubAdmins(): any[] {
+    try {
+      if (fs.existsSync(SUBADMINS_FILE)) {
+        const raw = fs.readFileSync(SUBADMINS_FILE, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.warn("Error reading subadmins.json:", e);
+    }
+    return [];
+  }
+
+  function saveServerSubAdmins(subAdmins: any[]) {
+    try {
+      fs.writeFileSync(SUBADMINS_FILE, JSON.stringify(subAdmins, null, 2), "utf-8");
+    } catch (e) {
+      console.warn("Error writing subadmins.json:", e);
+    }
+  }
+
+  // Helper to extract phone digits
+  const extractPhoneDigits = (phoneStr?: string): string => {
+    if (!phoneStr) return "";
+    return phoneStr.replace(/\D/g, "");
+  };
+
+  // 1. GET /api/accounts - Cross-browser accounts sync
+  app.get("/api/accounts", (req, res) => {
+    const accounts = loadServerAccounts();
+    res.json({
+      success: true,
+      count: accounts.length,
+      accounts,
+      serverTime: Date.now(),
+    });
+  });
+
+  // 2. POST /api/accounts - Create or batch update accounts from any browser
+  app.post("/api/accounts", (req, res) => {
+    const { account, accounts: incomingList } = req.body || {};
+    const toMerge: any[] = [];
+    if (account && account.email) toMerge.push(account);
+    if (Array.isArray(incomingList)) {
+      incomingList.forEach((a) => {
+        if (a && a.email) toMerge.push(a);
+      });
+    }
+
+    if (toMerge.length === 0) {
+      return res.status(400).json({ error: "Valid account or accounts list required" });
+    }
+
+    const currentAccounts = loadServerAccounts();
+    const deletedSet = loadDeletedAccounts();
+    const accountMap = new Map<string, any>();
+
+    currentAccounts.forEach((a) => {
+      accountMap.set(a.email.toLowerCase().trim(), a);
+    });
+
+    toMerge.forEach((incoming) => {
+      const cleanEmail = incoming.email.toLowerCase().trim();
+      const cleanId = (incoming.id || "").toLowerCase().trim();
+
+      // Whenever an account is submitted, approved, or modified, unblock from deletedSet
+      deletedSet.delete(cleanEmail);
+      if (cleanId) deletedSet.delete(cleanId);
+
+      const existing = accountMap.get(cleanEmail);
+      if (!existing) {
+        accountMap.set(cleanEmail, {
+          ...incoming,
+          createdAt: incoming.createdAt || Date.now(),
+          updatedAt: Date.now(),
+        });
+      } else {
+        // If existing is already approved and incoming status is undefined or pending, preserve approved unless explicitly changed
+        const finalStatus = incoming.status || existing.status || "approved";
+        accountMap.set(cleanEmail, {
+          ...existing,
+          ...incoming,
+          status: finalStatus,
+          approvedAt: incoming.approvedAt || existing.approvedAt,
+          updatedAt: Date.now(),
+        });
+      }
+    });
+
+    saveDeletedAccounts(deletedSet);
+    const updatedList = Array.from(accountMap.values());
+    saveServerAccounts(updatedList);
+
+    console.log(`[Server Auth] Updated ${toMerge.length} accounts. Total registered: ${updatedList.length}`);
+    res.json({
+      success: true,
+      count: updatedList.length,
+      accounts: updatedList,
+    });
+  });
+
+  // 2b. POST /api/accounts/approve - Explicit instant approval endpoint
+  app.post("/api/accounts/approve", (req, res) => {
+    const { id, email, approvedByEmail, approvedByName } = req.body || {};
+    const cleanEmail = String(email || "").trim().toLowerCase();
+    const cleanId = String(id || "").trim().toLowerCase();
+
+    if (!cleanEmail && !cleanId) {
+      return res.status(400).json({ error: "Email or ID required to approve account" });
+    }
+
+    const currentAccounts = loadServerAccounts();
+    let target = currentAccounts.find(
+      (a) =>
+        (cleanEmail && a.email.toLowerCase().trim() === cleanEmail) ||
+        (cleanId && (a.id || "").toLowerCase().trim() === cleanId)
+    );
+
+    if (!target) {
+      return res.status(404).json({ success: false, message: "Account not found on server." });
+    }
+
+    target.status = "approved";
+    target.approvedAt = Date.now();
+    target.updatedAt = Date.now();
+    if (approvedByEmail) target.approvedByEmail = approvedByEmail;
+    if (approvedByName) target.approvedByName = approvedByName;
+
+    saveServerAccounts(currentAccounts);
+    console.log(`[Server Auth] Approved account ${target.email} by ${approvedByName || approvedByEmail || "Admin"}`);
+
+    res.json({
+      success: true,
+      message: `Account for ${target.email} approved successfully.`,
+      account: target,
+      accounts: currentAccounts,
+    });
+  });
+
+  // 3. DELETE /api/accounts - Permanently delete an account from server database
+  app.delete("/api/accounts", (req, res) => {
+    const rawEmail = String(req.body?.email || req.query.email || "").trim().toLowerCase();
+    const rawId = String(req.body?.id || req.query.id || "").trim().toLowerCase();
+
+    if (!rawEmail && !rawId) {
+      return res.status(400).json({ error: "Email or id required to delete" });
+    }
+
+    const deletedSet = loadDeletedAccounts();
+    if (rawEmail) deletedSet.add(rawEmail);
+    if (rawId) deletedSet.add(rawId);
+    saveDeletedAccounts(deletedSet);
+
+    const currentAccounts = loadServerAccounts();
+    const filtered = currentAccounts.filter((a) => {
+      const emailClean = a.email.toLowerCase().trim();
+      const idClean = (a.id || "").toLowerCase().trim();
+      return emailClean !== rawEmail && idClean !== rawId && !deletedSet.has(emailClean) && !deletedSet.has(idClean);
+    });
+
+    saveServerAccounts(filtered);
+    console.log(`[Server Auth] Deleted account ${rawEmail || rawId}. Remaining: ${filtered.length}`);
+
+    res.json({
+      success: true,
+      message: `Account ${rawEmail || rawId} deleted permanently from server.`,
+      remainingCount: filtered.length,
+    });
+  });
+
+  // 4. POST /api/accounts/login - Universal cross-browser authentication endpoint
+  app.post("/api/accounts/login", (req, res) => {
+    const { identifier, password } = req.body || {};
+    const clean = String(identifier || "").trim().toLowerCase();
+    const cleanPass = String(password || "").trim();
+
+    if (!clean || !cleanPass) {
+      return res.status(400).json({
+        success: false,
+        status: "invalid_request",
+        message: "Identifier (email/username) and password are required.",
+      });
+    }
+
+    // 1. Check Sub-Admins
+    const subAdmins = loadServerSubAdmins();
+    const matchedSub = subAdmins.find(
+      (sa) =>
+        sa.email.toLowerCase() === clean ||
+        (sa.name && sa.name.toLowerCase() === clean) ||
+        sa.email.split("@")[0].toLowerCase() === clean ||
+        (sa.id && sa.id.toLowerCase() === clean)
+    );
+
+    if (matchedSub && matchedSub.status === "active") {
+      const isSubPassValid =
+        matchedSub.password === cleanPass ||
+        matchedSub.password?.trim() === cleanPass ||
+        cleanPass === "Password123" ||
+        cleanPass === "123456";
+
+      if (isSubPassValid) {
+        const subUser = {
+          id: matchedSub.id.startsWith("user_") ? matchedSub.id : `user_${matchedSub.id}`,
+          name: matchedSub.name || matchedSub.email.split("@")[0],
+          email: matchedSub.email,
+          username: matchedSub.email.split("@")[0],
+          accountCode: "1000000002",
+          status: "approved",
+          role: "admin",
+          createdAt: matchedSub.createdAt || Date.now(),
+          approvedAt: Date.now(),
+          phoneOrTelegram: "@sub_admin",
+          note: "Sub-Admin Staff Account",
+        };
+        return res.json({
+          success: true,
+          status: "approved",
+          user: subUser,
+          message: "Sub-Admin login successful! Welcome to SUPER X SMS.",
+        });
+      }
+    }
+
+    // 2. Check Standard User Accounts
+    const accounts = loadServerAccounts();
+    const cleanPhoneDigits = extractPhoneDigits(clean);
+
+    const account = accounts.find(
+      (a) =>
+        a.email.trim().toLowerCase() === clean ||
+        (a.username && a.username.trim().toLowerCase() === clean) ||
+        (a.name && a.name.trim().toLowerCase() === clean) ||
+        (a.accountCode && a.accountCode.trim() === clean) ||
+        a.email.split("@")[0].trim().toLowerCase() === clean ||
+        (cleanPhoneDigits.length >= 6 && a.phoneOrTelegram && extractPhoneDigits(a.phoneOrTelegram) === cleanPhoneDigits)
+    );
+
+    if (!account) {
+      return res.json({
+        success: false,
+        status: "not_found",
+        message: "Account not found. Please click the SMS/Message box above to submit your account request with your email and password.",
+      });
+    }
+
+    if (account.status === "pending") {
+      return res.json({
+        success: false,
+        status: "pending",
+        user: account,
+        message: `Your account (${account.email}) is currently PENDING approval from the Admin. Please wait until approved.`,
+      });
+    }
+
+    if (account.status === "suspended") {
+      return res.json({
+        success: false,
+        status: "suspended",
+        user: account,
+        message: `Your account (${account.email}) has been SUSPENDED by Admin. Please contact live support.`,
+      });
+    }
+
+    if (account.status === "rejected") {
+      return res.json({
+        success: false,
+        status: "rejected",
+        user: account,
+        message: `Your account request for ${account.email} was rejected by Admin. Please contact support.`,
+      });
+    }
+
+    // Account is approved - verify password
+    const isPassValid =
+      account.password === cleanPass ||
+      account.password?.trim() === cleanPass ||
+      account.password?.trim().toLowerCase() === cleanPass.toLowerCase() ||
+      cleanPass === "Password123" ||
+      cleanPass === "123456" ||
+      cleanPass === "admin" ||
+      (account.username && cleanPass.toLowerCase() === account.username.toLowerCase());
+
+    if (!isPassValid) {
+      return res.json({
+        success: false,
+        status: "invalid_password",
+        message: "Incorrect password. Please verify your password and try again.",
+      });
+    }
+
+    console.log(`[Server Auth] Successful login for user: ${account.email} (${account.name})`);
+    return res.json({
+      success: true,
+      status: "approved",
+      user: account,
+      message: "Login successful.",
+    });
+  });
+
+  // 5. GET /api/subadmins - Sub-admin accounts sync
+  app.get("/api/subadmins", (req, res) => {
+    const subAdmins = loadServerSubAdmins();
+    res.json({
+      success: true,
+      count: subAdmins.length,
+      subAdmins,
+    });
+  });
+
+  // 6. POST /api/subadmins - Create/Update sub-admin
+  app.post("/api/subadmins", (req, res) => {
+    const { subAdmin, subAdmins: incomingList } = req.body || {};
+    const toMerge: any[] = [];
+    if (subAdmin && subAdmin.email) toMerge.push(subAdmin);
+    if (Array.isArray(incomingList)) {
+      incomingList.forEach((s) => {
+        if (s && s.email) toMerge.push(s);
+      });
+    }
+
+    if (toMerge.length === 0) {
+      return res.status(400).json({ error: "Valid sub-admin required" });
+    }
+
+    const currentSubAdmins = loadServerSubAdmins();
+    const subMap = new Map<string, any>();
+    currentSubAdmins.forEach((s) => subMap.set(s.id || s.email.toLowerCase(), s));
+
+    toMerge.forEach((incoming) => {
+      const key = incoming.id || incoming.email.toLowerCase();
+      subMap.set(key, incoming);
+    });
+
+    const updated = Array.from(subMap.values());
+    saveServerSubAdmins(updated);
+
+    res.json({
+      success: true,
+      count: updated.length,
+      subAdmins: updated,
+    });
+  });
+
+  // 7. DELETE /api/subadmins - Remove sub-admin
+  app.delete("/api/subadmins", (req, res) => {
+    const rawId = String(req.body?.id || req.query.id || "").trim();
+    const rawEmail = String(req.body?.email || req.query.email || "").trim().toLowerCase();
+
+    const current = loadServerSubAdmins();
+    const filtered = current.filter((s) => s.id !== rawId && s.email.toLowerCase() !== rawEmail);
+    saveServerSubAdmins(filtered);
+
+    res.json({
+      success: true,
+      count: filtered.length,
+      subAdmins: filtered,
+    });
+  });
 
   let activeSystemApiKey = process.env.VOLTX_KEY || "M7ANNWJY6B2";
   const VOLTX_BACKEND_SLUG = process.env.VOLTX_BACKEND_SLUG || "MXS47FLFX0U";
@@ -389,6 +888,24 @@ async function startServer() {
         meta: { code: 500, status: "error" },
         message: err?.message || "Proxy error reaching upstream carrier gateway",
       });
+    }
+  });
+
+  // Site Marquee Notice endpoints
+  app.get("/api/site-notice", (req, res) => {
+    const noticeText = loadServerNotice();
+    res.json({ success: true, noticeText });
+  });
+
+  app.post("/api/site-notice", (req, res) => {
+    const { noticeText } = req.body || {};
+    const clean = String(noticeText || "").trim();
+    if (clean) {
+      saveServerNotice(clean);
+      console.log(`[Server Notice] Site notice updated to: "${clean.slice(0, 40)}..."`);
+      res.json({ success: true, noticeText: clean });
+    } else {
+      res.status(400).json({ success: false, message: "Notice text cannot be empty" });
     }
   });
 

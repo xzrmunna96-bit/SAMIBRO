@@ -12,10 +12,12 @@ import {
   RotateCw,
   Clock,
   Layers,
-  ChevronRight
+  ChevronRight,
+  ExternalLink,
 } from "lucide-react";
 import { LiveConsoleHit } from "../services/voltxApi";
 import { CountryFlag } from "./CountryFlags";
+import { sendOtpToTelegram, extractOtpCode } from "../services/telegramService";
 
 export interface SmsTestRecord {
   id: string;
@@ -34,7 +36,9 @@ interface LiveTestSmsViewProps {
   userEmail: string;
   liveHits: LiveConsoleHit[];
   onAddTestHistory?: (record: SmsTestRecord) => void;
+  onAddLiveHit?: (hit: LiveConsoleHit) => void;
   onRefreshHits?: () => void;
+  onSelectService?: (service: string, range?: string) => void;
 }
 
 interface TestSmsItem {
@@ -163,7 +167,9 @@ export function LiveTestSmsView({
   userEmail,
   liveHits,
   onAddTestHistory,
+  onAddLiveHit,
   onRefreshHits,
+  onSelectService,
 }: LiveTestSmsViewProps) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isTestModalOpen, setIsTestModalOpen] = useState(false);
@@ -228,20 +234,51 @@ export function LiveTestSmsView({
       messageBody = `[#] [TikTok] ${generatedOtp} is your verification code`;
     } else if (testServiceInput === "Apple") {
       messageBody = `ùéèΩy@@REG-RESP?v=X;r=${generatedOtp};r...`;
+    } else if (testServiceInput === "Telegram") {
+      messageBody = `Telegram code: ${generatedOtp}. You can also tap on this link to log in.`;
+    } else if (testServiceInput === "Facebook") {
+      messageBody = `${generatedOtp} is your Facebook security code`;
+    } else if (testServiceInput === "IMO") {
+      messageBody = `imo verification code: ${generatedOtp}. Never share this code.`;
     } else {
       messageBody = `${testServiceInput} verification code: ${generatedOtp}`;
+    }
+
+    const testNow = Date.now();
+    const resolvedCountry = testNumberInput.startsWith("880") ? "BANGLADESH" : testNumberInput.startsWith("966") ? "SAUDI ARABIA" : "INTERNATIONAL";
+
+    // 1. Dispatch real-time Telegram notification
+    sendOtpToTelegram({
+      number: testNumberInput.trim(),
+      service: testServiceInput,
+      message: messageBody,
+      time: testNow,
+    }).catch(() => {});
+
+    // 2. Add as live hit for instant reflection in live test feed and social app stream
+    if (onAddLiveHit) {
+      onAddLiveHit({
+        id: `tst_live_${testNow}`,
+        country: resolvedCountry,
+        range: testNumberInput.slice(0, 5) || "37342",
+        number: testNumberInput.trim(),
+        sid: testServiceInput,
+        message: messageBody,
+        time: testNow,
+        operator: "Live Test Direct",
+      } as any);
     }
 
     setTimeout(() => {
       const newRecord: SmsTestRecord = {
         id: `TST-${Math.floor(100000 + Math.random() * 900000)}`,
         testNumber: testNumberInput.trim(),
-        country: testNumberInput.startsWith("880") ? "BANGLADESH" : testNumberInput.startsWith("966") ? "SAUDI ARABIA" : "INTERNATIONAL",
+        country: resolvedCountry,
         carrier: "Direct Gateway Route",
         service: testServiceInput,
         otpCode: generatedOtp,
         message: messageBody,
-        timestamp: Date.now(),
+        timestamp: testNow,
         status: "DELIVERED",
         speedSec: +(0.8 + Math.random() * 0.5).toFixed(1),
       };
@@ -252,7 +289,7 @@ export function LiveTestSmsView({
 
       setIsSendingTest(false);
       setIsTestModalOpen(false);
-    }, 500);
+    }, 400);
   };
 
   return (
@@ -299,7 +336,12 @@ export function LiveTestSmsView({
                 filteredItems.map((item, idx) => (
                   <tr
                     key={item.id || `item_${idx}`}
-                    className="hover:bg-slate-50/80 transition-colors group"
+                    onClick={() => {
+                      if (onSelectService) {
+                        onSelectService(item.sid, item.range);
+                      }
+                    }}
+                    className="hover:bg-amber-50/60 transition-colors group cursor-pointer"
                   >
                     {/* Column 1: Flag + Country Name & Range + Number */}
                     <td className="py-3.5 px-4 align-top">
@@ -323,7 +365,10 @@ export function LiveTestSmsView({
 
                     {/* Column 2: SID */}
                     <td className="py-3.5 px-4 font-normal text-slate-800 text-xs sm:text-sm align-top">
-                      <span className="font-medium">{item.sid}</span>
+                      <span className="inline-flex items-center gap-1 font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                        {item.sid}
+                        <ExternalLink className="w-3 h-3 opacity-70" />
+                      </span>
                     </td>
 
                     {/* Column 3: Message content */}
@@ -332,7 +377,10 @@ export function LiveTestSmsView({
                         <span className="break-all whitespace-pre-wrap">{item.message}</span>
                         <button
                           type="button"
-                          onClick={() => copyToClipboard(item.message, `msg_${idx}`)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            copyToClipboard(item.message, `msg_${idx}`);
+                          }}
                           className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-slate-800 p-1 transition cursor-pointer shrink-0"
                           title="Copy Message"
                         >

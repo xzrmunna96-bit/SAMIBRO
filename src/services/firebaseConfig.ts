@@ -21,22 +21,23 @@ export const firebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig
 
 // Suppress internal Firestore connection retry warnings
 try {
-  setLogLevel('error');
+  setLogLevel('silent');
 } catch {
   // ignore
 }
 
-// Export Firebase services with robust long-polling auto-detection for cloud/iframe containers
+// Export Firebase services with robust long-polling for sandboxed iframes & containers
 let db: any;
 try {
-  db = getFirestore(firebaseApp);
+  db = initializeFirestore(firebaseApp, {
+    experimentalForceLongPolling: true,
+    experimentalAutoDetectLongPolling: true,
+  });
 } catch {
   try {
-    db = initializeFirestore(firebaseApp, {
-      experimentalAutoDetectLongPolling: true,
-    });
-  } catch {
     db = getFirestore(firebaseApp);
+  } catch {
+    db = null;
   }
 }
 export const firestoreDb = db;

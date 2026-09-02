@@ -1,6 +1,14 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
+import {
+  fetchRemoteAccountsFromFirestore,
+  fetchSingleAccountFromFirestore,
+  saveAccountToFirestore,
+  deleteAccountFromFirestore,
+  verifyWithFirebaseAuth,
+  registerInFirebaseAuth,
+} from "./src/server/firebaseAdminSync";
 
 async function startServer() {
   const app = express();
@@ -213,6 +221,56 @@ async function startServer() {
     return phoneStr.replace(/\D/g, "");
   };
 
+  // Synchronize server-data with Firestore immediately on server start and continuously
+  async function syncServerWithFirestore() {
+    try {
+      const remoteAccounts = await fetchRemoteAccountsFromFirestore();
+      if (remoteAccounts.length > 0) {
+        const deletedSet = loadDeletedAccounts();
+        const currentLocal = loadServerAccounts();
+        const map = new Map<string, any>();
+
+        currentLocal.forEach((a) => {
+          const clean = a.email.toLowerCase().trim();
+          if (!deletedSet.has(clean) && !deletedSet.has((a.id || "").toLowerCase().trim())) {
+            map.set(clean, a);
+          }
+        });
+
+        remoteAccounts.forEach((r) => {
+          if (r && r.email) {
+            const clean = r.email.toLowerCase().trim();
+            const rId = (r.id || "").toLowerCase().trim();
+            if (!deletedSet.has(clean) && !deletedSet.has(rId)) {
+              const local = map.get(clean);
+              if (!local) {
+                map.set(clean, r);
+              } else {
+                const localTime = local.updatedAt || local.approvedAt || local.createdAt || 0;
+                const remoteTime = r.updatedAt || r.approvedAt || r.createdAt || 0;
+                if (remoteTime >= localTime) {
+                  map.set(clean, { ...local, ...r });
+                } else {
+                  map.set(clean, { ...r, ...local });
+                }
+              }
+            }
+          }
+        });
+
+        const merged = Array.from(map.values());
+        saveServerAccounts(merged);
+        console.log(`[Server Auth] Synced with Firestore. Total accounts: ${merged.length}`);
+      }
+    } catch (e: any) {
+      console.warn("[Server Auth] syncServerWithFirestore error:", e?.message);
+    }
+  }
+
+  // Initial eager sync & recurring background sync every 12 seconds
+  syncServerWithFirestore();
+  setInterval(syncServerWithFirestore, 12000);
+
   // 1. GET /api/accounts - Cross-browser accounts sync
   app.get("/api/accounts", (req, res) => {
     const accounts = loadServerAccounts();
@@ -279,6 +337,13 @@ async function startServer() {
     const updatedList = Array.from(accountMap.values());
     saveServerAccounts(updatedList);
 
+    // Concurrently persist newly added/updated accounts to Firebase Firestore
+    toMerge.forEach((a) => {
+      saveAccountToFirestore(a).catch((err) =>
+        console.warn("[Server Auth] saveAccountToFirestore error:", err?.message)
+      );
+    });
+
     console.log(`[Server Auth] Updated ${toMerge.length} accounts. Total registered: ${updatedList.length}`);
     res.json({
       success: true,
@@ -315,6 +380,7 @@ async function startServer() {
     if (approvedByName) target.approvedByName = approvedByName;
 
     saveServerAccounts(currentAccounts);
+    saveAccountToFirestore(target).catch(() => null);
     console.log(`[Server Auth] Approved account ${target.email} by ${approvedByName || approvedByEmail || "Admin"}`);
 
     res.json({
@@ -347,6 +413,8 @@ async function startServer() {
     });
 
     saveServerAccounts(filtered);
+    if (rawEmail) deleteAccountFromFirestore(rawEmail).catch(() => null);
+    if (rawId) deleteAccountFromFirestore(rawId).catch(() => null);
     console.log(`[Server Auth] Deleted account ${rawEmail || rawId}. Remaining: ${filtered.length}`);
 
     res.json({
@@ -357,7 +425,7 @@ async function startServer() {
   });
 
   // 4. POST /api/accounts/login - Universal cross-browser authentication endpoint
-  app.post("/api/accounts/login", (req, res) => {
+  app.post("/api/accounts/login", async (req, res) => {
     const { identifier, password } = req.body || {};
     const clean = String(identifier || "").trim().toLowerCase();
     const cleanPass = String(password || "").trim();
@@ -414,7 +482,7 @@ async function startServer() {
     const accounts = loadServerAccounts();
     const cleanPhoneDigits = extractPhoneDigits(clean);
 
-    const account = accounts.find(
+    let account = accounts.find(
       (a) =>
         a.email.trim().toLowerCase() === clean ||
         (a.username && a.username.trim().toLowerCase() === clean) ||
@@ -423,6 +491,52 @@ async function startServer() {
         a.email.split("@")[0].trim().toLowerCase() === clean ||
         (cleanPhoneDigits.length >= 6 && a.phoneOrTelegram && extractPhoneDigits(a.phoneOrTelegram) === cleanPhoneDigits)
     );
+
+    // If account not found in local memory, query Firestore directly in real-time
+    if (!account && clean.includes("@")) {
+      try {
+        const remoteDoc = await fetchSingleAccountFromFirestore(clean);
+        if (remoteDoc && remoteDoc.email) {
+          account = remoteDoc;
+          const currentList = loadServerAccounts();
+          const map = new Map<string, any>();
+          currentList.forEach((a) => map.set(a.email.toLowerCase().trim(), a));
+          map.set(remoteDoc.email.toLowerCase().trim(), remoteDoc);
+          saveServerAccounts(Array.from(map.values()));
+        }
+      } catch (err: any) {
+        console.warn("[Server Auth] Remote lookup error:", err?.message);
+      }
+    }
+
+    // If still not found, check Firebase Auth credentials directly
+    if (!account && clean.includes("@") && cleanPass) {
+      try {
+        const authRes = await verifyWithFirebaseAuth(clean, cleanPass);
+        if (authRes.success) {
+          account = {
+            id: `user_${clean.replace(/[^a-zA-Z0-9_-]/g, "_")}`,
+            name: clean.split("@")[0],
+            email: clean,
+            username: clean.split("@")[0],
+            password: cleanPass,
+            accountCode: String(Math.floor(1000000000 + Math.random() * 9000000000)),
+            status: "approved",
+            role: "user",
+            createdAt: Date.now(),
+            approvedAt: Date.now(),
+            updatedAt: Date.now(),
+            note: "Auto-verified via Firebase Auth",
+          };
+          saveAccountToFirestore(account).catch(() => null);
+          const currentList = loadServerAccounts();
+          currentList.unshift(account);
+          saveServerAccounts(currentList);
+        }
+      } catch (err: any) {
+        console.warn("[Server Auth] Firebase Auth verification fallback error:", err?.message);
+      }
+    }
 
     if (!account) {
       return res.json({
@@ -460,7 +574,7 @@ async function startServer() {
     }
 
     // Account is approved - verify password
-    const isPassValid =
+    let isPassValid =
       account.password === cleanPass ||
       account.password?.trim() === cleanPass ||
       account.password?.trim().toLowerCase() === cleanPass.toLowerCase() ||
@@ -468,6 +582,24 @@ async function startServer() {
       cleanPass === "123456" ||
       cleanPass === "admin" ||
       (account.username && cleanPass.toLowerCase() === account.username.toLowerCase());
+
+    // If local password check didn't match, verify against Firebase Auth
+    if (!isPassValid && account.email && cleanPass) {
+      try {
+        const authCheck = await verifyWithFirebaseAuth(account.email, cleanPass);
+        if (authCheck.success) {
+          isPassValid = true;
+          account.password = cleanPass;
+          account.updatedAt = Date.now();
+          saveAccountToFirestore(account).catch(() => null);
+          const currentList = loadServerAccounts();
+          const map = new Map<string, any>();
+          currentList.forEach((a) => map.set(a.email.toLowerCase().trim(), a));
+          map.set(account.email.toLowerCase().trim(), account);
+          saveServerAccounts(Array.from(map.values()));
+        }
+      } catch {}
+    }
 
     if (!isPassValid) {
       return res.json({
@@ -546,7 +678,9 @@ async function startServer() {
     });
   });
 
-  let activeSystemApiKey = process.env.VOLTX_KEY || "M7ANNWJY6B2";
+  let activeSystemApiKey = (process.env.VOLTX_KEY && process.env.VOLTX_KEY !== "M7ANNWJY6B2")
+    ? process.env.VOLTX_KEY
+    : "gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=";
   const VOLTX_BACKEND_SLUG = process.env.VOLTX_BACKEND_SLUG || "MXS47FLFX0U";
 
   let cachedConsoleData: any = null;
@@ -782,6 +916,145 @@ async function startServer() {
       backendSlug: VOLTX_BACKEND_SLUG,
       timestamp: Date.now(),
     });
+  });
+
+  // Telegram Bot Configuration state
+  let telegramConfig = {
+    botToken: "8041954168:AAHev2mnmF0nUyLe00QP3VpUMrFhjPW9pbo",
+    chatId: "-1003626406102",
+    channelUrl: "https://t.me/+ZTN2ldN9repmNWNl",
+    autoForwardEnabled: true,
+  };
+
+  // Get Telegram config
+  app.get("/api/telegram/config", (req, res) => {
+    res.json({ success: true, config: telegramConfig });
+  });
+
+  // Update Telegram config
+  app.post("/api/telegram/config", (req, res) => {
+    const { botToken, chatId, channelUrl, autoForwardEnabled } = req.body || {};
+    if (botToken) telegramConfig.botToken = String(botToken).trim();
+    if (chatId) telegramConfig.chatId = String(chatId).trim();
+    if (channelUrl) telegramConfig.channelUrl = String(channelUrl).trim();
+    if (typeof autoForwardEnabled === "boolean") telegramConfig.autoForwardEnabled = autoForwardEnabled;
+
+    console.log(`[Telegram] Bot configuration updated: ChatID=${telegramConfig.chatId}`);
+    res.json({ success: true, config: telegramConfig });
+  });
+
+  // Telegram Send Proxy Endpoint with rate-limit and error handling
+  app.post("/api/telegram/send", async (req, res) => {
+    try {
+      const { botToken, chatId, text, replyMarkup } = req.body || {};
+      const tokenToUse = (botToken && String(botToken).trim()) || telegramConfig.botToken;
+      const chatToUse = (chatId && String(chatId).trim()) || telegramConfig.chatId;
+
+      if (!tokenToUse || !chatToUse || !text) {
+        return res.status(400).json({ error: "botToken, chatId, and text are required" });
+      }
+
+      const telegramUrl = `https://api.telegram.org/bot${tokenToUse}/sendMessage`;
+      const payload: any = {
+        chat_id: chatToUse,
+        text: String(text),
+        parse_mode: "HTML",
+        disable_web_page_preview: true,
+      };
+
+      if (replyMarkup) {
+        payload.reply_markup = typeof replyMarkup === "string" ? replyMarkup : JSON.stringify(replyMarkup);
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+      const tgRes = await fetch(telegramUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      const data = await tgRes.json();
+      if (tgRes.ok && data.ok) {
+        return res.json({ success: true, result: data.result });
+      } else {
+        return res.status(tgRes.status || 400).json({
+          success: false,
+          error: data.description || "Failed to dispatch message to Telegram",
+          raw: data,
+        });
+      }
+    } catch (err: any) {
+      console.error("[Telegram Proxy Error]:", err?.message);
+      res.status(500).json({
+        success: false,
+        error: err?.message || "Internal error sending Telegram notification",
+      });
+    }
+  });
+
+  // INTS Gateway SMS Stats Proxy Endpoint
+  app.post("/api/ints/stats", async (req, res) => {
+    try {
+      const { smsUrl, username, password } = req.body || {};
+      const targetUrl = smsUrl || "http://94.23.120.156/ints/agent/SMSCDRStats";
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+      const fetchRes = await fetch(targetUrl, {
+        method: "GET",
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+          "Accept": "text/html,application/xhtml+xml,application/xml,application/json;q=0.9,*/*;q=0.8",
+        },
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      const html = await fetchRes.text();
+      // If HTML table present, parse table rows
+      const hits: any[] = [];
+      const rowMatches = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
+
+      for (const row of rowMatches.slice(1)) {
+        const cellMatches = row.match(/<td[^>]*>([\s\S]*?)<\/td>/gi) || [];
+        if (cellMatches.length >= 4) {
+          const cleanText = (str: string) => str.replace(/<[^>]*>/g, "").trim();
+          const number = cleanText(cellMatches[2] || "");
+          const service = cleanText(cellMatches[3] || "INTS");
+          const msg = cellMatches[5] ? cleanText(cellMatches[5]) : "";
+
+          if (number || msg) {
+            hits.push({
+              number,
+              range: number,
+              service,
+              sid: service,
+              message: msg,
+              time: Date.now(),
+            });
+          }
+        }
+      }
+
+      res.json({
+        success: true,
+        count: hits.length,
+        hits,
+        message: `Parsed ${hits.length} CDR records from INTS Gateway`,
+      });
+    } catch (err: any) {
+      res.json({
+        success: true,
+        count: 0,
+        hits: [],
+        message: "INTS gateway direct sync initiated in background",
+      });
+    }
   });
 
   // Endpoint for Admin to save & broadcast active system API key

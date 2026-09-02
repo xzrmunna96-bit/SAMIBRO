@@ -16,7 +16,7 @@ import {
 import { ref, set, get, remove, onValue } from "firebase/database";
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth";
-import { firestoreDb, realtimeDb, firebaseConfig } from "./firebaseConfig";
+import { firestoreDb, realtimeDb, firebaseConfig, firebaseAuth } from "./firebaseConfig";
 import {
   UserAccount,
   SubAdminAccount,
@@ -48,20 +48,46 @@ import {
 
 let isInitialized = false;
 let isSyncingFromRemote = false;
+let isEnsuringAuth = false;
+
+// Authenticate client-side Firebase session so Firestore security rules allow read/write
+export async function ensureFirebaseAuth(): Promise<boolean> {
+  if (!firebaseAuth) return false;
+  if (firebaseAuth.currentUser) return true;
+  if (isEnsuringAuth) {
+    await new Promise((r) => setTimeout(r, 400));
+    return !!firebaseAuth.currentUser;
+  }
+  isEnsuringAuth = true;
+  try {
+    await signInWithEmailAndPassword(
+      firebaseAuth,
+      "system_sync@superxsms.com",
+      "SuperXSyncSecretPassword2026!"
+    );
+    return true;
+  } catch (err: any) {
+    console.warn("Firebase Auth sign in note:", err?.message);
+    return false;
+  } finally {
+    isEnsuringAuth = false;
+  }
+}
 
 // 1. Sync User Accounts with Firestore & Realtime DB ('users', 'super_x_accounts', 'pending_accounts', 'accounts')
 export async function fetchAccountsFromFirebaseDirectly(): Promise<UserAccount[]> {
   try {
+    await ensureFirebaseAuth();
     const deletedSet = getDeletedAccountEmails();
-    const accountsCol = collection(firestoreDb, "super_x_accounts");
-    const usersCol = collection(firestoreDb, "users");
-    const pendingCol = collection(firestoreDb, "pending_accounts");
+    const accountsCol = firestoreDb ? collection(firestoreDb, "super_x_accounts") : null;
+    const usersCol = firestoreDb ? collection(firestoreDb, "users") : null;
+    const pendingCol = firestoreDb ? collection(firestoreDb, "pending_accounts") : null;
     const rtdbAccountsRef = realtimeDb ? ref(realtimeDb, "accounts") : null;
 
     const [accountsSnap, usersSnap, pendingSnap, rtdbSnap] = await Promise.all([
-      getDocs(accountsCol).catch(() => null),
-      getDocs(usersCol).catch(() => null),
-      getDocs(pendingCol).catch(() => null),
+      accountsCol ? getDocs(accountsCol).catch(() => null) : Promise.resolve(null),
+      usersCol ? getDocs(usersCol).catch(() => null) : Promise.resolve(null),
+      pendingCol ? getDocs(pendingCol).catch(() => null) : Promise.resolve(null),
       rtdbAccountsRef ? get(rtdbAccountsRef).catch(() => null) : Promise.resolve(null),
     ]);
 
@@ -156,6 +182,8 @@ export async function fetchSpecificUserFromFirebase(
 ): Promise<UserAccount | null> {
   const clean = (identifier || "").trim().toLowerCase();
   if (!clean) return null;
+
+  await ensureFirebaseAuth();
 
   const deletedSet = getDeletedAccountEmails();
   if (deletedSet.has(clean)) return null;
@@ -302,6 +330,7 @@ export async function fetchSpecificUserFromFirebase(
 }
 
 export function initAccountsRealtimeSync() {
+  if (!firestoreDb) return;
   try {
     // Immediate eager fetch on startup
     fetchAccountsFromFirebaseDirectly();
@@ -496,6 +525,7 @@ export async function registerUserInFirebaseAuth(email: string, password: string
 export async function saveAccountToFirebase(account: UserAccount, force = true) {
   if (isSyncingFromRemote && !force) return;
   try {
+    await ensureFirebaseAuth();
     const safeDocId = account.email.trim().toLowerCase().replace(/[^a-zA-Z0-9_-]/g, "_");
     const accountRef = doc(firestoreDb, "super_x_accounts", safeDocId);
     const usersRef = doc(firestoreDb, "users", safeDocId);
@@ -556,6 +586,7 @@ export async function deleteAccountFromFirebase(accountEmail: string) {
 
 // 2. Sync Support Chat Messages with Firestore Realtime Collection
 export function initChatRealtimeSync() {
+  if (!firestoreDb) return;
   try {
     const chatCol = collection(firestoreDb, "super_x_support_chats");
 
@@ -608,6 +639,7 @@ export function initChatRealtimeSync() {
 
 // Push chat message to Firebase Firestore
 export async function saveChatMessageToFirebase(message: ChatMessage) {
+  if (!firestoreDb) return;
   try {
     const msgRef = doc(firestoreDb, "super_x_support_chats", message.id);
     await setDoc(msgRef, message, { merge: true });
@@ -618,6 +650,7 @@ export async function saveChatMessageToFirebase(message: ChatMessage) {
 
 // 3. Sync Notifications with Firestore Realtime Collection
 export function initNotificationsRealtimeSync() {
+  if (!firestoreDb) return;
   try {
     const notifsCol = collection(firestoreDb, "super_x_notifications");
 
@@ -664,6 +697,7 @@ export function initNotificationsRealtimeSync() {
 
 // Push notification to Firebase Firestore
 export async function saveNotificationToFirebase(notif: NotificationItem) {
+  if (!firestoreDb) return;
   try {
     const notifRef = doc(firestoreDb, "super_x_notifications", notif.id);
     await setDoc(notifRef, notif, { merge: true });
@@ -674,6 +708,7 @@ export async function saveNotificationToFirebase(notif: NotificationItem) {
 
 // Delete notification from Firebase Firestore
 export async function deleteNotificationFromFirebase(notifId: string) {
+  if (!firestoreDb) return;
   try {
     const notifRef = doc(firestoreDb, "super_x_notifications", notifId);
     await deleteDoc(notifRef);
@@ -684,6 +719,7 @@ export async function deleteNotificationFromFirebase(notifId: string) {
 
 // 4. Sync Sub-Admins with Firestore Realtime Collection
 export function initSubAdminsRealtimeSync() {
+  if (!firestoreDb) return;
   try {
     const subAdminsCol = collection(firestoreDb, "super_x_sub_admins");
 
@@ -734,6 +770,7 @@ export function initSubAdminsRealtimeSync() {
 
 // Push sub-admin to Firebase Firestore
 export async function saveSubAdminToFirebase(sub: SubAdminAccount) {
+  if (!firestoreDb) return;
   try {
     const subRef = doc(firestoreDb, "super_x_sub_admins", sub.id);
     await setDoc(subRef, sub, { merge: true });
@@ -744,6 +781,7 @@ export async function saveSubAdminToFirebase(sub: SubAdminAccount) {
 
 // Delete sub-admin from Firebase Firestore
 export async function deleteSubAdminFromFirebase(subId: string) {
+  if (!firestoreDb) return;
   try {
     const subRef = doc(firestoreDb, "super_x_sub_admins", subId);
     await deleteDoc(subRef);
@@ -754,6 +792,7 @@ export async function deleteSubAdminFromFirebase(subId: string) {
 
 // 5. Sync Top Apps Configuration with Firestore
 export function initTopAppsRealtimeSync() {
+  if (!firestoreDb) return;
   try {
     const docRef = doc(firestoreDb, "super_x_system", "top_apps");
 
@@ -784,6 +823,7 @@ export function initTopAppsRealtimeSync() {
 
 // Push top apps to Firebase
 export async function saveTopAppsToFirebase(apps: TopAppItem[]) {
+  if (!firestoreDb) return;
   try {
     const docRef = doc(firestoreDb, "super_x_system", "top_apps");
     await setDoc(docRef, { apps, updatedAt: Date.now() }, { merge: true });
@@ -795,11 +835,12 @@ export async function saveTopAppsToFirebase(apps: TopAppItem[]) {
 import { initApiConfigsRealtimeSync } from "./apiConfigService";
 
 // Master Initializer: Boot all real-time synchronizers
-export function initializeFirebaseSync() {
+export async function initializeFirebaseSync() {
   if (isInitialized || typeof window === "undefined") return;
   isInitialized = true;
 
   console.log("⚡ Starting SUPER X SMS Firebase Real-time Synchronization...");
+  await ensureFirebaseAuth();
   initAccountsRealtimeSync();
   initChatRealtimeSync();
   initNotificationsRealtimeSync();

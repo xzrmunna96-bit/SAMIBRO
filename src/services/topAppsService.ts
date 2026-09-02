@@ -46,15 +46,21 @@ export function getTopAppsConfig(): TopAppItem[] {
     if (stored) {
       const parsed = JSON.parse(stored);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        // Merge any new default apps that are not yet in stored list
-        const existingIds = new Set(parsed.map((p: any) => p.id));
-        const missingDefaults = DEFAULT_TOP_APPS.filter((d) => !existingIds.has(d.id));
-        if (missingDefaults.length > 0) {
-          const merged = [...parsed, ...missingDefaults];
-          localStorage.setItem(TOP_APPS_STORAGE_KEY, JSON.stringify(merged));
-          return merged;
-        }
-        return parsed;
+        // Merge and deduplicate by id to avoid duplicate keys in React render
+        const map = new Map<string, TopAppItem>();
+        parsed.forEach((p: any) => {
+          if (p && p.id) {
+            map.set(p.id, p);
+          }
+        });
+        DEFAULT_TOP_APPS.forEach((d) => {
+          if (!map.has(d.id)) {
+            map.set(d.id, d);
+          }
+        });
+        const merged = Array.from(map.values());
+        localStorage.setItem(TOP_APPS_STORAGE_KEY, JSON.stringify(merged));
+        return merged;
       }
     }
   } catch (err) {

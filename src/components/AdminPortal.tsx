@@ -115,13 +115,27 @@ import {
   API_CONFIGS_UPDATE_EVENT,
   KNOWN_SOCIAL_SERVICES,
 } from '../services/apiConfigService';
-import { registerUserInFirebaseAuth, fetchAccountsFromFirebaseDirectly } from '../services/firebaseSyncService';
+import {
+  getTelegramConfig,
+  saveTelegramConfig,
+  testTelegramBotConnection,
+  TelegramBotConfig,
+  extractOtpCode,
+} from '../services/telegramService';
+import {
+  getIntsGatewayConfig,
+  saveIntsGatewayConfig,
+  fetchIntsCdrStats,
+  IntsGatewayConfig,
+} from '../services/intsGatewayService';
+import { getCountryInfo } from '../services/countryHelper';
+import { registerUserInFirebaseAuth, fetchAccountsFromFirebaseDirectly, saveAccountToFirebase } from '../services/firebaseSyncService';
 import { fetchAccountsFromServer, approveAccountOnServer, saveAccountToServer } from '../services/serverAuthSync';
 import { getBrandLogoComponent } from './BrandLogos';
 
 const ADMIN_MASTER_PASSWORD = 'XZRMUNNA12061';
 const ADMIN_SESSION_KEY = 'super_x_admin_session_auth_v2';
-const DEFAULT_API_KEY = 'M7ANNWJY6B2';
+const DEFAULT_API_KEY = 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=';
 
 type AdminTab =
   | 'console-api'
@@ -297,6 +311,72 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     saveAllApiConfigs(updated);
     setApiConfigsList(updated);
     showToast('API status updated');
+  };
+
+  // Telegram Auto-Forward Bot State
+  const [telegramConfig, setTelegramConfig] = useState<TelegramBotConfig>(getTelegramConfig());
+  const [isSavingTg, setIsSavingTg] = useState(false);
+  const [isTestingTg, setIsTestingTg] = useState(false);
+  const [tgTestResult, setTgTestResult] = useState<{ success: boolean; message: string; timestamp?: number } | null>(null);
+
+  // INTS Gateway State
+  const [intsConfig, setIntsConfig] = useState<IntsGatewayConfig>(getIntsGatewayConfig());
+  const [isTestingInts, setIsTestingInts] = useState(false);
+  const [intsTestResult, setIntsTestResult] = useState<{ success: boolean; message: string; hitCount?: number } | null>(null);
+
+  const handleSaveTelegramConfig = async () => {
+    setIsSavingTg(true);
+    try {
+      saveTelegramConfig(telegramConfig);
+      showToast('টেলিগ্রাম বট কনফিগারেশন সংরক্ষিত হয়েছে!');
+    } catch {
+      showToast('টেলিগ্রাম সেভ করতে ব্যর্থ');
+    } finally {
+      setIsSavingTg(false);
+    }
+  };
+
+  const handleTestTelegramBot = async () => {
+    setIsTestingTg(true);
+    setTgTestResult(null);
+    try {
+      const res = await testTelegramBotConnection(telegramConfig.botToken, telegramConfig.chatId);
+      setTgTestResult(res);
+      if (res.success) {
+        showToast('টেলিগ্রাম টেস্ট মেসেজ সফলভাবে পাঠানো হয়েছে!');
+      } else {
+        showToast(res.message);
+      }
+    } catch (err: any) {
+      setTgTestResult({
+        success: false,
+        message: err?.message || 'টেলিগ্রাম সংযোগ ব্যর্থ',
+      });
+    } finally {
+      setIsTestingTg(false);
+    }
+  };
+
+  const handleTestIntsGateway = async () => {
+    setIsTestingInts(true);
+    setIntsTestResult(null);
+    try {
+      saveIntsGatewayConfig(intsConfig);
+      const res = await fetchIntsCdrStats();
+      setIntsTestResult({
+        success: res.success,
+        message: res.message,
+        hitCount: res.hits.length,
+      });
+      showToast(res.message);
+    } catch (err: any) {
+      setIntsTestResult({
+        success: false,
+        message: err?.message || 'INTS সংযোগ ব্যর্থ',
+      });
+    } finally {
+      setIsTestingInts(false);
+    }
   };
 
   const handleOpenCreateApiModal = () => {
@@ -1300,9 +1380,17 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     });
 
     if (res.success && res.account) {
+      const approvedAccount = {
+        ...res.account,
+        status: 'approved' as const,
+        approvedAt: Date.now(),
+        updatedAt: Date.now(),
+      };
       // Directly approve so user can sign in immediately
       approveAccount(res.account.id, adminSession.email, adminSession.name);
       approveAccountOnServer(res.account.id, adminSession.email, adminSession.name);
+      saveAccountToServer(approvedAccount);
+      saveAccountToFirebase(approvedAccount);
       registerUserInFirebaseAuth(cleanEmail, cleanPassword);
       setAccountsList(getAllAccounts());
 
@@ -1930,7 +2018,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                       setIsApiKeySaved(false);
                       setTestResult(null);
                     }}
-                    placeholder="Enter API Key (e.g. sk_live_..., M7ANNWJY6B2 or custom API key)..."
+                    placeholder="Enter API Key (e.g. gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0= or custom API key)..."
                     className="w-full flex-1 px-4 py-2.5 font-mono text-xs sm:text-sm bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 shadow-inner"
                   />
 
@@ -2008,9 +2096,9 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                     >
                       All Services
                     </button>
-                    {['WhatsApp', 'Facebook', 'Telegram', 'Google', 'IMO'].map((srv) => (
+                    {['WhatsApp', 'Facebook', 'Telegram', 'Google', 'IMO'].map((srv, srvIdx) => (
                       <button
-                        key={srv}
+                        key={`srv-btn-${srv}-${srvIdx}`}
                         type="button"
                         onClick={() => setApiPoolServiceFilter(srv)}
                         className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer shrink-0 ${
@@ -2044,7 +2132,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                         (cfg.endpoint && cfg.endpoint.toLowerCase().includes(q))
                       );
                     })
-                    .map((cfg) => {
+                    .map((cfg, cfgIdx) => {
                       const isCurrentlyActive =
                         cfg.apiKey.trim().toLowerCase() === apiKeyInput.trim().toLowerCase() ||
                         cfg.isActive;
@@ -2052,7 +2140,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
 
                       return (
                         <div
-                          key={cfg.id}
+                          key={cfg.id ? `${cfg.id}-${cfgIdx}` : `api-cfg-${cfgIdx}`}
                           className={`p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-3 ${
                             isCurrentlyActive
                               ? 'bg-slate-950/90 border-emerald-500/50 shadow-lg shadow-emerald-950/30 ring-1 ring-emerald-500/30'
@@ -2184,6 +2272,262 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
               </div>
             </section>
 
+            {/* Telegram Channel Live Forwarding & INTS Gateway Multi-Route Card */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Telegram Auto-Forward Bot Card */}
+              <section className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-sky-500/15 border border-sky-500/30 rounded-xl text-sky-400">
+                      <Send className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-black text-white flex items-center gap-2">
+                        <span>Telegram OTP Live Forwarder</span>
+                        <span className="text-[10px] bg-sky-500/20 text-sky-300 px-2 py-0.5 rounded-full border border-sky-500/30 font-mono">
+                          Auto-Bot
+                        </span>
+                      </h3>
+                      <p className="text-xs text-slate-400">
+                        যেকোনো এসএমএস / ওটিপি আসলে সরাসরি টেলিগ্রাম চ্যানেলে চলে যাবে
+                      </p>
+                    </div>
+                  </div>
+
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <span className="text-xs font-bold text-slate-300">
+                      {telegramConfig.autoForwardEnabled ? 'সক্রিয় (Active)' : 'নিষ্ক্রিয়'}
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={telegramConfig.autoForwardEnabled}
+                      onChange={(e) => {
+                        const updated = { ...telegramConfig, autoForwardEnabled: e.target.checked };
+                        setTelegramConfig(updated);
+                        saveTelegramConfig(updated);
+                        showToast(e.target.checked ? 'টেলিগ্রাম অটো-ফরোয়ার্ডিং সক্রিয়' : 'টেলিগ্রাম অটো-ফরোয়ার্ডিং নিষ্ক্রিয়');
+                      }}
+                      className="w-4 h-4 text-sky-500 rounded focus:ring-sky-400 bg-slate-800 border-slate-700"
+                    />
+                  </label>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 mb-1">
+                      Telegram Bot Token (বট টোকেন):
+                    </label>
+                    <input
+                      type="text"
+                      value={telegramConfig.botToken}
+                      onChange={(e) => setTelegramConfig({ ...telegramConfig, botToken: e.target.value })}
+                      placeholder="8041954168:AAHev2mnmF0nUyLe00QP3VpUMrFhjPW9pbo"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-sky-300 focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-400 mb-1">
+                        Telegram Chat / Channel ID:
+                      </label>
+                      <input
+                        type="text"
+                        value={telegramConfig.chatId}
+                        onChange={(e) => setTelegramConfig({ ...telegramConfig, chatId: e.target.value })}
+                        placeholder="-1003626406102"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-emerald-300 focus:outline-none focus:border-sky-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-400 mb-1">
+                        Channel Invite Link (চ্যানেল লিংক):
+                      </label>
+                      <input
+                        type="text"
+                        value={telegramConfig.channelUrl || ''}
+                        onChange={(e) => setTelegramConfig({ ...telegramConfig, channelUrl: e.target.value })}
+                        placeholder="https://t.me/+ZTN2ldN9repmNWNl"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-sky-500"
+                      />
+                    </div>
+                  </div>
+
+                  {tgTestResult && (
+                    <div
+                      className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-between ${
+                        tgTestResult.success
+                          ? 'bg-emerald-950/80 border-emerald-500/40 text-emerald-200'
+                          : 'bg-rose-950/80 border-rose-500/40 text-rose-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span>{tgTestResult.message}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setTgTestResult(null)}
+                        className="text-slate-400 hover:text-white"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={handleSaveTelegramConfig}
+                      disabled={isSavingTg}
+                      className="flex-1 py-2 px-3 rounded-xl text-xs font-bold text-white bg-sky-600 hover:bg-sky-500 transition cursor-pointer flex items-center justify-center gap-1.5 shadow-lg shadow-sky-950/50"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>{isSavingTg ? 'সংরক্ষণ হচ্ছে...' : 'Save Bot Config'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleTestTelegramBot}
+                      disabled={isTestingTg}
+                      className="py-2 px-4 rounded-xl text-xs font-bold text-sky-300 bg-slate-800 hover:bg-slate-700 border border-sky-500/30 transition cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <Send className={`w-3.5 h-3.5 ${isTestingTg ? 'animate-bounce' : ''}`} />
+                      <span>{isTestingTg ? 'পাঠানো হচ্ছে...' : 'Test Send Message'}</span>
+                    </button>
+                  </div>
+                </div>
+              </section>
+
+              {/* INTS Carrier Gateway & Live SMS CDR Card */}
+              <section className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-emerald-500/15 border border-emerald-500/30 rounded-xl text-emerald-400">
+                      <Server className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-black text-white flex items-center gap-2">
+                        <span>INTS Carrier Gateway & SMS CDR</span>
+                        <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-500/30 font-mono">
+                          Live Agent
+                        </span>
+                      </h3>
+                      <p className="text-xs text-slate-400">
+                        ইন্টস ক্যারিয়ার এসএমএস সিডিআর টেবিল ও অটো-স্ট্রিমার
+                      </p>
+                    </div>
+                  </div>
+
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <span className="text-xs font-bold text-slate-300">
+                      {intsConfig.isActive ? 'সক্রিয়' : 'নিষ্ক্রিয়'}
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={intsConfig.isActive}
+                      onChange={(e) => {
+                        const updated = { ...intsConfig, isActive: e.target.checked };
+                        setIntsConfig(updated);
+                        saveIntsGatewayConfig(updated);
+                        showToast(e.target.checked ? 'INTS গেটওয়ে সক্রিয়' : 'INTS গেটওয়ে নিষ্ক্রিয়');
+                      }}
+                      className="w-4 h-4 text-emerald-500 rounded focus:ring-emerald-400 bg-slate-800 border-slate-700"
+                    />
+                  </label>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-400 mb-1">
+                        INTS Server Host:
+                      </label>
+                      <input
+                        type="text"
+                        value={intsConfig.baseUrl}
+                        onChange={(e) => setIntsConfig({ ...intsConfig, baseUrl: e.target.value })}
+                        placeholder="http://94.23.120.156/ints"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-emerald-300 focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-400 mb-1">
+                        Agent Username:
+                      </label>
+                      <input
+                        type="text"
+                        value={intsConfig.username}
+                        onChange={(e) => setIntsConfig({ ...intsConfig, username: e.target.value })}
+                        placeholder="XZRMUNNA1206"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 mb-1">
+                      CDR Stats Endpoint Path:
+                    </label>
+                    <input
+                      type="text"
+                      value={intsConfig.smsUrl}
+                      onChange={(e) => setIntsConfig({ ...intsConfig, smsUrl: e.target.value })}
+                      placeholder="http://94.23.120.156/ints/agent/SMSCDRStats"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-slate-300 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  {intsTestResult && (
+                    <div
+                      className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-between ${
+                        intsTestResult.success
+                          ? 'bg-emerald-950/80 border-emerald-500/40 text-emerald-200'
+                          : 'bg-rose-950/80 border-rose-500/40 text-rose-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span>{intsTestResult.message} ({intsTestResult.hitCount || 0} hits synced)</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIntsTestResult(null)}
+                        className="text-slate-400 hover:text-white"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        saveIntsGatewayConfig(intsConfig);
+                        showToast('INTS কনফিগারেশন সংরক্ষিত হয়েছে!');
+                      }}
+                      className="flex-1 py-2 px-3 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 transition cursor-pointer flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-950/50"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Save INTS Config</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleTestIntsGateway}
+                      disabled={isTestingInts}
+                      className="py-2 px-4 rounded-xl text-xs font-bold text-emerald-300 bg-slate-800 hover:bg-slate-700 border border-emerald-500/30 transition cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <Activity className={`w-3.5 h-3.5 text-emerald-400 ${isTestingInts ? 'animate-spin' : ''}`} />
+                      <span>{isTestingInts ? 'সিঙ্ক হচ্ছে...' : 'Sync Live CDR Table'}</span>
+                    </button>
+                  </div>
+                </div>
+              </section>
+            </div>
+
             {/* Real-time Incoming SMS Console Stream */}
             <section className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
@@ -2274,7 +2618,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                           const hitTime = hit.time ? new Date(hit.time).toLocaleTimeString() : 'Just now';
 
                           return (
-                            <tr key={index} className="hover:bg-slate-900/70 transition">
+                            <tr key={hit.time ? `${hit.time}-${hit.sid || ''}-${hit.range || ''}-${index}` : `hit-${index}`} className="hover:bg-slate-900/70 transition">
                               {/* Time */}
                               <td className="py-3 px-4 text-slate-400 whitespace-nowrap text-[11px]">
                                 {hitTime}
@@ -2363,11 +2707,11 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
 
                 {/* Filter Tabs */}
                 <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
-                  {(['ALL', 'pending', 'approved', 'rejected'] as const).map((st) => {
+                  {(['ALL', 'pending', 'approved', 'rejected'] as const).map((st, stIdx) => {
                     const count = accountsList.filter((a) => st === 'ALL' || a.status === st).length;
                     return (
                       <button
-                        key={st}
+                        key={`acc-filter-tab-${st}-${stIdx}`}
                         type="button"
                         onClick={() => setActiveAccFilter(st)}
                         className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
@@ -2465,13 +2809,13 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                   </p>
                 </div>
               ) : (
-                filteredActiveAccountRequests.map((acc) => {
+                filteredActiveAccountRequests.map((acc, accIdx) => {
                   const isPassRevealed = !!revealedPasswords[acc.id];
                   const displayPass = acc.password || 'Password123';
 
                   return (
                     <div
-                      key={acc.id}
+                      key={acc.id ? `${acc.id}-${accIdx}` : `acc-req-${acc.email || ''}-${accIdx}`}
                       className={`bg-slate-900 border rounded-2xl p-5 transition shadow-sm space-y-4 ${
                         acc.status === 'pending'
                           ? 'border-amber-500/40 bg-slate-900/90 ring-1 ring-amber-500/20'
@@ -2712,11 +3056,11 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                 <div className="space-y-2.5">
                   {accountsList
                     .filter((a) => a.banRequest && a.banRequest.status === 'pending')
-                    .map((targetUser) => {
+                    .map((targetUser, bIdx) => {
                       const req = targetUser.banRequest!;
                       return (
                         <div
-                          key={targetUser.id}
+                          key={targetUser.id ? `${targetUser.id}-${bIdx}` : `ban-req-${targetUser.email || bIdx}`}
                           className="p-3.5 rounded-xl bg-slate-950/90 border border-rose-500/30 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs"
                         >
                           <div className="space-y-1">
@@ -2785,9 +3129,9 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
 
               {/* Status Filter Buttons */}
               <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
-                {(['ALL', 'approved', 'suspended', 'pending'] as const).map((st) => (
+                {(['ALL', 'approved', 'suspended', 'pending'] as const).map((st, stIdx) => (
                   <button
-                    key={st}
+                    key={`user-filter-${st}-${stIdx}`}
                     type="button"
                     onClick={() => setUserFilterStatus(st)}
                     className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
@@ -2835,12 +3179,12 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                         </td>
                       </tr>
                     ) : (
-                      filteredAccounts.map((user) => {
+                      filteredAccounts.map((user, uIdx) => {
                         const isPasswordRevealed = !!revealedPasswords[user.id];
                         const displayPass = user.password || 'Password123';
 
                         return (
-                          <tr key={user.id} className="hover:bg-slate-900/60 transition">
+                          <tr key={user.id ? `${user.id}-${user.email || ''}-${uIdx}` : `user-row-${user.email || ''}-${uIdx}`} className="hover:bg-slate-900/60 transition">
                             {/* User Details */}
                             <td className="py-3.5 px-4">
                               <div className="flex items-center gap-2 flex-wrap">
@@ -3517,8 +3861,8 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                       <option value="all">📢 All Users (সব ইউজারকে পাঠান)</option>
                       <option value="custom">✍️ Enter Custom Email / Phone...</option>
                       <optgroup label="Registered Active Users">
-                        {accountsList.map((usr) => (
-                          <option key={usr.id} value={usr.email}>
+                        {accountsList.map((usr, usrIdx) => (
+                          <option key={usr.id ? `${usr.id}-${usr.email || ''}-${usrIdx}` : `usr-opt-${usrIdx}`} value={usr.email}>
                             👤 {usr.name || usr.email} ({usr.accountCode || usr.email})
                           </option>
                         ))}
@@ -3614,9 +3958,9 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {notificationsList.map((n) => (
+                  {notificationsList.map((n, nIdx) => (
                     <div
-                      key={n.id}
+                      key={n.id ? `${n.id}-${nIdx}` : `notif-${nIdx}`}
                       className="p-4 rounded-xl bg-slate-950 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                     >
                       <div className="space-y-1">
@@ -3766,11 +4110,11 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                {adminTopApps.map((app) => {
+                {adminTopApps.map((app, appIdx) => {
                   const isComingSoon = app.status === 'coming_soon';
                   return (
                     <div
-                      key={app.id}
+                      key={app.id ? `${app.id}-${appIdx}` : `topapp-${appIdx}`}
                       className={`p-4 rounded-xl border transition-all flex flex-col justify-between ${
                         app.isEnabled === false
                           ? 'bg-slate-950/50 border-slate-800/50 opacity-50'
@@ -3894,13 +4238,13 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                       No user conversations yet.
                     </div>
                   ) : (
-                    chatConversations.map((conv) => {
+                    chatConversations.map((conv, cIdx) => {
                       const isSelected =
                         conv.userEmail.toLowerCase() === activeChatUserEmail.toLowerCase();
 
                       return (
                         <button
-                          key={conv.userEmail}
+                          key={conv.userEmail ? `${conv.userEmail}-${cIdx}` : `conv-${cIdx}`}
                           type="button"
                           onClick={() => handleSelectChatUser(conv.userEmail)}
                           className={`w-full text-left p-3.5 transition flex items-start justify-between gap-2 cursor-pointer ${
@@ -3988,12 +4332,12 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                           No messages yet in this conversation.
                         </div>
                       ) : (
-                        currentChatMessages.map((msg) => {
+                        currentChatMessages.map((msg, msgIdx) => {
                           const isAdmin = msg.sender === 'admin';
 
                           return (
                             <div
-                              key={msg.id}
+                              key={msg.id ? `${msg.id}-${msgIdx}` : `chat-msg-${msgIdx}`}
                               className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'}`}
                             >
                               <div
@@ -4031,7 +4375,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                         'Thank you for contacting Super X SMS support.',
                       ].map((tmpl, idx) => (
                         <button
-                          key={idx}
+                          key={`quick-tmpl-${idx}`}
                           type="button"
                           onClick={() => handleSendTemplateReply(tmpl)}
                           className="px-2 py-0.5 rounded-full bg-slate-800 hover:bg-purple-900/60 text-slate-300 hover:text-purple-200 text-[10px] whitespace-nowrap transition cursor-pointer border border-slate-700"
@@ -4201,10 +4545,10 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/60 font-mono">
-                      {subAdminsList.map((sub) => {
+                      {subAdminsList.map((sub, sIdx) => {
                         const isPassRevealed = revealedSubAdminPasswords[sub.id];
                         return (
-                          <tr key={sub.id} className="hover:bg-slate-850/50 transition">
+                          <tr key={sub.id ? `${sub.id}-${sIdx}` : `sub-${sub.email || ''}-${sIdx}`} className="hover:bg-slate-850/50 transition">
                             <td className="py-3 px-4 font-sans font-bold text-white">
                               <div className="flex items-center gap-2">
                                 <div className="w-7 h-7 rounded-lg bg-cyan-950 border border-cyan-500/30 text-cyan-400 flex items-center justify-center font-bold text-xs">
@@ -4520,7 +4864,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                       setCreateApiKey(e.target.value);
                       setNewApiTestResult(null);
                     }}
-                    placeholder="Enter API Key (e.g. M7ANNWJY6B2, sk_live_... or custom API key)"
+                    placeholder="Enter API Key (e.g. gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=, sk_live_... or custom API key)"
                     className="w-full pl-10 pr-4 py-2.5 text-xs bg-slate-950 border border-slate-700 rounded-xl text-emerald-300 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
                   />
                 </div>
@@ -4802,8 +5146,8 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                   className="w-full px-3.5 py-2.5 text-xs bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 font-bold"
                 >
                   <option value="ALL (Global Auto-Detect)">⚡ ALL (Global Auto-Detect &amp; Route All Homepage Apps)</option>
-                  {getTopAppsConfig().map((app) => (
-                    <option key={app.id} value={app.name}>
+                  {getTopAppsConfig().map((app, appIdx) => (
+                    <option key={app.id ? `${app.id}-${appIdx}` : `topapp-opt-${appIdx}`} value={app.name}>
                       {app.name} (Homepage App)
                     </option>
                   ))}
@@ -4813,9 +5157,9 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                 {/* Quick Suggested Social Media Badges */}
                 <div className="mt-2 flex items-center gap-1.5 flex-wrap">
                   <span className="text-[10px] font-bold text-slate-400 uppercase">দ্রুত নির্বাচন:</span>
-                  {['WhatsApp', 'Telegram', 'FACEBOOK', 'IMO', 'Google', 'TikTok', 'Instagram', 'Twitter / X'].map((appName) => (
+                  {['WhatsApp', 'Telegram', 'FACEBOOK', 'IMO', 'Google', 'TikTok', 'Instagram', 'Twitter / X'].map((appName, appIdx) => (
                     <button
-                      key={appName}
+                      key={`quick-app-btn-${appName}-${appIdx}`}
                       type="button"
                       onClick={() => {
                         setCreateApiService(appName);
@@ -4848,7 +5192,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                     setCreateApiKey(e.target.value);
                     setNewApiTestResult(null);
                   }}
-                  placeholder="Enter API Key (e.g. M7ANNWJY6B2 or custom gateway key)..."
+                  placeholder="Enter API Key (e.g. gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0= or custom gateway key)..."
                   className="w-full px-3.5 py-2.5 text-xs bg-slate-950 border border-emerald-500/60 rounded-xl text-emerald-300 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono shadow-inner font-bold"
                 />
               </div>

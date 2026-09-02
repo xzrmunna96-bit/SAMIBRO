@@ -85,6 +85,12 @@ import {
   CountryOperatorItem,
 } from "../data/countryOperators";
 import {
+  extractOtpCode,
+  getTelegramConfig,
+  sendOtpToTelegram,
+} from "../services/telegramService";
+import { getCountryInfo } from "../services/countryHelper";
+import {
   getAllAccounts,
   getAllSubAdmins,
   getDeletedAccountEmails,
@@ -1484,13 +1490,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   // Helper to extract OTP digits from message
   const extractOtp = (message: string): string | null => {
     if (!message) return null;
-    const gCode = message.match(/G-\d{6}/i);
-    if (gCode) return gCode[0];
-    const hyphenCode = message.match(/\b\d{3}-\d{3}\b/);
-    if (hyphenCode) return hyphenCode[0];
-    const digitCode = message.match(/\b\d{4,8}\b/);
-    if (digitCode) return digitCode[0];
-    return null;
+    return extractOtpCode(message);
   };
 
   // Helper to mask OTP code in message with 'X' (e.g. 088309 -> XXXXXX)
@@ -1822,6 +1822,21 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       });
 
       if (consoleRes.hits && consoleRes.hits.length > 0) {
+        // Auto-forward live OTP packets to Telegram channel
+        consoleRes.hits.forEach((h) => {
+          if (h.message) {
+            const extracted = extractOtpCode(h.message);
+            if (extracted) {
+              sendOtpToTelegram({
+                number: (h as any).number || h.range || "Live Gateway",
+                service: h.sid || "Live Console",
+                message: h.message,
+                time: h.time,
+              }).catch(() => {});
+            }
+          }
+        });
+
         setLiveHits((prev) => {
           if (prev.length === 0) return consoleRes.hits;
           const existingKeys = new Set(
@@ -1849,6 +1864,18 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         });
       }
       if (otps && otps.length > 0) {
+        // Auto-forward verified OTPs to Telegram
+        otps.forEach((o) => {
+          if (o.message) {
+            sendOtpToTelegram({
+              number: o.number || "Direct Route",
+              service: "Verified Carrier SMS",
+              message: o.message,
+              time: o.time,
+            }).catch(() => {});
+          }
+        });
+
         setLiveSuccessOtps((prev) => {
           if (
             prev.length === otps.length &&
@@ -1992,6 +2019,14 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             hasChange = true;
             newlyDeliveredOtp = matchedCode;
             newlyDeliveredNum = entry.number;
+
+            // Broadcast OTP to Telegram Bot Channel
+            sendOtpToTelegram({
+              number: entry.number,
+              service: matchedService,
+              message: entry.activity || `Verification code for ${matchedService}: ${matchedCode}`,
+              time: Date.now(),
+            }).catch(() => {});
 
             // Broadcast OTP to server so all teammates on this email see it instantly
             if (user?.email) {
@@ -3127,6 +3162,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         if (appSearchName === "uber" && (msg.includes("uber") || sid.includes("uber"))) return true;
                         if (appSearchName === "apple" && (msg.includes("apple") || sid.includes("apple"))) return true;
                         if (appSearchName === "microsoft" && (msg.includes("microsoft") || sid.includes("msft"))) return true;
+                        if (appSearchName === "google" && (msg.includes("google") || msg.includes("g-") || sid.includes("google") || sid.includes("gsuite"))) return true;
+                        if (appSearchName === "instagram" && (msg.includes("instagram") || sid.includes("instagram") || sid.includes("insta"))) return true;
+                        if (appSearchName.includes("twitter") && (msg.includes("twitter") || msg.includes("x.com") || sid.includes("twitter") || sid.includes("x.com"))) return true;
+                        if (msg.includes(appSearchName)) return true;
                         return false;
                       });
                       const realCount = realHitsForApp.length;
@@ -5260,7 +5299,17 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             userEmail={user.email}
             liveHits={liveHits}
             onAddTestHistory={handleAddTestRecord}
+            onAddLiveHit={(hit) => {
+              setLiveHits((prev) => [hit, ...prev]);
+            }}
             onRefreshHits={fetchRealTimeData}
+            onSelectService={(service, range) => {
+              setActiveAppConsoleService(service);
+              setSelectedService(service);
+              if (range) {
+                setSelectedRange(range);
+              }
+            }}
           />
         )}
 
@@ -5383,16 +5432,23 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               </thead>
               <tbody className="divide-y divide-slate-300 bg-white">
                 {(() => {
-                  const filteredHits = liveHits.filter(
-                    (h) =>
-                      (h.sid || "").toLowerCase().includes(activeAppConsoleService.toLowerCase()) ||
-                      activeAppConsoleService.toLowerCase().includes((h.sid || "").toLowerCase()) ||
-                      (activeAppConsoleService.toLowerCase() === "whatsapp" && (h.message || "").toLowerCase().includes("whatsapp")) ||
-                      (activeAppConsoleService.toLowerCase() === "facebook" && (h.message || "").toLowerCase().includes("facebook")) ||
-                      (activeAppConsoleService.toLowerCase() === "telegram" && (h.message || "").toLowerCase().includes("telegram")) ||
-                      (activeAppConsoleService.toLowerCase() === "tiktok" && (h.message || "").toLowerCase().includes("tiktok")) ||
-                      (activeAppConsoleService.toLowerCase() === "imo" && (h.message || "").toLowerCase().includes("imo")),
-                  );
+                  const targetService = activeAppConsoleService.toLowerCase();
+                  const filteredHits = liveHits.filter((h) => {
+                    const sid = (h.sid || "").toLowerCase();
+                    const msg = (h.message || "").toLowerCase();
+
+                    if (sid.includes(targetService) || targetService.includes(sid)) return true;
+                    if (targetService === "whatsapp" && (msg.includes("whatsapp") || sid.includes("wa"))) return true;
+                    if (targetService === "facebook" && (msg.includes("facebook") || sid.includes("fb") || msg.includes("meta"))) return true;
+                    if (targetService === "telegram" && (msg.includes("telegram") || sid.includes("tg"))) return true;
+                    if (targetService === "tiktok" && msg.includes("tiktok")) return true;
+                    if (targetService === "imo" && (msg.includes("imo") || sid.includes("imo"))) return true;
+                    if (targetService === "google" && (msg.includes("google") || msg.includes("g-") || sid.includes("google") || sid.includes("gsuite"))) return true;
+                    if (targetService === "instagram" && (msg.includes("instagram") || sid.includes("instagram") || sid.includes("insta"))) return true;
+                    if (targetService.includes("twitter") && (msg.includes("twitter") || msg.includes("x.com") || sid.includes("twitter") || sid.includes("x.com"))) return true;
+                    if (msg.includes(targetService)) return true;
+                    return false;
+                  });
 
                   if (filteredHits.length === 0) {
                     return (

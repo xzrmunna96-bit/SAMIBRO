@@ -30,7 +30,7 @@ export const DEFAULT_API_CONFIGS: ApiConfigItem[] = [
   {
     id: 'default-global-api',
     name: 'SUPER X Primary Multi-Carrier Gateway',
-    apiKey: 'M7ANNWJY6B2',
+    apiKey: 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=',
     serviceType: 'ALL (Global Auto-Detect)',
     endpoint: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
     isActive: true,
@@ -40,7 +40,7 @@ export const DEFAULT_API_CONFIGS: ApiConfigItem[] = [
   {
     id: 'default-wa-api',
     name: 'WhatsApp Dedicated Route',
-    apiKey: 'M7ANNWJY6B2',
+    apiKey: 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=',
     serviceType: 'WhatsApp',
     endpoint: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
     isActive: true,
@@ -50,7 +50,7 @@ export const DEFAULT_API_CONFIGS: ApiConfigItem[] = [
   {
     id: 'default-fb-api',
     name: 'Facebook & Meta Verification',
-    apiKey: 'M7ANNWJY6B2',
+    apiKey: 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=',
     serviceType: 'Facebook',
     endpoint: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
     isActive: true,
@@ -60,7 +60,7 @@ export const DEFAULT_API_CONFIGS: ApiConfigItem[] = [
   {
     id: 'default-tg-api',
     name: 'Telegram Routing Terminal',
-    apiKey: 'M7ANNWJY6B2',
+    apiKey: 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=',
     serviceType: 'Telegram',
     endpoint: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
     isActive: true,
@@ -68,9 +68,19 @@ export const DEFAULT_API_CONFIGS: ApiConfigItem[] = [
     createdAt: Date.now(),
   },
   {
+    id: 'default-ints-gateway',
+    name: 'INTS Carrier Gateway (Agent CDR)',
+    apiKey: 'XZRMUNNA1206:XZRMUNNA0079',
+    serviceType: 'ALL (INTS Multi-Route)',
+    endpoint: 'http://94.23.120.156/ints',
+    isActive: true,
+    notes: 'INTS Agent SMS CDR Gateway - Live Table Scraper & Carrier Stream',
+    createdAt: Date.now(),
+  },
+  {
     id: 'default-gg-api',
     name: 'Google & Gmail Verification Route',
-    apiKey: 'M7ANNWJY6B2',
+    apiKey: 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=',
     serviceType: 'Google',
     endpoint: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
     isActive: true,
@@ -85,7 +95,16 @@ export function getAllApiConfigs(): ApiConfigItem[] {
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        // Automatically migrate any instances of the deprecated old key to the new key and deduplicate
+        const map = new Map<string, ApiConfigItem>();
+        parsed.forEach((item, idx) => {
+          if (item && typeof item === 'object') {
+            const keyId = item.id || `api-cfg-${idx}`;
+            const itemKey = item.apiKey === 'M7ANNWJY6B2' ? 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=' : item.apiKey;
+            map.set(keyId, { ...item, id: keyId, apiKey: itemKey });
+          }
+        });
+        return Array.from(map.values());
       }
     }
   } catch (err) {
@@ -148,14 +167,16 @@ export async function addApiConfig(
   setVoltxEndpointKey(cleanKey);
 
   // 2. Persist to Firestore collection 'apiConfigs'
-  try {
-    const docRef = doc(firestoreDb, 'apiConfigs', newItem.id);
-    await setDoc(docRef, {
-      ...newItem,
-      createdAt: new Date(),
-    }, { merge: true });
-  } catch (err) {
-    console.warn('Firestore addDoc note for apiConfigs (local saved):', err);
+  if (firestoreDb) {
+    try {
+      const docRef = doc(firestoreDb, 'apiConfigs', newItem.id);
+      await setDoc(docRef, {
+        ...newItem,
+        createdAt: new Date(),
+      }, { merge: true });
+    } catch (err) {
+      console.warn('Firestore addDoc note for apiConfigs (local saved):', err);
+    }
   }
 
   return newItem;
@@ -187,11 +208,13 @@ export async function updateApiConfig(
     setVoltxEndpointKey(updates.apiKey.trim());
   }
 
-  try {
-    const docRef = doc(firestoreDb, 'apiConfigs', configId);
-    await setDoc(docRef, updatedItem, { merge: true });
-  } catch (err) {
-    console.warn('Firestore update error for apiConfigs:', err);
+  if (firestoreDb) {
+    try {
+      const docRef = doc(firestoreDb, 'apiConfigs', configId);
+      await setDoc(docRef, updatedItem, { merge: true });
+    } catch (err) {
+      console.warn('Firestore update error for apiConfigs:', err);
+    }
   }
 
   return true;
@@ -218,11 +241,13 @@ export async function setActiveApiConfig(configId: string, serviceType: string) 
   setMauthApiKey(target.apiKey);
   setVoltxEndpointKey(target.apiKey);
 
-  try {
-    const docRef = doc(firestoreDb, 'apiConfigs', configId);
-    await setDoc(docRef, { isActive: true, updatedAt: Date.now() }, { merge: true });
-  } catch (err) {
-    console.warn('Failed to update active state in Firestore:', err);
+  if (firestoreDb) {
+    try {
+      const docRef = doc(firestoreDb, 'apiConfigs', configId);
+      await setDoc(docRef, { isActive: true, updatedAt: Date.now() }, { merge: true });
+    } catch (err) {
+      console.warn('Failed to update active state in Firestore:', err);
+    }
   }
 }
 
@@ -234,11 +259,13 @@ export async function deleteApiConfig(configId: string) {
   const updated = existing.filter((c) => c.id !== configId);
   saveAllApiConfigs(updated);
 
-  try {
-    const docRef = doc(firestoreDb, 'apiConfigs', configId);
-    await deleteDoc(docRef);
-  } catch (err) {
-    console.warn('Failed to delete API config from Firestore:', err);
+  if (firestoreDb) {
+    try {
+      const docRef = doc(firestoreDb, 'apiConfigs', configId);
+      await deleteDoc(docRef);
+    } catch (err) {
+      console.warn('Failed to delete API config from Firestore:', err);
+    }
   }
 }
 
@@ -380,6 +407,7 @@ let isSyncing = false;
  * Real-time Listener for Firestore 'apiConfigs' Collection
  */
 export function initApiConfigsRealtimeSync() {
+  if (!firestoreDb) return;
   try {
     const apiCol = collection(firestoreDb, 'apiConfigs');
 

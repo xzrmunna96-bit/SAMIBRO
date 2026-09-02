@@ -254,7 +254,13 @@ export function getAllAccounts(): UserAccount[] {
     }
   });
 
-  const mergedList = Array.from(mergedMap.values());
+  const mergedList = Array.from(mergedMap.values()).map((acc, idx) => {
+    if (!acc.id) {
+      const cleanEmail = (acc.email || '').replace(/[^a-zA-Z0-9]/g, '_');
+      return { ...acc, id: `user_${cleanEmail || idx}` };
+    }
+    return acc;
+  });
 
   // Auto-sync back to both primary & backup storage to guarantee absolute permanence
   if (typeof window !== 'undefined') {
@@ -340,6 +346,7 @@ export function requestNewAccount(params: {
 
       saveAllAccounts(accounts);
       saveAccountToFirebase(existing);
+      saveAccountToServer(existing);
 
       return {
         success: true,

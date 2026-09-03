@@ -315,20 +315,35 @@ export interface FetchConsoleResponse {
 export function normalizeServiceId(rawSid: string, rawMessage: string): string {
   const sid = (rawSid || '').trim();
   const msg = (rawMessage || '').toLowerCase();
+  const lowerSid = sid.toLowerCase();
 
-  if (sid.toLowerCase().includes('whatsapp') || msg.includes('whatsapp')) return 'WhatsApp';
-  if (sid.toLowerCase().includes('facebook') || msg.includes('facebook') || msg.includes('fb-') || msg.includes('meta')) return 'Facebook';
-  if (sid.toLowerCase().includes('telegram') || msg.includes('telegram')) return 'Telegram';
-  if (sid.toLowerCase().includes('google') || msg.includes('google') || msg.includes('g-') || msg.includes('gsuite')) return 'Google';
-  if (sid.toLowerCase().includes('imo') || msg.includes('imo code') || msg.includes('imo verification')) return 'IMO';
-  if (sid.toLowerCase().includes('tiktok') || msg.includes('tiktok')) return 'TikTok';
-  if (sid.toLowerCase().includes('instagram') || msg.includes('instagram')) return 'Instagram';
-  if (sid.toLowerCase().includes('twitter') || sid.toLowerCase().includes('x.com') || msg.includes('twitter')) return 'Twitter / X';
-  if (sid.toLowerCase().includes('amazon') || msg.includes('amazon')) return 'Amazon';
-  if (sid.toLowerCase().includes('apple') || msg.includes('apple')) return 'Apple';
-  if (sid.toLowerCase().includes('snapchat') || msg.includes('snapchat')) return 'Snapchat';
-  if (sid.toLowerCase().includes('viber') || msg.includes('viber')) return 'Viber';
-  if (sid.toLowerCase().includes('discord') || msg.includes('discord')) return 'Discord';
+  if (lowerSid.includes('baji') || msg.includes('baji') || msg.includes('baji999') || msg.includes('bj999')) return 'Baji';
+  if (lowerSid.includes('whatsapp') || msg.includes('whatsapp') || lowerSid === 'wa' || msg.includes('wa.me')) return 'WhatsApp';
+  if (lowerSid.includes('facebook') || msg.includes('facebook') || msg.includes('fb-') || msg.includes('meta')) return 'Facebook';
+  if (lowerSid.includes('telegram') || msg.includes('telegram') || lowerSid === 'tg' || msg.includes('t.me')) return 'Telegram';
+  if (lowerSid.includes('google') || msg.includes('google') || msg.includes('g-') || msg.includes('gsuite')) return 'Google';
+  if (lowerSid.includes('imo') || msg.includes('imo code') || msg.includes('imo verification') || msg.includes('imo ')) return 'IMO';
+  if (lowerSid.includes('tiktok') || msg.includes('tiktok')) return 'TikTok';
+  if (lowerSid.includes('instagram') || msg.includes('instagram') || lowerSid.includes('insta')) return 'Instagram';
+  if (lowerSid.includes('twitter') || lowerSid.includes('x.com') || msg.includes('twitter')) return 'Twitter / X';
+  if (lowerSid.includes('amazon') || msg.includes('amazon')) return 'Amazon';
+  if (lowerSid.includes('apple') || msg.includes('apple')) return 'Apple';
+  if (lowerSid.includes('snapchat') || msg.includes('snapchat')) return 'Snapchat';
+  if (lowerSid.includes('viber') || msg.includes('viber')) return 'Viber';
+  if (lowerSid.includes('discord') || msg.includes('discord')) return 'Discord';
+  if (lowerSid.includes('shopee') || msg.includes('shopee')) return 'Shopee';
+  if (lowerSid.includes('melbet') || msg.includes('melbet')) return 'Melbet';
+  if (lowerSid.includes('avabet') || msg.includes('avabet')) return 'AVABet';
+  if (lowerSid.includes('paypal') || msg.includes('paypal')) return 'PAYPAL';
+  if (lowerSid.includes('uber') || msg.includes('uber')) return 'Uber';
+  if (lowerSid.includes('bolt') || msg.includes('bolt')) return 'Bolt';
+  if (lowerSid.includes('microsoft') || msg.includes('microsoft')) return 'Microsoft';
+  if (lowerSid.includes('huawei') || msg.includes('huawei') || lowerSid.includes('ullawei')) return 'Huawei';
+  if (lowerSid.includes('authmsg') || msg.includes('authmsg')) return 'AUTHMSG';
+  if (lowerSid.includes('msverify') || msg.includes('msverify')) return 'msverify';
+  if (lowerSid.includes('verify') || msg.includes('verify')) return 'Verify';
+  if (lowerSid.includes('iatsms') || msg.includes('iatsms')) return 'iATSMS';
+  if (lowerSid.includes('linkedin') || msg.includes('linkedin')) return 'LinkedIn';
 
   return sid || 'Service';
 }

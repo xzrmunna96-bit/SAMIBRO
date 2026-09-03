@@ -1,11 +1,31 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { OfficeIllustration } from './components/OfficeIllustration';
 import { LoginForm, UserData } from './components/LoginForm';
-import { LoggedInDashboard } from './components/LoggedInDashboard';
-import { AdminPortal } from './components/AdminPortal';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, Loader2 } from 'lucide-react';
 import { initializeFirebaseSync } from './services/firebaseSyncService';
 import { initServerRealtimeSync } from './services/serverAuthSync';
+
+// Lazy loading heavy components to optimize initial bundle load and startup speed
+const LoggedInDashboard = lazy(() =>
+  import('./components/LoggedInDashboard').then((m) => ({ default: m.LoggedInDashboard }))
+);
+const AdminPortal = lazy(() =>
+  import('./components/AdminPortal').then((m) => ({ default: m.AdminPortal }))
+);
+
+function ViewLoadingFallback({ title }: { title: string }) {
+  return (
+    <div className="min-h-screen w-full bg-slate-950 text-white flex flex-col items-center justify-center p-6 text-center font-sans">
+      <div className="flex flex-col items-center space-y-4 max-w-xs p-6 rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl">
+        <Loader2 className="w-10 h-10 text-emerald-400 animate-spin" />
+        <div className="space-y-1">
+          <p className="text-sm font-black text-white tracking-wide">{title}</p>
+          <p className="text-xs text-slate-400">SUPER X SMS Platform Loading...</p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const STORAGE_KEY_USER = 'super_x_user';
 
@@ -149,7 +169,7 @@ function AppContent() {
     const interval = setInterval(() => {
       const isRoute = checkIsAdminRoute();
       setIsAdminRoute((prev) => (prev !== isRoute ? isRoute : prev));
-    }, 400);
+    }, 1000);
 
     return () => {
       window.removeEventListener('popstate', handleLocationChange);
@@ -213,12 +233,20 @@ function AppContent() {
 
   // 1. If on /admin route -> render Admin Portal
   if (isAdminRoute) {
-    return <AdminPortal onBackToLogin={handleBackToLoginFromAdmin} />;
+    return (
+      <Suspense fallback={<ViewLoadingFallback title="Admin Portal" />}>
+        <AdminPortal onBackToLogin={handleBackToLoginFromAdmin} />
+      </Suspense>
+    );
   }
 
   // 2. When logged in -> render the complete full-screen SMS/OTP Dashboard matching the portal layout
   if (currentUser) {
-    return <LoggedInDashboard user={currentUser} onLogout={handleLogout} />;
+    return (
+      <Suspense fallback={<ViewLoadingFallback title="SMS Dashboard" />}>
+        <LoggedInDashboard user={currentUser} onLogout={handleLogout} />
+      </Suspense>
+    );
   }
 
   // 3. Otherwise -> Regular Login Viewport

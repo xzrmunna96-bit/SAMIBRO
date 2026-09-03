@@ -51,7 +51,9 @@ import {
   Download,
   Receipt,
   Gauge,
+  FileSpreadsheet,
 } from "lucide-react";
+import { SmsCdrReportsView } from "./SmsCdrReportsView";
 import { LiveTestSmsView, SmsTestRecord } from "./LiveTestSmsView";
 import { SmsTestHistoryView } from "./SmsTestHistoryView";
 import {
@@ -90,6 +92,8 @@ import {
   sendOtpToTelegram,
 } from "../services/telegramService";
 import { getCountryInfo } from "../services/countryHelper";
+import { fetchIntsCdrStats } from "../services/intsGatewayService";
+import { getActiveApiKeys } from "../services/apiConfigService";
 import {
   getAllAccounts,
   getAllSubAdmins,
@@ -569,6 +573,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     | "smsRange"
     | "smsNumber"
     | "summary"
+    | "smsCdrReports"
     | "accessList"
     | "senderRange"
     | "terminal"
@@ -588,6 +593,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           "smsRange",
           "smsNumber",
           "summary",
+          "smsCdrReports",
           "accessList",
           "senderRange",
           "terminal",
@@ -948,20 +954,24 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     return [];
   });
 
-  // Save live hits to localStorage and auto-clean older than 24 hours
+  // Save live hits to localStorage with debouncing (prevents UI freeze/hang)
   useEffect(() => {
-    try {
-      const now = Date.now();
-      const oneDayAgo = now - 24 * 60 * 60 * 1000;
-      const validHits = liveHits.filter((item: any) => {
-        const t = typeof item.time === "number" ? item.time : (item.timestamp || new Date(item.time).getTime());
-        return !isNaN(t) && t >= oneDayAgo;
-      });
-      localStorage.setItem("super_x_live_console_hits_24h", JSON.stringify(validHits));
-    } catch {}
+    const timer = setTimeout(() => {
+      try {
+        const now = Date.now();
+        const oneDayAgo = now - 24 * 60 * 60 * 1000;
+        const validHits = liveHits.slice(0, 80).filter((item: any) => {
+          const t = typeof item.time === "number" ? item.time : (item.timestamp || new Date(item.time).getTime());
+          return !isNaN(t) && t >= oneDayAgo;
+        });
+        localStorage.setItem("super_x_live_console_hits_24h", JSON.stringify(validHits));
+      } catch {}
+    }, 1500);
+
+    return () => clearTimeout(timer);
   }, [liveHits]);
 
-  // Periodic 24-hour cleanup check every 60 seconds
+  // Periodic 24-hour cleanup check every 2 minutes
   useEffect(() => {
     const purgeInterval = setInterval(() => {
       setLiveHits((prev) => {
@@ -973,13 +983,13 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         });
         if (filtered.length !== prev.length) {
           try {
-            localStorage.setItem("super_x_live_console_hits_24h", JSON.stringify(filtered));
+            localStorage.setItem("super_x_live_console_hits_24h", JSON.stringify(filtered.slice(0, 80)));
           } catch {}
           return filtered;
         }
         return prev;
       });
-    }, 60000);
+    }, 120000);
 
     return () => clearInterval(purgeInterval);
   }, []);
@@ -1801,32 +1811,55 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     return () => clearInterval(interval);
   }, []);
 
+  const isFetchingDataRef = useRef(false);
+  const forwardedOtpKeysRef = useRef(new Set<string>());
+
   // Poll background data from integrated upstream & console auto refresh countdown
   const fetchRealTimeData = async () => {
+    if (isFetchingDataRef.current) return;
+    isFetchingDataRef.current = true;
     try {
-      const [consoleRes, access, otps, sharedAccRes] = await Promise.all([
-        fetchLiveConsoleDetailed(apiKey),
-        fetchLiveAccess(apiKey),
-        fetchSuccessOtps(apiKey),
+      const activeKeys = getActiveApiKeys();
+      const targetKeys = activeKeys.length > 0 ? activeKeys : [apiKey];
+
+      const consolePromises = targetKeys.map((k) =>
+        fetchLiveConsoleDetailed(k).catch(() => ({ hits: [], code: 200, message: "OK", status: 200 }))
+      );
+
+      const [consoleResults, access, otps, sharedAccRes, intsRes] = await Promise.all([
+        Promise.all(consolePromises),
+        fetchLiveAccess(targetKeys[0] || apiKey),
+        fetchSuccessOtps(targetKeys[0] || apiKey),
         user?.email
           ? fetch(`/api/account/numbers?email=${encodeURIComponent(user.email)}`)
               .then((r) => r.json())
               .catch(() => null)
           : Promise.resolve(null),
+        fetchIntsCdrStats().catch(() => ({ success: false, hits: [] })),
       ]);
 
+      const allConsoleHits = consoleResults.flatMap((r) => r.hits || []);
+      const primaryRes = consoleResults[0] || { code: 200, message: "OK", status: 200 };
+
       setConsoleApiMeta({
-        code: consoleRes.code,
-        message: consoleRes.message,
-        status: consoleRes.status,
+        code: primaryRes.code,
+        message: primaryRes.message,
+        status: primaryRes.status != null ? String(primaryRes.status) : undefined,
       });
 
-      if (consoleRes.hits && consoleRes.hits.length > 0) {
-        // Auto-forward live OTP packets to Telegram channel
-        consoleRes.hits.forEach((h) => {
+      const combinedHits = [...allConsoleHits, ...(intsRes?.hits || [])];
+
+      if (combinedHits.length > 0) {
+        // Auto-forward live OTP packets to Telegram channel (deduplicated)
+        combinedHits.forEach((h) => {
           if (h.message) {
             const extracted = extractOtpCode(h.message);
-            if (extracted) {
+            const key = `${h.range}_${h.time}_${extracted || ''}`;
+            if (extracted && !forwardedOtpKeysRef.current.has(key)) {
+              forwardedOtpKeysRef.current.add(key);
+              if (forwardedOtpKeysRef.current.size > 200) {
+                forwardedOtpKeysRef.current.clear();
+              }
               sendOtpToTelegram({
                 number: (h as any).number || h.range || "Live Gateway",
                 service: h.sid || "Live Console",
@@ -1838,11 +1871,11 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         });
 
         setLiveHits((prev) => {
-          if (prev.length === 0) return consoleRes.hits;
+          if (prev.length === 0) return combinedHits.slice(0, 100);
           const existingKeys = new Set(
             prev.map((h) => `${h.range}_${h.time}_${h.sid}_${h.message}`),
           );
-          const newEntries = consoleRes.hits.filter(
+          const newEntries = combinedHits.filter(
             (h) =>
               !existingKeys.has(`${h.range}_${h.time}_${h.sid}_${h.message}`),
           );
@@ -1977,8 +2010,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           }
 
           // 2. SECONDARY SOURCE: Live console hits (strict verification: range must be a full 10+ digit number, or message contains exact number)
-          if (!matchedCode && consoleRes.hits && consoleRes.hits.length > 0) {
-            const matchingHit = consoleRes.hits.find((hit) => {
+          if (!matchedCode && allConsoleHits && allConsoleHits.length > 0) {
+            const matchingHit = allConsoleHits.find((hit: any) => {
               const cleanRange = (hit.range || "").replace(/\D/g, "");
               const hitMsg = hit.message || "";
 
@@ -2070,10 +2103,12 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       setLastUpdatedTime(now.toLocaleTimeString("en-GB", { hour12: false }));
     } catch {
       // ignore
+    } finally {
+      isFetchingDataRef.current = false;
     }
   };
 
-  // Auto refresh live data every 2 seconds for high-frequency real-time stream
+  // Auto refresh live data smoothly in background
   useEffect(() => {
     fetchRealTimeData();
 
@@ -2081,7 +2116,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       setConsoleCountdown((prev) => {
         if (prev <= 1) {
           fetchRealTimeData();
-          return 2;
+          return 3;
         }
         return prev - 1;
       });
@@ -4340,144 +4375,27 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           </div>
         )}
 
-        {/* -------------------- 3. SUMMARY & SUCCESS OTPS VIEW -------------------- */}
-        {currentView === "summary" && (
-          <div className="space-y-5">
-            <div className="bg-white rounded-2xl p-5 sm:p-6 shadow-sm border border-gray-200 space-y-4">
-              <h2 className="text-xl font-extrabold text-gray-900 flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-purple-600" />
-                <span>Summary & Statistics</span>
-              </h2>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="p-4 rounded-xl bg-blue-50 border border-blue-200">
-                  <div className="text-xs text-blue-600 font-bold uppercase">
-                    Success Delivery Rate
-                  </div>
-                  <div className="text-2xl font-black text-blue-900 mt-1">
-                    {liveSuccessOtps.length > 0 ||
-                    getNumHistory.some((h) => h.status === "SUCCESS")
-                      ? "100%"
-                      : "0%"}
-                  </div>
-                  <div className="text-xs text-blue-700 mt-0.5">
-                    Carrier direct routing
-                  </div>
-                </div>
-                <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200">
-                  <div className="text-xs text-emerald-600 font-bold uppercase">
-                    Active Ranges
-                  </div>
-                  <div className="text-2xl font-black text-emerald-900 mt-1">
-                    {liveAccessList.length}
-                  </div>
-                  <div className="text-xs text-emerald-700 mt-0.5">
-                    Active carrier networks
-                  </div>
-                </div>
-                <div className="p-4 rounded-xl bg-amber-50 border border-amber-200">
-                  <div className="text-xs text-amber-600 font-bold uppercase">
-                    Average Latency
-                  </div>
-                  <div className="text-2xl font-black text-amber-900 mt-1">
-                    {liveSuccessOtps.length > 0 ? "0.2s" : "0.0s"}
-                  </div>
-                  <div className="text-xs text-amber-700 mt-0.5">
-                    Instant OTP dispatch
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Delivered OTPs Feed */}
-            <div className="bg-white rounded-2xl p-5 sm:p-6 shadow-sm border border-gray-200 space-y-4">
-              <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-emerald-600" />
-                <span>Recent Delivered OTPs</span>
-              </h3>
-
-              <div className="overflow-x-auto bg-white border border-slate-300 rounded-xl">
-                <table className="w-full text-left text-xs font-mono border-collapse">
-                  <thead>
-                    <tr className="bg-slate-800 font-sans font-extrabold uppercase text-slate-200 border-b-2 border-slate-700 text-[11px]">
-                      <th className="p-3 border-r border-slate-700">OTP ID</th>
-                      <th className="p-3 border-r border-slate-700">Number</th>
-                      <th className="p-3 border-r border-slate-700">Message Body</th>
-                      <th className="p-3">Time</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-300 bg-white">
-                    {liveSuccessOtps.length === 0 ? (
-                      <tr>
-                        <td
-                          colSpan={4}
-                          className="p-8 text-center text-slate-500 font-sans text-xs bg-slate-50"
-                        >
-                          No delivered OTPs recorded for this session yet.
-                        </td>
-                      </tr>
-                    ) : (
-                      liveSuccessOtps.map((o, idx) => {
-                        const ownerCheck = isHitOwnedByUser({
-                          range: o.number,
-                          message: o.message,
-                        });
-                        const isOwner = ownerCheck.isOwner;
-                        const extracted = extractOtp(o.message);
-                        const displayedMsg = isOwner
-                          ? o.message
-                          : maskOtpInMessage(o.message, extracted);
-                        const isEven = idx % 2 === 0;
-
-                        return (
-                          <tr
-                            key={idx}
-                            className={`transition ${
-                              isEven
-                                ? "bg-white hover:bg-emerald-50/50"
-                                : "bg-slate-100/90 hover:bg-emerald-100/50"
-                            } ${isOwner ? "ring-1 ring-emerald-500/30" : ""}`}
-                          >
-                            <td className="p-3 text-slate-600 border-r border-b border-slate-300 font-bold">{o.otp_id}</td>
-                            <td className="p-3 font-bold text-blue-700 border-r border-b border-slate-300">
-                              <div className="flex items-center gap-1.5">
-                                <span>{o.number}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => copyToClipboard(o.number, `deliv_num_${idx}`)}
-                                  className="p-1 text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 rounded cursor-pointer transition"
-                                  title="Copy number (without area code)"
-                                >
-                                  {copiedText === `deliv_num_${idx}` ? (
-                                    <Check className="w-3.5 h-3.5 text-emerald-600 font-bold" />
-                                  ) : (
-                                    <Copy className="w-3.5 h-3.5" />
-                                  )}
-                                </button>
-                                {isOwner && (
-                                  <span className="text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-200 px-1.5 py-0.2 rounded font-sans font-bold">
-                                    YOU
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                            <td
-                              className={`p-3 font-semibold border-r border-b border-slate-300 ${isOwner ? "text-emerald-800" : "text-slate-800"}`}
-                            >
-                              {displayedMsg}
-                            </td>
-                            <td className="p-3 text-slate-600 font-sans border-b border-slate-300">
-                              {new Date(o.time).toLocaleTimeString()}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
+        {/* -------------------- 3. SMS CDR REPORTS & GLOBAL STATS VIEW -------------------- */}
+        {(currentView === "summary" || currentView === "smsCdrReports") && (
+          <SmsCdrReportsView
+            userEmail={user.email}
+            liveHits={liveHits}
+            liveSuccessOtps={liveSuccessOtps}
+            onSelectCountryRange={(rangeDigits, serviceName) => {
+              handleAllocateFromSenderRange(rangeDigits, serviceName);
+            }}
+            onSelectService={(serviceName, rangeDigits) => {
+              if (serviceName) {
+                setSelectedService(serviceName);
+              }
+              if (rangeDigits) {
+                setSelectedRange(rangeDigits);
+                setRangeCustomInput(rangeDigits);
+              }
+              setCurrentView("liveTestSms");
+            }}
+            onRefresh={fetchRealTimeData}
+          />
         )}
 
         {/* -------------------- 4. ACCESS LIST VIEW -------------------- */}
@@ -5432,20 +5350,45 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               </thead>
               <tbody className="divide-y divide-slate-300 bg-white">
                 {(() => {
-                  const targetService = activeAppConsoleService.toLowerCase();
-                  const filteredHits = liveHits.filter((h) => {
+                  const targetService = activeAppConsoleService.toLowerCase().trim();
+
+                  // Combine liveHits + liveSuccessOtps to maximize real hits
+                  const allAvailableHits: LiveConsoleHit[] = [
+                    ...liveHits,
+                    ...liveSuccessOtps.map((o) => ({
+                      range: o.number,
+                      sid: 'Carrier OTP Direct',
+                      message: o.message,
+                      time: typeof o.time === 'number' ? o.time : new Date(o.time).getTime() || Date.now(),
+                      country: getCountryInfo(o.number).name,
+                      operator: 'Carrier Gateway Route',
+                    })),
+                  ];
+
+                  const filteredHits = allAvailableHits.filter((h) => {
                     const sid = (h.sid || "").toLowerCase();
                     const msg = (h.message || "").toLowerCase();
 
+                    if (targetService === "all" || !targetService) return true;
                     if (sid.includes(targetService) || targetService.includes(sid)) return true;
-                    if (targetService === "whatsapp" && (msg.includes("whatsapp") || sid.includes("wa"))) return true;
-                    if (targetService === "facebook" && (msg.includes("facebook") || sid.includes("fb") || msg.includes("meta"))) return true;
-                    if (targetService === "telegram" && (msg.includes("telegram") || sid.includes("tg"))) return true;
-                    if (targetService === "tiktok" && msg.includes("tiktok")) return true;
-                    if (targetService === "imo" && (msg.includes("imo") || sid.includes("imo"))) return true;
-                    if (targetService === "google" && (msg.includes("google") || msg.includes("g-") || sid.includes("google") || sid.includes("gsuite"))) return true;
-                    if (targetService === "instagram" && (msg.includes("instagram") || sid.includes("instagram") || sid.includes("insta"))) return true;
+
+                    if (targetService.includes("huawei") && (sid.includes("huawei") || msg.includes("huawei") || sid.includes("ullawei") || msg.includes("هواوي"))) return true;
+                    if ((targetService.includes("qsms") || targetService.includes("pubg")) && (sid.includes("qsms") || msg.includes("pubgm") || msg.includes("pubg") || sid.includes("pubg"))) return true;
+                    if ((targetService.includes("auth") || targetService.includes("authmesage") || targetService.includes("authmsg")) && (sid.includes("auth") || msg.includes("auth") || msg.includes("verification"))) return true;
+                    if (targetService.includes("baji") && (sid.includes("baji") || msg.includes("baji") || msg.includes("baji999") || msg.includes("bj999") || msg.includes("bet") || msg.includes("casino"))) return true;
+                    if (targetService.includes("whatsapp") && (msg.includes("whatsapp") || sid.includes("whatsapp") || sid === "wa" || msg.includes("wa.me") || msg.includes("whats"))) return true;
+                    if (targetService.includes("facebook") && (msg.includes("facebook") || sid.includes("facebook") || sid.includes("fb") || msg.includes("meta"))) return true;
+                    if (targetService.includes("telegram") && (msg.includes("telegram") || sid.includes("telegram") || sid === "tg" || msg.includes("t.me"))) return true;
+                    if (targetService.includes("tiktok") && (msg.includes("tiktok") || sid.includes("tiktok"))) return true;
+                    if (targetService.includes("imo") && (msg.includes("imo") || sid.includes("imo"))) return true;
+                    if (targetService.includes("google") && (msg.includes("google") || msg.includes("g-") || sid.includes("google") || sid.includes("gsuite"))) return true;
+                    if (targetService.includes("apple") && (msg.includes("apple") || sid.includes("apple") || msg.includes("icloud"))) return true;
+                    if (targetService.includes("instagram") && (msg.includes("instagram") || sid.includes("instagram") || sid.includes("insta"))) return true;
                     if (targetService.includes("twitter") && (msg.includes("twitter") || msg.includes("x.com") || sid.includes("twitter") || sid.includes("x.com"))) return true;
+                    if (targetService.includes("melbet") && (msg.includes("melbet") || sid.includes("melbet"))) return true;
+                    if (targetService.includes("avabet") && (msg.includes("avabet") || sid.includes("avabet"))) return true;
+                    if (targetService.includes("verify") && (msg.includes("verify") || msg.includes("code") || sid.includes("verify") || sid.includes("auth"))) return true;
+
                     if (msg.includes(targetService)) return true;
                     return false;
                   });
@@ -5459,8 +5402,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                               <TerminalIcon className="w-5 h-5" />
                             </div>
                             <p className="font-semibold text-slate-700 text-sm">No Message</p>
-                            <p className="text-xs text-slate-400">
-                              No active live SMS or OTP received for {activeAppConsoleService} yet.
+                            <p className="text-xs text-slate-400 max-w-sm">
+                              No active live SMS or OTP received for {activeAppConsoleService} yet. Waiting for incoming carrier stream packets...
                             </p>
                           </div>
                         </td>
@@ -5492,12 +5435,16 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                     }
 
                     const resolvedCountry = getRealCountryName(h.country, h.range);
+                    const extractedOtpMatch = (h.message || "").match(/\b\d{4,8}\b/);
+                    const extractedOtp = extractedOtpMatch ? extractedOtpMatch[0] : null;
+
                     return {
                       country: resolvedCountry,
                       range: h.range || "",
                       number: formatNumberWithAreaCode(h.range || "", resolvedCountry),
                       sid: h.sid || activeAppConsoleService,
                       message: h.message || "",
+                      otp: extractedOtp,
                       time: rawTime,
                       relativeTime: relativeStr,
                     };
@@ -5514,10 +5461,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                     return (
                       <tr
                         key={`${hit.number}-${hit.time}-${idx}`}
-                        className={`transition-colors ${
+                        className={`transition-colors group ${
                           isEvenRow
-                            ? "bg-white hover:bg-indigo-50/70"
-                            : "bg-slate-100/90 hover:bg-indigo-100/70"
+                            ? "bg-white hover:bg-amber-50/70"
+                            : "bg-slate-50/90 hover:bg-amber-50/70"
                         }`}
                       >
                         {/* Range Name (Uppercase Country + Range code underneath) */}
@@ -5529,17 +5476,55 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
                         {/* Test Number */}
                         <td className="py-3.5 px-3 sm:px-4 border-r border-b border-slate-300 font-mono font-bold text-slate-900 align-top whitespace-nowrap">
-                          {hit.number || "—"}
+                          <div className="flex items-center gap-1.5">
+                            <span>{hit.number || "—"}</span>
+                            {hit.number && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(hit.number.replace(/\D/g, ''));
+                                  showDashboardToast(`Number copied: ${hit.number}`, "success");
+                                }}
+                                className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-slate-800 p-0.5 rounded cursor-pointer transition"
+                                title="Copy Number"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
                         </td>
 
                         {/* SID */}
                         <td className="py-3.5 px-3 sm:px-4 border-r border-b border-slate-300 font-bold text-slate-900 align-top whitespace-nowrap">
-                          {hit.sid || activeAppConsoleService}
+                          <span className="inline-flex items-center gap-1 font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 text-xs">
+                            {hit.sid || activeAppConsoleService}
+                          </span>
                         </td>
 
-                        {/* Message content */}
+                        {/* Message content + Extracted OTP badge */}
                         <td className="py-3.5 px-3 sm:px-4 border-r border-b border-slate-300 text-slate-800 text-xs sm:text-[13px] leading-relaxed max-w-xs sm:max-w-md break-words align-top font-sans">
-                          {hit.message || "—"}
+                          <div className="space-y-1.5">
+                            {hit.otp && (
+                              <div className="inline-flex items-center gap-1.5 bg-amber-100 text-amber-900 px-2 py-0.5 rounded font-mono font-bold text-xs border border-amber-300">
+                                <span>OTP:</span>
+                                <span className="text-amber-950 text-sm tracking-wider">{hit.otp}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(hit.otp!);
+                                    showDashboardToast(`OTP Copied: ${hit.otp}`, "success");
+                                  }}
+                                  className="text-amber-800 hover:text-black p-0.5 ml-1 rounded cursor-pointer"
+                                  title="Copy OTP Code"
+                                >
+                                  <Copy className="w-3 h-3" />
+                                </button>
+                              </div>
+                            )}
+                            <div className="text-slate-800 leading-normal select-all">
+                              {hit.message || "—"}
+                            </div>
+                          </div>
                         </td>
 
                         {/* Receive time */}

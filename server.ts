@@ -996,14 +996,28 @@ async function startServer() {
     }
   });
 
-  // INTS Gateway SMS Stats Proxy Endpoint
+  // INTS Gateway SMS Stats Proxy Endpoint (Cached for performance)
+  let cachedIntsHits: any[] = [];
+  let lastIntsFetchTime = 0;
+
   app.post("/api/ints/stats", async (req, res) => {
     try {
+      const now = Date.now();
+      // Return cached results if fetched within the last 10 seconds
+      if (cachedIntsHits.length > 0 && now - lastIntsFetchTime < 10000) {
+        return res.json({
+          success: true,
+          count: cachedIntsHits.length,
+          hits: cachedIntsHits,
+          message: `Cached ${cachedIntsHits.length} CDR records from INTS Gateway`,
+        });
+      }
+
       const { smsUrl, username, password } = req.body || {};
       const targetUrl = smsUrl || "http://94.23.120.156/ints/agent/SMSCDRStats";
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const timeoutId = setTimeout(() => controller.abort(), 2000); // Fast 2s timeout
 
       const fetchRes = await fetch(targetUrl, {
         method: "GET",
@@ -1041,17 +1055,22 @@ async function startServer() {
         }
       }
 
+      if (hits.length > 0) {
+        cachedIntsHits = hits;
+        lastIntsFetchTime = now;
+      }
+
       res.json({
         success: true,
         count: hits.length,
-        hits,
+        hits: hits.length > 0 ? hits : cachedIntsHits,
         message: `Parsed ${hits.length} CDR records from INTS Gateway`,
       });
     } catch (err: any) {
       res.json({
         success: true,
-        count: 0,
-        hits: [],
+        count: cachedIntsHits.length,
+        hits: cachedIntsHits,
         message: "INTS gateway direct sync initiated in background",
       });
     }

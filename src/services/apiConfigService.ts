@@ -28,18 +28,18 @@ export const API_CONFIGS_UPDATE_EVENT = 'super_x_api_configs_updated';
 
 export const DEFAULT_API_CONFIGS: ApiConfigItem[] = [
   {
-    id: 'default-global-api',
-    name: 'SUPER X Primary Multi-Carrier Gateway',
+    id: 'slot-1',
+    name: 'Slot 1: Primary Multi-Carrier Gateway',
     apiKey: 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=',
     serviceType: 'ALL (Global Auto-Detect)',
     endpoint: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
     isActive: true,
-    notes: 'Default High-Speed Multi-Gateway API for all Social Media',
+    notes: 'Primary High-Speed Global Gateway for all incoming SMS',
     createdAt: Date.now(),
   },
   {
-    id: 'default-wa-api',
-    name: 'WhatsApp Dedicated Route',
+    id: 'slot-2',
+    name: 'Slot 2: WhatsApp Dedicated Route',
     apiKey: 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=',
     serviceType: 'WhatsApp',
     endpoint: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
@@ -48,8 +48,8 @@ export const DEFAULT_API_CONFIGS: ApiConfigItem[] = [
     createdAt: Date.now(),
   },
   {
-    id: 'default-fb-api',
-    name: 'Facebook & Meta Verification',
+    id: 'slot-3',
+    name: 'Slot 3: Facebook & Meta Route',
     apiKey: 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=',
     serviceType: 'Facebook',
     endpoint: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
@@ -58,8 +58,8 @@ export const DEFAULT_API_CONFIGS: ApiConfigItem[] = [
     createdAt: Date.now(),
   },
   {
-    id: 'default-tg-api',
-    name: 'Telegram Routing Terminal',
+    id: 'slot-4',
+    name: 'Slot 4: Telegram Routing Route',
     apiKey: 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=',
     serviceType: 'Telegram',
     endpoint: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
@@ -68,23 +68,63 @@ export const DEFAULT_API_CONFIGS: ApiConfigItem[] = [
     createdAt: Date.now(),
   },
   {
-    id: 'default-ints-gateway',
-    name: 'INTS Carrier Gateway (Agent CDR)',
-    apiKey: 'XZRMUNNA1206:XZRMUNNA0079',
-    serviceType: 'ALL (INTS Multi-Route)',
-    endpoint: 'http://94.23.120.156/ints',
-    isActive: true,
-    notes: 'INTS Agent SMS CDR Gateway - Live Table Scraper & Carrier Stream',
-    createdAt: Date.now(),
-  },
-  {
-    id: 'default-gg-api',
-    name: 'Google & Gmail Verification Route',
+    id: 'slot-5',
+    name: 'Slot 5: Google & Gmail Route',
     apiKey: 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=',
     serviceType: 'Google',
     endpoint: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
     isActive: true,
     notes: 'Google G-Codes Instant Route',
+    createdAt: Date.now(),
+  },
+  {
+    id: 'slot-6',
+    name: 'Slot 6: IMO & Chat Verification Route',
+    apiKey: '',
+    serviceType: 'IMO',
+    endpoint: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
+    isActive: false,
+    notes: 'IMO Messenger Verification Route',
+    createdAt: Date.now(),
+  },
+  {
+    id: 'slot-7',
+    name: 'Slot 7: TikTok & Entertainment Route',
+    apiKey: '',
+    serviceType: 'TikTok',
+    endpoint: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
+    isActive: false,
+    notes: 'TikTok Verification Route',
+    createdAt: Date.now(),
+  },
+  {
+    id: 'slot-8',
+    name: 'Slot 8: INTS Carrier Gateway (Agent CDR)',
+    apiKey: 'XZRMUNNA1206:XZRMUNNA0079',
+    serviceType: 'ALL (INTS Multi-Route)',
+    endpoint: 'http://94.23.120.156/ints',
+    isActive: true,
+    notes: 'INTS Agent SMS CDR Gateway',
+    createdAt: Date.now(),
+  },
+  {
+    id: 'slot-9',
+    name: 'Slot 9: Custom API Gateway Route',
+    apiKey: '',
+    serviceType: 'ALL (Global Auto-Detect)',
+    endpoint: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
+    isActive: false,
+    notes: 'Custom Dedicated API Gateway',
+    createdAt: Date.now(),
+  },
+  {
+    id: 'slot-10',
+    name: 'Slot 10: Backup Multi-Carrier Route',
+    apiKey: '',
+    serviceType: 'ALL (Global Auto-Detect)',
+    endpoint: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
+    isActive: false,
+    notes: 'Backup Multi-Carrier Route',
     createdAt: Date.now(),
   },
 ];
@@ -95,16 +135,25 @@ export function getAllApiConfigs(): ApiConfigItem[] {
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        // Automatically migrate any instances of the deprecated old key to the new key and deduplicate
-        const map = new Map<string, ApiConfigItem>();
-        parsed.forEach((item, idx) => {
-          if (item && typeof item === 'object') {
-            const keyId = item.id || `api-cfg-${idx}`;
-            const itemKey = item.apiKey === 'M7ANNWJY6B2' ? 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=' : item.apiKey;
-            map.set(keyId, { ...item, id: keyId, apiKey: itemKey });
-          }
-        });
-        return Array.from(map.values());
+        // Ensure we always have 10 slots populated
+        const slots: ApiConfigItem[] = [];
+        for (let i = 0; i < 10; i++) {
+          const defaultSlot = DEFAULT_API_CONFIGS[i];
+          const found = parsed[i] || parsed.find((p: any) => p.id === `slot-${i + 1}`) || defaultSlot;
+          const key = found?.apiKey === 'M7ANNWJY6B2' ? 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=' : (found?.apiKey || '');
+          slots.push({
+            id: `slot-${i + 1}`,
+            name: found?.name || `Slot ${i + 1}`,
+            apiKey: key,
+            serviceType: found?.serviceType || defaultSlot?.serviceType || 'ALL (Global Auto-Detect)',
+            endpoint: found?.endpoint || defaultSlot?.endpoint || 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
+            isActive: found?.isActive !== undefined ? found.isActive : defaultSlot?.isActive || false,
+            notes: found?.notes || defaultSlot?.notes || '',
+            createdAt: found?.createdAt || Date.now(),
+            lastLatencyMs: found?.lastLatencyMs,
+          });
+        }
+        return slots;
       }
     }
   } catch (err) {
@@ -271,8 +320,20 @@ export async function deleteApiConfig(configId: string) {
 
 export function getActiveApiConfigs(): ApiConfigItem[] {
   const all = getAllApiConfigs();
-  const active = all.filter((c) => c.isActive !== false);
-  return active.length > 0 ? active : all;
+  const active = all.filter((c) => c.isActive === true && (c.apiKey || '').trim().length > 0);
+  return active.length > 0 ? active : all.filter((c) => (c.apiKey || '').trim().length > 0);
+}
+
+export function getActiveApiKeys(): string[] {
+  const configs = getActiveApiConfigs();
+  const keys = new Set<string>();
+  configs.forEach((c) => {
+    const k = (c.apiKey || '').trim();
+    if (k && !k.includes(':') && k.length > 5) {
+      keys.add(k);
+    }
+  });
+  return Array.from(keys);
 }
 
 /**

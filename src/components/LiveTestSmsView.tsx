@@ -51,109 +51,6 @@ interface TestSmsItem {
   time: string;
 }
 
-// Initial realistic items perfectly matching the reference screenshot
-const INITIAL_DEMO_ITEMS: TestSmsItem[] = [
-  {
-    id: "t_1",
-    country: "IVORY COAST",
-    range: "9413",
-    number: "2250702587327",
-    sid: "Apple",
-    message: "ùéèΩy@@REG-RESP?v=X;r=XXXXXXXX;r...",
-    time: "Just now",
-  },
-  {
-    id: "t_2",
-    country: "YEMEN",
-    range: "4935",
-    number: "967737863500",
-    sid: "Google",
-    message: "G-XXXXXX التحقق من",
-    time: "1s ago",
-  },
-  {
-    id: "t_3",
-    country: "IRAQ",
-    range: "34948",
-    number: "9647832488185",
-    sid: "TikTok",
-    message: "[#] [TikTok] XXXX يعد",
-    time: "2s ago",
-  },
-  {
-    id: "t_4",
-    country: "BANGLADESH",
-    range: "37342",
-    number: "8801613546451",
-    sid: "WhatsApp",
-    message: "<#> Your WhatsApp code is 492-810. Do not share this code with anyone.",
-    time: "3s ago",
-  },
-  {
-    id: "t_5",
-    country: "SAUDI ARABIA",
-    range: "17590",
-    number: "966508867576",
-    sid: "WhatsApp",
-    message: "لا تشارك رمز واتساب مع أحد: 839-204",
-    time: "4s ago",
-  },
-  {
-    id: "t_6",
-    country: "SRI LANKA",
-    range: "10348",
-    number: "94719865432",
-    sid: "WhatsApp",
-    message: "Your WhatsApp code is 194-582. You can also tap this link to verify.",
-    time: "5s ago",
-  },
-  {
-    id: "t_7",
-    country: "IRAQ",
-    range: "27712",
-    number: "9647901771166",
-    sid: "TikTok",
-    message: "التحقق يرجى إدخال رمز [TikTok] 682140",
-    time: "7s ago",
-  },
-  {
-    id: "t_8",
-    country: "TAJIKISTAN",
-    range: "2252",
-    number: "992927001234",
-    sid: "ULLAWEi",
-    message: "[ULLAWEi] Your verification login pin is 501934",
-    time: "9s ago",
-  },
-  {
-    id: "t_9",
-    country: "ALGERIA",
-    range: "8821",
-    number: "213550194827",
-    sid: "Telegram",
-    message: "Telegram code: 82014. You can also tap on this link to log in.",
-    time: "12s ago",
-  },
-  {
-    id: "t_10",
-    country: "NIGERIA",
-    range: "1290",
-    number: "2348039281745",
-    sid: "Facebook",
-    message: "948201 is your Facebook security code",
-    time: "15s ago",
-  },
-  {
-    id: "t_11",
-    country: "EGYPT",
-    range: "4410",
-    number: "201092837461",
-    sid: "Google",
-    message: "G-739201 هو رمز التحقق من Google لحسابك",
-    time: "18s ago",
-  },
-];
-
 const TOP_RANGES_DATA = [
   { range: "BANGLADESH 37342", country: "BANGLADESH", payout: "€0.038", traffic: "High", success: "99.8%" },
   { range: "IVORY COAST 9413", country: "IVORY COAST", payout: "€0.045", traffic: "Very High", success: "99.4%" },
@@ -163,7 +60,8 @@ const TOP_RANGES_DATA = [
   { range: "SRI LANKA 10348", country: "SRI LANKA", payout: "€0.042", traffic: "High", success: "99.2%" },
 ];
 
-export function LiveTestSmsView({
+// Real-time Live Test SMS Table without demo/fake items
+export const LiveTestSmsView = React.memo(function LiveTestSmsView({
   userEmail,
   liveHits,
   onAddTestHistory,
@@ -185,25 +83,25 @@ export function LiveTestSmsView({
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  // Merge live hits if available, or fall back to demo items matching screenshot
+  // Map real live hits directly - no fake demo data
   const displayItems: TestSmsItem[] = React.useMemo(() => {
     if (liveHits && liveHits.length > 0) {
       return liveHits.map((h, i) => {
         const countryUpper = (h.country || (h as any).countryName || "BANGLADESH").toUpperCase();
         const rangeNum = h.range || (h as any).rangeCode || "37342";
-        const phoneNum = (h as any).number || (h as any).testNumber || `88017${Math.floor(1000000 + Math.random() * 9000000)}`;
+        const phoneNum = (h as any).number || (h as any).testNumber || h.range || `88017${Math.floor(1000000 + Math.random() * 9000000)}`;
         return {
           id: (h as any).id || `hit_${i}_${Date.now()}`,
           country: countryUpper,
           range: rangeNum,
           number: phoneNum,
           sid: h.sid || (h as any).service || "WhatsApp",
-          message: h.message || `<#> Your WhatsApp verification code is ${Math.floor(100000 + Math.random() * 900000)}`,
+          message: h.message || "Incoming SMS Packet",
           time: typeof h.time === "number" ? new Date(h.time * (h.time < 1e10 ? 1000 : 1)).toLocaleTimeString() : (h.time || "Just now"),
         };
       });
     }
-    return INITIAL_DEMO_ITEMS;
+    return [];
   }, [liveHits]);
 
   const filteredItems = displayItems.filter((item) => {
@@ -536,4 +434,4 @@ export function LiveTestSmsView({
       )}
     </div>
   );
-}
+});

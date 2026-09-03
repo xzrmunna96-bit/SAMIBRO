@@ -1,6 +1,6 @@
 import React from 'react';
 
-export function OfficeIllustration() {
+export const OfficeIllustration = React.memo(function OfficeIllustration() {
   return (
     <div className="relative w-full flex items-center justify-center select-none overflow-visible p-1 sm:p-2">
       {/* Decorative ambient background glow behind illustration */}
@@ -355,4 +355,4 @@ export function OfficeIllustration() {
       </svg>
     </div>
   );
-}
+});

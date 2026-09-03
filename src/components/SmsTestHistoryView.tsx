@@ -35,7 +35,7 @@ interface PeerSmsRecord {
   isNew?: boolean;
 }
 
-export function SmsTestHistoryView({
+export const SmsTestHistoryView = React.memo(function SmsTestHistoryView({
   records,
   onClearHistory,
   onAddNumber,
@@ -540,4 +540,4 @@ export function SmsTestHistoryView({
       </div>
     </div>
   );
-}
+});

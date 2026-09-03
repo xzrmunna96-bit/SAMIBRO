@@ -562,8 +562,84 @@ const POPULAR_RANGES = [
   },
 ];
 
+const HeaderClockBadge = React.memo(function HeaderClockBadge() {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <div
+      id="live-clock-badge"
+      className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-slate-900/90 text-cyan-300 font-mono text-xs border border-cyan-500/40 shadow-inner shadow-cyan-950/50"
+    >
+      <div className="hidden sm:flex items-center gap-1.5 text-slate-300 border-r border-slate-700/80 pr-2">
+        <Calendar className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+        <span>
+          {now.toLocaleDateString("en-GB", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+          })}
+        </span>
+      </div>
+      <div className="flex items-center gap-1.5 text-emerald-300 font-extrabold">
+        <Clock className="w-3.5 h-3.5 text-emerald-400 shrink-0 animate-pulse" />
+        <span>
+          {now.toLocaleTimeString("en-US", {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: false,
+          })}
+        </span>
+      </div>
+    </div>
+  );
+});
+
+const StreamCountdownRefreshButton = React.memo(function StreamCountdownRefreshButton({
+  onRefresh,
+  isRefreshing,
+}: {
+  onRefresh: () => void;
+  isRefreshing: boolean;
+}) {
+  const [countdown, setCountdown] = useState(3);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCountdown((prev) => (prev <= 1 ? 3 : prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const handleClick = () => {
+    setCountdown(3);
+    onRefresh();
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      className="px-3.5 py-2.5 rounded-xl bg-white hover:bg-gray-50 border border-gray-200/90 text-xs font-mono text-gray-600 flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer active:scale-95 transition shrink-0"
+      title="Auto-refreshing live stream"
+    >
+      <span className="text-xs">
+        Next update:{" "}
+        <strong className="text-gray-900 font-bold">{countdown}s</strong>
+      </span>
+      <RotateCw
+        className={`w-3.5 h-3.5 text-gray-500 ${isRefreshing ? "animate-spin text-emerald-600" : ""}`}
+      />
+    </button>
+  );
+});
+
 export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
-  const [currentDateTime, setCurrentDateTime] = useState("");
   const [showWelcomeMarquee, setShowWelcomeMarquee] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [currentView, setCurrentView] = useState<
@@ -790,16 +866,6 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     }
   });
 
-  // Live Timer Date and Clock State
-  const [headerCurrentTime, setHeaderCurrentTime] = useState(() => new Date());
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setHeaderCurrentTime(new Date());
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
-
   const [siteNoticeText, setSiteNoticeText] = useState(() => {
     try {
       return (
@@ -1010,7 +1076,6 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const [activeAppStream, setActiveAppStream] = useState<
     "WhatsApp" | "Telegram" | "Facebook" | "IMO"
   >("WhatsApp");
-  const [appStreamCountdown, setAppStreamCountdown] = useState<number>(3);
   const [isAllocating, setIsAllocating] = useState(false);
 
   // Get Number Screen Specific State (voltxsms/m29 matching)
@@ -1476,7 +1541,6 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   // Console Specific State
   const [consoleFilter, setConsoleFilter] = useState("");
   const [consoleServiceFilter, setConsoleServiceFilter] = useState("ALL");
-  const [consoleCountdown, setConsoleCountdown] = useState(2);
   const [lastUpdatedTime, setLastUpdatedTime] = useState(() =>
     new Date().toLocaleTimeString("en-GB", { hour12: false }),
   );
@@ -1783,34 +1847,6 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     });
   };
 
-  // 3-second live auto-refresh timer for Top Applications Stream
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setAppStreamCountdown((prev) => (prev <= 1 ? 3 : prev - 1));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  // Live timer clock & Console auto-update countdown
-  useEffect(() => {
-    const updateTime = () => {
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, "0");
-      const day = String(now.getDate()).padStart(2, "0");
-      const hours = String(now.getHours()).padStart(2, "0");
-      const minutes = String(now.getMinutes()).padStart(2, "0");
-      const seconds = String(now.getSeconds()).padStart(2, "0");
-      setCurrentDateTime(
-        `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`,
-      );
-    };
-
-    updateTime();
-    const interval = setInterval(updateTime, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
   const isFetchingDataRef = useRef(false);
   const forwardedOtpKeysRef = useRef(new Set<string>());
 
@@ -2113,21 +2149,14 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     fetchRealTimeData();
 
     const timer = setInterval(() => {
-      setConsoleCountdown((prev) => {
-        if (prev <= 1) {
-          fetchRealTimeData();
-          return 3;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+      fetchRealTimeData();
+    }, 3000);
     return () => clearInterval(timer);
   }, [apiKey]);
 
   const handleManualRefreshConsole = async () => {
     setIsConsoleRefreshing(true);
     await fetchRealTimeData();
-    setConsoleCountdown(3);
     setTimeout(() => setIsConsoleRefreshing(false), 400);
   };
 
@@ -3036,32 +3065,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             {/* Live Date & Time Timer Display */}
-            <div
-              id="live-clock-badge"
-              className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-slate-900/90 text-cyan-300 font-mono text-xs border border-cyan-500/40 shadow-inner shadow-cyan-950/50"
-            >
-              <div className="hidden sm:flex items-center gap-1.5 text-slate-300 border-r border-slate-700/80 pr-2">
-                <Calendar className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                <span>
-                  {headerCurrentTime.toLocaleDateString("en-GB", {
-                    day: "2-digit",
-                    month: "short",
-                    year: "numeric",
-                  })}
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5 text-emerald-300 font-extrabold">
-                <Clock className="w-3.5 h-3.5 text-emerald-400 shrink-0 animate-pulse" />
-                <span>
-                  {headerCurrentTime.toLocaleTimeString("en-US", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    second: "2-digit",
-                    hour12: false,
-                  })}
-                </span>
-              </div>
-            </div>
+            <HeaderClockBadge />
 
             {/* Sleek Compact Notification Bell Icon */}
             <button
@@ -4143,22 +4147,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               </div>
 
               {/* Stream Countdown & Refresh */}
-              <button
-                type="button"
-                onClick={handleManualRefreshConsole}
-                className="px-3.5 py-2.5 rounded-xl bg-white hover:bg-gray-50 border border-gray-200/90 text-xs font-mono text-gray-600 flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer active:scale-95 transition shrink-0"
-                title="Auto-refreshing live stream"
-              >
-                <span className="text-xs">
-                  Next update:{" "}
-                  <strong className="text-gray-900 font-bold">
-                    {consoleCountdown}s
-                  </strong>
-                </span>
-                <RotateCw
-                  className={`w-3.5 h-3.5 text-gray-500 ${isConsoleRefreshing ? "animate-spin text-emerald-600" : ""}`}
-                />
-              </button>
+              <StreamCountdownRefreshButton
+                onRefresh={handleManualRefreshConsole}
+                isRefreshing={isConsoleRefreshing}
+              />
             </div>
 
             {/* Live Logs List Cards or Clean Empty State */}

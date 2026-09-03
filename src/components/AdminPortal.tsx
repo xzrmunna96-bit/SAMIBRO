@@ -179,6 +179,28 @@ interface AdminPortalProps {
   onBackToLogin: () => void;
 }
 
+const StreamPollCountdownBadge = React.memo(function StreamPollCountdownBadge({
+  isActive,
+}: {
+  isActive: boolean;
+}) {
+  const [countdown, setCountdown] = useState(2);
+
+  useEffect(() => {
+    if (!isActive) return;
+    const timer = setInterval(() => {
+      setCountdown((prev) => (prev <= 1 ? 2 : prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [isActive]);
+
+  return (
+    <span className="text-[11px] font-mono text-slate-400 px-2.5 py-1 bg-slate-950 rounded-lg border border-slate-800">
+      Poll: <span className="text-emerald-400 font-bold">{isActive ? `${countdown}s` : 'Paused'}</span>
+    </span>
+  );
+});
+
 export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
   // Authentication State
   const [adminSession, setAdminSession] = useState<AdminSession>(() => getInitialAdminSession());
@@ -238,7 +260,6 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
   const [liveStreamHits, setLiveStreamHits] = useState<LiveConsoleHit[]>([]);
   const [isStreamFetching, setIsStreamFetching] = useState(false);
   const [isAutoStreamActive, setIsAutoStreamActive] = useState(true);
-  const [streamCountdown, setStreamCountdown] = useState(2);
   const [streamFilter, setStreamFilter] = useState('');
   const [copiedText, setCopiedText] = useState<string | null>(null);
 
@@ -860,14 +881,8 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
   useEffect(() => {
     if (!isAdminAuthenticated || !isAutoStreamActive) return;
     const timer = setInterval(() => {
-      setStreamCountdown((prev) => {
-        if (prev <= 1) {
-          fetchIncomingSmsHits();
-          return 2;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+      fetchIncomingSmsHits();
+    }, 2000);
     return () => clearInterval(timer);
   }, [isAdminAuthenticated, isAutoStreamActive, apiKeyInput]);
 
@@ -2597,9 +2612,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
 
                 {/* Stream Controls */}
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[11px] font-mono text-slate-400 px-2.5 py-1 bg-slate-950 rounded-lg border border-slate-800">
-                    Poll: <span className="text-emerald-400 font-bold">{streamCountdown}s</span>
-                  </span>
+                  <StreamPollCountdownBadge isActive={isAutoStreamActive} />
 
                   <button
                     type="button"

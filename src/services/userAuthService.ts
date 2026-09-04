@@ -1085,23 +1085,28 @@ export async function authenticateUserAsync(
     return localResult;
   }
 
-  // If local status is already explicit (e.g. pending/suspended/rejected with matching user), return immediately
-  if (localResult.status === 'pending' || localResult.status === 'suspended' || localResult.status === 'rejected') {
+  // If local status is already explicit (invalid password, pending, suspended, or rejected), return immediately (<1ms)
+  if (
+    localResult.status === 'invalid_password' ||
+    localResult.status === 'pending' ||
+    localResult.status === 'suspended' ||
+    localResult.status === 'rejected'
+  ) {
     return localResult;
   }
 
-  // 2. Fast Server lookup with strict 1.5s timeout (guarantees cross-browser persistence across Chrome, Safari, Firefox, Edge, etc.)
+  // 2. Fast Server lookup (if account was created on another device/browser by admin)
   try {
     const serverResult = await Promise.race([
       authenticateUserViaServer(cleanIdentifier, cleanPass),
       new Promise<{ success: boolean; status: 'error'; message: string }>((resolve) =>
-        setTimeout(() => resolve({ success: false, status: 'error', message: 'timeout' }), 1500)
+        setTimeout(() => resolve({ success: false, status: 'error', message: 'timeout' }), 800)
       ),
     ]);
 
     if (serverResult && serverResult.status !== 'error') {
       if (serverResult.success && serverResult.user) {
-        // Sync locally so next login is 0ms
+        // Sync locally so subsequent logins are instant
         try {
           const current = getAllAccounts();
           const cleanEmail = serverResult.user.email.toLowerCase().trim();
@@ -1122,7 +1127,8 @@ export async function authenticateUserAsync(
         serverResult.status === 'pending' ||
         serverResult.status === 'suspended' ||
         serverResult.status === 'rejected' ||
-        serverResult.status === 'invalid_password'
+        serverResult.status === 'invalid_password' ||
+        serverResult.status === 'not_found'
       ) {
         return {
           success: false,
@@ -1133,31 +1139,10 @@ export async function authenticateUserAsync(
       }
     }
   } catch {
-    // Server query failed, continue
+    // Server query failed, continue to fallback
   }
 
-  // 3. If account was found locally but password was wrong, return immediately (do not wait for slow Firebase)
-  if (localResult.status === 'invalid_password') {
-    return localResult;
-  }
-
-  // 4. Quick Firebase fallback ONLY if user was not found anywhere (capped with 1.2s timeout)
-  try {
-    const fbUser = await Promise.race([
-      fetchSpecificUserFromFirebase(cleanIdentifier, cleanPass),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), 1200)),
-    ]);
-    if (fbUser) {
-      const retryAfterFb = authenticateUser(cleanIdentifier, cleanPass);
-      if (retryAfterFb.success) {
-        return retryAfterFb;
-      }
-    }
-  } catch {
-    // ignore
-  }
-
-  // 5. Fast final return
+  // 3. Fast final return
   return localResult;
 }
 

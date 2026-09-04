@@ -3,10 +3,13 @@ import {
   Eye,
   EyeOff,
   Mail,
+  Lock,
   AlertCircle,
   Clock,
   Sparkles,
   X,
+  RotateCw,
+  ShieldCheck,
 } from 'lucide-react';
 import {
   authenticateUserAsync,
@@ -36,8 +39,8 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
   const [suspendedNotice, setSuspendedNotice] = useState<{ email: string; name: string; reason?: string } | null>(null);
 
   // Captcha state (Addition: num1 + num2)
-  const [num1, setNum1] = useState(9);
-  const [num2, setNum2] = useState(4);
+  const [num1, setNum1] = useState(7);
+  const [num2, setNum2] = useState(5);
   const [captchaAnswer, setCaptchaAnswer] = useState('');
 
   const generateNewCaptcha = () => {
@@ -62,19 +65,19 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
     const cleanPassword = password.trim();
 
     if (!cleanIdentifier) {
-      setErrorMessage('Please enter your email or username');
+      setErrorMessage('ইমেইল বা ইউজারনেম প্রদান করুন (Please enter email or username)');
       return;
     }
 
     if (!cleanPassword) {
-      setErrorMessage('Please enter your password');
+      setErrorMessage('পাসওয়ার্ড প্রদান করুন (Please enter password)');
       return;
     }
 
     // Verify Captcha
     const expectedSum = num1 + num2;
     if (parseInt(captchaAnswer.trim(), 10) !== expectedSum) {
-      setErrorMessage('Math answer is incorrect. Please calculate again.');
+      setErrorMessage('গণিত সমাধান ভুল হয়েছে! আবার চেষ্টা করুন (Math answer is incorrect)');
       generateNewCaptcha();
       return;
     }
@@ -105,13 +108,17 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
             name: result.user.name,
             reason: result.user.banReason || 'Administrative suspension',
           });
+        } else if (result.status === 'invalid_password') {
+          setErrorMessage('ভুল পাসওয়ার্ড! সঠিক পাসওয়ার্ড দিন (Incorrect password. Please try again.)');
         } else {
-          setErrorMessage(result.message || 'Account not found. Only accounts created by the Admin can log in.');
+          setErrorMessage(
+            result.message || 'অ্যাকাউন্ট পাওয়া যায়নি! শুধুমাত্র এডমিন অনুমোদিত অ্যাকাউন্ট লগইন করতে পারবে।'
+          );
         }
         generateNewCaptcha();
       }
     } catch {
-      setErrorMessage('Unable to connect to authentication server. Please try again.');
+      setErrorMessage('সার্ভারের সাথে সংযোগ করা যায়নি! আবার চেষ্টা করুন।');
       generateNewCaptcha();
     } finally {
       setIsLoading(false);
@@ -119,11 +126,11 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
   };
 
   return (
-    <div className="w-full max-w-[440px] mx-auto py-2 px-2 sm:px-3 relative">
+    <div className="w-full max-w-[440px] mx-auto py-1 px-1 sm:px-2 relative">
       {/* Header Container: Brand Tag & Title */}
-      <div className="text-left mb-6 sm:mb-7">
+      <div className="text-left mb-5 sm:mb-6">
         {/* Brand Name with Animated Rainbow Border & Rainbow Text Flow */}
-        <div className="relative inline-block p-[2px] rounded-2xl animate-rainbow-border animate-rainbow-pulse-box mb-2.5 shadow-md overflow-hidden group">
+        <div className="relative inline-block p-[2px] rounded-2xl animate-rainbow-border animate-rainbow-pulse-box mb-2 shadow-sm overflow-hidden group">
           {/* Shimmer Light Beam Sweep */}
           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/50 to-transparent animate-light-sweep pointer-events-none" />
           <div className="relative px-3.5 py-1.5 sm:px-4 sm:py-2 bg-slate-950 rounded-[14px] flex items-center gap-2">
@@ -134,11 +141,11 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
           </div>
         </div>
 
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-normal leading-snug">
-          Welcome Back
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight leading-snug">
+          Sign In to Portal
         </h1>
-        <p className="text-xs sm:text-sm text-gray-500 mt-1 tracking-wide font-normal">
-          Please sign in to your SMS gateway portal
+        <p className="text-xs sm:text-sm text-gray-500 mt-1 font-medium">
+          অফিসিয়াল SMS পোর্টালে সাইন ইন করুন
         </p>
       </div>
 
@@ -152,7 +159,7 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
           <div className="space-y-1">
             <p className="font-bold text-amber-900">Account Pending Admin Approval</p>
             <p className="text-amber-800 text-xs leading-relaxed">
-              Your account (<strong className="font-mono">{pendingAccountNotice.email}</strong>) is currently in <strong className="text-amber-900">PENDING</strong> status. Once approved by the administrator, you can sign in directly with your password.
+              আপনার অ্যাকাউন্ট (<strong className="font-mono">{pendingAccountNotice.email}</strong>) বর্তমানে <strong className="text-amber-900">PENDING</strong> অবস্থায় আছে। এডমিন অনুমোদন দিলে সরাসরি পাসওয়ার্ড দিয়ে লগইন করতে পারবেন।
             </p>
           </div>
         </div>
@@ -162,20 +169,27 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
       {errorMessage && (
         <div
           id="login-error-banner"
-          className="mb-4 p-3 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs sm:text-sm font-medium flex items-start gap-2.5 animate-fadeIn leading-relaxed"
+          className="mb-4 p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs sm:text-sm font-semibold flex items-start gap-2.5 animate-fadeIn shadow-2xs leading-relaxed"
         >
-          <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
-          <div>
+          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+          <div className="flex-1">
             <span>{errorMessage}</span>
           </div>
+          <button
+            type="button"
+            onClick={() => setErrorMessage('')}
+            className="text-rose-400 hover:text-rose-600 transition"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
       {/* Main Login Form */}
-      <form onSubmit={handleLogin} className="space-y-4 sm:space-y-4.5">
+      <form onSubmit={handleLogin} className="space-y-4">
         {/* Email or Username Input */}
         <div>
-          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5 ml-1">
+          <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5 ml-1">
             Email or Username
           </label>
           <div className="relative">
@@ -190,17 +204,17 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
               }}
               placeholder="Enter your email or username"
               autoComplete="username"
-              className="w-full px-4 py-3.5 rounded-2xl border border-gray-200 hover:border-gray-300 focus:border-[#7056d6] focus:ring-4 focus:ring-purple-100 text-gray-900 placeholder-gray-400 text-sm outline-none transition bg-gray-50/50 focus:bg-white shadow-2xs pr-12 tracking-normal"
+              className="w-full px-4 py-3 rounded-2xl border border-gray-200 hover:border-gray-300 focus:border-[#7056d6] focus:ring-4 focus:ring-purple-100 text-gray-900 placeholder-gray-400 text-sm outline-none transition bg-gray-50/50 focus:bg-white shadow-2xs pr-11 tracking-normal"
             />
-            <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
-              <Mail className="w-5 h-5" />
+            <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+              <Mail className="w-4 h-4" />
             </div>
           </div>
         </div>
 
         {/* Password Input */}
         <div>
-          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5 ml-1">
+          <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5 ml-1">
             Password
           </label>
           <div className="relative">
@@ -215,25 +229,37 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
               }}
               placeholder="Enter your password"
               autoComplete="current-password"
-              className="w-full px-4 py-3.5 rounded-2xl border border-gray-200 hover:border-gray-300 focus:border-[#7056d6] focus:ring-4 focus:ring-purple-100 text-gray-900 placeholder-gray-400 text-sm outline-none transition bg-gray-50/50 focus:bg-white shadow-2xs pr-12 tracking-normal"
+              className="w-full px-4 py-3 rounded-2xl border border-gray-200 hover:border-gray-300 focus:border-[#7056d6] focus:ring-4 focus:ring-purple-100 text-gray-900 placeholder-gray-400 text-sm outline-none transition bg-gray-50/50 focus:bg-white shadow-2xs pr-11 tracking-normal"
             />
             <button
               id="toggle-login-password-visibility-btn"
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition p-1 focus:outline-none cursor-pointer"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition p-1 focus:outline-none cursor-pointer"
               aria-label={showPassword ? 'Hide password' : 'Show password'}
             >
-              {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
         </div>
 
-        {/* Math Captcha Section */}
-        <div>
-          <label className="block text-sm font-bold text-gray-900 mb-1.5 ml-1 tracking-tight">
-            What is {num1} + {num2} = ? :
-          </label>
+        {/* Math Security Captcha Section */}
+        <div className="bg-purple-50/50 border border-purple-100/80 rounded-2xl p-3">
+          <div className="flex items-center justify-between mb-1.5 px-1">
+            <label className="flex items-center gap-1.5 text-xs font-bold text-gray-800">
+              <ShieldCheck className="w-3.5 h-3.5 text-[#7056d6]" />
+              <span>Security Check: <strong className="text-[#7056d6] text-sm">{num1} + {num2} = ?</strong></span>
+            </label>
+            <button
+              type="button"
+              onClick={generateNewCaptcha}
+              className="inline-flex items-center gap-1 text-[11px] font-semibold text-purple-700 hover:text-purple-900 transition p-1 rounded-md hover:bg-purple-100/60"
+              title="নতুন অংক আনুন"
+            >
+              <RotateCw className="w-3 h-3" />
+              <span>Refresh</span>
+            </button>
+          </div>
           <div className="relative">
             <input
               id="captcha-answer-input"
@@ -243,14 +269,14 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
                 setCaptchaAnswer(e.target.value);
                 if (errorMessage) setErrorMessage('');
               }}
-              placeholder="Answer"
-              className="w-full px-4 py-3 rounded-2xl border border-gray-200 hover:border-gray-300 focus:border-[#7056d6] focus:ring-4 focus:ring-purple-100 text-gray-900 placeholder-gray-400 text-sm outline-none transition bg-gray-50/50 focus:bg-white shadow-2xs tracking-normal"
+              placeholder="উত্তর লিখুন (Enter Sum)"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 hover:border-gray-300 focus:border-[#7056d6] focus:ring-3 focus:ring-purple-100 text-gray-900 placeholder-gray-400 text-sm outline-none transition bg-white shadow-2xs"
             />
           </div>
         </div>
 
         {/* Remember me row */}
-        <div className="flex items-center justify-between pt-1">
+        <div className="flex items-center justify-between pt-0.5">
           <label className="flex items-center gap-2 cursor-pointer select-none text-gray-600 hover:text-gray-800 transition">
             <input
               id="remember-me-checkbox"
@@ -261,15 +287,16 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
             />
             <span className="text-xs sm:text-sm font-medium tracking-wide">Remember me</span>
           </label>
+          <span className="text-[11px] text-gray-400 font-medium">Admin Approved Only</span>
         </div>
 
         {/* Primary Sign In Button */}
-        <div className="pt-2">
+        <div className="pt-1">
           <button
             id="login-submit-btn"
             type="submit"
             disabled={isLoading}
-            className="w-full py-3.5 px-6 rounded-2xl bg-[#7056d6] hover:bg-[#5f44cb] active:bg-[#5238bb] text-white font-bold text-sm sm:text-base tracking-wider uppercase shadow-md hover:shadow-lg transition-all duration-200 cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-[#7056d6] via-[#6348ce] to-[#553bb8] hover:opacity-95 active:scale-[0.99] text-white font-extrabold text-sm sm:text-base tracking-wider uppercase shadow-md hover:shadow-lg transition-all duration-150 cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {isLoading ? (
               <>
@@ -347,3 +374,4 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
     </div>
   );
 }
+

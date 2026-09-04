@@ -498,7 +498,7 @@ async function startServer() {
       }
     }
 
-    // 2. Check Standard User Accounts
+    // 2. Check Standard User Accounts from server memory/storage
     const accounts = loadServerAccounts();
     const cleanPhoneDigits = extractPhoneDigits(clean);
 
@@ -511,52 +511,6 @@ async function startServer() {
         a.email.split("@")[0].trim().toLowerCase() === clean ||
         (cleanPhoneDigits.length >= 6 && a.phoneOrTelegram && extractPhoneDigits(a.phoneOrTelegram) === cleanPhoneDigits)
     );
-
-    // If account not found in local memory, query Firestore directly in real-time
-    if (!account && clean.includes("@")) {
-      try {
-        const remoteDoc = await fetchSingleAccountFromFirestore(clean);
-        if (remoteDoc && remoteDoc.email) {
-          account = remoteDoc;
-          const currentList = loadServerAccounts();
-          const map = new Map<string, any>();
-          currentList.forEach((a) => map.set(a.email.toLowerCase().trim(), a));
-          map.set(remoteDoc.email.toLowerCase().trim(), remoteDoc);
-          saveServerAccounts(Array.from(map.values()));
-        }
-      } catch (err: any) {
-        console.warn("[Server Auth] Remote lookup error:", err?.message);
-      }
-    }
-
-    // If still not found, check Firebase Auth credentials directly
-    if (!account && clean.includes("@") && cleanPass) {
-      try {
-        const authRes = await verifyWithFirebaseAuth(clean, cleanPass);
-        if (authRes.success) {
-          account = {
-            id: `user_${clean.replace(/[^a-zA-Z0-9_-]/g, "_")}`,
-            name: clean.split("@")[0],
-            email: clean,
-            username: clean.split("@")[0],
-            password: cleanPass,
-            accountCode: String(Math.floor(1000000000 + Math.random() * 9000000000)),
-            status: "approved",
-            role: "user",
-            createdAt: Date.now(),
-            approvedAt: Date.now(),
-            updatedAt: Date.now(),
-            note: "Auto-verified via Firebase Auth",
-          };
-          saveAccountToFirestore(account).catch(() => null);
-          const currentList = loadServerAccounts();
-          currentList.unshift(account);
-          saveServerAccounts(currentList);
-        }
-      } catch (err: any) {
-        console.warn("[Server Auth] Firebase Auth verification fallback error:", err?.message);
-      }
-    }
 
     if (!account) {
       return res.json({

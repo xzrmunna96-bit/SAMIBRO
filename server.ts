@@ -562,7 +562,7 @@ async function startServer() {
       return res.json({
         success: false,
         status: "not_found",
-        message: "Account not found. Please click the SMS/Message box above to submit your account request with your email and password.",
+        message: "Account not found. Only accounts created by the Admin can log in.",
       });
     }
 

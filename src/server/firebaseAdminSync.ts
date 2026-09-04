@@ -5,13 +5,17 @@ const PROJECT_ID = "super-x-sms";
 const SYSTEM_EMAIL = "system_sync@superxsms.com";
 const SYSTEM_PASSWORD = "SuperXSyncSecretPassword2026!";
 
+let lastFailedTime = 0;
+const COOLDOWN_MS = 30000; // 30s cooldown on network drops
+
 function httpsRequest(
   url: string,
   method: string,
   headers?: Record<string, string>,
-  body?: string
+  body?: string,
+  timeoutMs: number = 2500
 ): Promise<{ status: number; body: string }> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     try {
       const u = new URL(url);
       const req = https.request(
@@ -19,7 +23,12 @@ function httpsRequest(
           hostname: u.hostname,
           path: u.pathname + u.search,
           method,
-          headers: headers || {},
+          agent: false, // Don't reuse sockets from pool to prevent "socket hang up" (ECONNRESET)
+          headers: {
+            Connection: "close",
+            ...(headers || {}),
+          },
+          timeout: timeoutMs,
         },
         (res) => {
           let d = "";
@@ -27,13 +36,23 @@ function httpsRequest(
           res.on("end", () => resolve({ status: res.statusCode || 500, body: d }));
         }
       );
-      req.on("error", (err) => {
-        console.warn("[Firebase Admin Sync Request Error]", err.message);
-        resolve({ status: 500, body: JSON.stringify({ error: err.message }) });
+      req.on("timeout", () => {
+        req.destroy();
+        lastFailedTime = Date.now();
+        resolve({ status: 504, body: JSON.stringify({ error: "timeout" }) });
+      });
+      req.on("error", (err: any) => {
+        lastFailedTime = Date.now();
+        // Socket hang up and connection reset are normal transient socket drops, handle cleanly without noisy crash
+        if (err?.code !== "ECONNRESET" && err?.message !== "socket hang up") {
+          console.warn("[Firebase Admin Sync Request Notice]", err?.message || "connection closed");
+        }
+        resolve({ status: 500, body: JSON.stringify({ error: err?.message || "socket error" }) });
       });
       if (body) req.write(body);
       req.end();
     } catch (e: any) {
+      lastFailedTime = Date.now();
       resolve({ status: 500, body: JSON.stringify({ error: e?.message || "Unknown error" }) });
     }
   });
@@ -45,6 +64,10 @@ let tokenExpiry = 0;
 export async function getFirebaseIdToken(): Promise<string> {
   if (cachedToken && Date.now() < tokenExpiry) {
     return cachedToken;
+  }
+  // If recent network drop or timeout occurred, wait for cooldown before retrying
+  if (Date.now() - lastFailedTime < COOLDOWN_MS) {
+    return "";
   }
   const postData = JSON.stringify({
     email: SYSTEM_EMAIL,
@@ -89,6 +112,7 @@ export async function getFirebaseIdToken(): Promise<string> {
     }
   }
 
+  lastFailedTime = Date.now();
   return "";
 }
 

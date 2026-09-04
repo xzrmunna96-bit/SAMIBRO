@@ -209,7 +209,7 @@ export async function authenticateUserViaServer(
 }> {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 6000);
+    const timeoutId = setTimeout(() => controller.abort(), 2000);
 
     const res = await fetch('/api/accounts/login', {
       method: 'POST',

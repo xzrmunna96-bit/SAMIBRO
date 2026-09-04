@@ -15,7 +15,7 @@ import {
   ChevronRight,
   ExternalLink,
 } from "lucide-react";
-import { LiveConsoleHit } from "../services/voltxApi";
+import { LiveConsoleHit, stripFlagFromCountryName } from "../services/voltxApi";
 import { CountryFlag } from "./CountryFlags";
 import { sendOtpToTelegram, extractOtpCode } from "../services/telegramService";
 
@@ -251,8 +251,8 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
                           />
                         </div>
                         <div className="space-y-0.5">
-                          <div className="font-bold text-slate-900 text-xs sm:text-[13px] tracking-wide">
-                            {item.country} {item.range}
+                          <div className="font-bold text-slate-900 text-xs sm:text-[13px] tracking-wide uppercase">
+                            {stripFlagFromCountryName(item.country)} {item.range}
                           </div>
                           <div className="font-medium text-slate-700 text-xs tracking-tight">
                             {item.number}
@@ -325,8 +325,8 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
                   <td className="py-2.5 px-4 font-bold text-slate-900">{tr.range}</td>
                   <td className="py-2.5 px-4">
                     <div className="flex items-center gap-2">
-                      <CountryFlag countryCode={tr.country} className="w-6 h-4 object-cover rounded-2xs border border-slate-200" />
-                      <span>{tr.country}</span>
+                      <CountryFlag countryCode={tr.country} className="w-8 h-5 object-cover rounded-xs border border-slate-200" />
+                      <span>{stripFlagFromCountryName(tr.country)}</span>
                     </div>
                   </td>
                   <td className="py-2.5 px-4 font-bold text-emerald-700 font-mono">{tr.payout}</td>

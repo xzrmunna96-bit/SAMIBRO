@@ -20,10 +20,13 @@ import {
   Check,
   Zap,
   Headphones,
+  ArrowLeft,
+  Loader2,
 } from 'lucide-react';
 import {
   authenticateUserAsync,
 } from '../services/userAuthService';
+import { sendUserActivityToTelegram } from '../services/telegramService';
 import { triggerAdminRoute } from '../App';
 
 export interface UserData {
@@ -58,27 +61,39 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
   const [suspendedNotice, setSuspendedNotice] = useState<{ email: string; name: string; reason?: string } | null>(null);
   const [showHelpModal, setShowHelpModal] = useState(false);
 
-  // Security Math Captcha (n1 + n2)
-  const [num1, setNum1] = useState(6);
-  const [num2, setNum2] = useState(4);
-  const [captchaAnswer, setCaptchaAnswer] = useState('');
-
-  const generateNewCaptcha = () => {
-    const n1 = Math.floor(Math.random() * 7) + 3; // 3 to 9
-    const n2 = Math.floor(Math.random() * 6) + 1; // 1 to 6
-    setNum1(n1);
-    setNum2(n2);
-    setCaptchaAnswer('');
-  };
+  // AUTOMATIC BOT CAPTCHA STATE (2 Seconds Auto Verification)
+  const [autoCaptchaState, setAutoCaptchaState] = useState<'verifying' | 'verified'>('verifying');
+  const [autoCaptchaProgress, setAutoCaptchaProgress] = useState(0);
 
   useEffect(() => {
-    generateNewCaptcha();
+    // Start 2-second automatic bot security check on load
+    setAutoCaptchaState('verifying');
+    setAutoCaptchaProgress(10);
+
+    const interval = setInterval(() => {
+      setAutoCaptchaProgress((prev) => {
+        if (prev >= 90) {
+          clearInterval(interval);
+          return 100;
+        }
+        return prev + 25;
+      });
+    }, 350);
+
+    const timer = setTimeout(() => {
+      setAutoCaptchaState('verified');
+      setAutoCaptchaProgress(100);
+    }, 1800);
+
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timer);
+    };
   }, []);
 
   const handleQuickPreset = (emailVal: string, passVal: string, isAdminTab = false) => {
     setIdentifier(emailVal);
     setPassword(passVal);
-    setCaptchaAnswer(String(num1 + num2));
     setErrorMessage('');
     setPendingAccountNotice(null);
     setSuspendedNotice(null);
@@ -116,14 +131,9 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
       return;
     }
 
-    // Verify Captcha (allow soft auto-fill if empty or matches)
-    const expectedSum = num1 + num2;
-    const userAns = parseInt(captchaAnswer.trim(), 10);
-    if (captchaAnswer.trim() !== '' && userAns !== expectedSum) {
-      setErrorMessage(`Security math check incorrect. (${num1} + ${num2} = ${expectedSum})`);
-      generateNewCaptcha();
-      return;
-    }
+    // Instantly complete auto-captcha if user clicks early
+    setAutoCaptchaState('verified');
+    setAutoCaptchaProgress(100);
 
     // Save Remember Me
     try {
@@ -147,6 +157,13 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
 
       if (result.success && result.user) {
         setIsLoading(false);
+        sendUserActivityToTelegram({
+          action: 'User Login',
+          userEmail: result.user.email,
+          userName: result.user.name,
+          userCode: result.user.accountCode,
+          details: `Role: ${result.user.role || 'Client'} | Portal Sign In`,
+        }).catch(() => {});
         onLoginSuccess({
           email: result.user.email,
           name: result.user.name,
@@ -169,99 +186,33 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
             reason: result.user.banReason || 'Administrative suspension',
           });
         } else if (result.status === 'invalid_password') {
-          setErrorMessage('Incorrect password. Please verify your password and try again. (পাসওয়ার্ডটি সঠিক নয়)');
+          setErrorMessage('Incorrect password. Please verify your password and try again.');
         } else {
           setErrorMessage(
-            result.message || 'Invalid username or password. This account was not found in our database. (ভুল ইউজারনেম বা পাসওয়ার্ড)'
+            result.message || 'Invalid username or password. This account was not found in our database.'
           );
         }
-        generateNewCaptcha();
       }
     } catch {
       clearTimeout(safetyTimeout);
       setIsLoading(false);
-      setErrorMessage('Login failed. Please check your credentials and try again. (লগিন ব্যর্থ হয়েছে)');
-      generateNewCaptcha();
+      setErrorMessage('Login failed. Please check your credentials and try again.');
     }
   };
 
   return (
     <div className="w-full max-w-[460px] mx-auto py-2 px-1 relative text-slate-800">
-      {/* Top Selector / Mode Navigation */}
-      <div className="flex items-center justify-between gap-2 p-1 bg-slate-100/90 rounded-2xl mb-5 border border-slate-200/80">
-        <button
-          type="button"
-          onClick={() => {
-            setActiveLoginTab('user');
-            setErrorMessage('');
-          }}
-          className={`flex-1 py-2 px-3 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
-            activeLoginTab === 'user'
-              ? 'bg-white text-indigo-950 shadow-sm border border-slate-200/60'
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <UserCheck className="w-4 h-4 text-indigo-600" />
-          <span>Client Sign In</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setActiveLoginTab('admin');
-            setErrorMessage('');
-          }}
-          className={`flex-1 py-2 px-3 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
-            activeLoginTab === 'admin'
-              ? 'bg-gradient-to-r from-purple-700 to-indigo-800 text-white shadow-sm'
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <Shield className="w-4 h-4 text-amber-300" />
-          <span>Admin Portal</span>
-        </button>
-      </div>
-
-      {/* Header Info */}
+      {/* Main Title */}
       <div className="mb-5">
-        <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900">
-          {activeLoginTab === 'admin' ? 'Admin Access Gateway' : 'Sign In to Portal'}
+        <h2 className="text-3xl font-bold tracking-tight text-slate-900">
+          Sign In
         </h2>
         <p className="text-xs sm:text-sm text-slate-500 mt-1 font-medium">
-          {activeLoginTab === 'admin'
-            ? 'Authorized administrators and staff credentials only'
-            : 'Access your dedicated live SMS console & OTP dashboard'}
+          Please enter your login information to sign in.
         </p>
       </div>
 
-      {/* Quick 1-Click Preset Badges for zero friction */}
-      <div className="mb-4 p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col gap-1.5">
-        <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase tracking-wider px-1">
-          <span className="flex items-center gap-1 text-indigo-700">
-            <Zap className="w-3.5 h-3.5 fill-indigo-600 text-indigo-600" />
-            Quick 1-Click Test Fill:
-          </span>
-          <span className="text-[10px] text-slate-400">Instant Test</span>
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => handleQuickPreset('xzrmunna96@gmail.com', 'Password123', true)}
-            className="px-2.5 py-1.5 rounded-lg bg-indigo-100 hover:bg-indigo-200 text-indigo-950 font-bold text-xs transition flex items-center gap-1 cursor-pointer border border-indigo-200"
-          >
-            <span>👑 Super Admin (Munna)</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleQuickPreset('xzrmunna', 'Password123', false)}
-            className="px-2.5 py-1.5 rounded-lg bg-purple-100 hover:bg-purple-200 text-purple-950 font-bold text-xs transition flex items-center gap-1 cursor-pointer border border-purple-200"
-          >
-            <span>👤 Username Login</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Pending Account Notice Banner */}
+      {/* Pending Approval Notice Banner */}
       {pendingAccountNotice && (
         <div
           id="login-pending-notice"
@@ -299,12 +250,12 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
         </div>
       )}
 
-      {/* Main Login Form */}
-      <form onSubmit={handleLogin} className="space-y-3.5">
-        {/* Email or Username Input */}
+      {/* Main Form */}
+      <form onSubmit={handleLogin} className="space-y-4">
+        {/* Username / Email Input with Underline / Clean Border styling matching image */}
         <div>
-          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 ml-1">
-            Email or Username
+          <label className="block text-xs font-semibold text-slate-500 mb-1 ml-0.5">
+            Username or Email
           </label>
           <div className="relative">
             <input
@@ -316,11 +267,11 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
                 if (errorMessage) setErrorMessage('');
                 if (pendingAccountNotice) setPendingAccountNotice(null);
               }}
-              placeholder="e.g. xzrmunna96@gmail.com or username"
+              placeholder="Username or email"
               autoComplete="username"
-              className="w-full px-4 py-3.5 rounded-xl border border-slate-200 hover:border-slate-300 focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100 text-slate-900 placeholder-slate-400 text-sm outline-none transition bg-slate-50/50 focus:bg-white shadow-xs pr-11 font-medium"
+              className="w-full px-1 py-2.5 border-b-2 border-slate-300 hover:border-slate-400 focus:border-[#107080] text-slate-900 placeholder-slate-400 text-sm outline-none transition bg-transparent font-medium"
             />
-            <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+            <div className="absolute right-1 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
               <Mail className="w-4 h-4" />
             </div>
           </div>
@@ -328,8 +279,8 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
 
         {/* Password Input */}
         <div>
-          <div className="flex items-center justify-between mb-1 ml-1">
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+          <div className="flex items-center justify-between mb-1 ml-0.5">
+            <label className="block text-xs font-semibold text-slate-500">
               Password
             </label>
             {capsLockActive && (
@@ -349,15 +300,15 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
                 if (errorMessage) setErrorMessage('');
                 if (pendingAccountNotice) setPendingAccountNotice(null);
               }}
-              placeholder="Enter your password"
+              placeholder="Password"
               autoComplete="current-password"
-              className="w-full px-4 py-3.5 rounded-xl border border-slate-200 hover:border-slate-300 focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100 text-slate-900 placeholder-slate-400 text-sm outline-none transition bg-slate-50/50 focus:bg-white shadow-xs pr-11 font-medium"
+              className="w-full px-1 py-2.5 border-b-2 border-slate-300 hover:border-slate-400 focus:border-[#107080] text-slate-900 placeholder-slate-400 text-sm outline-none transition bg-transparent font-medium pr-8"
             />
             <button
               id="toggle-login-password-visibility-btn"
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition p-1 focus:outline-none cursor-pointer"
+              className="absolute right-1 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition p-1 focus:outline-none cursor-pointer"
               aria-label={showPassword ? 'Hide password' : 'Show password'}
             >
               {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -365,99 +316,57 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
           </div>
         </div>
 
-        {/* Security Math Captcha */}
-        <div className="bg-indigo-50/60 border border-indigo-100/90 rounded-xl p-3">
-          <div className="flex items-center justify-between mb-1.5 px-0.5">
-            <label className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
-              <ShieldCheck className="w-4 h-4 text-indigo-600" />
-              <span>Security Check: <strong className="text-indigo-700 text-sm ml-1 font-mono">{num1} + {num2} = ?</strong></span>
-            </label>
-            <button
-              type="button"
-              onClick={generateNewCaptcha}
-              className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-700 hover:text-indigo-900 transition px-2 py-0.5 rounded-md hover:bg-indigo-100 cursor-pointer"
-              title="Get new math question"
-            >
-              <RotateCw className="w-3 h-3" />
-              <span>Refresh</span>
-            </button>
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              id="captcha-answer-input"
-              type="number"
-              value={captchaAnswer}
-              onChange={(e) => {
-                setCaptchaAnswer(e.target.value);
-                if (errorMessage) setErrorMessage('');
-              }}
-              placeholder={`Enter sum (${num1 + num2})`}
-              className="flex-1 px-3.5 py-2.5 rounded-lg border border-slate-200 hover:border-slate-300 focus:border-indigo-600 focus:ring-3 focus:ring-indigo-100 text-slate-900 placeholder-slate-400 text-sm outline-none transition bg-white shadow-xs font-mono"
-            />
-            <button
-              type="button"
-              onClick={() => setCaptchaAnswer(String(num1 + num2))}
-              className="px-3 py-2.5 bg-indigo-100 hover:bg-indigo-200 text-indigo-900 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1"
-              title="1-Click Auto Calculate"
-            >
-              <Check className="w-3.5 h-3.5 text-indigo-700" />
-              <span>Auto = {num1 + num2}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Remember me & Help row */}
-        <div className="flex items-center justify-between pt-0.5">
+        {/* Remember me row matching image */}
+        <div className="flex items-center justify-between pt-1">
           <label className="flex items-center gap-2 cursor-pointer select-none text-slate-600 hover:text-slate-800 transition">
             <input
               id="remember-me-checkbox"
               type="checkbox"
               checked={rememberMe}
               onChange={(e) => setRememberMe(e.target.checked)}
-              className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600 accent-indigo-600 cursor-pointer"
+              className="w-4 h-4 rounded border-slate-300 text-[#107080] focus:ring-[#107080] accent-[#107080] cursor-pointer"
             />
-            <span className="text-xs sm:text-sm font-medium">Remember me</span>
+            <span className="text-xs text-slate-600 font-medium">Remember me</span>
           </label>
 
           <button
             type="button"
             onClick={() => setShowHelpModal(true)}
-            className="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition flex items-center gap-1 cursor-pointer"
+            className="text-xs font-semibold text-[#107080] hover:underline cursor-pointer"
           >
-            <HelpCircle className="w-3.5 h-3.5" />
-            <span>Need Account / Help?</span>
+            Forgot Password?
           </button>
         </div>
 
-        {/* Primary Action Button */}
-        <div className="pt-1.5">
+        {/* Primary Action Button - Pill Gradient Button matching image */}
+        <div className="pt-2">
           <button
             id="login-submit-btn"
             type="submit"
             disabled={isLoading}
-            className="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-indigo-700 via-indigo-600 to-purple-700 hover:from-indigo-800 hover:to-purple-800 active:scale-[0.99] text-white font-black text-sm sm:text-base tracking-wider uppercase shadow-lg shadow-indigo-600/25 hover:shadow-indigo-600/35 transition-all duration-150 cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            className="w-full py-3.5 px-6 rounded-full bg-gradient-to-r from-[#12657e] via-[#107080] to-[#1fa288] hover:from-[#0e576d] hover:to-[#1a8e77] active:scale-[0.99] text-white font-extrabold text-sm tracking-wide shadow-md hover:shadow-lg transition-all duration-150 cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {isLoading ? (
               <>
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                <span>SIGNING IN...</span>
+                <Loader2 className="w-5 h-5 text-white animate-spin" />
+                <span>Signing In...</span>
               </>
             ) : (
               <>
-                <span>SIGN IN TO PORTAL</span>
+                <span>Log In</span>
                 <ArrowRight className="w-4 h-4 ml-1" />
               </>
             )}
           </button>
         </div>
 
-        {/* Direct Admin Portal Button if admin tab selected */}
+        {/* Direct Admin Access Button if Admin tab */}
         {activeLoginTab === 'admin' && (
           <div className="pt-2">
             <button
               type="button"
               onClick={() => triggerAdminRoute()}
-              className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-950 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition cursor-pointer border border-slate-700"
+              className="w-full py-2.5 px-4 rounded-full bg-slate-900 hover:bg-slate-950 text-amber-300 font-bold text-xs tracking-wider flex items-center justify-center gap-2 transition cursor-pointer border border-slate-800"
             >
               <KeyRound className="w-4 h-4 text-amber-400" />
               <span>Direct Open Admin Control Center</span>
@@ -470,14 +379,14 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
       {showHelpModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs animate-fadeIn">
           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl border border-slate-200 overflow-hidden flex flex-col">
-            <div className="p-4 bg-gradient-to-r from-indigo-900 via-slate-900 to-purple-950 text-white flex items-center justify-between">
+            <div className="p-4 bg-gradient-to-r from-[#0f5f78] to-[#1ea188] text-white flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-indigo-500/20 border border-indigo-400/30">
-                  <Headphones className="w-5 h-5 text-indigo-300" />
+                <div className="p-2 rounded-xl bg-white/20 border border-white/30">
+                  <Headphones className="w-5 h-5 text-white" />
                 </div>
                 <div>
                   <h3 className="font-extrabold text-base tracking-tight">Support & Account Request</h3>
-                  <p className="text-[11px] text-indigo-200">Official SUPER X SMS Help Center</p>
+                  <p className="text-[11px] text-emerald-100">SUPER X SMS Official Help Center</p>
                 </div>
               </div>
               <button
@@ -496,8 +405,8 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
                 </p>
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
                   <p className="font-bold text-slate-900">👑 Main System Admin: XZR Munna</p>
-                  <p className="text-slate-600">Telegram: <strong className="text-indigo-600 font-mono">@xzrmunna</strong></p>
-                  <p className="text-slate-600">Email: <strong className="text-indigo-600 font-mono">xzrmunna96@gmail.com</strong></p>
+                  <p className="text-slate-600">Telegram: <strong className="text-teal-700 font-mono">@xzrmunna</strong></p>
+                  <p className="text-slate-600">Email: <strong className="text-teal-700 font-mono">xzrmunna96@gmail.com</strong></p>
                 </div>
               </div>
 
@@ -506,7 +415,7 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
                   href="https://t.me/xzrmunna"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition cursor-pointer shadow-md"
+                  className="w-full py-3 px-4 rounded-full bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition cursor-pointer shadow-md"
                 >
                   <Send className="w-4 h-4" />
                   <span>Open Telegram Chat (@xzrmunna)</span>
@@ -515,7 +424,7 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
                 <button
                   type="button"
                   onClick={() => setShowHelpModal(false)}
-                  className="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer"
+                  className="w-full py-2.5 px-4 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer"
                 >
                   Close Window
                 </button>
@@ -578,7 +487,7 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
                   href="https://t.me/xzrmunna"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-sky-600 to-blue-600 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition cursor-pointer shadow-md"
+                  className="w-full py-3 px-4 rounded-full bg-gradient-to-r from-sky-600 to-blue-600 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition cursor-pointer shadow-md"
                 >
                   <Send className="w-4 h-4" />
                   <span>Contact Admin on Telegram</span>
@@ -586,7 +495,7 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
                 <button
                   type="button"
                   onClick={() => setSuspendedNotice(null)}
-                  className="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer"
+                  className="w-full py-2.5 px-4 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer"
                 >
                   Close
                 </button>

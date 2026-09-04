@@ -159,6 +159,20 @@ textarea,
   animation: rainbowPulseGlow 3s ease-in-out infinite;
 }
 
+/* Animated Gentle Wave/Shimmer for Country Flags */
+@keyframes flagGentleFloat {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-1.5px) scale(1.03);
+  }
+}
+
+.animate-flag-float {
+  animation: flagGentleFloat 3s ease-in-out infinite;
+}
+
 /* Light Sweep Beam over Brand Title */
 @keyframes lightSweepBeam {
   0% {

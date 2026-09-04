@@ -233,72 +233,84 @@ export function resolveCarrierDetails(range: string): { operator: string; countr
   const info = getCountryInfo(range);
 
   // 3-digit country dialing prefixes
-  if (digits.startsWith('856')) return { operator: 'LAO TELECOM / Tplus', country: `${info.flag} Laos` };
-  if (digits.startsWith('855')) return { operator: 'SMART / METFONE', country: `${info.flag} Cambodia` };
-  if (digits.startsWith('852')) return { operator: 'CSL / HK TONE', country: `${info.flag} Hong Kong` };
-  if (digits.startsWith('853')) return { operator: 'CTM', country: `${info.flag} Macau` };
-  if (digits.startsWith('886')) return { operator: 'CHUNGHWA / TAIWAN MOBILE', country: `${info.flag} Taiwan` };
-  if (digits.startsWith('880')) return { operator: 'GRAMEENPHONE / ROBI', country: `${info.flag} Bangladesh` };
-  if (digits.startsWith('977')) return { operator: 'NCELL / NTC', country: `${info.flag} Nepal` };
-  if (digits.startsWith('975')) return { operator: 'B-MOBILE', country: `${info.flag} Bhutan` };
-  if (digits.startsWith('960')) return { operator: 'DHIRAAGU', country: `${info.flag} Maldives` };
-  if (digits.startsWith('976')) return { operator: 'MOBICOM', country: `${info.flag} Mongolia` };
-  if (digits.startsWith('992')) return { operator: 'TACELL', country: `${info.flag} Tajikistan` };
-  if (digits.startsWith('993')) return { operator: 'TMCELL', country: `${info.flag} Turkmenistan` };
-  if (digits.startsWith('994')) return { operator: 'AZERCELL', country: `${info.flag} Azerbaijan` };
-  if (digits.startsWith('995')) return { operator: 'MAGTICOM', country: `${info.flag} Georgia` };
-  if (digits.startsWith('996')) return { operator: 'MEGACOM', country: `${info.flag} Kyrgyzstan` };
-  if (digits.startsWith('998')) return { operator: 'UCELL', country: `${info.flag} Uzbekistan` };
+  if (digits.startsWith('856')) return { operator: 'LAO TELECOM / Tplus', country: 'Laos' };
+  if (digits.startsWith('855')) return { operator: 'SMART / METFONE', country: 'Cambodia' };
+  if (digits.startsWith('852')) return { operator: 'CSL / HK TONE', country: 'Hong Kong' };
+  if (digits.startsWith('853')) return { operator: 'CTM', country: 'Macau' };
+  if (digits.startsWith('886')) return { operator: 'CHUNGHWA / TAIWAN MOBILE', country: 'Taiwan' };
+  if (digits.startsWith('880')) return { operator: 'GRAMEENPHONE / ROBI', country: 'Bangladesh' };
+  if (digits.startsWith('977')) return { operator: 'NCELL / NTC', country: 'Nepal' };
+  if (digits.startsWith('975')) return { operator: 'B-MOBILE', country: 'Bhutan' };
+  if (digits.startsWith('960')) return { operator: 'DHIRAAGU', country: 'Maldives' };
+  if (digits.startsWith('976')) return { operator: 'MOBICOM', country: 'Mongolia' };
+  if (digits.startsWith('992')) return { operator: 'TACELL', country: 'Tajikistan' };
+  if (digits.startsWith('993')) return { operator: 'TMCELL', country: 'Turkmenistan' };
+  if (digits.startsWith('994')) return { operator: 'AZERCELL', country: 'Azerbaijan' };
+  if (digits.startsWith('995')) return { operator: 'MAGTICOM', country: 'Georgia' };
+  if (digits.startsWith('996')) return { operator: 'MEGACOM', country: 'Kyrgyzstan' };
+  if (digits.startsWith('998')) return { operator: 'UCELL', country: 'Uzbekistan' };
 
   // Middle East 3-digits
-  if (digits.startsWith('966')) return { operator: 'STC / MOBILY', country: `${info.flag} Saudi Arabia` };
-  if (digits.startsWith('971')) return { operator: 'ETISALAT / DU', country: `${info.flag} UAE` };
-  if (digits.startsWith('965')) return { operator: 'ZAIN / OOREDOO', country: `${info.flag} Kuwait` };
-  if (digits.startsWith('974')) return { operator: 'OOREDOO / VODAFONE', country: `${info.flag} Qatar` };
-  if (digits.startsWith('968')) return { operator: 'OMANTEL', country: `${info.flag} Oman` };
-  if (digits.startsWith('973')) return { operator: 'BATELCO', country: `${info.flag} Bahrain` };
-  if (digits.startsWith('962')) return { operator: 'ZAIN / ORANGE', country: `${info.flag} Jordan` };
-  if (digits.startsWith('961')) return { operator: 'TOUCH / ALPHA', country: `${info.flag} Lebanon` };
-  if (digits.startsWith('963')) return { operator: 'SYRIATEL', country: `${info.flag} Syria` };
-  if (digits.startsWith('964')) return { operator: 'ASIACELL / ZAIN', country: `${info.flag} Iraq` };
-  if (digits.startsWith('967')) return { operator: 'YEMEN MOBILE', country: `${info.flag} Yemen` };
+  if (digits.startsWith('966')) return { operator: 'STC / MOBILY', country: 'Saudi Arabia' };
+  if (digits.startsWith('971')) return { operator: 'ETISALAT / DU', country: 'UAE' };
+  if (digits.startsWith('965')) return { operator: 'ZAIN / OOREDOO', country: 'Kuwait' };
+  if (digits.startsWith('974')) return { operator: 'OOREDOO / VODAFONE', country: 'Qatar' };
+  if (digits.startsWith('968')) return { operator: 'OMANTEL', country: 'Oman' };
+  if (digits.startsWith('973')) return { operator: 'BATELCO', country: 'Bahrain' };
+  if (digits.startsWith('962')) return { operator: 'ZAIN / ORANGE', country: 'Jordan' };
+  if (digits.startsWith('961')) return { operator: 'TOUCH / ALPHA', country: 'Lebanon' };
+  if (digits.startsWith('963')) return { operator: 'SYRIATEL', country: 'Syria' };
+  if (digits.startsWith('964')) return { operator: 'ASIACELL / ZAIN', country: 'Iraq' };
+  if (digits.startsWith('967')) return { operator: 'YEMEN MOBILE', country: 'Yemen' };
 
   // 2-digit & 1-digit
-  if (digits.startsWith('91')) return { operator: 'AIRTEL / JIO / VI', country: `${info.flag} India` };
-  if (digits.startsWith('92')) return { operator: 'JAZZ / TELENOR', country: `${info.flag} Pakistan` };
-  if (digits.startsWith('90')) return { operator: 'TURKCELL / VODAFONE', country: `${info.flag} Turkey` };
-  if (digits.startsWith('60')) return { operator: 'MAXIS / CELCOM', country: `${info.flag} Malaysia` };
-  if (digits.startsWith('62')) return { operator: 'TELKOMSEL / INDOSAT', country: `${info.flag} Indonesia` };
-  if (digits.startsWith('63')) return { operator: 'GLOBE / SMART', country: `${info.flag} Philippines` };
-  if (digits.startsWith('66')) return { operator: 'AIS / TRUE', country: `${info.flag} Thailand` };
-  if (digits.startsWith('84')) return { operator: 'VIETTEL / VINAPHONE', country: `${info.flag} Vietnam` };
-  if (digits.startsWith('44')) return { operator: 'EE / VODAFONE / O2', country: `${info.flag} United Kingdom` };
-  if (digits.startsWith('49')) return { operator: 'TELEKOM / VODAFONE', country: `${info.flag} Germany` };
-  if (digits.startsWith('33')) return { operator: 'ORANGE / SFR', country: `${info.flag} France` };
-  if (digits.startsWith('39')) return { operator: 'TIM / VODAFONE', country: `${info.flag} Italy` };
-  if (digits.startsWith('34')) return { operator: 'MOVISTAR / ORANGE', country: `${info.flag} Spain` };
-  if (digits.startsWith('7')) return { operator: 'MTS / BEELINE / MEGAFON', country: `${info.flag} Russia` };
-  if (digits.startsWith('1')) return { operator: 'T-MOBILE / AT&T / VERIZON', country: `${info.flag} United States / Canada` };
+  if (digits.startsWith('91')) return { operator: 'AIRTEL / JIO / VI', country: 'India' };
+  if (digits.startsWith('92')) return { operator: 'JAZZ / TELENOR', country: 'Pakistan' };
+  if (digits.startsWith('90')) return { operator: 'TURKCELL / VODAFONE', country: 'Turkey' };
+  if (digits.startsWith('60')) return { operator: 'MAXIS / CELCOM', country: 'Malaysia' };
+  if (digits.startsWith('62')) return { operator: 'TELKOMSEL / INDOSAT', country: 'Indonesia' };
+  if (digits.startsWith('63')) return { operator: 'GLOBE / SMART', country: 'Philippines' };
+  if (digits.startsWith('66')) return { operator: 'AIS / TRUE', country: 'Thailand' };
+  if (digits.startsWith('84')) return { operator: 'VIETTEL / VINAPHONE', country: 'Vietnam' };
+  if (digits.startsWith('44')) return { operator: 'EE / VODAFONE / O2', country: 'United Kingdom' };
+  if (digits.startsWith('49')) return { operator: 'TELEKOM / VODAFONE', country: 'Germany' };
+  if (digits.startsWith('33')) return { operator: 'ORANGE / SFR', country: 'France' };
+  if (digits.startsWith('39')) return { operator: 'TIM / VODAFONE', country: 'Italy' };
+  if (digits.startsWith('34')) return { operator: 'MOVISTAR / ORANGE', country: 'Spain' };
+  if (digits.startsWith('7')) return { operator: 'MTS / BEELINE / MEGAFON', country: 'Russia' };
+  if (digits.startsWith('1')) return { operator: 'T-MOBILE / AT&T / VERIZON', country: 'United States' };
 
-  if (info.name && info.name !== 'Global / International') {
-    return { operator: 'National Carrier', country: `${info.flag} ${info.name}` };
+  if (info.name) {
+    return { operator: 'National Carrier Gateway', country: info.name };
   }
 
-  return { operator: 'Global Carrier Route', country: '🌍 International' };
+  return { operator: 'Carrier Gateway Route', country: 'Bangladesh' };
+}
+
+export function stripFlagFromCountryName(name: string): string {
+  if (!name) return '';
+  return name
+    .replace(/[\u{1F1E6}-\u{1F1FF}]{2}/gu, '')
+    .replace(/\p{Extended_Pictographic}/gu, '')
+    .trim();
 }
 
 export function getRealCountryName(rawCountry?: string, rangeStr?: string): string {
   const carrier = resolveCarrierDetails(rangeStr || '');
+  let val = '';
   if (
     !rawCountry ||
     !rawCountry.trim() ||
     rawCountry.trim().toLowerCase() === 'international' ||
     rawCountry.trim().toLowerCase() === 'global' ||
-    rawCountry.trim().toLowerCase() === 'global route'
+    rawCountry.trim().toLowerCase() === 'global route' ||
+    rawCountry.trim().toLowerCase().includes('international')
   ) {
-    return carrier.country;
+    val = carrier.country;
+  } else {
+    val = rawCountry.trim();
   }
-  return rawCountry.trim();
+  return stripFlagFromCountryName(val);
 }
 
 export interface FetchConsoleResponse {
@@ -317,36 +329,57 @@ export function normalizeServiceId(rawSid: string, rawMessage: string): string {
   const msg = (rawMessage || '').toLowerCase();
   const lowerSid = sid.toLowerCase();
 
-  if (lowerSid.includes('baji') || msg.includes('baji') || msg.includes('baji999') || msg.includes('bj999')) return 'Baji';
-  if (lowerSid.includes('whatsapp') || msg.includes('whatsapp') || lowerSid === 'wa' || msg.includes('wa.me')) return 'WhatsApp';
-  if (lowerSid.includes('facebook') || msg.includes('facebook') || msg.includes('fb-') || msg.includes('meta')) return 'Facebook';
-  if (lowerSid.includes('telegram') || msg.includes('telegram') || lowerSid === 'tg' || msg.includes('t.me')) return 'Telegram';
-  if (lowerSid.includes('google') || msg.includes('google') || msg.includes('g-') || msg.includes('gsuite')) return 'Google';
-  if (lowerSid.includes('imo') || msg.includes('imo code') || msg.includes('imo verification') || msg.includes('imo ')) return 'IMO';
-  if (lowerSid.includes('tiktok') || msg.includes('tiktok')) return 'TikTok';
-  if (lowerSid.includes('instagram') || msg.includes('instagram') || lowerSid.includes('insta')) return 'Instagram';
-  if (lowerSid.includes('twitter') || lowerSid.includes('x.com') || msg.includes('twitter')) return 'Twitter / X';
-  if (lowerSid.includes('amazon') || msg.includes('amazon')) return 'Amazon';
-  if (lowerSid.includes('apple') || msg.includes('apple')) return 'Apple';
-  if (lowerSid.includes('snapchat') || msg.includes('snapchat')) return 'Snapchat';
-  if (lowerSid.includes('viber') || msg.includes('viber')) return 'Viber';
-  if (lowerSid.includes('discord') || msg.includes('discord')) return 'Discord';
-  if (lowerSid.includes('shopee') || msg.includes('shopee')) return 'Shopee';
-  if (lowerSid.includes('melbet') || msg.includes('melbet')) return 'Melbet';
-  if (lowerSid.includes('avabet') || msg.includes('avabet')) return 'AVABet';
-  if (lowerSid.includes('paypal') || msg.includes('paypal')) return 'PAYPAL';
-  if (lowerSid.includes('uber') || msg.includes('uber')) return 'Uber';
-  if (lowerSid.includes('bolt') || msg.includes('bolt')) return 'Bolt';
-  if (lowerSid.includes('microsoft') || msg.includes('microsoft')) return 'Microsoft';
-  if (lowerSid.includes('huawei') || msg.includes('huawei') || lowerSid.includes('ullawei')) return 'Huawei';
-  if (lowerSid.includes('authmsg') || msg.includes('authmsg')) return 'AUTHMSG';
-  if (lowerSid.includes('msverify') || msg.includes('msverify')) return 'msverify';
-  if (lowerSid.includes('verify') || msg.includes('verify')) return 'Verify';
-  if (lowerSid.includes('iatsms') || msg.includes('iatsms')) return 'iATSMS';
-  if (lowerSid.includes('linkedin') || msg.includes('linkedin')) return 'LinkedIn';
+  // 1. First Priority: Explicit content signatures inside the message text
+  if (msg.includes('whatsapp') || msg.includes('wa.me') || msg.includes('wa code')) return 'WhatsApp';
+  if (msg.includes('facebook') || msg.includes('fb-') || msg.includes('meta')) return 'Facebook';
+  if (msg.includes('telegram') || msg.includes('t.me') || msg.includes('tg code')) return 'Telegram';
+  if (msg.includes('instagram') || msg.includes('ig code') || msg.includes('ig-')) return 'Instagram';
+  if (msg.includes('tiktok')) return 'TikTok';
+  if (msg.includes('google') || msg.includes('g-') || msg.includes('gsuite')) return 'Google';
+  if (msg.includes('imo code') || msg.includes('imo verification') || msg.includes('imo ')) return 'IMO';
+  if (msg.includes('baji') || msg.includes('baji999') || msg.includes('bj999')) return 'Baji';
+  if (msg.includes('twitter') || msg.includes('x.com')) return 'Twitter / X';
+  if (msg.includes('amazon')) return 'Amazon';
+  if (msg.includes('apple')) return 'Apple';
+  if (msg.includes('snapchat')) return 'Snapchat';
+  if (msg.includes('viber')) return 'Viber';
+  if (msg.includes('discord')) return 'Discord';
+  if (msg.includes('microsoft')) return 'Microsoft';
+  if (msg.includes('huawei')) return 'Huawei';
+
+  // 2. Second Priority: Specific Sender ID (SID) checks (strict matches, avoid false positives like 'insta' matching 'instantsms')
+  if (lowerSid.includes('whatsapp') || lowerSid === 'wa') return 'WhatsApp';
+  if (lowerSid.includes('facebook') || lowerSid === 'fb' || lowerSid === 'meta') return 'Facebook';
+  if (lowerSid.includes('telegram') || lowerSid === 'tg') return 'Telegram';
+  if (lowerSid.includes('instagram') || lowerSid === 'insta' || lowerSid === 'ig' || lowerSid.startsWith('insta_')) return 'Instagram';
+  if (lowerSid.includes('tiktok')) return 'TikTok';
+  if (lowerSid.includes('google') || lowerSid === 'gsuite') return 'Google';
+  if (lowerSid.includes('imo')) return 'IMO';
+  if (lowerSid.includes('baji')) return 'Baji';
+  if (lowerSid.includes('twitter') || lowerSid.includes('x.com')) return 'Twitter / X';
+  if (lowerSid.includes('amazon')) return 'Amazon';
+  if (lowerSid.includes('apple')) return 'Apple';
+  if (lowerSid.includes('snapchat')) return 'Snapchat';
+  if (lowerSid.includes('viber')) return 'Viber';
+  if (lowerSid.includes('discord')) return 'Discord';
+  if (lowerSid.includes('shopee')) return 'Shopee';
+  if (lowerSid.includes('melbet')) return 'Melbet';
+  if (lowerSid.includes('avabet')) return 'AVABet';
+  if (lowerSid.includes('paypal')) return 'PAYPAL';
+  if (lowerSid.includes('uber')) return 'Uber';
+  if (lowerSid.includes('bolt')) return 'Bolt';
+  if (lowerSid.includes('microsoft')) return 'Microsoft';
+  if (lowerSid.includes('huawei')) return 'Huawei';
+  if (lowerSid.includes('authmsg')) return 'AUTHMSG';
+  if (lowerSid.includes('msverify')) return 'msverify';
+  if (lowerSid.includes('verify')) return 'Verify';
+  if (lowerSid.includes('iatsms')) return 'iATSMS';
+  if (lowerSid.includes('linkedin')) return 'LinkedIn';
 
   return sid || 'Service';
 }
+
+export const detectServiceFromHit = normalizeServiceId;
 
 /**
  * 2. Real-time global live feed of recent hits & OTPs across all active configured APIs
@@ -478,6 +511,7 @@ export async function fetchLiveConsoleDetailed(apiKey?: string, customEndpoint?:
                 service: finalHit.sid,
                 message: finalHit.message,
                 time: finalHit.time,
+                countryName: finalHit.country,
               }).catch(() => {});
             }
           }
@@ -500,6 +534,7 @@ export async function fetchLiveConsoleDetailed(apiKey?: string, customEndpoint?:
               service: hit.sid,
               message: hit.message,
               time: hit.time,
+              countryName: hit.country,
             }).catch(() => {});
           }
         }

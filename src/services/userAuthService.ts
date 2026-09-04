@@ -63,6 +63,7 @@ export const DEFAULT_USER_PERMISSIONS: UserPermissions = {
 };
 
 import { sendAdminMessage } from './supportChatService';
+import { sendUserActivityToTelegram } from './telegramService';
 import {
   saveAccountToFirebase,
   deleteAccountFromFirebase,
@@ -424,6 +425,14 @@ export function requestNewAccount(params: {
   saveAllAccounts(accounts);
   saveAccountToFirebase(newAccount);
   saveAccountToServer(newAccount);
+
+  sendUserActivityToTelegram({
+    action: params.isManualAdminCreation ? 'Admin Created Account' : 'New Account Request',
+    userEmail: cleanEmail,
+    userName: newAccount.name,
+    userCode: newAccount.accountCode,
+    details: `Phone/TG: ${newAccount.phoneOrTelegram || 'N/A'} | Status: ${newAccount.status}`,
+  }).catch(() => {});
 
   return {
     success: true,

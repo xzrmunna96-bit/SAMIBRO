@@ -247,9 +247,9 @@ export function getCountryInfo(phoneNumberOrRange: string): { flag: string; name
   }
 
   return {
-    flag: '🌍',
-    name: 'Global / International',
-    dialCode: '',
+    flag: '🇧🇩',
+    name: 'Bangladesh',
+    dialCode: '+880',
   };
 }
 

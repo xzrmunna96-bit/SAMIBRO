@@ -140,6 +140,8 @@ const ADMIN_MASTER_PASSWORD = 'XZRMUNNA12061';
 const ADMIN_SESSION_KEY = 'super_x_admin_session_auth_v2';
 const DEFAULT_API_KEY = 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=';
 
+import { TelegramBotController } from './TelegramBotController';
+
 type AdminTab =
   | 'api-management'
   | 'console-api'
@@ -149,7 +151,8 @@ type AdminTab =
   | 'user-notification'
   | 'top-apps'
   | 'live-chat'
-  | 'admin-management';
+  | 'admin-management'
+  | 'telegram-bot-control';
 
 export interface AdminSession {
   isAuthenticated: boolean;
@@ -2081,6 +2084,23 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                   <span>Admin Management</span>
                   <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-slate-950/60 font-mono text-cyan-300 border border-cyan-500/30">
                     {subAdminsList.length}
+                  </span>
+                </button>
+
+                {/* 9. Telegram Control Bot */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('telegram-bot-control')}
+                  className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-2 ${
+                    activeTab === 'telegram-bot-control'
+                      ? 'bg-sky-500 text-white shadow-md shadow-sky-500/25'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  }`}
+                >
+                  <Sparkles className="w-4 h-4 text-sky-300 animate-pulse" />
+                  <span>Telegram Control Bot</span>
+                  <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-sky-950/80 font-mono text-sky-300 border border-sky-500/30">
+                    Active
                   </span>
                 </button>
               </>
@@ -4883,6 +4903,19 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
           </div>
         </div>
       )}
+
+        {/* ================================================================= */}
+        {/* TAB 9: TELEGRAM CONTROL BOT ENGINE & KEYBOARD CONTROL             */}
+        {/* ================================================================= */}
+        {activeTab === 'telegram-bot-control' && (
+          <section className="space-y-6">
+            <TelegramBotController
+              userRole={isSuperAdmin ? 'admin' : 'subadmin'}
+              userEmail={adminSession.email}
+              onRefreshData={() => setAccountsList(getAllAccounts())}
+            />
+          </section>
+        )}
 
       {/* Notice Modal */}
       {noticeModalUser && (

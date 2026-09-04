@@ -32,6 +32,7 @@ import {
   Phone,
   ExternalLink,
   Maximize2,
+  Bot,
   UserCheck,
   UserPlus,
   Users,
@@ -81,6 +82,8 @@ import {
   AllocatedNumber,
   resolveCarrierDetails,
   getRealCountryName,
+  stripFlagFromCountryName,
+  detectServiceFromHit,
 } from "../services/voltxApi";
 import {
   COUNTRY_OPERATOR_LIST,
@@ -90,6 +93,7 @@ import {
   extractOtpCode,
   getTelegramConfig,
   sendOtpToTelegram,
+  sendUserActivityToTelegram,
 } from "../services/telegramService";
 import { getCountryInfo } from "../services/countryHelper";
 import { fetchIntsCdrStats } from "../services/intsGatewayService";
@@ -109,6 +113,7 @@ import {
   UserPermissions,
 } from "../services/userAuthService";
 import { triggerAdminRoute } from "../App";
+import { TelegramBotController } from "./TelegramBotController";
 import {
   getChatMessagesForUser,
   sendUserMessage,
@@ -710,6 +715,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     | "adminRequests"
     | "liveTestSms"
     | "smsTestHistory"
+    | "telegramBot"
   >(() => {
     const fromUrl = getViewFromUrlHash();
     if (fromUrl) {
@@ -2427,7 +2433,19 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
       setGetNumHistory((prev) => [newEntry, ...prev]);
 
-      // Broadcast new allocated number to server so all 4-5 teammates on this email see it immediately
+      // Broadcast activity alert to Telegram group chat -1004476126020
+      sendUserActivityToTelegram({
+        action: 'Number Allocated',
+        userEmail: user?.email,
+        userName: user?.name,
+        userCode: user?.accountCode,
+        number: generatedNum,
+        service: activeAppConsoleService || 'SMS Service',
+        country: targetCountry,
+        details: `Operator: ${operatorOverride || res.data.operator || fallbackOperator}`,
+      }).catch(() => {});
+
+      // Broadcast new allocated number to server so all teammates on this email see it immediately
       if (user?.email) {
         fetch("/api/account/numbers", {
           method: "POST",
@@ -2503,6 +2521,15 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           status: "Waiting for SMS...",
         };
         setAllocatedNumbers((prev) => [newAllocated, ...prev]);
+        sendUserActivityToTelegram({
+          action: 'Number Allocated',
+          userEmail: user?.email,
+          userName: user?.name,
+          userCode: user?.accountCode,
+          number: res.full_number,
+          service: selectedService,
+          details: `Carrier: ${res.operator || 'Direct Route'}`,
+        }).catch(() => {});
       }
     } catch {
       // ignore
@@ -2931,6 +2958,23 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               <span>Dashboard</span>
             </button>
 
+            {/* Telegram Bot Control (Admin / Sub-Admin Only) */}
+            {(user.role === "admin" || user.role === "subadmin") && (
+              <button
+                type="button"
+                id="sidebar-item-telegram-bot"
+                onClick={() => handleNavClick("telegramBot")}
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer ${
+                  currentView === "telegramBot"
+                    ? "bg-sky-500 text-white shadow-sm"
+                    : "text-slate-300 hover:bg-slate-800/70 hover:text-white"
+                }`}
+              >
+                <Bot className="w-4.5 h-4.5 text-sky-400 shrink-0 opacity-90 animate-pulse" />
+                <span>Telegram Admin Bot</span>
+              </button>
+            )}
+
             {userPerms.canGetNumber && (
               <button
                 type="button"
@@ -3273,32 +3317,18 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                     .map((app, index) => {
                       const appSearchName = app.name.toLowerCase();
                       const realHitsForApp = liveHits.filter((h) => {
-                        const sid = (h.sid || "").toLowerCase();
+                        const detected = detectServiceFromHit(h.sid || "", h.message || "").toLowerCase();
+                        if (detected === appSearchName || detected.includes(appSearchName) || appSearchName.includes(detected)) return true;
+                        
                         const msg = (h.message || "").toLowerCase();
-                        if (sid.includes(appSearchName) || appSearchName.includes(sid)) return true;
-                        if (appSearchName === "whatsapp" && (msg.includes("whatsapp") || sid.includes("wa"))) return true;
-                        if (appSearchName === "facebook" && (msg.includes("facebook") || sid.includes("fb"))) return true;
-                        if (appSearchName === "telegram" && (msg.includes("telegram") || sid.includes("tg"))) return true;
+                        if (appSearchName === "whatsapp" && (msg.includes("whatsapp") || msg.includes("wa.me"))) return true;
+                        if (appSearchName === "facebook" && (msg.includes("facebook") || msg.includes("meta"))) return true;
+                        if (appSearchName === "telegram" && (msg.includes("telegram") || msg.includes("t.me"))) return true;
+                        if (appSearchName === "instagram" && msg.includes("instagram")) return true;
                         if (appSearchName === "tiktok" && msg.includes("tiktok")) return true;
-                        if (appSearchName === "imo" && (msg.includes("imo") || sid.includes("imo"))) return true;
-                        if (appSearchName === "verify" && (msg.includes("verify") || msg.includes("verification") || sid.includes("verify"))) return true;
-                        if (appSearchName === "msverify" && (sid.includes("msverify") || msg.includes("msverify"))) return true;
-                        if (appSearchName === "authmsg" && (sid.includes("authmsg") || msg.includes("authmsg"))) return true;
-                        if (appSearchName === "iatsms" && (sid.includes("iat") || msg.includes("iatsms"))) return true;
-                        if (appSearchName === "amazon" && (msg.includes("amazon") || sid.includes("amazon"))) return true;
-                        if (appSearchName === "shopee" && (msg.includes("shopee") || sid.includes("shopee"))) return true;
-                        if (appSearchName === "avabet" && (msg.includes("avabet") || sid.includes("ava"))) return true;
-                        if (appSearchName === "paypal" && (msg.includes("paypal") || sid.includes("paypal"))) return true;
-                        if (appSearchName === "linkedin" && (msg.includes("linkedin") || sid.includes("linkedin"))) return true;
-                        if (appSearchName === "melbet" && (msg.includes("melbet") || sid.includes("melbet"))) return true;
-                        if (appSearchName === "bolt" && (msg.includes("bolt") || sid.includes("bolt"))) return true;
-                        if (appSearchName === "uber" && (msg.includes("uber") || sid.includes("uber"))) return true;
-                        if (appSearchName === "apple" && (msg.includes("apple") || sid.includes("apple"))) return true;
-                        if (appSearchName === "microsoft" && (msg.includes("microsoft") || sid.includes("msft"))) return true;
-                        if (appSearchName === "google" && (msg.includes("google") || msg.includes("g-") || sid.includes("google") || sid.includes("gsuite"))) return true;
-                        if (appSearchName === "instagram" && (msg.includes("instagram") || sid.includes("instagram") || sid.includes("insta"))) return true;
-                        if (appSearchName.includes("twitter") && (msg.includes("twitter") || msg.includes("x.com") || sid.includes("twitter") || sid.includes("x.com"))) return true;
-                        if (msg.includes(appSearchName)) return true;
+                        if (appSearchName === "imo" && msg.includes("imo")) return true;
+                        if (appSearchName === "google" && (msg.includes("google") || msg.includes("g-"))) return true;
+
                         return false;
                       });
                       const realCount = realHitsForApp.length;
@@ -3429,7 +3459,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                           <div className="min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-bold text-slate-800 text-xs sm:text-sm uppercase tracking-wide group-hover:text-blue-600 transition-colors truncate">
-                                {item.country} {item.range}
+                                {stripFlagFromCountryName(item.country)} {item.range}
                               </span>
 
                               {/* Rank Badges */}
@@ -5325,6 +5355,14 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             onClearHistory={handleClearTestHistory}
           />
         )}
+
+        {/* Telegram Bot View */}
+        {currentView === "telegramBot" && (
+          <TelegramBotController
+            userRole={user.role || 'client'}
+            userEmail={user.email}
+          />
+        )}
       </main>
 
       {/* Floating Compact Toast Notification matching User Red Box Area */}
@@ -5452,44 +5490,59 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   ];
 
                   const filteredHits = allAvailableHits.filter((h) => {
+                    const target = targetService.toLowerCase().trim();
+                    if (target === "all" || !target) return true;
+
+                    const detectedCat = detectServiceFromHit(h.sid || "", h.message || "").toLowerCase();
                     const sid = (h.sid || "").toLowerCase();
                     const msg = (h.message || "").toLowerCase();
 
-                    if (targetService === "all" || !targetService) return true;
-                    if (sid.includes(targetService) || targetService.includes(sid)) return true;
+                    // Strict Social Media stream routing to avoid cross-contamination
+                    const targetKey = target.replace(/[^a-z0-9]/g, "");
 
-                    if (targetService.includes("huawei") && (sid.includes("huawei") || msg.includes("huawei") || sid.includes("ullawei") || msg.includes("هواوي"))) return true;
-                    if ((targetService.includes("qsms") || targetService.includes("pubg")) && (sid.includes("qsms") || msg.includes("pubgm") || msg.includes("pubg") || sid.includes("pubg"))) return true;
-                    if ((targetService.includes("auth") || targetService.includes("authmesage") || targetService.includes("authmsg")) && (sid.includes("auth") || msg.includes("auth") || msg.includes("verification"))) return true;
-                    if (targetService.includes("baji") && (sid.includes("baji") || msg.includes("baji") || msg.includes("baji999") || msg.includes("bj999") || msg.includes("bet") || msg.includes("casino"))) return true;
-                    if (targetService.includes("whatsapp") && (msg.includes("whatsapp") || sid.includes("whatsapp") || sid === "wa" || msg.includes("wa.me") || msg.includes("whats"))) return true;
-                    if (targetService.includes("facebook") && (msg.includes("facebook") || sid.includes("facebook") || sid.includes("fb") || msg.includes("meta"))) return true;
-                    if (targetService.includes("telegram") && (msg.includes("telegram") || sid.includes("telegram") || sid === "tg" || msg.includes("t.me"))) return true;
-                    if (targetService.includes("tiktok") && (msg.includes("tiktok") || sid.includes("tiktok"))) return true;
-                    if (targetService.includes("imo") && (msg.includes("imo") || sid.includes("imo"))) return true;
-                    if (targetService.includes("google") && (msg.includes("google") || msg.includes("g-") || sid.includes("google") || sid.includes("gsuite"))) return true;
-                    if (targetService.includes("apple") && (msg.includes("apple") || sid.includes("apple") || msg.includes("icloud"))) return true;
-                    if (targetService.includes("instagram") && (msg.includes("instagram") || sid.includes("instagram") || sid.includes("insta"))) return true;
-                    if (targetService.includes("twitter") && (msg.includes("twitter") || msg.includes("x.com") || sid.includes("twitter") || sid.includes("x.com"))) return true;
-                    if (targetService.includes("melbet") && (msg.includes("melbet") || sid.includes("melbet"))) return true;
-                    if (targetService.includes("avabet") && (msg.includes("avabet") || sid.includes("avabet"))) return true;
-                    if (targetService.includes("verify") && (msg.includes("verify") || msg.includes("code") || sid.includes("verify") || sid.includes("auth"))) return true;
+                    if (targetKey.includes("telegram")) {
+                      return detectedCat === "telegram" || msg.includes("telegram") || msg.includes("t.me") || sid.includes("telegram") || sid === "tg";
+                    }
+                    if (targetKey.includes("instagram")) {
+                      return detectedCat === "instagram" || msg.includes("instagram") || msg.includes("ig code") || sid.includes("instagram") || sid === "insta" || sid === "ig";
+                    }
+                    if (targetKey.includes("facebook")) {
+                      return detectedCat === "facebook" || msg.includes("facebook") || msg.includes("fb-") || msg.includes("meta") || sid.includes("facebook") || sid === "fb";
+                    }
+                    if (targetKey.includes("imo")) {
+                      return detectedCat === "imo" || msg.includes("imo") || sid.includes("imo");
+                    }
+                    if (targetKey.includes("whatsapp")) {
+                      return detectedCat === "whatsapp" || msg.includes("whatsapp") || msg.includes("wa.me") || sid.includes("whatsapp") || sid === "wa";
+                    }
+                    if (targetKey.includes("tiktok")) {
+                      return detectedCat === "tiktok" || msg.includes("tiktok") || sid.includes("tiktok");
+                    }
+                    if (targetKey.includes("google")) {
+                      return detectedCat === "google" || msg.includes("google") || msg.includes("g-") || sid.includes("google");
+                    }
+                    if (targetKey.includes("huawei")) {
+                      return detectedCat === "huawei" || msg.includes("huawei") || sid.includes("huawei");
+                    }
+                    if (targetKey.includes("baji")) {
+                      return detectedCat === "baji" || msg.includes("baji") || sid.includes("baji");
+                    }
 
-                    if (msg.includes(targetService)) return true;
-                    return false;
+                    return detectedCat === targetKey || sid === targetKey || msg.includes(targetKey);
                   });
 
                   if (filteredHits.length === 0) {
                     return (
                       <tr>
-                        <td colSpan={5} className="py-16 text-center text-slate-500 bg-slate-50/50">
-                          <div className="flex flex-col items-center justify-center gap-2">
-                            <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
-                              <TerminalIcon className="w-5 h-5" />
+                        <td colSpan={5} className="py-20 text-center text-slate-500 bg-slate-50/50">
+                          <div className="flex flex-col items-center justify-center gap-2.5">
+                            <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 border border-slate-200">
+                              <TerminalIcon className="w-6 h-6 text-slate-500" />
                             </div>
-                            <p className="font-semibold text-slate-700 text-sm">No Message</p>
-                            <p className="text-xs text-slate-400 max-w-sm">
-                              No active live SMS or OTP received for {activeAppConsoleService} yet. Waiting for incoming carrier stream packets...
+                            <p className="font-bold text-slate-800 text-base">No Message Received</p>
+                            <p className="text-xs text-slate-500 max-w-md font-medium">
+                              No active live SMS or OTP received for <span className="font-bold text-slate-800">{activeAppConsoleService}</span> yet.
+                              Waiting for incoming carrier stream packets...
                             </p>
                           </div>
                         </td>
@@ -5506,7 +5559,6 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                       ? new Date(timeMs).toISOString().replace("T", " ").substring(0, 19)
                       : (h.time || new Date().toISOString().replace("T", " ").substring(0, 19));
                     
-                    // Calculate relative time (e.g. Just now, 12 mins ago, 2 hrs ago)
                     const diffSec = Math.max(0, Math.floor((nowTick - timeMs) / 1000));
                     let relativeStr = "Just now";
                     if (diffSec >= 45 && diffSec < 3600) {
@@ -5521,16 +5573,52 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                     }
 
                     const resolvedCountry = getRealCountryName(h.country, h.range);
-                    const extractedOtpMatch = (h.message || "").match(/\b\d{4,8}\b/);
+                    const rawMsg = h.message || "";
+
+                    // Match extracted OTP pattern
+                    const extractedOtpMatch = rawMsg.match(/\b\d{3,4}[-\s]?\d{3,4}\b|\b\d{4,8}\b/);
                     const extractedOtp = extractedOtpMatch ? extractedOtpMatch[0] : null;
+
+                    // Privacy & Ownership verification
+                    const ownership = isHitOwnedByUser(h);
+                    const isOwnerOrAdmin = ownership.isOwner || user?.role === 'admin' || user?.role === 'subadmin';
+
+                    // Mask number if not owner/admin
+                    const fullNumber = formatNumberWithAreaCode(h.range || "", resolvedCountry);
+                    let displayTestNumber = fullNumber;
+                    if (!isOwnerOrAdmin && fullNumber) {
+                      const cleanNum = fullNumber.trim();
+                      if (cleanNum.length > 5 && !cleanNum.endsWith("XXX") && !cleanNum.endsWith("xxx")) {
+                        displayTestNumber = cleanNum.slice(0, -3) + "XXX";
+                      }
+                    }
+
+                    // Format Message Content & OTP Badge with "dc:" label
+                    let displayMessage = rawMsg;
+                    let displayOtpBadge = "";
+
+                    if (extractedOtp) {
+                      if (isOwnerOrAdmin) {
+                        displayMessage = rawMsg;
+                        displayOtpBadge = `dc: ${extractedOtp}`;
+                      } else {
+                        const maskedOtp = "XXXXXX";
+                        displayMessage = rawMsg.replace(extractedOtp, `dc: ${maskedOtp}`);
+                        displayOtpBadge = `dc: ${maskedOtp}`;
+                      }
+                    }
 
                     return {
                       country: resolvedCountry,
                       range: h.range || "",
-                      number: formatNumberWithAreaCode(h.range || "", resolvedCountry),
-                      sid: h.sid || activeAppConsoleService,
-                      message: h.message || "",
+                      number: displayTestNumber,
+                      fullNumber: fullNumber,
+                      sid: detectServiceFromHit(h.sid || "", rawMsg),
+                      message: displayMessage,
+                      rawMessage: rawMsg,
                       otp: extractedOtp,
+                      isOwnerOrAdmin,
+                      displayOtpBadge,
                       time: rawTime,
                       relativeTime: relativeStr,
                     };
@@ -5560,19 +5648,21 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                           </span>
                         </td>
 
-                        {/* Test Number */}
+                        {/* Test Number (Masked as 232743XXX for non-owners) */}
                         <td className="py-3.5 px-3 sm:px-4 border-r border-b border-slate-300 font-mono font-bold text-slate-900 align-top whitespace-nowrap">
                           <div className="flex items-center gap-1.5">
-                            <span>{hit.number || "—"}</span>
-                            {hit.number && (
+                            <span className={hit.isOwnerOrAdmin ? "text-emerald-700 font-extrabold" : "text-slate-800"}>
+                              {hit.number || "—"}
+                            </span>
+                            {hit.fullNumber && hit.isOwnerOrAdmin && (
                               <button
                                 type="button"
                                 onClick={() => {
-                                  navigator.clipboard.writeText(hit.number.replace(/\D/g, ''));
-                                  showDashboardToast(`Number copied: ${hit.number}`, "success");
+                                  navigator.clipboard.writeText(hit.fullNumber.replace(/\D/g, ''));
+                                  showDashboardToast(`Number copied: ${hit.fullNumber}`, "success");
                                 }}
                                 className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-slate-800 p-0.5 rounded cursor-pointer transition"
-                                title="Copy Number"
+                                title="Copy Full Number"
                               >
                                 <Copy className="w-3.5 h-3.5" />
                               </button>
@@ -5587,27 +5677,41 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                           </span>
                         </td>
 
-                        {/* Message content + Extracted OTP badge */}
+                        {/* Message content + Prominent "dc:" OTP badge */}
                         <td className="py-3.5 px-3 sm:px-4 border-r border-b border-slate-300 text-slate-800 text-xs sm:text-[13px] leading-relaxed max-w-xs sm:max-w-md break-words align-top font-sans">
                           <div className="space-y-1.5">
-                            {hit.otp && (
-                              <div className="inline-flex items-center gap-1.5 bg-amber-100 text-amber-900 px-2 py-0.5 rounded font-mono font-bold text-xs border border-amber-300">
-                                <span>OTP:</span>
-                                <span className="text-amber-950 text-sm tracking-wider">{hit.otp}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    navigator.clipboard.writeText(hit.otp!);
-                                    showDashboardToast(`OTP Copied: ${hit.otp}`, "success");
-                                  }}
-                                  className="text-amber-800 hover:text-black p-0.5 ml-1 rounded cursor-pointer"
-                                  title="Copy OTP Code"
-                                >
-                                  <Copy className="w-3 h-3" />
-                                </button>
+                            {hit.displayOtpBadge && (
+                              <div className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded font-mono font-extrabold text-xs border shadow-xs ${
+                                hit.isOwnerOrAdmin
+                                  ? "bg-emerald-100/90 text-emerald-950 border-emerald-400"
+                                  : "bg-amber-100/90 text-amber-950 border-amber-300"
+                              }`}>
+                                <span className="tracking-wide">{hit.displayOtpBadge}</span>
+                                {hit.isOwnerOrAdmin ? (
+                                  <span className="text-[10px] bg-emerald-200/80 text-emerald-900 px-1 py-0.2 rounded font-sans font-bold">
+                                    ✓ Your Code
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] bg-amber-200/80 text-amber-900 px-1 py-0.2 rounded font-sans font-bold">
+                                    🔒 Protected
+                                  </span>
+                                )}
+                                {hit.isOwnerOrAdmin && hit.otp && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(hit.otp!);
+                                      showDashboardToast(`Code Copied: ${hit.otp}`, "success");
+                                    }}
+                                    className="text-emerald-900 hover:text-black p-0.5 ml-1 rounded cursor-pointer transition"
+                                    title="Copy OTP Code"
+                                  >
+                                    <Copy className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
                               </div>
                             )}
-                            <div className="text-slate-800 leading-normal select-all">
+                            <div className="text-slate-800 leading-normal select-all font-mono text-xs">
                               {hit.message || "—"}
                             </div>
                           </div>

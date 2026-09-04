@@ -13,8 +13,8 @@ export interface TelegramBotConfig {
 }
 
 export const DEFAULT_TELEGRAM_CONFIG: TelegramBotConfig = {
-  botToken: '8041954168:AAHev2mnmF0nUyLe00QP3VpUMrFhjPW9pbo',
-  chatId: '-1003626406102',
+  botToken: '8631714331:AAEd33AVl9oqI-HdGW7jtxE37y4N4nH4ox4',
+  chatId: '-1004476126020',
   channelUrl: 'https://t.me/+ZTN2ldN9repmNWNl',
   autoForwardEnabled: true,
 };
@@ -48,6 +48,13 @@ export function getTelegramConfig(): TelegramBotConfig {
       const raw = localStorage.getItem(TELEGRAM_CONFIG_STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
+        // Automatically migrate old default chatId or token to requested bot token & target group ID -1004476126020
+        if (!parsed.chatId || parsed.chatId === '-1003626406102') {
+          parsed.chatId = '-1004476126020';
+        }
+        if (!parsed.botToken || parsed.botToken.startsWith('8041954168')) {
+          parsed.botToken = '8631714331:AAEd33AVl9oqI-HdGW7jtxE37y4N4nH4ox4';
+        }
         return {
           ...DEFAULT_TELEGRAM_CONFIG,
           ...parsed,
@@ -139,7 +146,60 @@ export function formatScriptTimestamp(dateInput?: Date | number | string): strin
 }
 
 /**
- * Generate official alert message body exactly formatted as in the Python script
+ * Mask phone number with middle digits hidden, e.g. +2613****807693
+ */
+export function maskPhoneNumber(rawNumber: string): string {
+  if (!rawNumber) return '—';
+  const clean = rawNumber.trim();
+  const hasPlus = clean.startsWith('+');
+  const digits = clean.replace(/\D/g, '');
+
+  if (digits.length <= 6) return clean;
+
+  const first = digits.slice(0, 4);
+  const last = digits.slice(-6);
+  return `${hasPlus ? '+' : ''}${first}****${last}`;
+}
+
+/**
+ * Calculate range string from phone number, e.g. 261346807XXX
+ */
+export function calculateRange(rawNumber: string): string {
+  if (!rawNumber) return '—';
+  const digits = rawNumber.replace(/\D/g, '');
+  if (digits.length <= 3) return `${digits}XXX`;
+  if (digits.length <= 8) return `${digits.slice(0, digits.length - 3)}XXX`;
+  return `${digits.slice(0, 9)}XXX`;
+}
+
+/**
+ * Real-time service detection from message content and service name
+ */
+export function detectRealTimeService(serviceInput: string, smsText: string): string {
+  const msg = (smsText || '').toLowerCase();
+  const srv = (serviceInput || '').toLowerCase();
+
+  if (msg.includes('whatsapp') || msg.includes('wa.me') || msg.includes('wa code') || srv.includes('whatsapp') || srv === 'wa') return 'WhatsApp';
+  if (msg.includes('facebook') || msg.includes('fb-') || msg.includes('meta') || srv.includes('facebook') || srv === 'fb') return 'Facebook';
+  if (msg.includes('telegram') || msg.includes('t.me') || msg.includes('tg code') || srv.includes('telegram') || srv === 'tg') return 'Telegram';
+  if (msg.includes('instagram') || msg.includes('ig code') || msg.includes('ig-') || srv.includes('instagram') || srv === 'insta') return 'Instagram';
+  if (msg.includes('tiktok') || srv.includes('tiktok')) return 'TikTok';
+  if (msg.includes('google') || msg.includes('g-') || srv.includes('google')) return 'Google';
+  if (msg.includes('imo') || srv.includes('imo')) return 'IMO';
+  if (msg.includes('baji') || srv.includes('baji')) return 'Baji';
+  if (msg.includes('twitter') || msg.includes('x.com') || srv.includes('twitter')) return 'Twitter / X';
+  if (msg.includes('amazon') || srv.includes('amazon')) return 'Amazon';
+  if (msg.includes('apple') || srv.includes('apple')) return 'Apple';
+  if (msg.includes('snapchat') || srv.includes('snapchat')) return 'Snapchat';
+
+  if (serviceInput && serviceInput.trim() !== 'N/A' && serviceInput.trim() !== 'SMS' && serviceInput.trim() !== 'SMS Service') {
+    return serviceInput.trim();
+  }
+  return 'SMS';
+}
+
+/**
+ * Generate official alert message body matching the user's Telegram template
  */
 export function buildOfficialTelegramMessage(data: {
   number: string;
@@ -147,28 +207,36 @@ export function buildOfficialTelegramMessage(data: {
   message: string;
   time?: number | string;
   otp?: string;
+  countryName?: string;
 }): string {
-  const number = data.number || 'Unknown';
-  const service = (data.service || 'SMS').toUpperCase();
-  const smsText = data.message || '';
+  const rawNum = data.number || 'Unknown';
+  const smsText = (data.message || '').trim();
+  const service = detectRealTimeService(data.service, smsText);
   const otpCode = data.otp || extractOtpCode(smsText) || '—';
-  const country = getCountryInfo(number);
-  const timeStr = formatScriptTimestamp(data.time);
 
-  return `💫 𝑶𝑭𝑭𝑰𝑪𝑰𝑨𝑳 𝑨𝑳𝑬𝑹𝑻 𝐎𝐓𝐏💫
+  const resolvedCountry = getCountryInfo(rawNum);
+  let countryDisplayName = data.countryName || `${resolvedCountry.flag} ${resolvedCountry.name}`;
+  if (!countryDisplayName.includes(resolvedCountry.flag)) {
+    countryDisplayName = `${resolvedCountry.flag} ${countryDisplayName}`;
+  }
 
-⏰ 𝐓𝐢𝐦𝐞: ${timeStr}  
-📞 𝐍𝐮𝐦𝐛𝐞𝐫: <code>${number}</code>  
-🌍 𝐂𝐨𝐮𝐧𝐭𝐫𝐲: ${country.flag} ${country.name}  
-👑 𝗦𝗲𝗿𝘃𝗶𝗰𝗲: ${service}
-🔐 𝐘𝐎𝐔𝐑 𝐂𝐎𝐃𝐄:『 <code>${otpCode}</code> 』  
+  const rangeStr = calculateRange(rawNum);
+  const maskedNumber = maskPhoneNumber(rawNum);
 
-📝 𝐌𝐄𝐒𝐒𝐀𝐆𝐄:  
-📲 # ${smsText}  
-━━━━━━━━━━━━━━
+  return `✅ <b>OTP RECEIVE SUCCESSFUL</b> ✅
 
-🔐 𝗦𝗘𝗖𝗨𝗥𝗜𝗧𝗬 𝗡𝗢𝗧𝗜𝗖𝗘  
-This code is strictly for your authorized personal verification use only.`;
+<blockquote>📶 <b>RANGE:</b> <code>${rangeStr}</code></blockquote>
+
+<blockquote>🌍 <b>COUNTRY:</b> ${countryDisplayName}</blockquote>
+
+<blockquote>📱 <b>SERVICE:</b> ${service}</blockquote>
+
+<blockquote>📞 <b>NUMBER:</b> <code>${maskedNumber}</code></blockquote>
+
+<blockquote>🔑 <b>OTP:</b> <code>${otpCode}</code></blockquote>
+
+<blockquote>📩 <b>FULL SMS:</b>
+${smsText}</blockquote>`;
 }
 
 /**
@@ -179,6 +247,7 @@ export async function sendOtpToTelegram(data: {
   service: string;
   message: string;
   time?: number | string;
+  countryName?: string;
 }): Promise<{ success: boolean; message: string; error?: any }> {
   const config = getTelegramConfig();
   if (!config.autoForwardEnabled) {
@@ -212,14 +281,19 @@ export async function sendOtpToTelegram(data: {
     service: cleanSrv,
     message: cleanMsg,
     time: data.time,
+    countryName: data.countryName,
   });
 
   const inlineKeyboard = {
     inline_keyboard: [
       [
         {
-          text: '📱 Number Channel',
-          url: config.channelUrl || 'https://t.me/+ZTN2ldN9repmNWNl',
+          text: '‼️ PANEL',
+          url: 'https://superxsms.vercel.app/',
+        },
+        {
+          text: '📢 CHANNEL',
+          url: 'https://t.me/super_x_sms_s',
         },
       ],
     ],
@@ -328,8 +402,12 @@ export async function testTelegramBotConnection(
     inline_keyboard: [
       [
         {
-          text: '🚀 Open SUPER X SMS Panel',
-          url: typeof window !== 'undefined' ? window.location.origin : 'https://superxsms.com',
+          text: '‼️ PANEL',
+          url: 'https://superxsms.vercel.app/',
+        },
+        {
+          text: '📢 CHANNEL',
+          url: 'https://t.me/super_x_sms_s',
         },
       ],
     ],
@@ -387,3 +465,105 @@ export async function testTelegramBotConnection(
     return { success: false, message: err?.message || 'Connection error while contacting Telegram.' };
   }
 }
+
+/**
+ * Send user activity / work notifications to Telegram chat group
+ */
+export async function sendUserActivityToTelegram(activity: {
+  action: string;
+  userEmail?: string;
+  userName?: string;
+  userCode?: string;
+  details?: string;
+  service?: string;
+  number?: string;
+  country?: string;
+  time?: number | string;
+}): Promise<{ success: boolean; message: string }> {
+  const config = getTelegramConfig();
+  if (!config.autoForwardEnabled) {
+    return { success: false, message: 'Telegram auto-forwarding is currently disabled.' };
+  }
+
+  const timeStr = formatScriptTimestamp(activity.time);
+  const actionLower = activity.action.toLowerCase();
+  const actionEmoji =
+    actionLower.includes('login') ? '🔑' :
+    actionLower.includes('allocat') || actionLower.includes('number') || actionLower.includes('get') ? '📱' :
+    actionLower.includes('register') || actionLower.includes('account') || actionLower.includes('signup') ? '👤' :
+    actionLower.includes('cancel') || actionLower.includes('release') ? '❌' :
+    actionLower.includes('otp') || actionLower.includes('sms') ? '🔐' : '⚡';
+
+  let msgText = `<b>${actionEmoji} SUPER X SMS — USER ACTIVITY REPORT</b>\n\n`;
+  msgText += `⏰ <b>Time:</b> ${timeStr}\n`;
+  msgText += `📌 <b>Action:</b> ${activity.action.toUpperCase()}\n`;
+  if (activity.userName || activity.userEmail) {
+    msgText += `👤 <b>User:</b> ${activity.userName || 'User'} (<code>${activity.userEmail || 'N/A'}</code>)\n`;
+  }
+  if (activity.userCode) {
+    msgText += `🆔 <b>Account Code:</b> <code>${activity.userCode}</code>\n`;
+  }
+  if (activity.service) {
+    msgText += `👑 <b>Service:</b> ${activity.service.toUpperCase()}\n`;
+  }
+  if (activity.number) {
+    const country = getCountryInfo(activity.number);
+    msgText += `📞 <b>Number:</b> <code>${activity.number}</code> (${country.flag} ${country.name})\n`;
+  }
+  if (activity.details) {
+    msgText += `📝 <b>Details:</b> ${activity.details}\n`;
+  }
+  msgText += `\n━━━━━━━━━━━━━━\n⚡ <i>SUPER X SMS Live Tracking Gateway</i>`;
+
+  const inlineKeyboard = {
+    inline_keyboard: [
+      [
+        {
+          text: '‼️ PANEL',
+          url: 'https://superxsms.vercel.app/',
+        },
+        {
+          text: '📢 CHANNEL',
+          url: 'https://t.me/super_x_sms_s',
+        },
+      ],
+    ],
+  };
+
+  try {
+    const proxyRes = await fetch('/api/telegram/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        botToken: config.botToken,
+        chatId: config.chatId,
+        text: msgText,
+        replyMarkup: inlineKeyboard,
+      }),
+    });
+
+    if (proxyRes.ok) {
+      return { success: true, message: 'User activity logged to Telegram.' };
+    }
+  } catch {}
+
+  // Direct fetch fallback
+  try {
+    const directUrl = `https://api.telegram.org/bot${config.botToken}/sendMessage`;
+    await fetch(directUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: config.chatId,
+        text: msgText,
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+        reply_markup: JSON.stringify(inlineKeyboard),
+      }),
+    });
+    return { success: true, message: 'User activity sent directly to Telegram.' };
+  } catch (err: any) {
+    return { success: false, message: err?.message || 'Failed to send activity to Telegram.' };
+  }
+}
+

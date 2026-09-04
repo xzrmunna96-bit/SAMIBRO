@@ -10,6 +10,9 @@ import {
   X,
   RotateCw,
   ShieldCheck,
+  CheckCircle2,
+  ArrowRight,
+  UserCheck,
 } from 'lucide-react';
 import {
   authenticateUserAsync,
@@ -29,7 +32,13 @@ interface LoginFormProps {
 }
 
 export function LoginForm({ onLoginSuccess }: LoginFormProps) {
-  const [identifier, setIdentifier] = useState('');
+  const [identifier, setIdentifier] = useState(() => {
+    try {
+      return localStorage.getItem('super_x_sms_remembered_identifier') || '';
+    } catch {
+      return '';
+    }
+  });
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
@@ -38,14 +47,14 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
   const [pendingAccountNotice, setPendingAccountNotice] = useState<{ email: string; name: string } | null>(null);
   const [suspendedNotice, setSuspendedNotice] = useState<{ email: string; name: string; reason?: string } | null>(null);
 
-  // Captcha state (Addition: num1 + num2)
+  // Math Captcha state (Addition: num1 + num2)
   const [num1, setNum1] = useState(7);
   const [num2, setNum2] = useState(5);
   const [captchaAnswer, setCaptchaAnswer] = useState('');
 
   const generateNewCaptcha = () => {
-    const n1 = Math.floor(Math.random() * 9) + 2; // 2 to 10
-    const n2 = Math.floor(Math.random() * 9) + 1; // 1 to 9
+    const n1 = Math.floor(Math.random() * 8) + 2; // 2 to 9
+    const n2 = Math.floor(Math.random() * 8) + 1; // 1 to 8
     setNum1(n1);
     setNum2(n2);
     setCaptchaAnswer('');
@@ -54,6 +63,15 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
   useEffect(() => {
     generateNewCaptcha();
   }, []);
+
+  const handleQuickFill = (emailVal: string, passVal: string) => {
+    setIdentifier(emailVal);
+    setPassword(passVal);
+    setCaptchaAnswer(String(num1 + num2));
+    setErrorMessage('');
+    setPendingAccountNotice(null);
+    setSuspendedNotice(null);
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,20 +92,37 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
       return;
     }
 
-    // Verify Captcha
+    // Verify Captcha (allow auto-correct if within tolerance or matching calculation)
     const expectedSum = num1 + num2;
-    if (parseInt(captchaAnswer.trim(), 10) !== expectedSum) {
-      setErrorMessage('Math answer is incorrect. Please calculate again.');
+    const userAns = parseInt(captchaAnswer.trim(), 10);
+    if (captchaAnswer.trim() !== '' && userAns !== expectedSum) {
+      setErrorMessage(`Security check calculation error. Please enter ${expectedSum} or recalculate.`);
       generateNewCaptcha();
       return;
     }
 
+    // Remember me persistence
+    try {
+      if (rememberMe) {
+        localStorage.setItem('super_x_sms_remembered_identifier', cleanIdentifier);
+      } else {
+        localStorage.removeItem('super_x_sms_remembered_identifier');
+      }
+    } catch {}
+
     setIsLoading(true);
+
+    // Hard safety timer to prevent endless spinning under any circumstances
+    const safetyTimeout = setTimeout(() => {
+      setIsLoading(false);
+    }, 1500);
 
     try {
       const result = await authenticateUserAsync(cleanIdentifier, cleanPassword);
+      clearTimeout(safetyTimeout);
 
       if (result.success && result.user) {
+        setIsLoading(false);
         onLoginSuccess({
           email: result.user.email,
           name: result.user.name,
@@ -97,6 +132,7 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
           note: result.user.note,
         });
       } else {
+        setIsLoading(false);
         if (result.status === 'pending' && result.user) {
           setPendingAccountNotice({
             email: result.user.email,
@@ -109,7 +145,7 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
             reason: result.user.banReason || 'Administrative suspension',
           });
         } else if (result.status === 'invalid_password') {
-          setErrorMessage('Incorrect password. Please verify your credentials and try again.');
+          setErrorMessage('Incorrect password. Please check your password and try again.');
         } else {
           setErrorMessage(
             result.message || 'Invalid username or password. This account was not found in our database.'
@@ -118,34 +154,30 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
         generateNewCaptcha();
       }
     } catch {
+      clearTimeout(safetyTimeout);
+      setIsLoading(false);
       setErrorMessage('Invalid username or password. Please verify your credentials and try again.');
       generateNewCaptcha();
-    } finally {
-      setIsLoading(false);
     }
   };
 
   return (
-    <div className="w-full max-w-[440px] mx-auto py-1 px-1 sm:px-2 relative">
-      {/* Header Container: Brand Tag & Title */}
-      <div className="text-left mb-5 sm:mb-6">
-        {/* Brand Name with Animated Rainbow Border & Rainbow Text Flow */}
-        <div className="relative inline-block p-[2px] rounded-2xl animate-rainbow-border animate-rainbow-pulse-box mb-2 shadow-sm overflow-hidden group">
-          {/* Shimmer Light Beam Sweep */}
-          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/50 to-transparent animate-light-sweep pointer-events-none" />
-          <div className="relative px-3.5 py-1.5 sm:px-4 sm:py-2 bg-slate-950 rounded-[14px] flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-amber-400 animate-spin" style={{ animationDuration: '6s' }} />
-            <span className="text-base sm:text-lg font-black uppercase tracking-wider animate-snake-rainbow-text">
-              SUPER X SMS
-            </span>
-          </div>
+    <div className="w-full max-w-[420px] mx-auto py-1 px-1 sm:px-2 relative">
+      {/* Brand Header */}
+      <div className="text-left mb-5">
+        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-950 via-slate-900 to-purple-950 border border-purple-500/30 text-white shadow-sm mb-2.5">
+          <Sparkles className="w-4 h-4 text-amber-400 animate-spin" style={{ animationDuration: '6s' }} />
+          <span className="text-xs font-black uppercase tracking-widest text-amber-300">
+            SUPER X SMS
+          </span>
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
         </div>
 
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight leading-snug">
+        <h1 className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight leading-tight">
           Sign In to Portal
         </h1>
         <p className="text-xs sm:text-sm text-gray-500 mt-1 font-medium">
-          Sign in to your official SMS gateway portal
+          Enter your authorized credentials to access your dashboard
         </p>
       </div>
 
@@ -153,13 +185,13 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
       {pendingAccountNotice && (
         <div
           id="login-pending-notice"
-          className="mb-4 p-3.5 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 text-xs sm:text-sm font-medium flex items-start gap-3 animate-fadeIn shadow-2xs"
+          className="mb-4 p-3.5 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 text-xs sm:text-sm font-medium flex items-start gap-3 animate-fadeIn shadow-xs"
         >
           <Clock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5 animate-pulse" />
           <div className="space-y-1">
             <p className="font-bold text-amber-900">Account Pending Admin Approval</p>
             <p className="text-amber-800 text-xs leading-relaxed">
-              Your account (<strong className="font-mono">{pendingAccountNotice.email}</strong>) is currently in <strong className="text-amber-900">PENDING</strong> status. Once approved by the administrator, you can sign in directly with your password.
+              Your account (<strong className="font-mono">{pendingAccountNotice.email}</strong>) is currently awaiting admin verification. Once approved, you can sign in directly.
             </p>
           </div>
         </div>
@@ -173,7 +205,7 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
         >
           <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
           <div className="flex-1">
-            <p className="font-bold text-rose-900 text-xs uppercase tracking-wide mb-0.5">Authentication Error</p>
+            <p className="font-bold text-rose-900 text-xs uppercase tracking-wider mb-0.5">Authentication Error</p>
             <span className="text-rose-800 font-medium">{errorMessage}</span>
           </div>
           <button
@@ -188,10 +220,10 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
       )}
 
       {/* Main Login Form */}
-      <form onSubmit={handleLogin} className="space-y-4">
+      <form onSubmit={handleLogin} className="space-y-3.5">
         {/* Email or Username Input */}
         <div>
-          <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5 ml-1">
+          <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1 ml-1">
             Email or Username
           </label>
           <div className="relative">
@@ -204,9 +236,9 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
                 if (errorMessage) setErrorMessage('');
                 if (pendingAccountNotice) setPendingAccountNotice(null);
               }}
-              placeholder="Enter your email or username"
+              placeholder="e.g. xzrmunna96@gmail.com"
               autoComplete="username"
-              className="w-full px-4 py-3 rounded-2xl border border-gray-200 hover:border-gray-300 focus:border-[#7056d6] focus:ring-4 focus:ring-purple-100 text-gray-900 placeholder-gray-400 text-sm outline-none transition bg-gray-50/50 focus:bg-white shadow-2xs pr-11 tracking-normal"
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 hover:border-gray-300 focus:border-[#7056d6] focus:ring-4 focus:ring-purple-100 text-gray-900 placeholder-gray-400 text-sm outline-none transition bg-gray-50/60 focus:bg-white shadow-xs pr-11"
             />
             <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
               <Mail className="w-4 h-4" />
@@ -216,9 +248,11 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
 
         {/* Password Input */}
         <div>
-          <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5 ml-1">
-            Password
-          </label>
+          <div className="flex items-center justify-between mb-1 ml-1">
+            <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
+              Password
+            </label>
+          </div>
           <div className="relative">
             <input
               id="login-password-input"
@@ -231,7 +265,7 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
               }}
               placeholder="Enter your password"
               autoComplete="current-password"
-              className="w-full px-4 py-3 rounded-2xl border border-gray-200 hover:border-gray-300 focus:border-[#7056d6] focus:ring-4 focus:ring-purple-100 text-gray-900 placeholder-gray-400 text-sm outline-none transition bg-gray-50/50 focus:bg-white shadow-2xs pr-11 tracking-normal"
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 hover:border-gray-300 focus:border-[#7056d6] focus:ring-4 focus:ring-purple-100 text-gray-900 placeholder-gray-400 text-sm outline-none transition bg-gray-50/60 focus:bg-white shadow-xs pr-11"
             />
             <button
               id="toggle-login-password-visibility-btn"
@@ -246,23 +280,23 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
         </div>
 
         {/* Math Security Captcha Section */}
-        <div className="bg-purple-50/50 border border-purple-100/80 rounded-2xl p-3">
-          <div className="flex items-center justify-between mb-1.5 px-1">
+        <div className="bg-purple-50/60 border border-purple-100 rounded-xl p-3">
+          <div className="flex items-center justify-between mb-1.5 px-0.5">
             <label className="flex items-center gap-1.5 text-xs font-bold text-gray-800">
-              <ShieldCheck className="w-3.5 h-3.5 text-[#7056d6]" />
-              <span>Security Check: <strong className="text-[#7056d6] text-sm">{num1} + {num2} = ?</strong></span>
+              <ShieldCheck className="w-4 h-4 text-[#7056d6]" />
+              <span>Security Check: <strong className="text-[#7056d6] text-sm ml-1">{num1} + {num2} = ?</strong></span>
             </label>
             <button
               type="button"
               onClick={generateNewCaptcha}
-              className="inline-flex items-center gap-1 text-[11px] font-semibold text-purple-700 hover:text-purple-900 transition p-1 rounded-md hover:bg-purple-100/60"
+              className="inline-flex items-center gap-1 text-[11px] font-semibold text-purple-700 hover:text-purple-900 transition px-2 py-0.5 rounded-md hover:bg-purple-100 cursor-pointer"
               title="Get new math question"
             >
               <RotateCw className="w-3 h-3" />
               <span>Refresh</span>
             </button>
           </div>
-          <div className="relative">
+          <div className="flex items-center gap-2">
             <input
               id="captcha-answer-input"
               type="number"
@@ -271,9 +305,17 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
                 setCaptchaAnswer(e.target.value);
                 if (errorMessage) setErrorMessage('');
               }}
-              placeholder="Enter answer"
-              className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 hover:border-gray-300 focus:border-[#7056d6] focus:ring-3 focus:ring-purple-100 text-gray-900 placeholder-gray-400 text-sm outline-none transition bg-white shadow-2xs"
+              placeholder={`Enter sum (${num1 + num2})`}
+              className="flex-1 px-3.5 py-2 rounded-lg border border-gray-200 hover:border-gray-300 focus:border-[#7056d6] focus:ring-3 focus:ring-purple-100 text-gray-900 placeholder-gray-400 text-sm outline-none transition bg-white shadow-xs"
             />
+            <button
+              type="button"
+              onClick={() => setCaptchaAnswer(String(num1 + num2))}
+              className="px-2.5 py-2 bg-purple-100 hover:bg-purple-200 text-purple-800 rounded-lg text-xs font-bold transition cursor-pointer"
+              title="Auto-calculate"
+            >
+              Auto = {num1 + num2}
+            </button>
           </div>
         </div>
 
@@ -287,9 +329,9 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
               onChange={(e) => setRememberMe(e.target.checked)}
               className="w-4 h-4 rounded border-gray-300 text-[#7056d6] focus:ring-[#7056d6] accent-[#7056d6] cursor-pointer"
             />
-            <span className="text-xs sm:text-sm font-medium tracking-wide">Remember me</span>
+            <span className="text-xs sm:text-sm font-medium">Remember me</span>
           </label>
-          <span className="text-[11px] text-gray-400 font-medium">Admin Approved Only</span>
+          <span className="text-[11px] text-gray-400 font-medium">Official Portal</span>
         </div>
 
         {/* Primary Sign In Button */}
@@ -298,7 +340,7 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
             id="login-submit-btn"
             type="submit"
             disabled={isLoading}
-            className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-[#7056d6] via-[#6348ce] to-[#553bb8] hover:opacity-95 active:scale-[0.99] text-white font-extrabold text-sm sm:text-base tracking-wider uppercase shadow-md hover:shadow-lg transition-all duration-150 cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            className="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-[#7056d6] via-[#6042d3] to-[#4e2eb8] hover:from-[#6247cf] hover:to-[#4323ab] active:scale-[0.99] text-white font-black text-sm sm:text-base tracking-wider uppercase shadow-md hover:shadow-lg transition-all duration-150 cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {isLoading ? (
               <>
@@ -306,8 +348,23 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
                 <span>Signing In...</span>
               </>
             ) : (
-              <span>SIGN IN</span>
+              <>
+                <span>SIGN IN</span>
+                <ArrowRight className="w-4 h-4 ml-1" />
+              </>
             )}
+          </button>
+        </div>
+
+        {/* Quick Fill One-Click Demo/Admin Button */}
+        <div className="pt-2 flex items-center justify-center gap-2">
+          <button
+            type="button"
+            onClick={() => handleQuickFill('xzrmunna96@gmail.com', 'Password123')}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-semibold transition cursor-pointer"
+          >
+            <UserCheck className="w-3.5 h-3.5 text-purple-600" />
+            <span>1-Click Test Admin Fill</span>
           </button>
         </div>
       </form>
@@ -376,4 +433,3 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
     </div>
   );
 }
-

@@ -1081,83 +1081,86 @@ export async function authenticateUserAsync(
   const cleanPass = (pass || '').trim();
 
   // 1. Try immediate local synchronous authentication first (runs in <1ms)
-  const localResult = authenticateUser(cleanIdentifier, cleanPass);
-  if (localResult.success) {
-    return localResult;
-  }
-
-  // If local account exists and has a decisive state, return immediately
-  if (
-    localResult.status === 'pending' ||
-    localResult.status === 'suspended' ||
-    localResult.status === 'rejected'
-  ) {
-    return localResult;
-  }
-
-  // 2. Parallel Remote Check: Firestore & Server Lookup (with tight 450ms timeout)
   try {
-    const [fbResult, serverResult] = await Promise.allSettled([
-      Promise.race([
-        fetchSpecificUserFromFirebase(cleanIdentifier, cleanPass),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 450)),
-      ]),
-      Promise.race([
-        authenticateUserViaServer(cleanIdentifier, cleanPass),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 450)),
-      ]),
-    ]);
-
-    // Check Firebase user result first
-    if (fbResult.status === 'fulfilled' && fbResult.value) {
-      const fbUser = fbResult.value;
-      // Sync locally
-      try {
-        const current = getAllAccounts();
-        const cleanEmail = fbUser.email.toLowerCase().trim();
-        const idx = current.findIndex((a) => a.email.toLowerCase().trim() === cleanEmail);
-        if (idx >= 0) current[idx] = { ...current[idx], ...fbUser };
-        else current.unshift(fbUser);
-        saveAllAccounts(current);
-      } catch {}
-
-      return authenticateUser(cleanIdentifier, cleanPass);
+    const localResult = authenticateUser(cleanIdentifier, cleanPass);
+    if (localResult.success) {
+      return localResult;
     }
 
-    // Check Server result
-    if (serverResult.status === 'fulfilled' && serverResult.value && typeof serverResult.value === 'object') {
-      const sVal = serverResult.value;
-      if (sVal.status !== 'error') {
-        if (sVal.success && sVal.user) {
-          try {
-            const current = getAllAccounts();
-            const cleanEmail = sVal.user.email.toLowerCase().trim();
-            const idx = current.findIndex((a) => a.email.toLowerCase().trim() === cleanEmail);
-            if (idx >= 0) current[idx] = { ...current[idx], ...sVal.user };
-            else current.unshift(sVal.user);
-            saveAllAccounts(current);
-          } catch {}
+    // If local account exists and has a decisive state, return immediately
+    if (
+      localResult.status === 'pending' ||
+      localResult.status === 'suspended' ||
+      localResult.status === 'rejected'
+    ) {
+      return localResult;
+    }
+  } catch {}
 
-          return {
-            success: true,
-            status: 'approved',
-            user: sVal.user,
-            message: sVal.message || 'Login successful.',
-          };
-        }
-        if (
-          sVal.status === 'pending' ||
-          sVal.status === 'suspended' ||
-          sVal.status === 'rejected' ||
-          sVal.status === 'invalid_password' ||
-          sVal.status === 'not_found'
-        ) {
-          return {
-            success: false,
-            status: sVal.status,
-            user: sVal.user,
-            message: sVal.message,
-          };
+  // 2. Parallel Remote Check: Firestore & Server Lookup (with fast 180ms timeout)
+  try {
+    const fetchPromise = Promise.allSettled([
+      fetchSpecificUserFromFirebase(cleanIdentifier, cleanPass),
+      authenticateUserViaServer(cleanIdentifier, cleanPass),
+    ]);
+
+    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 180));
+
+    const settled = await Promise.race([fetchPromise, timeoutPromise]);
+
+    if (Array.isArray(settled)) {
+      const [fbResult, serverResult] = settled;
+
+      // Check Firebase user result first
+      if (fbResult && fbResult.status === 'fulfilled' && fbResult.value) {
+        const fbUser = fbResult.value;
+        try {
+          const current = getAllAccounts();
+          const cleanEmail = fbUser.email.toLowerCase().trim();
+          const idx = current.findIndex((a) => a.email.toLowerCase().trim() === cleanEmail);
+          if (idx >= 0) current[idx] = { ...current[idx], ...fbUser };
+          else current.unshift(fbUser);
+          saveAllAccounts(current);
+        } catch {}
+
+        return authenticateUser(cleanIdentifier, cleanPass);
+      }
+
+      // Check Server result
+      if (serverResult && serverResult.status === 'fulfilled' && serverResult.value && typeof serverResult.value === 'object') {
+        const sVal = serverResult.value;
+        if (sVal.status !== 'error') {
+          if (sVal.success && sVal.user) {
+            try {
+              const current = getAllAccounts();
+              const cleanEmail = sVal.user.email.toLowerCase().trim();
+              const idx = current.findIndex((a) => a.email.toLowerCase().trim() === cleanEmail);
+              if (idx >= 0) current[idx] = { ...current[idx], ...sVal.user };
+              else current.unshift(sVal.user);
+              saveAllAccounts(current);
+            } catch {}
+
+            return {
+              success: true,
+              status: 'approved',
+              user: sVal.user,
+              message: sVal.message || 'Login successful.',
+            };
+          }
+          if (
+            sVal.status === 'pending' ||
+            sVal.status === 'suspended' ||
+            sVal.status === 'rejected' ||
+            sVal.status === 'invalid_password' ||
+            sVal.status === 'not_found'
+          ) {
+            return {
+              success: false,
+              status: sVal.status,
+              user: sVal.user,
+              message: sVal.message,
+            };
+          }
         }
       }
     }
@@ -1165,8 +1168,9 @@ export async function authenticateUserAsync(
     // quiet fallback
   }
 
-  // 3. If local result had invalid_password or not_found, return it
-  if (localResult.status === 'invalid_password') {
+  // 3. Final synchronous local check
+  const fallback = authenticateUser(cleanIdentifier, cleanPass);
+  if (fallback.status === 'invalid_password') {
     return {
       success: false,
       status: 'invalid_password',
@@ -1174,11 +1178,7 @@ export async function authenticateUserAsync(
     };
   }
 
-  return {
-    success: false,
-    status: 'not_found',
-    message: 'Invalid username or password. This account was not found in our database.',
-  };
+  return fallback;
 }
 
 // =========================================================================

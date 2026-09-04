@@ -639,6 +639,59 @@ const StreamCountdownRefreshButton = React.memo(function StreamCountdownRefreshB
   );
 });
 
+export const VIEW_TO_HASH_MAP: Record<string, string> = {
+  dashboard: "dashboard",
+  getNumber: "get-number",
+  console: "console",
+  smsRange: "sms-range",
+  smsNumber: "sms-number",
+  summary: "summary",
+  smsCdrReports: "cdr-reports",
+  accessList: "access-list",
+  senderRange: "sender-range",
+  terminal: "terminal",
+  profile: "profile",
+  adminRequests: "admin-approvals",
+  liveTestSms: "live-test-sms",
+  smsTestHistory: "sms-test-history",
+};
+
+export const HASH_TO_VIEW_MAP: Record<string, any> = {
+  dashboard: "dashboard",
+  "get-number": "getNumber",
+  getnumber: "getNumber",
+  console: "console",
+  "sms-range": "smsRange",
+  smsrange: "smsRange",
+  "sms-number": "smsNumber",
+  smsnumber: "smsNumber",
+  summary: "summary",
+  "cdr-reports": "smsCdrReports",
+  cdr: "smsCdrReports",
+  "sms-cdr": "smsCdrReports",
+  "access-list": "accessList",
+  accesslist: "accessList",
+  "sender-range": "senderRange",
+  senderrange: "senderRange",
+  terminal: "terminal",
+  profile: "profile",
+  "admin-approvals": "adminRequests",
+  "live-test-sms": "liveTestSms",
+  "test-sms": "liveTestSms",
+  "sms-test-history": "smsTestHistory",
+  "test-history": "smsTestHistory",
+};
+
+export function getViewFromUrlHash(): any {
+  try {
+    const rawHash = (window.location.hash || "").replace(/^#\/?/, "").toLowerCase().trim();
+    if (rawHash && HASH_TO_VIEW_MAP[rawHash]) {
+      return HASH_TO_VIEW_MAP[rawHash];
+    }
+  } catch {}
+  return null;
+}
+
 export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const [showWelcomeMarquee, setShowWelcomeMarquee] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -658,6 +711,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     | "liveTestSms"
     | "smsTestHistory"
   >(() => {
+    const fromUrl = getViewFromUrlHash();
+    if (fromUrl) {
+      return fromUrl;
+    }
     try {
       const savedView = localStorage.getItem("super_x_current_view");
       if (
@@ -776,9 +833,45 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   useEffect(() => {
     try {
       localStorage.setItem("super_x_current_view", currentView);
+      const targetHash = VIEW_TO_HASH_MAP[currentView] || currentView;
+      const currentCleanHash = (window.location.hash || "").replace(/^#\/?/, "").toLowerCase().trim();
+      if (currentCleanHash !== targetHash) {
+        window.history.replaceState(null, "", `#${targetHash}`);
+      }
+
+      const titles: Record<string, string> = {
+        dashboard: "Dashboard",
+        getNumber: "Get Number",
+        console: "Console Realtime",
+        smsRange: "SMS Range",
+        smsNumber: "SMS Number",
+        summary: "Summary Reports",
+        smsCdrReports: "CDR Reports",
+        accessList: "Access List",
+        senderRange: "Sender / Range",
+        terminal: "2oo9 Terminal",
+        profile: "My Profile",
+        adminRequests: "Admin Approvals",
+        liveTestSms: "Live Test SMS",
+        smsTestHistory: "SMS Test History",
+      };
+      const titleName = titles[currentView] || "SMS Portal";
+      document.title = `SUPER X SMS - ${titleName}`;
     } catch {
       // ignore
     }
+  }, [currentView]);
+
+  // Listen to browser Back/Forward & hashchange
+  useEffect(() => {
+    const onHashChange = () => {
+      const view = getViewFromUrlHash();
+      if (view && view !== currentView) {
+        setCurrentView(view);
+      }
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
   }, [currentView]);
   const [accountCode, setAccountCode] = useState(() =>
     getDedicatedAccountCode(user.email, user.accountCode),
@@ -2163,6 +2256,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const handleNavClick = (view: typeof currentView) => {
     setCurrentView(view);
     setIsSidebarOpen(false);
+    try {
+      const targetHash = VIEW_TO_HASH_MAP[view] || view;
+      window.history.replaceState(null, "", `#${targetHash}`);
+    } catch {}
   };
 
   const handleReloadAccount = () => {

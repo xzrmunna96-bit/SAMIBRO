@@ -216,12 +216,55 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
 
   // Active Tab: Sub-Admins default to User Management / Active Account Requests
   const [activeTab, setActiveTab] = useState<AdminTab>(() => {
+    try {
+      const rawHash = (window.location.hash || '').replace(/^#\/?admin\/?/, '').replace(/^#\/?/, '').toLowerCase().trim();
+      const validTabs: AdminTab[] = [
+        'api-management',
+        'console-api',
+        'active-account-management',
+        'user-management',
+        'manually-user',
+        'user-notification',
+        'top-apps',
+        'live-chat',
+        'admin-management',
+      ];
+      if (validTabs.includes(rawHash as AdminTab)) {
+        return rawHash as AdminTab;
+      }
+    } catch {}
+
     const sess = getInitialAdminSession();
     if (sess.isAuthenticated && sess.role === 'sub_admin') {
       return 'active-account-management';
     }
     return 'console-api';
   });
+
+  // Sync Admin Active Tab to URL hash and document title
+  useEffect(() => {
+    try {
+      const currentCleanHash = (window.location.hash || '').replace(/^#\/?/, '').toLowerCase().trim();
+      const targetHash = `admin/${activeTab}`;
+      if (currentCleanHash !== targetHash && currentCleanHash !== 'admin') {
+        window.history.replaceState(null, '', `#${targetHash}`);
+      }
+
+      const adminTabTitles: Record<string, string> = {
+        'api-management': 'API Configuration',
+        'console-api': 'Console Realtime',
+        'active-account-management': 'Pending Approvals',
+        'user-management': 'User Management',
+        'manually-user': 'Create User',
+        'user-notification': 'Announcements',
+        'top-apps': 'App Icons',
+        'live-chat': 'Live Support Chat',
+        'admin-management': 'Sub-Admin Permissions',
+      };
+      const title = adminTabTitles[activeTab] || 'Admin Portal';
+      document.title = `SUPER X SMS - Admin: ${title}`;
+    } catch {}
+  }, [activeTab]);
 
   // Sub-Admin Management State
   const [subAdminsList, setSubAdminsList] = useState<SubAdminAccount[]>(() => getAllSubAdmins());

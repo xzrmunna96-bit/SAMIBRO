@@ -450,10 +450,10 @@ export const SmsTestHistoryView = React.memo(function SmsTestHistoryView({
                         <Inbox className="w-6 h-6" />
                       </div>
                       <div className="font-bold text-slate-800 text-sm">
-                        কোনো এসএমএস টেস্ট রেকর্ড পাওয়া যায়নি (No Records Yet)
+                        No SMS Test Records Found
                       </div>
                       <p className="text-xs text-slate-500 leading-relaxed font-medium">
-                        সকল ডেমো ডেটা রিমুভ করা হয়েছে। লাইভ টেস্ট এসএমএস পাঠালে বা রিয়েল ট্রাফিক রেকর্ড তৈরি হলে তা স্বয়ংক্রিয়ভাবে এই টেবিলে প্রদর্শিত হবে।
+                        Live test SMS traffic or incoming CDR records will appear automatically in this table in real-time.
                       </p>
                     </div>
                   </td>

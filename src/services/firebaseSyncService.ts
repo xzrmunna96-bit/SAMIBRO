@@ -183,7 +183,7 @@ export async function fetchSpecificUserFromFirebase(
   const clean = (identifier || "").trim().toLowerCase();
   if (!clean) return null;
 
-  await ensureFirebaseAuth();
+  ensureFirebaseAuth().catch(() => null);
 
   const deletedSet = getDeletedAccountEmails();
   if (deletedSet.has(clean)) return null;
@@ -197,78 +197,73 @@ export async function fetchSpecificUserFromFirebase(
 
   let foundAccount: UserAccount | null = null;
 
-  // 1. Direct document lookups in Firestore super_x_accounts, users, pending_accounts
-  for (const docId of candidates) {
-    if (foundAccount) break;
-    const collectionsToTry = ["super_x_accounts", "users", "pending_accounts"];
-    for (const colName of collectionsToTry) {
-      try {
-        const dSnap = await getDoc(doc(firestoreDb, colName, docId));
-        if (dSnap.exists()) {
-          const data = dSnap.data() as UserAccount;
-          if (data && (data.email || data.id)) {
-            foundAccount = data;
-            break;
-          }
-        }
-      } catch {
-        // ignore
-      }
-    }
-  }
+  // 1. Direct parallel document lookups across Firestore
+  if (firestoreDb) {
+    try {
+      const collectionsToTry = ["super_x_accounts", "users", "pending_accounts"];
+      const docPromises: Promise<any>[] = [];
 
-  // 2. Direct Firestore queries by email or username
-  if (!foundAccount) {
-    const cols = ["super_x_accounts", "users", "pending_accounts"];
-    for (const colName of cols) {
-      if (foundAccount) break;
-      try {
-        const colRef = collection(firestoreDb, colName);
-        const qEmail = query(colRef, where("email", "==", clean));
-        const qSnap = await getDocs(qEmail);
-        if (!qSnap.empty) {
-          const data = qSnap.docs[0].data() as UserAccount;
-          if (data && (data.email || data.id)) {
-            foundAccount = data;
-            break;
-          }
+      for (const docId of candidates) {
+        for (const colName of collectionsToTry) {
+          docPromises.push(getDoc(doc(firestoreDb, colName, docId)).catch(() => null));
         }
+      }
+
+      // Also add collection queries in parallel
+      for (const colName of collectionsToTry) {
+        const colRef = collection(firestoreDb, colName);
+        docPromises.push(getDocs(query(colRef, where("email", "==", clean))).catch(() => null));
         if (!clean.includes("@")) {
-          const qUsername = query(colRef, where("username", "==", clean));
-          const uSnap = await getDocs(qUsername);
-          if (!uSnap.empty) {
-            const data = uSnap.docs[0].data() as UserAccount;
-            if (data && (data.email || data.id)) {
+          docPromises.push(getDocs(query(colRef, where("username", "==", clean))).catch(() => null));
+        }
+      }
+
+      const results = await Promise.allSettled(docPromises);
+      for (const res of results) {
+        if (res.status === 'fulfilled' && res.value) {
+          const val = res.value;
+          if (typeof val.exists === 'function' && val.exists()) {
+            const data = val.data() as UserAccount;
+            if (data && (data.email || (data as any).id)) {
+              foundAccount = data;
+              break;
+            }
+          } else if (val.docs && Array.isArray(val.docs) && val.docs.length > 0) {
+            const data = val.docs[0].data() as UserAccount;
+            if (data && (data.email || (data as any).id)) {
               foundAccount = data;
               break;
             }
           }
         }
-      } catch {
-        // ignore
       }
+    } catch {
+      // ignore
     }
   }
 
-  // 3. Direct Realtime DB lookup
+  // 2. Direct Realtime DB lookup if not yet found
   if (!foundAccount && realtimeDb) {
-    for (const docId of candidates) {
-      try {
-        const rtdbSnap = await get(ref(realtimeDb, `accounts/${docId}`));
-        if (rtdbSnap && rtdbSnap.exists()) {
-          const data = rtdbSnap.val() as UserAccount;
-          if (data && (data.email || data.id)) {
+    try {
+      const rtdbPromises = candidates.map((docId) =>
+        get(ref(realtimeDb, `accounts/${docId}`)).catch(() => null)
+      );
+      const rtdbResults = await Promise.allSettled(rtdbPromises);
+      for (const res of rtdbResults) {
+        if (res.status === 'fulfilled' && res.value && res.value.exists()) {
+          const data = res.value.val() as UserAccount;
+          if (data && (data.email || (data as any).id)) {
             foundAccount = data;
             break;
           }
         }
-      } catch {
-        // ignore
       }
+    } catch {
+      // ignore
     }
   }
 
-  // 4. Try Firebase Auth sign in if password provided
+  // 3. Try Firebase Auth sign in if password provided
   if (!foundAccount && password && clean.includes("@")) {
     try {
       const cleanPass = password.trim();
@@ -326,6 +321,35 @@ export async function fetchSpecificUserFromFirebase(
     return foundAccount;
   }
 
+  return null;
+}
+
+// Target lookup for Sub-Admin in Firestore 'super_x_sub_admins'
+export async function fetchSpecificSubAdminFromFirebase(
+  identifier: string
+): Promise<SubAdminAccount | null> {
+  const clean = (identifier || "").trim().toLowerCase();
+  if (!clean) return null;
+  ensureFirebaseAuth().catch(() => null);
+  if (!firestoreDb) return null;
+
+  try {
+    const safeDocId = clean.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const docSnap = await getDoc(doc(firestoreDb, "super_x_sub_admins", safeDocId)).catch(() => null);
+    if (docSnap && docSnap.exists()) {
+      const data = docSnap.data() as SubAdminAccount;
+      if (data && data.email) return data;
+    }
+
+    const subCol = collection(firestoreDb, "super_x_sub_admins");
+    const q = query(subCol, where("email", "==", clean));
+    const snap = await getDocs(q).catch(() => null);
+    if (snap && !snap.empty) {
+      return snap.docs[0].data() as SubAdminAccount;
+    }
+  } catch (err) {
+    console.warn("fetchSpecificSubAdminFromFirebase note:", err);
+  }
   return null;
 }
 
@@ -877,12 +901,12 @@ export async function saveTopAppsToFirebase(apps: TopAppItem[]) {
 import { initApiConfigsRealtimeSync } from "./apiConfigService";
 
 // Master Initializer: Boot all real-time synchronizers
-export async function initializeFirebaseSync() {
+export function initializeFirebaseSync() {
   if (isInitialized || typeof window === "undefined") return;
   isInitialized = true;
 
   console.log("⚡ Starting SUPER X SMS Firebase Real-time Synchronization...");
-  await ensureFirebaseAuth();
+  ensureFirebaseAuth().catch(() => null);
   initAccountsRealtimeSync();
   initChatRealtimeSync();
   initNotificationsRealtimeSync();

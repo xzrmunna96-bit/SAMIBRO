@@ -65,19 +65,19 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
     const cleanPassword = password.trim();
 
     if (!cleanIdentifier) {
-      setErrorMessage('ইমেইল বা ইউজারনেম প্রদান করুন (Please enter email or username)');
+      setErrorMessage('Please enter your email or username');
       return;
     }
 
     if (!cleanPassword) {
-      setErrorMessage('পাসওয়ার্ড প্রদান করুন (Please enter password)');
+      setErrorMessage('Please enter your password');
       return;
     }
 
     // Verify Captcha
     const expectedSum = num1 + num2;
     if (parseInt(captchaAnswer.trim(), 10) !== expectedSum) {
-      setErrorMessage('গণিত সমাধান ভুল হয়েছে! আবার চেষ্টা করুন (Math answer is incorrect)');
+      setErrorMessage('Math answer is incorrect. Please calculate again.');
       generateNewCaptcha();
       return;
     }
@@ -109,16 +109,16 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
             reason: result.user.banReason || 'Administrative suspension',
           });
         } else if (result.status === 'invalid_password') {
-          setErrorMessage('ভুল পাসওয়ার্ড! সঠিক পাসওয়ার্ড দিন (Incorrect password. Please try again.)');
+          setErrorMessage('Incorrect password. Please verify your credentials and try again.');
         } else {
           setErrorMessage(
-            result.message || 'অ্যাকাউন্ট পাওয়া যায়নি! শুধুমাত্র এডমিন অনুমোদিত অ্যাকাউন্ট লগইন করতে পারবে।'
+            result.message || 'Invalid username or password. This account was not found in our database.'
           );
         }
         generateNewCaptcha();
       }
     } catch {
-      setErrorMessage('সার্ভারের সাথে সংযোগ করা যায়নি! আবার চেষ্টা করুন।');
+      setErrorMessage('Invalid username or password. Please verify your credentials and try again.');
       generateNewCaptcha();
     } finally {
       setIsLoading(false);
@@ -145,7 +145,7 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
           Sign In to Portal
         </h1>
         <p className="text-xs sm:text-sm text-gray-500 mt-1 font-medium">
-          অফিসিয়াল SMS পোর্টালে সাইন ইন করুন
+          Sign in to your official SMS gateway portal
         </p>
       </div>
 
@@ -159,7 +159,7 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
           <div className="space-y-1">
             <p className="font-bold text-amber-900">Account Pending Admin Approval</p>
             <p className="text-amber-800 text-xs leading-relaxed">
-              আপনার অ্যাকাউন্ট (<strong className="font-mono">{pendingAccountNotice.email}</strong>) বর্তমানে <strong className="text-amber-900">PENDING</strong> অবস্থায় আছে। এডমিন অনুমোদন দিলে সরাসরি পাসওয়ার্ড দিয়ে লগইন করতে পারবেন।
+              Your account (<strong className="font-mono">{pendingAccountNotice.email}</strong>) is currently in <strong className="text-amber-900">PENDING</strong> status. Once approved by the administrator, you can sign in directly with your password.
             </p>
           </div>
         </div>
@@ -169,16 +169,18 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
       {errorMessage && (
         <div
           id="login-error-banner"
-          className="mb-4 p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs sm:text-sm font-semibold flex items-start gap-2.5 animate-fadeIn shadow-2xs leading-relaxed"
+          className="mb-4 p-3.5 rounded-2xl bg-rose-50 border border-rose-300 text-rose-800 text-xs sm:text-sm font-semibold flex items-start gap-2.5 animate-fadeIn shadow-xs leading-relaxed"
         >
-          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+          <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
           <div className="flex-1">
-            <span>{errorMessage}</span>
+            <p className="font-bold text-rose-900 text-xs uppercase tracking-wide mb-0.5">Authentication Error</p>
+            <span className="text-rose-800 font-medium">{errorMessage}</span>
           </div>
           <button
             type="button"
             onClick={() => setErrorMessage('')}
-            className="text-rose-400 hover:text-rose-600 transition"
+            className="text-rose-400 hover:text-rose-700 transition p-1 cursor-pointer"
+            aria-label="Dismiss error"
           >
             <X className="w-4 h-4" />
           </button>
@@ -254,7 +256,7 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
               type="button"
               onClick={generateNewCaptcha}
               className="inline-flex items-center gap-1 text-[11px] font-semibold text-purple-700 hover:text-purple-900 transition p-1 rounded-md hover:bg-purple-100/60"
-              title="নতুন অংক আনুন"
+              title="Get new math question"
             >
               <RotateCw className="w-3 h-3" />
               <span>Refresh</span>
@@ -269,7 +271,7 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
                 setCaptchaAnswer(e.target.value);
                 if (errorMessage) setErrorMessage('');
               }}
-              placeholder="উত্তর লিখুন (Enter Sum)"
+              placeholder="Enter answer"
               className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 hover:border-gray-300 focus:border-[#7056d6] focus:ring-3 focus:ring-purple-100 text-gray-900 placeholder-gray-400 text-sm outline-none transition bg-white shadow-2xs"
             />
           </div>
@@ -321,7 +323,7 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
                 </div>
                 <div>
                   <h3 className="font-extrabold text-base tracking-tight">Account Suspended</h3>
-                  <p className="text-[11px] text-rose-200 font-normal">অ্যাকাউন্টটি স্থগিত / ব্যান করা হয়েছে</p>
+                  <p className="text-[11px] text-rose-200 font-normal">Your account access is currently suspended</p>
                 </div>
               </div>
               <button
@@ -348,14 +350,14 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
               </div>
 
               <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-left text-xs space-y-1">
-                <span className="font-extrabold text-rose-800 block">কেন অ্যাকাউন্ট স্থগিত করা হয়েছে (Reason):</span>
+                <span className="font-extrabold text-rose-800 block">Reason for Suspension:</span>
                 <p className="text-gray-700 leading-relaxed font-medium">
-                  {suspendedNotice.reason || 'শর্তাবলী লংঘন বা এডমিন নির্দেশের কারণে এই অ্যাকাউন্টটি স্থগিত রাখা হয়েছে।'}
+                  {suspendedNotice.reason || 'This account has been suspended by Admin instructions or policy terms.'}
                 </p>
               </div>
 
               <p className="text-xs text-gray-500 leading-relaxed">
-                আপনার অ্যাকাউন্টে সমস্যা হলে সরাসরি এডমিনের সাথে যোগাযোগ করুন।
+                If you believe this is an error, please contact live administrator support.
               </p>
 
               <div className="pt-2 flex flex-col gap-2">
@@ -364,7 +366,7 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
                   onClick={() => setSuspendedNotice(null)}
                   className="w-full py-2.5 px-4 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs transition cursor-pointer"
                 >
-                  Close (বন্ধ করুন)
+                  Close
                 </button>
               </div>
             </div>

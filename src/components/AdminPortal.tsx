@@ -364,7 +364,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
       setMauthApiKey(slot.apiKey.trim());
       setVoltxEndpointKey(slot.apiKey.trim());
     }
-    showToast(`Slot ${slotIndex + 1} (${slot.name || 'API Key'}) সফলভাবে সংরক্ষিত ও সক্রিয় করা হয়েছে!`);
+    showToast(`Slot ${slotIndex + 1} (${slot.name || 'API Key'}) successfully saved and activated!`);
   };
 
   const handleToggleSlotActive = (slotIndex: number) => {
@@ -379,7 +379,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
       setMauthApiKey(slot.apiKey.trim());
       setVoltxEndpointKey(slot.apiKey.trim());
     }
-    showToast(`Slot ${slotIndex + 1} ${nextActive ? 'সক্রিয় (Active)' : 'নিষ্ক্রিয় (Disabled)'} করা হয়েছে`);
+    showToast(`Slot ${slotIndex + 1} ${nextActive ? 'Active' : 'Disabled'} completed`);
   };
 
   const handleEnableAllSlots = () => {
@@ -394,14 +394,14 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
       setMauthApiKey(active.apiKey.trim());
       setVoltxEndpointKey(active.apiKey.trim());
     }
-    showToast('সকল ভ্যালিড API স্লট একসাথে চালু করা হয়েছে!');
+    showToast('All valid API slots activated!');
   };
 
   const handleDisableAllSlots = () => {
     const updated = apiConfigsList.map((s) => ({ ...s, isActive: false }));
     saveAllApiConfigs(updated);
     setApiConfigsList(updated);
-    showToast('সকল API স্লট বন্ধ করা হয়েছে');
+    showToast('All API slots disabled');
   };
 
   const handleSaveAllSlots = () => {
@@ -411,7 +411,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
       setMauthApiKey(active.apiKey.trim());
       setVoltxEndpointKey(active.apiKey.trim());
     }
-    showToast('১০টি API স্লট সফলভাবে সংরক্ষিত ও আপডেট করা হয়েছে!');
+    showToast('All 10 API slots saved and updated successfully!');
   };
 
   const handleResetDefaultSlots = () => {
@@ -419,7 +419,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     setApiConfigsList(DEFAULT_API_CONFIGS);
     setMauthApiKey(DEFAULT_API_CONFIGS[0].apiKey);
     setVoltxEndpointKey(DEFAULT_API_CONFIGS[0].apiKey);
-    showToast('ডিফল্ট ১০টি API স্লট রিস্টোর করা হয়েছে!');
+    showToast('Default 10 API slots restored!');
   };
 
   // Telegram Auto-Forward Bot State
@@ -437,9 +437,9 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     setIsSavingTg(true);
     try {
       saveTelegramConfig(telegramConfig);
-      showToast('টেলিগ্রাম বট কনফিগারেশন সংরক্ষিত হয়েছে!');
+      showToast('Telegram bot configuration saved!');
     } catch {
-      showToast('টেলিগ্রাম সেভ করতে ব্যর্থ');
+      showToast('Failed to save Telegram settings');
     } finally {
       setIsSavingTg(false);
     }
@@ -452,14 +452,14 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
       const res = await testTelegramBotConnection(telegramConfig.botToken, telegramConfig.chatId);
       setTgTestResult(res);
       if (res.success) {
-        showToast('টেলিগ্রাম টেস্ট মেসেজ সফলভাবে পাঠানো হয়েছে!');
+        showToast('Telegram test message sent successfully!');
       } else {
         showToast(res.message);
       }
     } catch (err: any) {
       setTgTestResult({
         success: false,
-        message: err?.message || 'টেলিগ্রাম সংযোগ ব্যর্থ',
+        message: err?.message || 'Telegram connection failed',
       });
     } finally {
       setIsTestingTg(false);
@@ -481,7 +481,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     } catch (err: any) {
       setIntsTestResult({
         success: false,
-        message: err?.message || 'INTS সংযোগ ব্যর্থ',
+        message: err?.message || 'INTS connection failed',
       });
     } finally {
       setIsTestingInts(false);
@@ -533,7 +533,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     e.preventDefault();
     const key = createApiKey.trim();
     if (!key) {
-      showToast('অনুগ্রহ করে একটি API Key লিখুন (Please enter an API Key)');
+      showToast('Please enter an API Key');
       return;
     }
     setIsSavingApiConfig(true);
@@ -554,12 +554,12 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
       } catch {}
       window.dispatchEvent(new Event('voltx_key_updated'));
       window.dispatchEvent(new Event('super_x_api_key_updated'));
-      showToast(`নতুন API [${item.name || key}] সফলভাবে আনলিমিটেড পুল-এ যুক্ত ও সক্রিয় হয়েছে!`);
+      showToast(`New API [${item.name || key}] added and activated in unlimited pool!`);
       setIsCreateApiModalOpen(false);
       fetchIncomingSmsHits(key);
     } catch (err) {
       console.error('Error creating API:', err);
-      showToast('API যুক্ত করতে ত্রুটি হয়েছে।');
+      showToast('Error adding API.');
     } finally {
       setIsSavingApiConfig(false);
     }
@@ -592,7 +592,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
         notes: editApiNotes.trim(),
       });
       setApiConfigsList(getAllApiConfigs());
-      showToast(`API Gateway [${editApiName || key}] সফলভাবে আপডেট হয়েছে!`);
+      showToast(`API Gateway [${editApiName || key}] updated successfully!`);
       setEditApiModalItem(null);
     } catch (err) {
       console.error('Error updating API:', err);
@@ -606,7 +606,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     if (e) e.preventDefault();
     const cleanKey = newConfigApiKey.trim();
     if (!cleanKey) {
-      showToast('অনুগ্রহ করে API Key প্রবেশ করান (Enter API Key)');
+      showToast('Please enter an API Key');
       return;
     }
     setIsSavingApiConfig(true);
@@ -640,7 +640,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     setVoltxEndpointKey(item.apiKey);
     setApiConfigsList(getAllApiConfigs());
     fetchIncomingSmsHits(item.apiKey);
-    showToast(`সক্রিয় করা হয়েছে: ${item.name || item.serviceType} (${item.apiKey})`);
+    showToast(`Activated: ${item.name || item.serviceType} (${item.apiKey})`);
   };
 
   const handleDeleteApiConfigItem = async (id: string, serviceName: string) => {
@@ -968,7 +968,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
           try {
             sessionStorage.removeItem(ADMIN_SESSION_KEY);
           } catch {}
-          showToast('আপনার সাব-এডমিন অ্যাক্সেস রিমুভ করা হয়েছে (Access Revoked by Main Admin).');
+          showToast('Your Sub-Admin access has been revoked by Main Admin.');
         }
       }
     };
@@ -1145,7 +1145,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
   const handleSaveApiKey = async () => {
     const trimmed = apiKeyInput.trim();
     if (!trimmed) {
-      showToast('অনুগ্রহ করে একটি API Key প্রবেশ করান (Please enter an API Key)');
+      showToast('Please enter an API Key');
       return;
     }
 
@@ -1177,12 +1177,12 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
       window.dispatchEvent(new Event('storage'));
 
       setIsApiKeySaved(true);
-      showToast(`API [${trimmed}] সংরক্ষিত ও সক্রিয় হয়েছে! সকল সোশ্যাল মিডিয়া অটো-কানেক্টেড।`);
+      showToast(`API [${trimmed}] saved and activated! All services auto-connected.`);
       await fetchIncomingSmsHits(trimmed);
       setTimeout(() => setIsApiKeySaved(false), 4000);
     } catch (err) {
       console.error('Error saving API key:', err);
-      showToast('API Key সংরক্ষণ করতে সমস্যা হয়েছে।');
+      showToast('Failed to save API Key.');
     } finally {
       setIsSavingApiConfig(false);
     }
@@ -1322,7 +1322,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     e.preventDefault();
     if (!subAdminBanModalUser) return;
     if (!subAdminBanReason.trim()) {
-      setSubAdminBanError('সাসপেন্ড করার কারণ অবশ্যই লিখতে হবে (Please enter reason for suspension).');
+      setSubAdminBanError('Please enter a reason for suspension.');
       return;
     }
 
@@ -1335,7 +1335,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
 
     if (res.success) {
       setAccountsList(getAllAccounts());
-      showToast(`সাসপেন্ড রিকোয়েস্ট মেইন এডমিনের কাছে পাঠানো হয়েছে (${subAdminBanModalUser.email})`);
+      showToast(`Suspension request submitted to Main Admin (${subAdminBanModalUser.email})`);
       setSubAdminBanModalUser(null);
       setSubAdminBanReason('');
     } else {
@@ -1425,7 +1425,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
 
   const handlePurgeNonAdminAccounts = async () => {
     const confirmMsg =
-      'সতর্কতা: আপনি কি নিশ্চিত যে মূল সুপার এডমিন (XZR Munna - xzrmunna96@gmail.com) ছাড়া বাকি সকল ইউজার একাউন্ট ডাটাবেজ, সার্ভার এবং সিস্টেম থেকে সম্পূর্ণ ডিলিট করতে চান?\n\nএটি সম্পন্ন হলে আপনার সাইটে নতুন ইউজাররা আবার একদম ফ্রেশ ভাবে একাউন্ট তৈরি করতে পারবে।';
+      'Warning: Are you sure you want to delete all user accounts from the database and server except Super Admin (XZR Munna - xzrmunna96@gmail.com)?\n\nNew users will be able to register fresh accounts.';
     if (!window.confirm(confirmMsg)) return;
 
     setIsPurgingAccounts(true);
@@ -1436,7 +1436,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
         purgeRemoteFirebaseAccountsExceptSuperAdmin(),
       ]);
       setAccountsList(remaining);
-      showToast('বাকি সব অ্যাকাউন্ট সফলভাবে ডাটাবেজ ও সার্ভার থেকে মুছে ফেলা হয়েছে!');
+      showToast('All other user accounts wiped successfully from database and server!');
     } catch (err: any) {
       showToast('Error purging accounts: ' + (err?.message || 'Failed'));
     } finally {
@@ -1695,15 +1695,15 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
           <form onSubmit={handleAdminLogin} className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
-                Email
+                Email / Username
               </label>
               <div className="relative">
                 <input
-                  type="email"
+                  type="text"
                   required
                   value={enteredEmail}
                   onChange={(e) => setEnteredEmail(e.target.value)}
-                  placeholder="Enter email"
+                  placeholder="Enter email or username"
                   className="w-full pl-10 pr-4 py-3 text-sm rounded-xl bg-slate-950 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 font-mono"
                   autoFocus
                 />
@@ -1750,7 +1750,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
               className="w-full py-2.5 px-4 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white transition font-bold text-xs flex items-center justify-center gap-2 border border-slate-700/80 shadow-sm cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4 text-indigo-400" />
-              <span>← Go to User Login Panel (ইউজার লগইন প্যানেল)</span>
+              <span>← Go to User Login Panel</span>
             </button>
           </div>
         </div>
@@ -2024,7 +2024,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                   )}
                 </button>
 
-                {/* 8. Sub-Admin Management (এডমিন ম্যানেজমেন্ট) */}
+                {/* 8. Sub-Admin Management */}
                 <button
                   type="button"
                   onClick={() => setActiveTab('admin-management')}
@@ -2035,7 +2035,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                   }`}
                 >
                   <UserCog className="w-4 h-4" />
-                  <span>Admin Management (এডমিন ম্যানেজমেন্ট)</span>
+                  <span>Admin Management</span>
                   <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-slate-950/60 font-mono text-cyan-300 border border-cyan-500/30">
                     {subAdminsList.length}
                   </span>
@@ -2071,7 +2071,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                       </span>
                     </div>
                     <p className="text-xs text-slate-400 mt-1 max-w-3xl leading-relaxed">
-                      এখানে ১০টি API Key বক্স রয়েছে। আপনার যে বক্সে API Key বসিয়ে Save করবেন সেটি সাথে সাথে চালু হয়ে যাবে। আপনি যেকোনো একটি, তিনটি বা ১০টি API Key একসাথে চালু/বন্ধ করতে পারবেন এবং ওয়েবসাইটে রিয়েল-টাইমে এসএমএস আসা শুরু করবে।
+                      Configure up to 10 dedicated API key slots. Enable or disable any slot dynamically to stream incoming SMS to the user portal in real-time.
                     </p>
                   </div>
                 </div>
@@ -2085,7 +2085,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                     title="Enable All 10 Slots"
                   >
                     <Play className="w-3.5 h-3.5 fill-current" />
-                    <span>Enable All (সব চালু)</span>
+                    <span>Enable All</span>
                   </button>
 
                   <button
@@ -2095,7 +2095,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                     title="Disable All Slots"
                   >
                     <Pause className="w-3.5 h-3.5" />
-                    <span>Disable All (সব বন্ধ)</span>
+                    <span>Disable All</span>
                   </button>
 
                   <button
@@ -2105,7 +2105,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                     title="Save All 10 Slots to Database"
                   >
                     <CheckCheck className="w-3.5 h-3.5" />
-                    <span>Save All (সব সেভ)</span>
+                    <span>Save All</span>
                   </button>
 
                   <button
@@ -2123,19 +2123,19 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
               {/* Status Summary Strip */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-400">সক্রিয় গেটওয়ে (Active Slots):</span>
+                  <span className="text-xs font-bold text-slate-400">Active Slots:</span>
                   <span className="text-xs font-mono font-black text-emerald-400 bg-emerald-950/90 px-2.5 py-0.5 rounded-lg border border-emerald-500/30">
                     {apiConfigsList.filter((s) => s.isActive && (s.apiKey || '').trim()).length} / 10 Active
                   </span>
                 </div>
                 <div className="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-400">রিয়েল-টাইম মাল্টি-স্ট্রিম:</span>
+                  <span className="text-xs font-bold text-slate-400">Real-Time Multi-Stream:</span>
                   <span className="text-xs font-mono font-black text-sky-400 bg-sky-950/90 px-2.5 py-0.5 rounded-lg border border-sky-500/30">
                     Parallel Polling Active
                   </span>
                 </div>
                 <div className="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-400">সোশ্যাল মিডিয়া ওটিপি ইঞ্জিন:</span>
+                  <span className="text-xs font-bold text-slate-400">OTP Engine:</span>
                   <span className="text-xs font-mono font-black text-amber-400 bg-amber-950/90 px-2.5 py-0.5 rounded-lg border border-amber-500/30">
                     Auto Social Media Gateway
                   </span>
@@ -2147,7 +2147,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                 <div className="flex items-center justify-between">
                   <h3 className="text-xs font-black text-slate-300 uppercase tracking-wider flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-emerald-400" />
-                    <span>10 Dedicated API Key Slots (আপনার পছন্দমতো বক্সে Key বসিয়ে সেভ করুন)</span>
+                    <span>10 Dedicated API Key Slots</span>
                   </h3>
                   <span className="text-[11px] text-slate-400 font-mono">
                     Slots 01 - 10
@@ -2246,7 +2246,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                         {/* Service Target Selector */}
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
                           <label className="text-[11px] font-bold text-slate-400">
-                            সার্ভিস রাউটিং (Service Route):
+                            Service Route:
                           </label>
                           <select
                             value={slot.serviceType || 'ALL (Global Auto-Detect)'}
@@ -2269,7 +2269,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                         <div className="space-y-1.5">
                           <div className="flex items-center justify-between text-[11px]">
                             <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">
-                              API Key (বক্স {slotIdx + 1}):
+                              API Key (Slot {slotIdx + 1}):
                             </span>
                             <div className="flex items-center gap-1">
                               <button
@@ -2358,7 +2358,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                               title="Save and Activate this slot"
                             >
                               <Check className="w-3.5 h-3.5" />
-                              <span>Save & Activate (সেভ করুন)</span>
+                              <span>Save & Activate</span>
                             </button>
                           </div>
                         </div>
@@ -2386,14 +2386,14 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                         </span>
                       </h3>
                       <p className="text-xs text-slate-400">
-                        যেকোনো এসএমএস / ওটিপি আসলে সরাসরি টেলিগ্রাম চ্যানেলে চলে যাবে
+                        Automatically forward all incoming SMS / OTP directly to your Telegram channel
                       </p>
                     </div>
                   </div>
 
                   <label className="flex items-center gap-2 cursor-pointer">
                     <span className="text-xs font-bold text-slate-300">
-                      {telegramConfig.autoForwardEnabled ? 'সক্রিয় (Active)' : 'নিষ্ক্রিয়'}
+                      {telegramConfig.autoForwardEnabled ? 'Active' : 'Disabled'}
                     </span>
                     <input
                       type="checkbox"
@@ -2402,7 +2402,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                         const updated = { ...telegramConfig, autoForwardEnabled: e.target.checked };
                         setTelegramConfig(updated);
                         saveTelegramConfig(updated);
-                        showToast(e.target.checked ? 'টেলিগ্রাম অটো-ফরোয়ার্ডিং সক্রিয়' : 'টেলিগ্রাম অটো-ফরোয়ার্ডিং নিষ্ক্রিয়');
+                        showToast(e.target.checked ? 'Telegram auto-forwarding enabled' : 'Telegram auto-forwarding disabled');
                       }}
                       className="w-4 h-4 text-sky-500 rounded focus:ring-sky-400 bg-slate-800 border-slate-700"
                     />
@@ -2412,7 +2412,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                 <div className="space-y-3">
                   <div>
                     <label className="block text-[11px] font-bold text-slate-400 mb-1">
-                      Telegram Bot Token (বট টোকেন):
+                      Telegram Bot Token:
                     </label>
                     <input
                       type="text"
@@ -2438,7 +2438,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                     </div>
                     <div>
                       <label className="block text-[11px] font-bold text-slate-400 mb-1">
-                        Channel Invite Link (চ্যানেল লিংক):
+                        Channel Invite Link:
                       </label>
                       <input
                         type="text"
@@ -2480,7 +2480,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                       className="flex-1 py-2 px-3 rounded-xl text-xs font-bold text-white bg-sky-600 hover:bg-sky-500 transition cursor-pointer flex items-center justify-center gap-1.5 shadow-lg shadow-sky-950/50"
                     >
                       <Check className="w-3.5 h-3.5" />
-                      <span>{isSavingTg ? 'সংরক্ষণ হচ্ছে...' : 'Save Bot Config'}</span>
+                      <span>{isSavingTg ? 'Saving...' : 'Save Bot Config'}</span>
                     </button>
 
                     <button
@@ -2490,7 +2490,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                       className="py-2 px-4 rounded-xl text-xs font-bold text-sky-300 bg-slate-800 hover:bg-slate-700 border border-sky-500/30 transition cursor-pointer flex items-center justify-center gap-1.5"
                     >
                       <Send className={`w-3.5 h-3.5 ${isTestingTg ? 'animate-bounce' : ''}`} />
-                      <span>{isTestingTg ? 'পাঠানো হচ্ছে...' : 'Test Send Message'}</span>
+                      <span>{isTestingTg ? 'Sending...' : 'Test Send Message'}</span>
                     </button>
                   </div>
                 </div>
@@ -2511,14 +2511,14 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                         </span>
                       </h3>
                       <p className="text-xs text-slate-400">
-                        ইন্টস ক্যারিয়ার এসএমএস সিডিআর টেবিল ও অটো-স্ট্রিমার
+                        INTS Carrier SMS CDR Table & Auto-Streamer
                       </p>
                     </div>
                   </div>
 
                   <label className="flex items-center gap-2 cursor-pointer">
                     <span className="text-xs font-bold text-slate-300">
-                      {intsConfig.isActive ? 'সক্রিয়' : 'নিষ্ক্রিয়'}
+                      {intsConfig.isActive ? 'Active' : 'Disabled'}
                     </span>
                     <input
                       type="checkbox"
@@ -2527,7 +2527,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                         const updated = { ...intsConfig, isActive: e.target.checked };
                         setIntsConfig(updated);
                         saveIntsGatewayConfig(updated);
-                        showToast(e.target.checked ? 'INTS গেটওয়ে সক্রিয়' : 'INTS গেটওয়ে নিষ্ক্রিয়');
+                        showToast(e.target.checked ? 'INTS Gateway enabled' : 'INTS Gateway disabled');
                       }}
                       className="w-4 h-4 text-emerald-500 rounded focus:ring-emerald-400 bg-slate-800 border-slate-700"
                     />
@@ -2603,7 +2603,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                       type="button"
                       onClick={() => {
                         saveIntsGatewayConfig(intsConfig);
-                        showToast('INTS কনফিগারেশন সংরক্ষিত হয়েছে!');
+                        showToast('INTS configuration saved successfully!');
                       }}
                       className="flex-1 py-2 px-3 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 transition cursor-pointer flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-950/50"
                     >
@@ -2618,7 +2618,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                       className="py-2 px-4 rounded-xl text-xs font-bold text-emerald-300 bg-slate-800 hover:bg-slate-700 border border-emerald-500/30 transition cursor-pointer flex items-center justify-center gap-1.5"
                     >
                       <Activity className={`w-3.5 h-3.5 text-emerald-400 ${isTestingInts ? 'animate-spin' : ''}`} />
-                      <span>{isTestingInts ? 'সিঙ্ক হচ্ছে...' : 'Sync Live CDR Table'}</span>
+                      <span>{isTestingInts ? 'Syncing...' : 'Sync Live CDR Table'}</span>
                     </button>
                   </div>
                 </div>
@@ -2776,7 +2776,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
         )}
 
         {/* ================================================================= */}
-        {/* TAB: ACTIVE ACCOUNT MANAGEMENT (একটিভ একাউন্ট ম্যানেজমেন্ট)       */}
+        {/* TAB: ACTIVE ACCOUNT MANAGEMENT (Active User Accounts)       */}
         {/* ================================================================= */}
         {activeTab === 'active-account-management' && (
           <div className="space-y-6">
@@ -2791,7 +2791,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                     <h2 className="text-lg sm:text-xl font-black text-white tracking-tight flex items-center gap-2">
                       <span>Active Account Management</span>
                       <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-extrabold border border-amber-500/30">
-                        একটিভ একাউন্ট ম্যানেজমেন্ট
+                        Active User Accounts
                       </span>
                     </h2>
                     <p className="text-xs text-slate-400 mt-0.5">
@@ -2902,11 +2902,11 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                     <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
                       <span>Database User Reset</span>
                       <span className="text-[10px] px-2 py-0.2 rounded bg-rose-500/30 text-rose-300 font-mono">
-                        ফ্রেশ রেজিস্ট্রেশন
+                        Fresh Registrations
                       </span>
                     </h4>
                     <p className="text-[11px] text-slate-400 mt-0.5">
-                      শুধুমাত্র মূল এডমিন (XZR Munna) রেখে বাকি সব অ্যাকাউন্ট ডাটাবেজ ও সার্ভার থেকে সম্পূর্ণ ডিলিট করুন যাতে সবাই আবার নতুন করে রেজিস্ট্রেশন করতে পারে।
+                      Wipe all user accounts from the database and server except Super Admin (XZR Munna) to start fresh.
                     </p>
                   </div>
                 </div>
@@ -2917,7 +2917,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                   className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold text-xs transition cursor-pointer flex items-center justify-center gap-2 shadow-md shrink-0 whitespace-nowrap"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  <span>{isPurgingAccounts ? 'মুছে ফেলা হচ্ছে...' : 'Wipe Users Except Super Admin'}</span>
+                  <span>{isPurgingAccounts ? 'Wiping...' : 'Wipe Users Except Super Admin'}</span>
                 </button>
               </div>
             </section>
@@ -3100,7 +3100,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                               className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-black text-xs transition cursor-pointer flex items-center gap-1.5 shadow-md"
                             >
                               <UserCheck className="w-4 h-4" />
-                              <span>Approve Account (এপ্রুভ করুন)</span>
+                              <span>Approve Account</span>
                             </button>
                           )}
 
@@ -3112,7 +3112,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                               className="px-3.5 py-2 rounded-xl bg-rose-950 hover:bg-rose-900 text-rose-300 border border-rose-500/40 font-bold text-xs transition cursor-pointer flex items-center gap-1.5"
                             >
                               <UserX className="w-4 h-4" />
-                              <span>Reject Request (রিজেক্ট)</span>
+                              <span>Reject Request</span>
                             </button>
                           )}
 
@@ -3123,7 +3123,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                             className="px-3.5 py-2 rounded-xl bg-purple-950/80 hover:bg-purple-900 text-purple-200 border border-purple-500/40 font-bold text-xs transition cursor-pointer flex items-center gap-1.5"
                           >
                             <Bell className="w-4 h-4 text-purple-400" />
-                            <span>Send Notice (নোটিশ পাঠান)</span>
+                            <span>Send Notice</span>
                           </button>
                         </div>
 
@@ -3169,7 +3169,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                   <div className="flex items-center gap-2">
                     <ShieldAlert className="w-5 h-5 text-rose-400 animate-pulse" />
                     <h3 className="font-extrabold text-white text-sm">
-                      ⏳ Pending Suspension Requests (সাসপেন্ড অনুমোদন রিকোয়েস্ট)
+                      ⏳ Pending Suspension Requests
                     </h3>
                   </div>
                   <span className="px-2.5 py-0.5 rounded-full bg-rose-500 text-white font-extrabold text-xs">
@@ -3214,14 +3214,14 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                                   className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs transition cursor-pointer flex items-center gap-1.5 shadow-md"
                                 >
                                   <UserX className="w-4 h-4" />
-                                  <span>Approve Ban (সাসপেন্ড এপ্রুভ করুন)</span>
+                                  <span>Approve Suspension</span>
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => handleRejectBanRequest(targetUser)}
                                   className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition cursor-pointer"
                                 >
-                                  Reject Request (বাতিল)
+                                  Reject Request
                                 </button>
                               </>
                             ) : (
@@ -3292,11 +3292,11 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                   <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
                     <span>Clean User Accounts</span>
                     <span className="text-[10px] px-2 py-0.2 rounded bg-rose-500/30 text-rose-300 font-mono">
-                      নতুন ইউজারদের জন্য ফ্রেশ শুরু
+                      Fresh Start for Users
                     </span>
                   </h4>
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    শুধুমাত্র মূল এডমিন (XZR Munna) রেখে বাকি সব পুরাতন ও ডেমো অ্যাকাউন্ট ডাটাবেজ ও সার্ভার থেকে রিমুভ করুন।
+                    Remove all older accounts from database and server, keeping only Super Admin (XZR Munna).
                   </p>
                 </div>
               </div>
@@ -3307,7 +3307,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                 className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold text-xs transition cursor-pointer flex items-center justify-center gap-2 shadow-md shrink-0 whitespace-nowrap"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                <span>{isPurgingAccounts ? 'মুছে ফেলা হচ্ছে...' : 'Wipe All Users Except Super Admin'}</span>
+                <span>{isPurgingAccounts ? 'Wiping...' : 'Wipe All Users Except Super Admin'}</span>
               </button>
             </div>
 
@@ -3599,7 +3599,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                   </div>
 
                   <p className="text-xs text-slate-400 leading-relaxed">
-                    সাব-এডমিন হিসেবে ইউজারকে সাসপেন্ড করার জন্য আপনাকে একটি স্পষ্ট কারণ (Reason) লিখতে হবে। আপনার রিকোয়েস্টটি মেইন এডমিনের প্যানেলে যাবে, মেইন এডমিন অনুমোদন দিলেই ইউজার অটোমেটিক সাসপেন্ড হয়ে যাবে।
+                    As Sub-Admin, specify a clear reason for suspension. Your request will be submitted to the Main Admin for final approval.
                   </p>
 
                   {subAdminBanError && (
@@ -3611,13 +3611,13 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                   <form onSubmit={handleSubAdminBanSubmit} className="space-y-4">
                     <div>
                       <label className="text-xs font-bold text-slate-300 mb-1.5 block">
-                        কেন এই ইউজারকে সাসপেন্ড করছেন? (রিজন লিখুন) *
+                        Reason for Suspension *
                       </label>
                       <textarea
                         rows={3}
                         value={subAdminBanReason}
                         onChange={(e) => setSubAdminBanReason(e.target.value)}
-                        placeholder="উদাহরণ: শর্তাবলী লংঘন / ফেইক পেমেন্ট রেফারেন্স / স্প্যামিং..."
+                        placeholder="e.g. Terms violation / spamming / unverified credentials..."
                         className="w-full px-4 py-2.5 text-xs bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-rose-500 resize-none"
                         autoFocus
                       />
@@ -3900,7 +3900,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                   </div>
                   <div>
                     <h2 className="text-base sm:text-lg font-black text-white">
-                      Top Dashboard Marquee Notice Banner (ইউজার ড্যাশবোর্ড নোটিশ হেডার)
+                      Top Dashboard Marquee Notice Banner
                     </h2>
                     <p className="text-xs text-slate-400">
                       Edit and publish the moving top marquee announcement banner shown on every user's main dashboard.
@@ -3918,7 +3918,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
               <form onSubmit={handleSaveMarqueeNotice} className="space-y-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
-                    Notice Banner Text (নোটিশ বার লেখা)
+                    Notice Banner Text
                   </label>
                   <textarea
                     rows={3}
@@ -3977,7 +3977,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                     className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md transition cursor-pointer flex items-center gap-2"
                   >
                     <Sparkles className="w-4 h-4" />
-                    <span>Save &amp; Publish Notice Banner (নোটিশ সেভ ও পাবলিশ করুন)</span>
+                    <span>Save &amp; Publish Notice Banner</span>
                   </button>
                 </div>
               </form>
@@ -4004,14 +4004,14 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                   {/* Target Recipient */}
                   <div className="sm:col-span-2">
                     <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
-                      Target User (কাকে নোটিফিকেশন পাঠাবেন)
+                      Target User
                     </label>
                     <select
                       value={notifTargetUser}
                       onChange={(e) => setNotifTargetUser(e.target.value)}
                       className="w-full px-3 py-2.5 text-xs sm:text-sm bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 font-bold"
                     >
-                      <option value="all">📢 All Users (সব ইউজারকে পাঠান)</option>
+                      <option value="all">📢 All Users</option>
                       <option value="custom">✍️ Enter Custom Email / Phone...</option>
                       <optgroup label="Registered Active Users">
                         {accountsList.map((usr, usrIdx) => (
@@ -4067,7 +4067,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                     required
                     value={notifTitle}
                     onChange={(e) => setNotifTitle(e.target.value)}
-                    placeholder="e.g. সিস্টেম আপডেট - নতুন রেঞ্জ যোগ করা হয়েছে"
+                    placeholder="e.g. System update - new carrier ranges added"
                     className="w-full px-4 py-2.5 text-xs sm:text-sm bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500"
                   />
                 </div>
@@ -4169,7 +4169,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                   <div>
                     <h2 className="text-base sm:text-lg font-black text-white">Top Applications Management</h2>
                     <p className="text-xs text-slate-400">
-                      Configure which social media apps appear on user dashboard, toggle Active vs Coming Soon (কামিং সুন), or add custom services.
+                      Configure which social media apps appear on user dashboard, toggle Active vs Coming Soon, or add custom services.
                     </p>
                   </div>
                 </div>
@@ -4236,8 +4236,8 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                         onChange={(e) => setNewAppStatus(e.target.value as any)}
                         className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-rose-500"
                       >
-                        <option value="active">Active (সক্রিয়)</option>
-                        <option value="coming_soon">Coming Soon (কামিং সুন)</option>
+                        <option value="active">Active</option>
+                        <option value="coming_soon">Coming Soon</option>
                       </select>
                       <button
                         type="submit"
@@ -4311,7 +4311,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                           }`}
                           title="Click to toggle between Active and Coming Soon"
                         >
-                          {isComingSoon ? 'কামিং সুন (Soon)' : 'সক্রিয় (Active)'}
+                          {isComingSoon ? 'Coming Soon' : 'Active'}
                         </button>
                       </div>
 
@@ -4568,7 +4568,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
         )}
 
         {/* ================================================================= */}
-        {/* TAB 8: SUB-ADMIN MANAGEMENT (এডমিন ম্যানেজমেন্ট)                   */}
+        {/* TAB 8: SUB-ADMIN MANAGEMENT                   */}
         {/* ================================================================= */}
         {activeTab === 'admin-management' && isSuperAdmin && (
           <section className="space-y-6">
@@ -4582,10 +4582,10 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                     <span>SUPER ADMIN CONTROL</span>
                   </div>
                   <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2">
-                    <span>এডমিন ও স্টাফ রোল ম্যানেজমেন্ট (Sub-Admin Control)</span>
+                    <span>Sub-Admin & Staff Management</span>
                   </h2>
                   <p className="text-xs text-slate-400 mt-1 max-w-2xl leading-relaxed">
-                    এখান থেকে মূল এডমিন অন্য স্টাফ বা সাব-এডমিনদের ইমেইল ও পাসওয়ার্ড সেভ করতে পারবেন। তারা সেই ইমেইল ও পাসওয়ার্ড দিয়ে এডমিন প্যানেলে প্রবেশ করলে <strong className="text-amber-300">শুধুমাত্র নতুন ইউজার অ্যাকাউন্ট রিকোয়েস্ট (User Account Requests)</strong> দেখতে পাবে এবং সেগুলো <strong>Approve (অ্যাপ্রুভ)</strong> ও <strong>Cancel (ক্যানসেল)</strong> করতে পারবে।
+                    Main Admin can configure Sub-Admin credentials. Sub-Admins have restricted permissions to review and approve/reject User Account Requests.
                   </p>
                 </div>
 
@@ -4600,13 +4600,13 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
             <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
               <h3 className="text-sm font-extrabold text-white uppercase tracking-wider flex items-center gap-2">
                 <UserPlus className="w-4 h-4 text-cyan-400" />
-                <span>নতুন সাব-এডমিন / স্টাফ যুক্ত করুন (Add Sub-Admin Staff)</span>
+                <span>Add New Sub-Admin Staff</span>
               </h3>
 
               <form onSubmit={handleAddSubAdminSubmit} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-300 mb-1 uppercase tracking-wider">
-                    Staff Name / Designation (স্টাফ নাম)
+                    Staff Name / Designation
                   </label>
                   <input
                     type="text"
@@ -4619,7 +4619,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
 
                 <div>
                   <label className="block text-xs font-bold text-slate-300 mb-1 uppercase tracking-wider">
-                    Sub-Admin Email (স্টাফ ইমেইল) *
+                    Sub-Admin Email *
                   </label>
                   <div className="relative">
                     <input
@@ -4636,7 +4636,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
 
                 <div>
                   <label className="block text-xs font-bold text-slate-300 mb-1 uppercase tracking-wider">
-                    Sub-Admin Password (স্টাফ পাসওয়ার্ড) *
+                    Sub-Admin Password *
                   </label>
                   <div className="relative">
                     <input
@@ -4669,10 +4669,10 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                 <div>
                   <h3 className="text-sm font-extrabold text-white uppercase tracking-wider flex items-center gap-2">
                     <Users className="w-4 h-4 text-cyan-400" />
-                    <span>সংরক্ষিত সাব-এডমিন তালিকা (Registered Sub-Admins)</span>
+                    <span>Registered Sub-Admins List</span>
                   </h3>
                   <p className="text-[11px] text-emerald-400 font-bold mt-1">
-                    ✓ ডুয়েল অ্যাক্সেস সক্রিয়: সেম ইউজার ও পাসওয়ার্ড দিয়ে সাব-এডমিনরা ওয়েবসাইটে (User Portal) এবং অ্যাডমিন প্যানেলে (/admin) উভয় জায়গায় লগইন করতে পারবে।
+                    ✓ Dual Access Active: Sub-Admins can sign in to both the User Portal and the Admin Panel (/admin) using the same credentials.
                   </p>
                 </div>
                 <span className="text-xs text-slate-400 font-mono">
@@ -4682,7 +4682,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
 
               {subAdminsList.length === 0 ? (
                 <div className="py-12 text-center text-slate-500 text-xs">
-                  কোনো সাব-এডমিন অ্যাকাউন্ট পাওয়া যায়নি। উপরের ফরম ব্যবহার করে সাব-এডমিন ইমেইল ও পাসওয়ার্ড যুক্ত করুন।
+                  No Sub-Admin accounts found. Use the form above to add a Sub-Admin.
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -4786,7 +4786,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2 text-cyan-400 font-extrabold text-sm sm:text-base">
                 <Key className="w-5 h-5" />
-                <span>সাব-এডমিন পাসওয়ার্ড পরিবর্তন (Update Sub-Admin Password)</span>
+                <span>Update Sub-Admin Password</span>
               </div>
               <button
                 type="button"
@@ -4808,7 +4808,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
             <form onSubmit={handleUpdateSubAdminPasswordSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-300 mb-1 uppercase tracking-wider">
-                  New Password (নতুন পাসওয়ার্ড) *
+                  New Password *
                 </label>
                 <input
                   type="text"
@@ -4866,14 +4866,14 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
             <form onSubmit={handleSendNoticeSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
-                  Admin Notice Message (ইউজারকে পাঠানোর নোটিশ)
+                  Admin Notice Message
                 </label>
                 <textarea
                   rows={4}
                   required
                   value={noticeModalText}
                   onChange={(e) => setNoticeModalText(e.target.value)}
-                  placeholder="e.g. আপনার দেওয়া ফোন নম্বরটি ভুল ছিল। অনুগ্রহ করে সঠিক নম্বর প্রদান করুন।"
+                  placeholder="e.g. Please provide a verified phone number for your account."
                   className="w-full p-3 text-xs bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
               </div>
@@ -4973,7 +4973,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                     </span>
                   </h3>
                   <p className="text-xs text-slate-400">
-                    নতুন API কী (Key) যুক্ত করুন। এটি স্বয়ংক্রিয়ভাবে ক্লাউড ডেটাবেজে সংরক্ষিত ও রাউটিং হবে।
+                    Add a new API Key. It will be stored in cloud database and routed automatically.
                   </p>
                 </div>
               </div>
@@ -4991,7 +4991,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
               {/* Name / Label */}
               <div>
                 <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
-                  Gateway Name / Carrier Label (গেটওয়ে নাম)
+                  Gateway Name / Carrier Label
                 </label>
                 <input
                   type="text"
@@ -5005,7 +5005,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
               {/* API Key Input */}
               <div>
                 <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
-                  API Key / Token (এপিআই কী) <span className="text-emerald-400">*</span>
+                  API Key / Token <span className="text-emerald-400">*</span>
                 </label>
                 <div className="relative">
                   <Key className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
@@ -5066,7 +5066,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
               {/* Notes */}
               <div>
                 <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
-                  Notes / Internal Description (ঐচ্ছিক নোট)
+                  Notes / Internal Description (Optional)
                 </label>
                 <input
                   type="text"
@@ -5270,7 +5270,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2 text-emerald-400 font-extrabold text-sm sm:text-base">
                 <PlusCircle className="w-5 h-5" />
-                <span>+ Create New API Gateway (নতুন API যোগ করুন)</span>
+                <span>+ Create New API Gateway</span>
               </div>
               <button
                 type="button"
@@ -5282,7 +5282,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
             </div>
 
             <p className="text-xs text-slate-300 bg-slate-950 p-3 rounded-xl border border-slate-800 leading-relaxed">
-              এখানে আপনার হোমপেজের সোশ্যাল মিডিয়া সার্ভিস নির্বাচন করে API Key এবং সেশনের লিঙ্ক বসিয়ে দিন। সেভ করার সাথে সাথে ব্যাকগ্রাউন্ডে স্বয়ংক্রিয়ভাবে সার্ভিস চালু হবে এবং প্রাপ্ত সকল এসএমএস ওয়েবসাইট ডেটাবোর্ডে সেন্ড হবে।
+              Select your homepage service, enter your API Key and session link. Once saved, background tasks will automatically activate and stream SMS traffic to the dashboard in real-time.
             </p>
 
             <form onSubmit={handleCreateNewApiSubmit} className="space-y-4">
@@ -5290,7 +5290,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
               <div>
                 <label className="block text-xs font-bold text-slate-200 mb-1.5 uppercase tracking-wider flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>১. সোশ্যাল মিডিয়া / সার্ভিস (Auto-Suggested Homepage Apps)</span>
+                  <span>1. Service Selection (Homepage Apps)</span>
                 </label>
                 
                 <select
@@ -5309,7 +5309,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
 
                 {/* Quick Suggested Social Media Badges */}
                 <div className="mt-2 flex items-center gap-1.5 flex-wrap">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">দ্রুত নির্বাচন:</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">Quick Select:</span>
                   {['WhatsApp', 'Telegram', 'FACEBOOK', 'IMO', 'Google', 'TikTok', 'Instagram', 'Twitter / X'].map((appName, appIdx) => (
                     <button
                       key={`quick-app-btn-${appName}-${appIdx}`}
@@ -5335,7 +5335,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
               {/* 2. API Key */}
               <div>
                 <label className="block text-xs font-bold text-slate-200 mb-1.5 uppercase tracking-wider">
-                  ২. API Key (এপিআই কী) <span className="text-rose-400">*</span>
+                  2. API Key <span className="text-rose-400">*</span>
                 </label>
                 <input
                   type="text"
@@ -5353,7 +5353,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
               {/* 3. Session URL / Endpoint Link */}
               <div>
                 <label className="block text-xs font-bold text-slate-200 mb-1.5 uppercase tracking-wider">
-                  ৩. সেশনের লিঙ্ক / ইউআরএল (Target Session URL / Webhook Link)
+                  3. Target Session URL / Webhook Link
                 </label>
                 <input
                   type="text"
@@ -5364,14 +5364,14 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                 />
                 <p className="text-[11px] text-emerald-400 mt-1.5 flex items-start gap-1">
                   <span>💡</span>
-                  <span>যে সেশনের ইউআরএল থেকে ওটিপি আসে তা এখানে বসান। সেভ করার সাথে সাথে সার্ভিস চালু হবে এবং আগত সকল এসএমএস ওয়েবসাইটে রিয়েলটাইমে সেন্ড হবে।</span>
+                  <span>Enter the session URL where OTPs are received. Once saved, incoming SMS will stream to the website in real-time.</span>
                 </p>
               </div>
 
               {/* 4. API Name / Label (Optional) */}
               <div>
                 <label className="block text-xs font-bold text-slate-300 mb-1 uppercase tracking-wider">
-                  API Name / Label (নাম / লেবেল - ঐচ্ছিক)
+                  API Name / Label (Optional)
                 </label>
                 <input
                   type="text"

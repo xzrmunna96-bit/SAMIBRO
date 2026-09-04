@@ -11,12 +11,16 @@ const STORAGE_KEY_USER = 'super_x_user';
 
 function checkIsAdminRoute(): boolean {
   try {
-    const path = (window.location.pathname || '').toLowerCase().replace(/\/+$/, '');
-    const hash = (window.location.hash || '').toLowerCase().replace(/\/+$/, '');
+    const path = (window.location.pathname || '').toLowerCase();
+    const hash = (window.location.hash || '').toLowerCase();
+    const cleanPath = path.replace(/\/+$/, '');
     return (
-      path === '/admin' ||
+      cleanPath === '/admin' ||
+      cleanPath.endsWith('/admin') ||
+      path.includes('/admin') ||
       hash === '#admin' ||
-      hash === '#/admin'
+      hash === '#/admin' ||
+      hash.includes('admin')
     );
   } catch {
     return false;
@@ -111,10 +115,13 @@ function AppContent() {
   });
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Initialize Server-Side & Firebase Real-Time Synchronization on App boot
+  // Initialize Server-Side & Firebase Real-Time Synchronization on App boot (non-blocking)
   useEffect(() => {
-    initServerRealtimeSync();
-    initializeFirebaseSync();
+    const timer = setTimeout(() => {
+      initServerRealtimeSync();
+      initializeFirebaseSync();
+    }, 50);
+    return () => clearTimeout(timer);
   }, []);
 
   // Check for SPA 404 redirect fallback state from static hosts (Vercel, Netlify, S3, etc.)

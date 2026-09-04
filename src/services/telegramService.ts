@@ -168,7 +168,7 @@ export function buildOfficialTelegramMessage(data: {
 ━━━━━━━━━━━━━━
 
 🔐 𝗦𝗘𝗖𝗨𝗥𝗜𝗧𝗬 𝗡𝗢𝗧𝗜𝗖𝗘  
-এই কোডটি শুধুমাত্র আপনার ব্যক্তিগত ব্যবহারের জন্য`;
+This code is strictly for your authorized personal verification use only.`;
 }
 
 /**

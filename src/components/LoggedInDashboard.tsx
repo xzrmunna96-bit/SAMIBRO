@@ -2129,7 +2129,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         const sanitized = sanitizeAllocatedHistory(nextHistory);
         if (hasChange && newlyDeliveredOtp) {
           showDashboardToast(
-            `🎉 আপনার নাম্বারে ওটিপি এসেছে: ${newlyDeliveredOtp}${newlyDeliveredNum ? ` (${newlyDeliveredNum})` : ""}`,
+            `🎉 New OTP received for your number: ${newlyDeliveredOtp}${newlyDeliveredNum ? ` (${newlyDeliveredNum})` : ""}`,
             "success",
           );
         }
@@ -2287,7 +2287,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       );
       if (!res.success || !res.data?.full_number) {
         showDashboardToast(
-          res.message || "এই রেঞ্জে কোনো নাম্বার পাওয়া যায়নি। অন্য রেঞ্জ চেষ্টা করুন।",
+          res.message || "No numbers found in this range. Please try another range or service.",
           "warning",
         );
         return;
@@ -2343,7 +2343,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       }
     } catch (err: any) {
       showDashboardToast(
-        err?.message || "সার্ভার এপিআই এর সাথে যোগাযোগ করা যায়নি।",
+        err?.message || "Failed to communicate with the server API.",
         "warning",
       );
     } finally {
@@ -2613,7 +2613,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             onClick={() => setIsNotifModalOpen(false)}
             className="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white font-extrabold text-xs rounded-xl transition cursor-pointer"
           >
-            Close / বন্ধ করুন
+            Close
           </button>
         </div>
       </div>
@@ -2633,16 +2633,13 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
           <div className="space-y-2">
             <span className="px-3 py-1 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-black uppercase tracking-wider">
-              Account Suspended / স্থগিত করা হয়েছে
+              Account Suspended
             </span>
             <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
               SUPER X SMS ACCESS BLOCKED
             </h1>
             <p className="text-sm text-slate-300 leading-relaxed font-medium pt-1">
-              আপনার সুপার এক্স এসএমএস (SUPER X SMS) অ্যাকাউন্টটি অ্যাডমিন কর্তৃক{" "}
-              <strong className="text-rose-400">স্থগিত (SUSPENDED)</strong> করা
-              হয়েছে। পুনরায় সার্ভিসটি ব্যবহার করতে অথবা সমস্যার সমাধানের জন্য
-              অ্যাডমিনের সাথে সরাসরি কথা বলুন।
+              Your SUPER X SMS account has been <strong className="text-rose-400">SUSPENDED</strong> by the administrator. To reactivate your service or resolve this issue, please contact admin support directly.
             </p>
           </div>
 
@@ -2677,7 +2674,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             >
               <MessageSquare className="w-4 h-4" />
               <span>
-                💬 অ্যাডমিনের সাথে লাইভ চ্যাট করুন (Live Chat Support)
+                Live Chat Support
               </span>
             </button>
 
@@ -2697,7 +2694,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               className="w-full py-2.5 px-4 text-slate-400 hover:text-rose-400 text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1"
             >
               <LogOut className="w-3.5 h-3.5" />
-              <span>লগ আউট করুন (Log Out)</span>
+              <span>Log Out</span>
             </button>
           </div>
         </div>
@@ -4228,12 +4225,12 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                             {isOwner ? (
                               <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded border border-emerald-300">
                                 <CheckCircle className="w-3 h-3 text-emerald-600" />
-                                <span>আপনার নাম্বার (Your Number)</span>
+                                <span>Your Number</span>
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 bg-gray-100 text-gray-500 text-[10px] font-medium px-2 py-0.5 rounded border border-gray-200">
                                 <Lock className="w-2.5 h-2.5 text-gray-400" />
-                                <span>সুরক্ষিত (Protected)</span>
+                                <span>Protected</span>
                               </span>
                             )}
                           </div>
@@ -4304,7 +4301,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                 type="button"
                                 onClick={() =>
                                   showDashboardToast(
-                                    '🔒 সুরক্ষিত ওটিপি: শুধুমাত্র যে ব্যক্তি "Get Number" থেকে এই নাম্বারটি নিয়েছেন তিনি এই ওটিপি দেখতে পারবেন।',
+                                    '🔒 Protected OTP: Only the user who allocated this number via "Get Number" can view this OTP code.',
                                     "info",
                                   )
                                 }
@@ -4846,7 +4843,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                 type="button"
                                 onClick={() =>
                                   showDashboardToast(
-                                    '🔒 সুরক্ষিত ওটিপি: শুধুমাত্র যে ব্যক্তি "Get Number" থেকে এই নাম্বারটি নিয়েছেন তিনি এই ওটিপি দেখতে পারবেন।',
+                                    '🔒 Protected OTP: Only the user who allocated this number via "Get Number" can view this OTP code.',
                                     "info",
                                   )
                                 }

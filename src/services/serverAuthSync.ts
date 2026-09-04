@@ -23,6 +23,8 @@ export async function fetchAccountsFromServer(): Promise<UserAccount[]> {
     });
 
     if (!res.ok) return getAllAccounts();
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) return getAllAccounts();
 
     const data = await res.json();
     if (data && data.success && Array.isArray(data.accounts)) {
@@ -91,6 +93,8 @@ export async function fetchSubAdminsFromServer(): Promise<SubAdminAccount[]> {
     });
 
     if (!res.ok) return getAllSubAdmins();
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) return getAllSubAdmins();
 
     const data = await res.json();
     if (data && data.success && Array.isArray(data.subAdmins)) {
@@ -209,36 +213,39 @@ export async function authenticateUserViaServer(
 }> {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2000);
+    const timeoutId = setTimeout(() => controller.abort(), 400);
 
     const res = await fetch('/api/accounts/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ identifier, password: pass }),
       signal: controller.signal,
-    });
+    }).catch(() => null);
     clearTimeout(timeoutId);
 
-    if (res.ok) {
-      const data = await res.json();
-      if (data) {
-        if (data.success && data.user) {
-          // Sync server account into local storage immediately so it exists offline too
-          const current = getAllAccounts();
-          const cleanEmail = data.user.email.toLowerCase().trim();
-          const idx = current.findIndex((a) => a.email.toLowerCase().trim() === cleanEmail);
-          if (idx >= 0) {
-            current[idx] = { ...current[idx], ...data.user };
-          } else {
-            current.unshift(data.user);
+    if (res && res.ok) {
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const data = await res.json().catch(() => null);
+        if (data && typeof data === 'object') {
+          if (data.success && data.user) {
+            // Sync server account into local storage immediately so it exists offline too
+            const current = getAllAccounts();
+            const cleanEmail = data.user.email.toLowerCase().trim();
+            const idx = current.findIndex((a) => a.email.toLowerCase().trim() === cleanEmail);
+            if (idx >= 0) {
+              current[idx] = { ...current[idx], ...data.user };
+            } else {
+              current.unshift(data.user);
+            }
+            try {
+              localStorage.setItem('super_x_all_user_accounts', JSON.stringify(current));
+              localStorage.setItem('super_x_sms_backup_accounts', JSON.stringify(current));
+              window.dispatchEvent(new Event('super_x_accounts_updated'));
+            } catch {}
           }
-          try {
-            localStorage.setItem('super_x_all_user_accounts', JSON.stringify(current));
-            localStorage.setItem('super_x_sms_backup_accounts', JSON.stringify(current));
-            window.dispatchEvent(new Event('super_x_accounts_updated'));
-          } catch {}
+          return data;
         }
-        return data;
       }
     }
   } catch (e: any) {

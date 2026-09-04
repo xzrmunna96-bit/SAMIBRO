@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { OfficeIllustration } from './components/OfficeIllustration';
+import { LoginBrandShowcase } from './components/LoginBrandShowcase';
 import { LoginForm, UserData } from './components/LoginForm';
 import { LoggedInDashboard } from './components/LoggedInDashboard';
 import { AdminPortal } from './components/AdminPortal';
@@ -224,48 +224,46 @@ function AppContent() {
     return <LoggedInDashboard user={currentUser} onLogout={handleLogout} />;
   }
 
-  // 3. Otherwise -> Regular Login Viewport
+  // 3. Otherwise -> Regular Modern Login Viewport
   return (
     <main
       id="main-login-viewport"
-      className="min-h-screen w-full relative flex items-center justify-center p-3 sm:p-5 md:p-8 font-sans overflow-x-hidden selection:bg-purple-200 selection:text-purple-900"
-      style={{
-        background: 'linear-gradient(135deg, #f0259b 0%, #c026d3 35%, #9333ea 70%, #7e22ce 100%)',
-      }}
+      className="min-h-screen w-full relative flex items-center justify-center p-3 sm:p-5 md:p-8 font-sans overflow-x-hidden selection:bg-indigo-500 selection:text-white bg-slate-950"
     >
-      {/* Ambient background lighting */}
-      <div className="absolute top-0 left-1/4 w-96 h-96 bg-pink-400/20 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-900/30 rounded-full blur-3xl pointer-events-none" />
+      {/* Dynamic Cyber / Telecom ambient lighting */}
+      <div className="fixed inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(120,119,198,0.25),rgba(255,255,255,0))] pointer-events-none" />
+      <div className="absolute top-1/4 left-1/10 w-96 h-96 bg-indigo-600/15 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-1/4 right-1/10 w-96 h-96 bg-purple-600/15 rounded-full blur-3xl pointer-events-none" />
 
       {/* Floating Toast notification */}
       {toastMessage && (
         <div
           id="toast-notification"
-          className="fixed top-5 left-1/2 -translate-x-1/2 z-50 bg-gray-900/90 text-white px-4 py-2 rounded-full shadow-2xl backdrop-blur-md flex items-center gap-2 text-xs sm:text-sm font-medium border border-white/20 animate-fadeIn"
+          className="fixed top-5 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 text-white px-4 py-2.5 rounded-full shadow-2xl backdrop-blur-md flex items-center gap-2 text-xs sm:text-sm font-semibold border border-indigo-500/30 animate-fadeIn"
         >
-          <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
           <span>{toastMessage}</span>
         </div>
       )}
 
-      {/* Main Login Card - slightly wider white surface with elegant spacing */}
+      {/* Main Login Card - Sleek Enterprise 2-Column Structure */}
       <section
         id="login-main-card"
-        className="w-full max-w-[440px] md:max-w-[820px] bg-white rounded-3xl shadow-[0_20px_50px_-12px_rgba(0,0,0,0.35)] overflow-hidden transition-all duration-300 border border-white/40 my-auto"
+        className="w-full max-w-[440px] md:max-w-[880px] bg-white rounded-3xl shadow-[0_25px_60px_-15px_rgba(0,0,0,0.5)] overflow-hidden transition-all duration-300 border border-slate-800/80 my-auto relative z-10"
       >
-        <div className="grid grid-cols-1 md:grid-cols-12 items-center">
-          {/* Left / Top Column: Office Vector Artwork (Compact & Aesthetic) */}
+        <div className="grid grid-cols-1 md:grid-cols-12 items-stretch min-h-[520px]">
+          {/* Left Column: Brand Showcase & Live Gateway Status */}
           <div
-            id="illustration-pane"
-            className="md:col-span-5 bg-gradient-to-b from-purple-50/50 via-white to-purple-50/20 px-4 pt-5 pb-3 md:p-6 flex flex-col justify-center items-center relative overflow-hidden border-b md:border-b-0 md:border-r border-gray-100"
+            id="brand-showcase-pane"
+            className="md:col-span-5 flex flex-col justify-between border-b md:border-b-0 md:border-r border-slate-800/80"
           >
-            <OfficeIllustration />
+            <LoginBrandShowcase />
           </div>
 
-          {/* Right / Bottom Column: Pure Login Form */}
+          {/* Right Column: Modern Login Form */}
           <div
             id="form-pane"
-            className="md:col-span-7 bg-white px-6 pt-4 pb-6 sm:px-8 sm:py-8 md:p-10 flex flex-col justify-center items-center relative"
+            className="md:col-span-7 bg-white px-5 py-6 sm:px-8 sm:py-8 flex flex-col justify-center items-center relative"
           >
             <LoginForm onLoginSuccess={handleLoginSuccess} />
           </div>

@@ -252,6 +252,26 @@ export async function authenticateUserViaServer(
   };
 }
 
+// 8b. Purge All User Accounts Except Super Admin on Server
+export async function purgeAccountsViaServer(): Promise<UserAccount[]> {
+  try {
+    const res = await fetch('/api/accounts/purge-all-except-super-admin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'xzrmunna96@gmail.com' }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.accounts)) {
+        return data.accounts;
+      }
+    }
+  } catch (err: any) {
+    console.warn('[Server Auth] Purge request error:', err?.message);
+  }
+  return getAllAccounts();
+}
+
 // 9. Master Real-Time Synchronizer for all browsers
 export function initServerRealtimeSync() {
   if (isInitialized || typeof window === 'undefined') return;

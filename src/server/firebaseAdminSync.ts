@@ -256,6 +256,30 @@ export async function deleteAccountFromFirestore(emailOrId: string): Promise<boo
   }
 }
 
+export async function purgeAllFirestoreAccountsExcept(preserveEmail: string): Promise<number> {
+  try {
+    const cleanPreserve = preserveEmail.toLowerCase().trim();
+    const remoteAccounts = await fetchRemoteAccountsFromFirestore();
+    let deletedCount = 0;
+
+    for (const acc of remoteAccounts) {
+      const emailClean = (acc.email || "").toLowerCase().trim();
+      if (emailClean && emailClean !== cleanPreserve) {
+        await deleteAccountFromFirestore(emailClean);
+        if (acc.id) {
+          await deleteAccountFromFirestore(acc.id);
+        }
+        deletedCount++;
+      }
+    }
+    console.log(`[Firebase Admin Sync] Purged ${deletedCount} non-admin accounts from Firestore.`);
+    return deletedCount;
+  } catch (err: any) {
+    console.warn("[Firebase Admin Sync] purgeAllFirestoreAccountsExcept error:", err?.message);
+    return 0;
+  }
+}
+
 export async function verifyWithFirebaseAuth(
   email: string,
   pass: string

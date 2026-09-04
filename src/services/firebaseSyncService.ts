@@ -584,6 +584,48 @@ export async function deleteAccountFromFirebase(accountEmail: string) {
   }
 }
 
+// Purge all user accounts from Firebase Firestore & Realtime DB except Super Admin
+export async function purgeRemoteFirebaseAccountsExceptSuperAdmin(): Promise<void> {
+  const superAdminEmail = 'xzrmunna96@gmail.com';
+  try {
+    await ensureFirebaseAuth();
+    if (!firestoreDb) return;
+
+    const collectionsToClean = ['super_x_accounts', 'users', 'pending_accounts'];
+    for (const colName of collectionsToClean) {
+      const colRef = collection(firestoreDb, colName);
+      const snap = await getDocs(colRef).catch(() => null);
+      if (snap && !snap.empty) {
+        for (const docSnap of snap.docs) {
+          const data = docSnap.data();
+          const email = (data.email || docSnap.id || '').toLowerCase().trim();
+          if (email && email !== superAdminEmail && !email.includes('xzrmunna96')) {
+            await deleteDoc(docSnap.ref).catch(() => null);
+          }
+        }
+      }
+    }
+
+    if (realtimeDb) {
+      const rtdbSnap = await get(ref(realtimeDb, 'accounts')).catch(() => null);
+      if (rtdbSnap && rtdbSnap.exists()) {
+        const val = rtdbSnap.val();
+        if (val && typeof val === 'object') {
+          for (const [key, item] of Object.entries<any>(val)) {
+            const email = (item?.email || key).toLowerCase().trim();
+            if (email && email !== superAdminEmail && !email.includes('xzrmunna96')) {
+              await remove(ref(realtimeDb, `accounts/${key}`)).catch(() => null);
+            }
+          }
+        }
+      }
+    }
+    console.log('[Firebase Client Sync] Purged remote user accounts except Super Admin.');
+  } catch (err: any) {
+    console.warn('purgeRemoteFirebaseAccountsExceptSuperAdmin error:', err?.message);
+  }
+}
+
 // 2. Sync Support Chat Messages with Firestore Realtime Collection
 export function initChatRealtimeSync() {
   if (!firestoreDb) return;

@@ -40,6 +40,7 @@ import {
 } from '../services/supportChatService';
 import { fetchAccountsFromFirebaseDirectly, fetchSpecificUserFromFirebase } from '../services/firebaseSyncService';
 import { fetchAccountsFromServer } from '../services/serverAuthSync';
+import { triggerAdminRoute } from '../App';
 
 export interface UserData {
   email: string;
@@ -165,6 +166,14 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
     setChatUpdateCount((c) => c + 1);
   };
 
+  const handleQuickFill = (accIdentifier: string, accPass: string) => {
+    setIdentifier(accIdentifier);
+    setPassword(accPass);
+    setCaptchaAnswer((num1 + num2).toString());
+    setErrorMessage('');
+    setPendingAccountNotice(null);
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
@@ -174,19 +183,16 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
 
     if (!cleanIdentifier) {
       setErrorMessage('Please enter your registered email or username.');
-      generateNewCaptcha();
       return;
     }
     if (!password) {
       setErrorMessage('Please enter your password.');
-      generateNewCaptcha();
       return;
     }
 
     // Verify Captcha
     if (!captchaAnswer.trim()) {
       setErrorMessage('Please enter the captcha answer.');
-      generateNewCaptcha();
       return;
     }
     const expectedSum = num1 + num2;
@@ -316,6 +322,14 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
     setIdentifier(acc.email);
     setPassword(acc.password || '');
     setIsRequestModalOpen(false);
+    if (acc.status === 'approved') {
+      onLoginSuccess({
+        email: acc.email,
+        name: acc.name,
+        accountCode: acc.accountCode,
+        role: acc.role,
+      });
+    }
   };
 
   return (
@@ -545,6 +559,48 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
             ) : (
               <span>SIGN IN</span>
             )}
+          </button>
+        </div>
+
+        {/* Quick Admin Access & Registration Shortcut */}
+        <div className="pt-3 border-t border-gray-100 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
+              Super Admin Quick Fill:
+            </span>
+            <span className="text-[10px] text-gray-400">Click to autofill</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => handleQuickFill('xzrmunna96@gmail.com', 'Password123')}
+              className="py-2 px-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs border border-emerald-200 transition cursor-pointer text-center truncate flex items-center justify-center gap-1.5 shadow-sm"
+              title="Autofill Super Admin (XZR Munna)"
+            >
+              <Key className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Admin (Munna)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsRequestModalOpen(true)}
+              className="py-2 px-2.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs border border-purple-200 transition cursor-pointer text-center truncate flex items-center justify-center gap-1.5 shadow-sm"
+              title="নতুন অ্যাকাউন্ট রেজিস্ট্রেশন করুন"
+            >
+              <MessageSquarePlus className="w-3.5 h-3.5 text-purple-600" />
+              <span>Create Account</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Admin Portal Switch Button */}
+        <div className="pt-2 text-center">
+          <button
+            type="button"
+            onClick={triggerAdminRoute}
+            className="text-xs font-semibold text-slate-400 hover:text-purple-600 transition inline-flex items-center gap-1.5 cursor-pointer py-1 px-3 rounded-lg hover:bg-purple-50"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-purple-500" />
+            <span>Admin Portal (এডমিন প্যানেল)</span>
           </button>
         </div>
       </form>

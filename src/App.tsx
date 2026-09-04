@@ -1,50 +1,22 @@
-import React, { useState, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useEffect } from 'react';
 import { OfficeIllustration } from './components/OfficeIllustration';
 import { LoginForm, UserData } from './components/LoginForm';
-import { CheckCircle2, Loader2 } from 'lucide-react';
+import { LoggedInDashboard } from './components/LoggedInDashboard';
+import { AdminPortal } from './components/AdminPortal';
+import { CheckCircle2 } from 'lucide-react';
 import { initializeFirebaseSync } from './services/firebaseSyncService';
 import { initServerRealtimeSync } from './services/serverAuthSync';
-
-// Lazy loading heavy components to optimize initial bundle load and startup speed
-const LoggedInDashboard = lazy(() =>
-  import('./components/LoggedInDashboard').then((m) => ({ default: m.LoggedInDashboard }))
-);
-const AdminPortal = lazy(() =>
-  import('./components/AdminPortal').then((m) => ({ default: m.AdminPortal }))
-);
-
-function ViewLoadingFallback({ title }: { title: string }) {
-  return (
-    <div className="min-h-screen w-full bg-slate-950 text-white flex flex-col items-center justify-center p-6 text-center font-sans">
-      <div className="flex flex-col items-center space-y-4 max-w-xs p-6 rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl">
-        <Loader2 className="w-10 h-10 text-emerald-400 animate-spin" />
-        <div className="space-y-1">
-          <p className="text-sm font-black text-white tracking-wide">{title}</p>
-          <p className="text-xs text-slate-400">SUPER X SMS Platform Loading...</p>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 const STORAGE_KEY_USER = 'super_x_user';
 
 function checkIsAdminRoute(): boolean {
   try {
-    const path = (window.location.pathname || '').toLowerCase();
-    const hash = (window.location.hash || '').toLowerCase();
-    const search = (window.location.search || '').toLowerCase();
+    const path = (window.location.pathname || '').toLowerCase().replace(/\/+$/, '');
+    const hash = (window.location.hash || '').toLowerCase().replace(/\/+$/, '');
     return (
       path === '/admin' ||
-      path === '/admin/' ||
-      path.startsWith('/admin') ||
-      path.includes('/admin') ||
-      path.endsWith('/admin') ||
-      path.endsWith('admin') ||
       hash === '#admin' ||
-      hash === '#/admin' ||
-      hash.includes('admin') ||
-      search.includes('admin')
+      hash === '#/admin'
     );
   } catch {
     return false;
@@ -53,13 +25,16 @@ function checkIsAdminRoute(): boolean {
 
 export function triggerAdminRoute(): void {
   try {
-    if (!window.location.pathname.toLowerCase().includes('/admin')) {
-      window.history.pushState({}, '', '/admin');
-    }
-  } catch {
     window.location.hash = '#admin';
+  } catch {
+    try {
+      if (!window.location.pathname.toLowerCase().includes('/admin')) {
+        window.history.pushState({}, '', '/admin');
+      }
+    } catch {}
   }
   window.dispatchEvent(new Event('popstate'));
+  window.dispatchEvent(new Event('hashchange'));
   window.dispatchEvent(new Event('navigate_admin'));
 }
 
@@ -200,6 +175,7 @@ function AppContent() {
     setCurrentUser(user);
     try {
       localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(user));
+      localStorage.setItem('super_x_sms_logged_in_user', JSON.stringify(user));
     } catch {
       // ignore
     }
@@ -210,6 +186,7 @@ function AppContent() {
     setCurrentUser(null);
     try {
       localStorage.removeItem(STORAGE_KEY_USER);
+      localStorage.removeItem('super_x_sms_logged_in_user');
       localStorage.removeItem('super_x_current_view');
     } catch {
       // ignore
@@ -218,35 +195,26 @@ function AppContent() {
 
   const handleBackToLoginFromAdmin = () => {
     try {
+      window.location.hash = '';
       if (window.location.pathname.toLowerCase().includes('/admin')) {
         window.history.pushState({}, '', '/');
-      }
-      if (window.location.hash.toLowerCase().includes('admin')) {
-        window.location.hash = '';
       }
     } catch {
       // ignore
     }
     window.dispatchEvent(new Event('popstate'));
+    window.dispatchEvent(new Event('hashchange'));
     setIsAdminRoute(false);
   };
 
   // 1. If on /admin route -> render Admin Portal
   if (isAdminRoute) {
-    return (
-      <Suspense fallback={<ViewLoadingFallback title="Admin Portal" />}>
-        <AdminPortal onBackToLogin={handleBackToLoginFromAdmin} />
-      </Suspense>
-    );
+    return <AdminPortal onBackToLogin={handleBackToLoginFromAdmin} />;
   }
 
   // 2. When logged in -> render the complete full-screen SMS/OTP Dashboard matching the portal layout
   if (currentUser) {
-    return (
-      <Suspense fallback={<ViewLoadingFallback title="SMS Dashboard" />}>
-        <LoggedInDashboard user={currentUser} onLogout={handleLogout} />
-      </Suspense>
-    );
+    return <LoggedInDashboard user={currentUser} onLogout={handleLogout} />;
   }
 
   // 3. Otherwise -> Regular Login Viewport

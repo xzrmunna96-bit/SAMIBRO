@@ -6,31 +6,6 @@ import {defineConfig} from 'vite';
 export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
-    build: {
-      outDir: 'dist',
-      emptyOutDir: true,
-      target: 'esnext',
-      cssCodeSplit: true,
-      chunkSizeWarningLimit: 1500,
-      rollupOptions: {
-        output: {
-          manualChunks(id) {
-            if (id.includes('node_modules')) {
-              if (id.includes('firebase')) {
-                return 'firebase-vendor';
-              }
-              if (id.includes('lucide-react')) {
-                return 'lucide-vendor';
-              }
-              if (id.includes('react')) {
-                return 'react-vendor';
-              }
-              return 'vendor';
-            }
-          },
-        },
-      },
-    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

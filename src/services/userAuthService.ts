@@ -184,22 +184,40 @@ const INITIAL_DEFAULT_ACCOUNTS: UserAccount[] = [
     approvedAt: Date.now() - 30 * 24 * 3600 * 1000,
     updatedAt: Date.now(),
   },
-  {
-    id: 'user_admin_main',
-    name: 'Main Admin',
-    email: 'admin@superxsms.com',
-    username: 'admin',
-    password: 'Password123',
-    accountCode: '1000000001',
-    status: 'approved',
-    role: 'admin',
-    createdAt: Date.now() - 30 * 24 * 3600 * 1000,
-    phoneOrTelegram: '@superxsms_admin',
-    note: 'System Main Admin',
-    approvedAt: Date.now() - 30 * 24 * 3600 * 1000,
-    updatedAt: Date.now(),
-  },
 ];
+
+const GLOBAL_PURGE_V2_KEY = 'super_x_sms_accounts_purged_v2026_09_05_clean';
+
+export function purgeAllAccountsExceptSuperAdmin(): UserAccount[] {
+  const superAdminEmail = 'xzrmunna96@gmail.com';
+  const superAdminAcc = { ...INITIAL_DEFAULT_ACCOUNTS[0] };
+  const preserved = [superAdminAcc];
+
+  if (typeof window !== 'undefined') {
+    try {
+      const serialized = JSON.stringify(preserved);
+      localStorage.setItem(STORAGE_KEY, serialized);
+      localStorage.setItem(BACKUP_STORAGE_KEY, serialized);
+      localStorage.setItem('super_x_sms_accounts', serialized);
+      localStorage.setItem('super_x_all_user_accounts', serialized);
+      localStorage.setItem('super_x_pending_accounts', JSON.stringify([]));
+      localStorage.setItem(DELETED_ACCOUNTS_KEY, JSON.stringify([]));
+      localStorage.setItem(GLOBAL_PURGE_V2_KEY, 'true');
+      window.dispatchEvent(new Event('super_x_accounts_updated'));
+    } catch {}
+  }
+
+  // Trigger server purge
+  try {
+    fetch('/api/accounts/purge-all-except-super-admin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: superAdminEmail }),
+    }).catch(() => null);
+  } catch {}
+
+  return preserved;
+}
 
 // Helper to safely load accounts from localStorage key
 function loadRawAccountsFromKey(key: string): UserAccount[] {
@@ -217,6 +235,11 @@ function loadRawAccountsFromKey(key: string): UserAccount[] {
 }
 
 export function getAllAccounts(): UserAccount[] {
+  // Auto-run purge once to guarantee stale test accounts are permanently cleared
+  if (typeof window !== 'undefined' && !localStorage.getItem(GLOBAL_PURGE_V2_KEY)) {
+    return purgeAllAccountsExceptSuperAdmin();
+  }
+
   const primaryList = loadRawAccountsFromKey(STORAGE_KEY);
   const backupList = loadRawAccountsFromKey(BACKUP_STORAGE_KEY);
   const deletedSet = getDeletedAccountEmails();

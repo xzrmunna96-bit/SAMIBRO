@@ -74,6 +74,7 @@ import {
   authenticateAdminLogin,
   authenticateAdminLoginAsync,
   toggleUserAdminRole,
+  purgeAllAccountsExceptSuperAdmin,
   SubAdminAccount,
 } from '../services/userAuthService';
 import {
@@ -131,8 +132,8 @@ import {
   IntsGatewayConfig,
 } from '../services/intsGatewayService';
 import { getCountryInfo } from '../services/countryHelper';
-import { registerUserInFirebaseAuth, fetchAccountsFromFirebaseDirectly, saveAccountToFirebase } from '../services/firebaseSyncService';
-import { fetchAccountsFromServer, approveAccountOnServer, saveAccountToServer } from '../services/serverAuthSync';
+import { registerUserInFirebaseAuth, fetchAccountsFromFirebaseDirectly, saveAccountToFirebase, purgeRemoteFirebaseAccountsExceptSuperAdmin } from '../services/firebaseSyncService';
+import { fetchAccountsFromServer, approveAccountOnServer, saveAccountToServer, purgeAccountsViaServer } from '../services/serverAuthSync';
 import { getBrandLogoComponent } from './BrandLogos';
 
 const ADMIN_MASTER_PASSWORD = 'XZRMUNNA12061';
@@ -1420,6 +1421,29 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     }
   };
 
+  const [isPurgingAccounts, setIsPurgingAccounts] = useState(false);
+
+  const handlePurgeNonAdminAccounts = async () => {
+    const confirmMsg =
+      'সতর্কতা: আপনি কি নিশ্চিত যে মূল সুপার এডমিন (XZR Munna - xzrmunna96@gmail.com) ছাড়া বাকি সকল ইউজার একাউন্ট ডাটাবেজ, সার্ভার এবং সিস্টেম থেকে সম্পূর্ণ ডিলিট করতে চান?\n\nএটি সম্পন্ন হলে আপনার সাইটে নতুন ইউজাররা আবার একদম ফ্রেশ ভাবে একাউন্ট তৈরি করতে পারবে।';
+    if (!window.confirm(confirmMsg)) return;
+
+    setIsPurgingAccounts(true);
+    try {
+      const remaining = purgeAllAccountsExceptSuperAdmin();
+      await Promise.allSettled([
+        purgeAccountsViaServer(),
+        purgeRemoteFirebaseAccountsExceptSuperAdmin(),
+      ]);
+      setAccountsList(remaining);
+      showToast('বাকি সব অ্যাকাউন্ট সফলভাবে ডাটাবেজ ও সার্ভার থেকে মুছে ফেলা হয়েছে!');
+    } catch (err: any) {
+      showToast('Error purging accounts: ' + (err?.message || 'Failed'));
+    } finally {
+      setIsPurgingAccounts(false);
+    }
+  };
+
   const handleToggleAdminRole = (user: UserAccount) => {
     const isCurrentlyAdmin = user.role === 'admin';
     const actionText = isCurrentlyAdmin ? 'revoking Admin permission for' : 'granting Admin permission to';
@@ -1645,6 +1669,15 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     return (
       <div className="min-h-screen w-full flex items-center justify-center p-4 bg-slate-950 text-slate-100 font-sans">
         <div className="w-full max-w-md bg-slate-900 rounded-3xl shadow-2xl p-6 sm:p-8 border border-slate-800 relative">
+          <button
+            type="button"
+            onClick={onBackToLogin}
+            title="Close and return to User Login"
+            className="absolute top-4 right-4 p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+
           <div className="text-center mb-6">
             <div className="w-12 h-12 bg-indigo-500/10 text-indigo-400 rounded-2xl flex items-center justify-center mx-auto mb-2 border border-indigo-500/20 shadow-inner">
               <ShieldCheck className="w-6 h-6" />
@@ -1710,14 +1743,14 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
             </button>
           </form>
 
-          <div className="mt-6 pt-4 border-t border-slate-800 text-center">
+          <div className="mt-6 pt-4 border-t border-slate-800">
             <button
               type="button"
               onClick={onBackToLogin}
-              className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-400 hover:text-indigo-400 transition cursor-pointer"
+              className="w-full py-2.5 px-4 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white transition font-bold text-xs flex items-center justify-center gap-2 border border-slate-700/80 shadow-sm cursor-pointer"
             >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Back</span>
+              <ArrowLeft className="w-4 h-4 text-indigo-400" />
+              <span>← Go to User Login Panel (ইউজার লগইন প্যানেল)</span>
             </button>
           </div>
         </div>
@@ -2858,6 +2891,35 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                   className="w-full pl-9 pr-4 py-2.5 text-xs sm:text-sm bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                 />
               </div>
+
+              {/* Purge / Database Clean Action */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 bg-rose-950/20 border border-rose-500/30 rounded-xl">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-rose-500/20 rounded-lg text-rose-400 shrink-0">
+                    <Trash2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <span>Database User Reset</span>
+                      <span className="text-[10px] px-2 py-0.2 rounded bg-rose-500/30 text-rose-300 font-mono">
+                        ফ্রেশ রেজিস্ট্রেশন
+                      </span>
+                    </h4>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      শুধুমাত্র মূল এডমিন (XZR Munna) রেখে বাকি সব অ্যাকাউন্ট ডাটাবেজ ও সার্ভার থেকে সম্পূর্ণ ডিলিট করুন যাতে সবাই আবার নতুন করে রেজিস্ট্রেশন করতে পারে।
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handlePurgeNonAdminAccounts}
+                  disabled={isPurgingAccounts}
+                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold text-xs transition cursor-pointer flex items-center justify-center gap-2 shadow-md shrink-0 whitespace-nowrap"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{isPurgingAccounts ? 'মুছে ফেলা হচ্ছে...' : 'Wipe Users Except Super Admin'}</span>
+                </button>
+              </div>
             </section>
 
             {/* List of Active Account Submissions */}
@@ -3218,6 +3280,35 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                 placeholder="Search by User Email, Name, or 10-digit Account ID..."
                 className="w-full pl-9 pr-4 py-2.5 text-xs bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
               />
+            </div>
+
+            {/* Wipe / Purge All Users Except Super Admin */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 bg-rose-950/20 border border-rose-500/30 rounded-xl">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-rose-500/20 rounded-lg text-rose-400 shrink-0">
+                  <Trash2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <span>Clean User Accounts</span>
+                    <span className="text-[10px] px-2 py-0.2 rounded bg-rose-500/30 text-rose-300 font-mono">
+                      নতুন ইউজারদের জন্য ফ্রেশ শুরু
+                    </span>
+                  </h4>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    শুধুমাত্র মূল এডমিন (XZR Munna) রেখে বাকি সব পুরাতন ও ডেমো অ্যাকাউন্ট ডাটাবেজ ও সার্ভার থেকে রিমুভ করুন।
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handlePurgeNonAdminAccounts}
+                disabled={isPurgingAccounts}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold text-xs transition cursor-pointer flex items-center justify-center gap-2 shadow-md shrink-0 whitespace-nowrap"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isPurgingAccounts ? 'মুছে ফেলা হচ্ছে...' : 'Wipe All Users Except Super Admin'}</span>
+              </button>
             </div>
 
             {/* User List Table */}

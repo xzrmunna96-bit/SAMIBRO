@@ -6,6 +6,7 @@ import {
   fetchSingleAccountFromFirestore,
   saveAccountToFirestore,
   deleteAccountFromFirestore,
+  purgeAllFirestoreAccountsExcept,
   verifyWithFirebaseAuth,
   registerInFirebaseAuth,
 } from "./src/server/firebaseAdminSync";
@@ -110,21 +111,6 @@ async function startServer() {
       createdAt: Date.now() - 30 * 24 * 3600 * 1000,
       phoneOrTelegram: "@xzrmunna",
       note: "System Super Admin",
-      approvedAt: Date.now() - 30 * 24 * 3600 * 1000,
-      updatedAt: Date.now(),
-    },
-    {
-      id: "user_admin_main",
-      name: "Main Admin",
-      email: "admin@superxsms.com",
-      username: "admin",
-      password: "Password123",
-      accountCode: "1000000001",
-      status: "approved",
-      role: "admin",
-      createdAt: Date.now() - 30 * 24 * 3600 * 1000,
-      phoneOrTelegram: "@superxsms_admin",
-      note: "System Main Admin",
       approvedAt: Date.now() - 30 * 24 * 3600 * 1000,
       updatedAt: Date.now(),
     },
@@ -422,6 +408,40 @@ async function startServer() {
       message: `Account ${rawEmail || rawId} deleted permanently from server.`,
       remainingCount: filtered.length,
     });
+  });
+
+  // 3b. POST /api/accounts/purge-all-except-super-admin - Clear all users from server & database, keeping only Super Admin
+  app.post("/api/accounts/purge-all-except-super-admin", async (req, res) => {
+    try {
+      const superAdminEmail = "xzrmunna96@gmail.com";
+      const currentAccounts = loadServerAccounts();
+      const adminAcc =
+        currentAccounts.find(
+          (a) => (a.email || "").toLowerCase().trim() === superAdminEmail
+        ) || INITIAL_SERVER_ACCOUNTS[0];
+
+      const filtered = [adminAcc];
+      saveServerAccounts(filtered);
+      saveDeletedAccounts(new Set());
+
+      // Concurrently purge from remote Firestore
+      purgeAllFirestoreAccountsExcept(superAdminEmail).catch((err) =>
+        console.warn("[Server Auth] Remote Firestore purge error:", err?.message)
+      );
+
+      console.log(
+        `[Server Auth] Purged all accounts except Super Admin (${superAdminEmail}). Remaining count: 1`
+      );
+      res.json({
+        success: true,
+        message: "All accounts purged successfully. Only Super Admin preserved.",
+        remainingCount: 1,
+        accounts: filtered,
+      });
+    } catch (err: any) {
+      console.error("[Server Auth] Purge error:", err?.message);
+      res.status(500).json({ success: false, error: err?.message || "Purge failed" });
+    }
   });
 
   // 4. POST /api/accounts/login - Universal cross-browser authentication endpoint

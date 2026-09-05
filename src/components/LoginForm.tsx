@@ -26,6 +26,10 @@ import {
 import {
   authenticateUserAsync,
 } from '../services/userAuthService';
+import {
+  fetchAccountsFromServer,
+  fetchSubAdminsFromServer,
+} from '../services/serverAuthSync';
 import { sendUserActivityToTelegram } from '../services/telegramService';
 import { triggerAdminRoute } from '../App';
 
@@ -34,6 +38,7 @@ export interface UserData {
   name: string;
   accountCode?: string;
   role?: string;
+  status?: string;
   phoneOrTelegram?: string;
   note?: string;
 }
@@ -66,6 +71,10 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
   const [autoCaptchaProgress, setAutoCaptchaProgress] = useState(0);
 
   useEffect(() => {
+    // Eagerly pre-warm & sync database accounts across all browsers
+    fetchAccountsFromServer().catch(() => {});
+    fetchSubAdminsFromServer().catch(() => {});
+
     // Start 2-second automatic bot security check on load
     setAutoCaptchaState('verifying');
     setAutoCaptchaProgress(10);
@@ -146,10 +155,10 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
 
     setIsLoading(true);
 
-    // Hard safety timeout to guarantee the button NEVER gets stuck spinning
+    // Hard safety timeout to guarantee the button NEVER gets stuck spinning on slow connections
     const safetyTimeout = setTimeout(() => {
       setIsLoading(false);
-    }, 1200);
+    }, 6000);
 
     try {
       const result = await authenticateUserAsync(cleanIdentifier, cleanPassword);

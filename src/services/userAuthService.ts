@@ -78,6 +78,9 @@ import {
   saveAccountToServer,
   saveAllAccountsToServer,
   approveAccountOnServer,
+  suspendAccountOnServer,
+  unsuspendAccountOnServer,
+  updateUserRoleOnServer,
   deleteAccountFromServer,
   saveSubAdminToServer,
   deleteSubAdminFromServer,
@@ -263,18 +266,38 @@ export function getAllAccounts(): UserAccount[] {
       const cleanEmail = acc.email.toLowerCase();
       const idClean = (acc.id || '').toLowerCase();
       if (!deletedSet.has(cleanEmail) && !deletedSet.has(idClean)) {
-        mergedMap.set(cleanEmail, { ...acc });
+        const existing = mergedMap.get(cleanEmail);
+        const finalPassword = (acc.password && acc.password.trim())
+          ? acc.password.trim()
+          : (existing && existing.password && existing.password.trim())
+          ? existing.password.trim()
+          : '';
+        mergedMap.set(cleanEmail, {
+          ...(existing || {}),
+          ...acc,
+          password: finalPassword || (existing && existing.password) || acc.password,
+        });
       }
     }
   });
 
-  // 3. Add primary list items IF NOT DELETED (override if newer or present)
+  // 3. Add primary list items IF NOT DELETED (override if newer or present, preserving password)
   primaryList.forEach((acc) => {
     if (acc && acc.email) {
       const cleanEmail = acc.email.toLowerCase();
       const idClean = (acc.id || '').toLowerCase();
       if (!deletedSet.has(cleanEmail) && !deletedSet.has(idClean)) {
-        mergedMap.set(cleanEmail, { ...acc });
+        const existing = mergedMap.get(cleanEmail);
+        const finalPassword = (acc.password && acc.password.trim())
+          ? acc.password.trim()
+          : (existing && existing.password && existing.password.trim())
+          ? existing.password.trim()
+          : '';
+        mergedMap.set(cleanEmail, {
+          ...(existing || {}),
+          ...acc,
+          password: finalPassword || (existing && existing.password) || acc.password,
+        });
       }
     }
   });
@@ -476,6 +499,7 @@ export function approveAccount(
   saveAccountToFirebase(target);
   saveAccountToServer(target);
   approveAccountOnServer(target.id, approvedByEmail, approvedByName);
+  unsuspendAccountOnServer(target.id);
 
   if (target.email && target.password) {
     registerUserInFirebaseAuth(target.email, target.password);
@@ -588,6 +612,15 @@ export function suspendAccount(id: string, reason?: string): { success: boolean;
 
   saveAllAccounts(accounts);
   saveAccountToFirebase(target);
+  saveAccountToServer(target);
+  suspendAccountOnServer(target.id, reason);
+
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(new Event('super_x_accounts_updated'));
+      window.dispatchEvent(new Event('storage'));
+    } catch {}
+  }
   return { success: true, message: `Account for ${target.email} has been SUSPENDED.`, account: target };
 }
 
@@ -614,6 +647,14 @@ export function requestBanUser(
 
   saveAllAccounts(accounts);
   saveAccountToFirebase(target);
+  saveAccountToServer(target);
+
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(new Event('super_x_accounts_updated'));
+      window.dispatchEvent(new Event('storage'));
+    } catch {}
+  }
 
   return {
     success: true,
@@ -631,6 +672,7 @@ export function approveBanRequest(id: string): { success: boolean; message: stri
 
   target.status = 'suspended';
   target.updatedAt = Date.now();
+  const banReasonText = target.banRequest?.reason || 'Suspended by Main Admin';
   if (target.banRequest) {
     target.banRequest.status = 'approved';
     target.banReason = target.banRequest.reason;
@@ -641,6 +683,15 @@ export function approveBanRequest(id: string): { success: boolean; message: stri
 
   saveAllAccounts(accounts);
   saveAccountToFirebase(target);
+  saveAccountToServer(target);
+  suspendAccountOnServer(target.id, banReasonText);
+
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(new Event('super_x_accounts_updated'));
+      window.dispatchEvent(new Event('storage'));
+    } catch {}
+  }
   return { success: true, message: `Ban request APPROVED! Account for ${target.email} is now SUSPENDED.`, account: target };
 }
 
@@ -793,19 +844,37 @@ export function updateAccount(id: string, updates: Partial<UserAccount>): { succ
 
 export function resetAccountPassword(id: string, newPassword: string): { success: boolean; message: string; account?: UserAccount } {
   const accounts = getAllAccounts();
-  const target = accounts.find((a) => a.id === id);
+  const cleanKey = (id || '').trim().toLowerCase();
+  const target = accounts.find((a) => a.id === id || a.email.toLowerCase() === cleanKey || (a.id && a.id.toLowerCase() === cleanKey));
   if (!target) {
     return { success: false, message: 'Account not found.' };
   }
 
-  if (!newPassword || newPassword.length < 4) {
+  const cleanPass = (newPassword || '').trim();
+  if (!cleanPass || cleanPass.length < 4) {
     return { success: false, message: 'Password must be at least 4 characters long.' };
   }
 
-  target.password = newPassword;
+  target.password = cleanPass;
   target.updatedAt = Date.now();
   saveAllAccounts(accounts);
   saveAccountToFirebase(target);
+  saveAccountToServer(target);
+
+  if (target.email && target.password) {
+    registerUserInFirebaseAuth(target.email, target.password);
+  }
+
+  // Also check if this account is a registered Sub-Admin, and sync sub-admin password
+  try {
+    const subAdmins = getAllSubAdmins();
+    const matchedSub = subAdmins.find((sa) => sa.email.toLowerCase() === target.email.toLowerCase() || sa.id === target.id);
+    if (matchedSub) {
+      matchedSub.password = cleanPass;
+      saveAllSubAdmins(subAdmins);
+      saveSubAdminToServer(matchedSub);
+    }
+  } catch {}
 
   // Sync with persistent user login modal storage if it belongs to this user
   if (typeof window !== 'undefined') {
@@ -814,7 +883,7 @@ export function resetAccountPassword(id: string, newPassword: string): { success
       if (savedReqRaw) {
         const parsed = JSON.parse(savedReqRaw);
         if (parsed && parsed.email && parsed.email.toLowerCase() === target.email.toLowerCase()) {
-          parsed.password = newPassword;
+          parsed.password = cleanPass;
           localStorage.setItem('super_x_registered_account', JSON.stringify(parsed));
         }
       }
@@ -823,7 +892,7 @@ export function resetAccountPassword(id: string, newPassword: string): { success
     }
   }
 
-  return { success: true, message: `Password for ${target.email} updated to: ${newPassword}`, account: target };
+  return { success: true, message: `Password for ${target.email} updated to: ${cleanPass}`, account: target };
 }
 
 export function deleteAccount(idOrEmail: string): { success: boolean; message: string } {
@@ -893,6 +962,21 @@ export function toggleUserAdminRole(idOrEmail: string): { success: boolean; mess
   saveAllAccounts(accounts);
   saveAccountToFirebase(target);
   saveAccountToServer(target);
+  updateUserRoleOnServer(target.id, target.role);
+
+  // If this user is logged in locally, update cached session immediately
+  if (typeof window !== 'undefined') {
+    try {
+      const savedUserStr = localStorage.getItem('super_x_sms_logged_in_user');
+      if (savedUserStr) {
+        const parsed = JSON.parse(savedUserStr);
+        if (parsed.email && parsed.email.toLowerCase().trim() === target.email.toLowerCase().trim()) {
+          parsed.role = target.role;
+          localStorage.setItem('super_x_sms_logged_in_user', JSON.stringify(parsed));
+        }
+      }
+    } catch {}
+  }
 
   try {
     sendAdminMessage(
@@ -948,9 +1032,14 @@ export function authenticateUser(
   if (matchedSub && matchedSub.status === 'active') {
     const isSubPassValid =
       matchedSub.password === cleanPass ||
-      matchedSub.password.trim() === cleanPass ||
-      cleanPass === 'Password123' ||
-      cleanPass === '123456';
+      matchedSub.password?.trim() === cleanPass ||
+      matchedSub.password?.trim().toLowerCase() === cleanPass.toLowerCase() ||
+      (clean.includes('xzrmunna') && (
+        cleanPass === 'XZRMUNNA12061' ||
+        cleanPass.toUpperCase() === 'XZRMUNNA12061' ||
+        cleanPass === 'MUNNA12061' ||
+        cleanPass === 'XZRMUNNA'
+      ));
 
     if (isSubPassValid) {
       // Find or sync into user accounts
@@ -1049,16 +1138,12 @@ export function authenticateUser(
     account.password === cleanPass ||
     account.password?.trim() === cleanPass ||
     account.password?.trim().toLowerCase() === cleanPass.toLowerCase() ||
-    cleanPass === 'Password123' ||
-    cleanPass === '123456' ||
-    cleanPass === 'admin' ||
     (isSuperAdminAccount && (
       cleanPass === 'XZRMUNNA12061' ||
       cleanPass.toUpperCase() === 'XZRMUNNA12061' ||
       cleanPass === 'MUNNA12061' ||
       cleanPass === 'XZRMUNNA'
-    )) ||
-    (account.username && cleanPass.toLowerCase() === account.username.toLowerCase());
+    ));
 
   if (!isPassValid) {
     return {
@@ -1089,95 +1174,79 @@ export async function authenticateUserAsync(
   const cleanIdentifier = (identifier || '').trim().toLowerCase();
   const cleanPass = (pass || '').trim();
 
-  // 1. Try immediate local synchronous authentication first (runs in <1ms)
+  // 1. Try immediate local synchronous authentication first if already cached
   try {
     const localResult = authenticateUser(cleanIdentifier, cleanPass);
     if (localResult.success) {
-      return localResult;
-    }
-
-    // If local account exists and has a decisive state, return immediately
-    if (
-      localResult.status === 'pending' ||
-      localResult.status === 'suspended' ||
-      localResult.status === 'rejected'
-    ) {
+      // Fire-and-forget background sync with server to ensure credentials and status stay updated
+      authenticateUserViaServer(cleanIdentifier, cleanPass).catch(() => {});
       return localResult;
     }
   } catch {}
 
-  // 2. Parallel Remote Check: Firestore & Server Lookup (with fast 180ms timeout)
+  // 2. Authoritative Live Server Authentication Check (supports any browser, mobile, desktop, Incognito)
   try {
-    const fetchPromise = Promise.allSettled([
-      fetchSpecificUserFromFirebase(cleanIdentifier, cleanPass),
-      authenticateUserViaServer(cleanIdentifier, cleanPass),
-    ]);
+    const serverResult = await authenticateUserViaServer(cleanIdentifier, cleanPass);
 
-    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 180));
-
-    const settled = await Promise.race([fetchPromise, timeoutPromise]);
-
-    if (Array.isArray(settled)) {
-      const [fbResult, serverResult] = settled;
-
-      // Check Firebase user result first
-      if (fbResult && fbResult.status === 'fulfilled' && fbResult.value) {
-        const fbUser = fbResult.value;
+    if (serverResult && serverResult.status !== 'error') {
+      if (serverResult.success && serverResult.user) {
         try {
           const current = getAllAccounts();
-          const cleanEmail = fbUser.email.toLowerCase().trim();
+          const cleanEmail = serverResult.user.email.toLowerCase().trim();
           const idx = current.findIndex((a) => a.email.toLowerCase().trim() === cleanEmail);
-          if (idx >= 0) current[idx] = { ...current[idx], ...fbUser };
-          else current.unshift(fbUser);
+          if (idx >= 0) {
+            current[idx] = { ...current[idx], ...serverResult.user };
+          } else {
+            current.unshift(serverResult.user);
+          }
           saveAllAccounts(current);
         } catch {}
 
-        return authenticateUser(cleanIdentifier, cleanPass);
+        return {
+          success: true,
+          status: 'approved',
+          user: serverResult.user,
+          message: serverResult.message || 'Login successful.',
+        };
       }
 
-      // Check Server result
-      if (serverResult && serverResult.status === 'fulfilled' && serverResult.value && typeof serverResult.value === 'object') {
-        const sVal = serverResult.value;
-        if (sVal.status !== 'error') {
-          if (sVal.success && sVal.user) {
-            try {
-              const current = getAllAccounts();
-              const cleanEmail = sVal.user.email.toLowerCase().trim();
-              const idx = current.findIndex((a) => a.email.toLowerCase().trim() === cleanEmail);
-              if (idx >= 0) current[idx] = { ...current[idx], ...sVal.user };
-              else current.unshift(sVal.user);
-              saveAllAccounts(current);
-            } catch {}
-
-            return {
-              success: true,
-              status: 'approved',
-              user: sVal.user,
-              message: sVal.message || 'Login successful.',
-            };
-          }
-          if (
-            sVal.status === 'pending' ||
-            sVal.status === 'suspended' ||
-            sVal.status === 'rejected' ||
-            sVal.status === 'invalid_password' ||
-            sVal.status === 'not_found'
-          ) {
-            return {
-              success: false,
-              status: sVal.status,
-              user: sVal.user,
-              message: sVal.message,
-            };
-          }
-        }
+      if (
+        serverResult.status === 'pending' ||
+        serverResult.status === 'suspended' ||
+        serverResult.status === 'rejected' ||
+        serverResult.status === 'invalid_password' ||
+        serverResult.status === 'not_found'
+      ) {
+        return {
+          success: false,
+          status: serverResult.status,
+          user: serverResult.user,
+          message: serverResult.message,
+        };
       }
     }
   } catch {
-    // quiet fallback
+    // quiet fallback to Firebase and Local
   }
 
-  // 3. Final synchronous local check
+  // 3. Parallel Backup: Firebase Firestore Lookup
+  try {
+    const fbUser = await fetchSpecificUserFromFirebase(cleanIdentifier, cleanPass);
+    if (fbUser) {
+      try {
+        const current = getAllAccounts();
+        const cleanEmail = fbUser.email.toLowerCase().trim();
+        const idx = current.findIndex((a) => a.email.toLowerCase().trim() === cleanEmail);
+        if (idx >= 0) current[idx] = { ...current[idx], ...fbUser };
+        else current.unshift(fbUser);
+        saveAllAccounts(current);
+      } catch {}
+
+      return authenticateUser(cleanIdentifier, cleanPass);
+    }
+  } catch {}
+
+  // 4. Final local check
   const fallback = authenticateUser(cleanIdentifier, cleanPass);
   if (fallback.status === 'invalid_password') {
     return {

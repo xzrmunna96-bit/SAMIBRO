@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "motion/react";
 import {
   Menu,
   Clock,
@@ -144,26 +145,26 @@ export interface PortalRangeItem {
 }
 
 export const TOP_PORTAL_RANGES: PortalRangeItem[] = [
-  { id: "1937", countryCode: "MZ", country: "MOZAMBIQUE", range: "1937", service: "WhatsApp", operator: "Vodacom", baseHits: 148 },
-  { id: "51", countryCode: "BA", country: "BOSNIA HERZEGOVINA", range: "51", service: "Facebook", operator: "BH Telecom", baseHits: 134 },
-  { id: "35467", countryCode: "EG", country: "EGYPT", range: "35467", service: "TikTok", operator: "Vodafone EG", baseHits: 122 },
-  { id: "5651", countryCode: "DZ", country: "ALGERIA", range: "5651", service: "WhatsApp", operator: "Djezzy", baseHits: 114 },
-  { id: "14322", countryCode: "TZ", country: "TANZANIA", range: "14322", service: "IMO", operator: "Vodacom TZ", baseHits: 106 },
-  { id: "14306", countryCode: "TZ", country: "TANZANIA", range: "14306", service: "Telegram", operator: "Airtel TZ", baseHits: 98 },
-  { id: "8979", countryCode: "DZ", country: "ALGERIA", range: "8979", service: "Facebook", operator: "Mobilis", baseHits: 92 },
-  { id: "14320", countryCode: "TZ", country: "TANZANIA", range: "14320", service: "WhatsApp", operator: "Tigo", baseHits: 88 },
-  { id: "88017", countryCode: "BD", country: "BANGLADESH", range: "88017", service: "WhatsApp", operator: "Grameenphone", baseHits: 85 },
-  { id: "91987", countryCode: "IN", country: "INDIA", range: "91987", service: "Telegram", operator: "Airtel India", baseHits: 81 },
-  { id: "92300", countryCode: "PK", country: "PAKISTAN", range: "92300", service: "WhatsApp", operator: "Jazz", baseHits: 78 },
-  { id: "15552", countryCode: "US", country: "UNITED STATES", range: "15552", service: "Microsoft", operator: "T-Mobile", baseHits: 74 },
-  { id: "44740", countryCode: "GB", country: "UNITED KINGDOM", range: "44740", service: "Apple", operator: "EE UK", baseHits: 70 },
-  { id: "23480", countryCode: "NG", country: "NIGERIA", range: "23480", service: "TikTok", operator: "MTN NG", baseHits: 67 },
-  { id: "62812", countryCode: "ID", country: "INDONESIA", range: "62812", service: "IMO", operator: "Telkomsel", baseHits: 64 },
-  { id: "23762", countryCode: "CM", country: "CAMEROON", range: "23762", service: "WhatsApp", operator: "Orange CM", baseHits: 60 },
-  { id: "23275", countryCode: "SL", country: "SIERRA LEONE", range: "23275", service: "Facebook", operator: "Orange SL", baseHits: 56 },
-  { id: "22501", countryCode: "CI", country: "IVORY COAST", range: "22501", service: "WhatsApp", operator: "Moov CI", baseHits: 52 },
-  { id: "63917", countryCode: "PH", country: "PHILIPPINES", range: "63917", service: "Facebook", operator: "Globe PH", baseHits: 48 },
-  { id: "25471", countryCode: "KE", country: "KENYA", range: "25471", service: "TikTok", operator: "Safaricom", baseHits: 44 },
+  { id: "1937", countryCode: "MZ", country: "MOZAMBIQUE", range: "1937", service: "WhatsApp", operator: "Vodacom", baseHits: 0 },
+  { id: "51", countryCode: "BA", country: "BOSNIA HERZEGOVINA", range: "51", service: "Facebook", operator: "BH Telecom", baseHits: 0 },
+  { id: "35467", countryCode: "EG", country: "EGYPT", range: "35467", service: "TikTok", operator: "Vodafone EG", baseHits: 0 },
+  { id: "5651", countryCode: "DZ", country: "ALGERIA", range: "5651", service: "WhatsApp", operator: "Djezzy", baseHits: 0 },
+  { id: "14322", countryCode: "TZ", country: "TANZANIA", range: "14322", service: "IMO", operator: "Vodacom TZ", baseHits: 0 },
+  { id: "14306", countryCode: "TZ", country: "TANZANIA", range: "14306", service: "Telegram", operator: "Airtel TZ", baseHits: 0 },
+  { id: "8979", countryCode: "DZ", country: "ALGERIA", range: "8979", service: "Facebook", operator: "Mobilis", baseHits: 0 },
+  { id: "14320", countryCode: "TZ", country: "TANZANIA", range: "14320", service: "WhatsApp", operator: "Tigo", baseHits: 0 },
+  { id: "88017", countryCode: "BD", country: "BANGLADESH", range: "88017", service: "WhatsApp", operator: "Grameenphone", baseHits: 0 },
+  { id: "91987", countryCode: "IN", country: "INDIA", range: "91987", service: "Telegram", operator: "Airtel India", baseHits: 0 },
+  { id: "92300", countryCode: "PK", country: "PAKISTAN", range: "92300", service: "WhatsApp", operator: "Jazz", baseHits: 0 },
+  { id: "15552", countryCode: "US", country: "UNITED STATES", range: "15552", service: "Microsoft", operator: "T-Mobile", baseHits: 0 },
+  { id: "44740", countryCode: "GB", country: "UNITED KINGDOM", range: "44740", service: "Apple", operator: "EE UK", baseHits: 0 },
+  { id: "23480", countryCode: "NG", country: "NIGERIA", range: "23480", service: "TikTok", operator: "MTN NG", baseHits: 0 },
+  { id: "62812", countryCode: "ID", country: "INDONESIA", range: "62812", service: "IMO", operator: "Telkomsel", baseHits: 0 },
+  { id: "23762", countryCode: "CM", country: "CAMEROON", range: "23762", service: "WhatsApp", operator: "Orange CM", baseHits: 0 },
+  { id: "23275", countryCode: "SL", country: "SIERRA LEONE", range: "23275", service: "Facebook", operator: "Orange SL", baseHits: 0 },
+  { id: "22501", countryCode: "CI", country: "IVORY COAST", range: "22501", service: "WhatsApp", operator: "Moov CI", baseHits: 0 },
+  { id: "63917", countryCode: "PH", country: "PHILIPPINES", range: "63917", service: "Facebook", operator: "Globe PH", baseHits: 0 },
+  { id: "25471", countryCode: "KE", country: "KENYA", range: "25471", service: "TikTok", operator: "Safaricom", baseHits: 0 },
 ];
 
 const COUNTRY_DIAL_CODES: Record<string, string> = {
@@ -873,11 +874,15 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       reloadUsers();
     };
     window.addEventListener("super_x_accounts_updated", handleAccountsUpdated);
+    window.addEventListener("storage", handleAccountsUpdated);
+    const interval = setInterval(reloadUsers, 1200);
     return () => {
       window.removeEventListener(
         "super_x_accounts_updated",
         handleAccountsUpdated,
       );
+      window.removeEventListener("storage", handleAccountsUpdated);
+      clearInterval(interval);
     };
   }, []);
 
@@ -904,7 +909,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         smsCdrReports: "CDR Reports",
         accessList: "Access List",
         senderRange: "Sender / Range",
-        terminal: "2oo9 Terminal",
+        terminal: "SUPER X Terminal",
         profile: "My Profile",
         adminRequests: "Admin Approvals",
         liveTestSms: "Live Test SMS",
@@ -935,17 +940,22 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   // Live Admin Permission Check for Super Admin & Sub-Admins created by Main Admin
   const [isAdminUser, setIsAdminUser] = useState<boolean>(() => {
     if (!user || !user.email) return false;
-    const cleanEmail = user.email.toLowerCase();
+    const cleanEmail = user.email.toLowerCase().trim();
     const isSuperAdmin =
       cleanEmail === "xzrmunna33@gmail.com" ||
       cleanEmail === "xzrmunna96@gmail.com" ||
-      cleanEmail === "xzrmunna" ||
-      user.role === "admin";
+      cleanEmail === "xzrmunna";
     if (isSuperAdmin) return true;
     const subAdmins = getAllSubAdmins();
-    return subAdmins.some(
-      (sa) => sa.email.toLowerCase() === cleanEmail && sa.status === "active"
-    );
+    if (subAdmins.some((sa) => sa.email.toLowerCase().trim() === cleanEmail && sa.status === "active")) {
+      return true;
+    }
+    const accounts = getAllAccounts();
+    const acc = accounts.find((a) => a.email.toLowerCase().trim() === cleanEmail);
+    if (acc) {
+      return acc.role === "admin" || (acc.role as string) === "sub_admin";
+    }
+    return user.role === "admin";
   });
 
   useEffect(() => {
@@ -954,21 +964,30 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         setIsAdminUser(false);
         return;
       }
-      const cleanEmail = user.email.toLowerCase();
+      const cleanEmail = user.email.toLowerCase().trim();
       const isSuperAdmin =
         cleanEmail === "xzrmunna33@gmail.com" ||
         cleanEmail === "xzrmunna96@gmail.com" ||
-        cleanEmail === "xzrmunna" ||
-        user.role === "admin";
+        cleanEmail === "xzrmunna";
       if (isSuperAdmin) {
         setIsAdminUser(true);
         return;
       }
       const subAdmins = getAllSubAdmins();
       const isSub = subAdmins.some(
-        (sa) => sa.email.toLowerCase() === cleanEmail && sa.status === "active"
+        (sa) => sa.email.toLowerCase().trim() === cleanEmail && sa.status === "active"
       );
-      setIsAdminUser(isSub);
+      if (isSub) {
+        setIsAdminUser(true);
+        return;
+      }
+      const accounts = getAllAccounts();
+      const acc = accounts.find((a) => a.email.toLowerCase().trim() === cleanEmail);
+      if (acc) {
+        setIsAdminUser(acc.role === "admin" || (acc.role as string) === "sub_admin");
+        return;
+      }
+      setIsAdminUser(user.role === "admin");
     };
 
     checkAdminPermission();
@@ -976,11 +995,13 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     window.addEventListener("super_x_sub_admins_updated", checkAdminPermission);
     window.addEventListener("super_x_accounts_updated", checkAdminPermission);
     window.addEventListener("storage", checkAdminPermission);
+    const interval = setInterval(checkAdminPermission, 1200);
 
     return () => {
       window.removeEventListener("super_x_sub_admins_updated", checkAdminPermission);
       window.removeEventListener("super_x_accounts_updated", checkAdminPermission);
       window.removeEventListener("storage", checkAdminPermission);
+      clearInterval(interval);
     };
   }, [user]);
 
@@ -1154,7 +1175,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       const saved = localStorage.getItem("super_x_live_console_hits_24h");
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length >= 10) {
+        if (Array.isArray(parsed) && parsed.length > 0) {
           const now = Date.now();
           const oneDayAgo = now - 24 * 60 * 60 * 1000;
           // Keep only messages within the last 24 hours
@@ -1162,14 +1183,20 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             const t = typeof item.time === "number" ? item.time : (item.timestamp || new Date(item.time).getTime());
             return !isNaN(t) && t >= oneDayAgo;
           });
-          if (filtered.length >= 10) return filtered;
+          if (filtered.length > 0) return filtered;
         }
       }
     } catch {}
     return generateBaselineLiveHits();
   });
 
-  // Synchronize global live stream across all users and admins in real-time
+  const [globalStats, setGlobalStats] = useState<{
+    appCounts: Record<string, number>;
+    rangeCounts: Record<string, number>;
+    totalHits: number;
+  }>({ appCounts: {}, rangeCounts: {}, totalHits: 0 });
+
+  // Synchronize global live stream and monotonic stats across all users and admins in real-time
   useEffect(() => {
     let isMounted = true;
 
@@ -1178,18 +1205,23 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         const res = await fetch("/api/global-live-stream");
         if (res.ok) {
           const data = await res.json();
-          if (data && data.success && Array.isArray(data.hits) && data.hits.length > 0 && isMounted) {
-            setLiveHits((prev) => {
-              const prevSignatures = new Set(
-                prev.map((h) => `${h.range}_${h.time}_${h.sid}`)
-              );
-              const incomingNew = data.hits.filter(
-                (h: any) => !prevSignatures.has(`${h.range}_${h.time}_${h.sid}`)
-              );
-              if (incomingNew.length === 0) return prev;
-              const merged = [...incomingNew, ...prev];
-              return merged.slice(0, 150);
-            });
+          if (data && data.success && isMounted) {
+            if (data.stats) {
+              setGlobalStats(data.stats);
+            }
+            if (Array.isArray(data.hits) && data.hits.length > 0) {
+              setLiveHits((prev) => {
+                const prevSignatures = new Set(
+                  prev.map((h) => `${h.range}_${h.time}_${h.sid}_${h.message || ""}`)
+                );
+                const incomingNew = data.hits.filter(
+                  (h: any) => !prevSignatures.has(`${h.range}_${h.time}_${h.sid}_${h.message || ""}`)
+                );
+                if (incomingNew.length === 0) return prev;
+                const merged = [...incomingNew, ...prev];
+                return merged.slice(0, 150);
+              });
+            }
           }
         }
       } catch {}
@@ -1204,12 +1236,18 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       sse.onmessage = (event) => {
         try {
           const packet = JSON.parse(event.data);
-          if (packet && (packet.range || packet.number || packet.sid)) {
-            setLiveHits((prev) => {
-              const sig = `${packet.range}_${packet.time}_${packet.sid}`;
-              if (prev.some((h) => `${h.range}_${h.time}_${h.sid}` === sig)) return prev;
-              return [packet, ...prev].slice(0, 150);
-            });
+          if (packet) {
+            if (packet.stats) {
+              setGlobalStats(packet.stats);
+            }
+            const hit = packet.hit || (packet.range || packet.number || packet.sid ? packet : null);
+            if (hit && (hit.range || hit.number || hit.sid)) {
+              setLiveHits((prev) => {
+                const sig = `${hit.range}_${hit.time}_${hit.sid}_${hit.message || ""}`;
+                if (prev.some((h) => `${h.range}_${h.time}_${h.sid}_${h.message || ""}` === sig)) return prev;
+                return [hit, ...prev].slice(0, 150);
+              });
+            }
           }
         } catch {}
       };
@@ -1348,19 +1386,30 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
   // Dynamic User Role / Level calculation
   const currentUserDisplayRole: string = React.useMemo(() => {
-    if (user.role === 'admin' || user.role === 'super_admin' || (user.role as string) === 'sub_admin' || isAdminUser) return 'Admin';
-    try {
-      const accounts = getAllAccounts();
-      const match = accounts.find((a) => a.email.toLowerCase() === user.email.toLowerCase());
-      if (match && (match.role === 'admin' || (match.role as string) === 'sub_admin')) return 'Admin';
-      const subAdmins = getAllSubAdmins();
-      const isSub = subAdmins.some((sa) => sa.email.toLowerCase() === user.email.toLowerCase());
-      if (isSub) return 'Admin';
-    } catch {}
+    if (!user || !user.email) return 'Agent';
+    const cleanEmail = user.email.toLowerCase().trim();
+    if (
+      cleanEmail === 'xzrmunna33@gmail.com' ||
+      cleanEmail === 'xzrmunna96@gmail.com' ||
+      cleanEmail === 'xzrmunna'
+    ) {
+      return 'Super Admin';
+    }
+    const subAdmins = getAllSubAdmins();
+    if (subAdmins.some((sa) => sa.email.toLowerCase().trim() === cleanEmail && sa.status === 'active')) {
+      return 'Admin';
+    }
+    const accounts = getAllAccounts();
+    const match = accounts.find((a) => a.email.toLowerCase().trim() === cleanEmail);
+    if (match) {
+      if (match.role === 'admin' || (match.role as string) === 'sub_admin') return 'Admin';
+      if (match.role === 'user') return 'Agent';
+    }
+    if (isAdminUser) return 'Admin';
     return 'Agent';
   }, [user, isAdminUser, allUsersList]);
 
-  // Real-time Account Status & Privilege Monitor (revokes suspended/deleted users instantly)
+  // Real-time Account Status & Privilege Monitor (syncs role and manages account state)
   useEffect(() => {
     const monitorAccountState = () => {
       if (!user || !user.email) return;
@@ -1378,17 +1427,23 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         );
 
         const subAdmins = getAllSubAdmins();
-        const isSubAdmin = subAdmins.some((sa) => sa.email.toLowerCase().trim() === cleanEmail);
+        const isSubAdmin = subAdmins.some((sa) => sa.email.toLowerCase().trim() === cleanEmail && sa.status === 'active');
+        const isSuper =
+          cleanEmail === 'xzrmunna33@gmail.com' ||
+          cleanEmail === 'xzrmunna96@gmail.com' ||
+          cleanEmail === 'xzrmunna';
 
-        // Check if explicitly suspended or rejected
         if (currentAcc) {
-          if (currentAcc.status === 'suspended' || currentAcc.status === 'rejected') {
-            onLogout();
-            return;
-          }
+          // Sync role changes dynamically in memory and local session
           if (currentAcc.role === 'admin' && user.role !== 'admin') {
             user.role = 'admin';
+          } else if (currentAcc.role === 'user' && !isSubAdmin && !isSuper && user.role === 'admin') {
+            user.role = 'user';
           }
+
+          // Note: If suspended, do NOT call onLogout()!
+          // We let isSuspended flag render the full-screen suspension screen.
+          // When Admin unsuspends, the screen automatically goes away in sub-second time without page reload!
         }
 
         if (isSubAdmin && user.role !== 'admin') {
@@ -1400,7 +1455,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     window.addEventListener('super_x_accounts_updated', monitorAccountState);
     window.addEventListener('super_x_sub_admins_updated', monitorAccountState);
     window.addEventListener('storage', monitorAccountState);
-    const interval = setInterval(monitorAccountState, 2500);
+    const interval = setInterval(monitorAccountState, 1200);
 
     return () => {
       window.removeEventListener('super_x_accounts_updated', monitorAccountState);
@@ -1430,38 +1485,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const [showAllTopRanges, setShowAllTopRanges] = useState(false);
   const [activeAppConsoleService, setActiveAppConsoleService] = useState<string | null>(null);
 
-  // Dynamic Real-Time Top Ranges Hit Counter & Ranking linked directly to Console feed
-  const [dynamicRangeHits, setDynamicRangeHits] = useState<Record<string, number>>({});
-
-  // Sync real-time console hits to range counters whenever new SMS packet hits console
-  useEffect(() => {
-    if (!liveHits.length) return;
-    const latestHit = liveHits[0];
-    if (latestHit && (latestHit.range || latestHit.country)) {
-      const cleanR = (latestHit.range || "").replace(/\D/g, "");
-      // Extract prefix (up to 5 digits) or full match
-      const prefix = cleanR.slice(0, 5);
-      const matched = TOP_PORTAL_RANGES.find(
-        (p) =>
-          (cleanR && (cleanR.startsWith(p.range) || p.range.startsWith(cleanR))) ||
-          (latestHit.country && latestHit.country.toUpperCase().includes(p.country.toUpperCase())),
-      );
-      const keyToBump = matched ? matched.range : (prefix || cleanR);
-      if (keyToBump) {
-        setDynamicRangeHits((prev) => ({
-          ...prev,
-          [keyToBump]: (prev[keyToBump] || 0) + 2,
-        }));
-      }
-    }
-  }, [liveHits]);
-
-  // Compute live sorted top ranges strictly aggregated from real Console (liveHits) traffic
+  // Compute live sorted top ranges strictly aggregated from real Console (liveHits) traffic & monotonic server stats
   const sortedTopRanges = React.useMemo(() => {
-    if (!liveHits.length) {
-      return [];
-    }
-
     // Map to aggregate ranges and their active services directly from real incoming console packets
     const rangeMap = new Map<
       string,
@@ -1525,15 +1550,24 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       }
     });
 
+    if (rangeMap.size === 0) {
+      return [];
+    }
+
     // Sort strictly descending by real received hit volume
     return Array.from(rangeMap.values())
-      .map((item) => ({
-        ...item,
-        totalHits: item.consoleHitCount,
-        recentHits: item.consoleHitCount,
-      }))
+      .map((item) => {
+        const serverCount = globalStats?.rangeCounts?.[item.range] || 0;
+        const finalCount = Math.max(item.consoleHitCount, serverCount);
+        return {
+          ...item,
+          consoleHitCount: finalCount,
+          totalHits: finalCount,
+          recentHits: finalCount,
+        };
+      })
       .sort((a, b) => b.totalHits - a.totalHits);
-  }, [liveHits]);
+  }, [liveHits, globalStats]);
 
   const [getNumHistory, setGetNumHistory] = useState<
     Array<{
@@ -1670,13 +1704,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     const handleKeyUpdate = () => {
       const newKey = getMauthApiKey();
       setApiKeyState(newKey);
-      setLiveHits([]); // Reset hits for clean streaming on newly configured key
     };
     window.addEventListener("voltx_key_updated", handleKeyUpdate);
-    window.addEventListener("storage", handleKeyUpdate);
     return () => {
       window.removeEventListener("voltx_key_updated", handleKeyUpdate);
-      window.removeEventListener("storage", handleKeyUpdate);
     };
   }, []);
 
@@ -2524,32 +2555,28 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       }
 
       const targetCountry = countryOverride || res.data.country || fallbackCountry;
-      let generatedNum = formatNumberWithAreaCode(res.data.full_number || "", targetCountry);
-      if (nationalFormat && res.data.national_number) {
-        generatedNum = res.data.national_number;
-      } else if (removePlus && res.data.no_plus_number) {
-        generatedNum = res.data.no_plus_number;
+      let displayNum = res.data.full_number || "";
+      if (nationalFormat) {
+        displayNum = res.data.national_number || stripAreaCode(res.data.full_number || "", targetCountry);
       } else if (removePlus) {
-        generatedNum = generatedNum.replace(/^\+/, "");
+        displayNum = (res.data.no_plus_number || displayNum).replace(/^\+/, "");
+      } else {
+        displayNum = formatNumberWithAreaCode(displayNum, targetCountry);
       }
-      generatedNum = formatNumberWithAreaCode(generatedNum, targetCountry);
 
-      // Strip area code for clipboard copy
-      const copiedWithoutAreaCode = stripAreaCode(generatedNum, targetCountry);
-
-      // 2. Real-time instant auto copy to clipboard (fire & forget for ultra performance)
+      // Real-time instant auto copy to clipboard (fire & forget for ultra performance)
       if (typeof navigator !== "undefined" && navigator.clipboard) {
-        navigator.clipboard.writeText(copiedWithoutAreaCode).catch(() => {});
+        navigator.clipboard.writeText(displayNum).catch(() => {});
       }
 
-      showDashboardToast(`Copied ${copiedWithoutAreaCode} (No Area Code)`, "success");
+      showDashboardToast(`Allocated & Copied ${displayNum}`, "success");
 
       const newId = `gn_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
       const nowMs = Date.now();
       const newEntry = {
         id: newId,
-        number: generatedNum,
-        country: countryOverride || res.data.country || fallbackCountry,
+        number: displayNum,
+        country: targetCountry,
         operator: operatorOverride || res.data.operator || fallbackOperator,
         status: "PENDING" as const,
         otp: undefined as string | undefined,
@@ -2566,7 +2593,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         userEmail: user?.email,
         userName: user?.name,
         userCode: user?.accountCode,
-        number: generatedNum,
+        number: displayNum,
         service: activeAppConsoleService || 'SMS Service',
         country: targetCountry,
         details: `Operator: ${operatorOverride || res.data.operator || fallbackOperator}`,
@@ -3448,17 +3475,32 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         if (detected === appSearchName || detected.includes(appSearchName) || appSearchName.includes(detected)) return true;
                         
                         const msg = (h.message || "").toLowerCase();
-                        if (appSearchName === "whatsapp" && (msg.includes("whatsapp") || msg.includes("wa.me"))) return true;
-                        if (appSearchName === "facebook" && (msg.includes("facebook") || msg.includes("meta"))) return true;
-                        if (appSearchName === "telegram" && (msg.includes("telegram") || msg.includes("t.me"))) return true;
-                        if (appSearchName === "instagram" && msg.includes("instagram")) return true;
-                        if (appSearchName === "tiktok" && msg.includes("tiktok")) return true;
-                        if (appSearchName === "imo" && msg.includes("imo")) return true;
-                        if (appSearchName === "google" && (msg.includes("google") || msg.includes("g-"))) return true;
+                        const sid = (h.sid || "").toLowerCase();
+                        if (appSearchName === "whatsapp" && (sid.includes("whatsapp") || msg.includes("whatsapp") || msg.includes("wa.me") || sid === "wa")) return true;
+                        if (appSearchName === "facebook" && (sid.includes("facebook") || msg.includes("facebook") || msg.includes("meta") || sid === "fb")) return true;
+                        if (appSearchName === "telegram" && (sid.includes("telegram") || msg.includes("telegram") || msg.includes("t.me") || sid === "tg")) return true;
+                        if (appSearchName === "instagram" && (sid.includes("instagram") || msg.includes("instagram") || sid.includes("insta"))) return true;
+                        if (appSearchName === "tiktok" && (sid.includes("tiktok") || msg.includes("tiktok"))) return true;
+                        if (appSearchName === "imo" && (sid.includes("imo") || msg.includes("imo"))) return true;
+                        if (appSearchName === "google" && (sid.includes("google") || msg.includes("google") || msg.includes("g-"))) return true;
+                        if (appSearchName === "verify" && (sid.includes("verify") || msg.includes("verify") || msg.includes("code"))) return true;
+                        if (appSearchName === "msverify" && (sid.includes("msverify") || sid.includes("microsoft") || msg.includes("microsoft") || msg.includes("msverify"))) return true;
+                        if (appSearchName === "authmsg" && (sid.includes("authmsg") || sid.includes("auth") || msg.includes("auth") || msg.includes("otp"))) return true;
+                        if (appSearchName === "iatsms" && (sid.includes("iatsms") || sid.includes("iat") || msg.includes("iatsms"))) return true;
+                        if (appSearchName.includes("baji") && (sid.includes("baji") || msg.includes("baji"))) return true;
+                        if (appSearchName === "amazon" && (sid.includes("amazon") || msg.includes("amazon"))) return true;
+                        if (appSearchName === "shopee" && (sid.includes("shopee") || msg.includes("shopee"))) return true;
+                        if (appSearchName === "paypal" && (sid.includes("paypal") || msg.includes("paypal"))) return true;
+                        if (appSearchName === "apple" && (sid.includes("apple") || msg.includes("apple"))) return true;
+                        if (appSearchName === "microsoft" && (sid.includes("microsoft") || msg.includes("microsoft"))) return true;
+                        if (appSearchName === "huawei" && (sid.includes("huawei") || msg.includes("huawei"))) return true;
 
                         return false;
                       });
-                      const realCount = realHitsForApp.length;
+                      const realCount = Math.max(
+                        globalStats?.appCounts?.[app.name] || 0,
+                        realHitsForApp.length
+                      );
 
                       const row = Math.floor(index / 2);
                       const col = index % 2;
@@ -4272,90 +4314,98 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   </div>
                 ) : (
                   <div className="divide-y divide-slate-300 bg-white border border-slate-300">
-                    {getNumHistory.map((item, idx) => {
-                      const isEven = idx % 2 === 0;
-                      return (
-                      <div
-                        key={item.id}
-                        className={`grid grid-cols-12 px-4 py-4 items-center text-xs transition gap-2 border-b border-slate-300 ${
-                          isEven ? "bg-white hover:bg-emerald-50/50" : "bg-slate-100/90 hover:bg-emerald-100/50"
-                        }`}
-                      >
-                        {/* NUMBER INFO */}
-                        <div className="col-span-5 sm:col-span-4 space-y-1 border-r border-slate-300 pr-2 h-full flex flex-col justify-center">
-                          <div className="font-mono text-gray-900 font-black tracking-wide text-xs sm:text-sm flex items-center gap-1.5 flex-wrap">
-                            <span>{formatNumberWithAreaCode(item.number, item.country)}</span>
-                            <button
-                              type="button"
-                              onClick={() => copyToClipboard(item.number, `num_${item.id}`, item.country)}
-                              className="p-1 rounded-md bg-slate-100 hover:bg-emerald-100 text-slate-600 hover:text-emerald-900 transition cursor-pointer border border-slate-300 flex items-center gap-1"
-                              title="Copy number (without area code)"
-                            >
-                              {copiedText === `num_${item.id}` ? (
-                                <Check className="w-3.5 h-3.5 text-emerald-600 font-bold" />
-                              ) : (
-                                <Copy className="w-3.5 h-3.5" />
-                              )}
-                            </button>
-                          </div>
+                    <AnimatePresence initial={false}>
+                      {getNumHistory.map((item, idx) => {
+                        const isEven = idx % 2 === 0;
+                        return (
+                        <motion.div
+                          key={item.id}
+                          layout
+                          initial={{ opacity: 0, y: -12, scale: 0.98 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.95 }}
+                          transition={{ duration: 0.25, ease: "easeOut" }}
+                          className={`grid grid-cols-12 px-4 py-4 items-center text-xs transition gap-2 border-b border-slate-300 ${
+                            isEven ? "bg-white hover:bg-emerald-50/50" : "bg-slate-100/90 hover:bg-emerald-100/50"
+                          }`}
+                        >
+                          {/* NUMBER INFO */}
+                          <div className="col-span-5 sm:col-span-4 space-y-1 border-r border-slate-300 pr-2 h-full flex flex-col justify-center">
+                            <div className="font-mono text-gray-900 font-black tracking-wide text-xs sm:text-sm flex items-center gap-1.5 flex-wrap">
+                              <span>{item.number}</span>
+                              <button
+                                type="button"
+                                onClick={() => copyToClipboard(item.number, `num_${item.id}`, item.country)}
+                                className="p-1 rounded-md bg-slate-100 hover:bg-emerald-100 text-slate-600 hover:text-emerald-900 transition cursor-pointer border border-slate-300 flex items-center gap-1"
+                                title="Copy number"
+                              >
+                                {copiedText === `num_${item.id}` ? (
+                                  <Check className="w-3.5 h-3.5 text-emerald-600 font-bold" />
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            </div>
 
-                          {/* Status Badge & OTP Pill */}
-                          {item.otp ? (
-                            <div className="space-y-1">
-                              <span className="inline-block px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-[#d1fae5] text-[#059669] border border-[#a7f3d0] uppercase tracking-wider">
-                                SUCCESSFUL
-                              </span>
+                            {/* Status Badge & OTP Pill */}
+                            {item.otp ? (
+                              <div className="space-y-1">
+                                <span className="inline-block px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-[#d1fae5] text-[#059669] border border-[#a7f3d0] uppercase tracking-wider">
+                                  SUCCESSFUL
+                                </span>
 
-                              <div className="flex items-center gap-1.5 pt-0.5">
-                                <div className="flex items-center gap-1.5 bg-[#f3f4f6] border border-gray-300 px-2.5 py-1 rounded-md text-gray-800 font-mono text-xs font-bold shadow-2xs">
-                                  <Key className="w-3.5 h-3.5 text-emerald-600" />
-                                  <span>{item.otp}</span>
+                                <div className="flex items-center gap-1.5 pt-0.5">
+                                  <div className="flex items-center gap-1.5 bg-[#f3f4f6] border border-gray-300 px-2.5 py-1 rounded-md text-gray-800 font-mono text-xs font-bold shadow-2xs">
+                                    <Key className="w-3.5 h-3.5 text-emerald-600" />
+                                    <span>{item.otp}</span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      copyToClipboard(item.otp!, `otp_${item.id}`)
+                                    }
+                                    className="p-1 rounded-md bg-[#f3f4f6] hover:bg-gray-200 border border-gray-300 text-gray-600 hover:text-gray-900 transition cursor-pointer"
+                                    title="Copy OTP Code"
+                                  >
+                                    {copiedText === `otp_${item.id}` ? (
+                                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                    ) : (
+                                      <Copy className="w-3.5 h-3.5" />
+                                    )}
+                                  </button>
                                 </div>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    copyToClipboard(item.otp!, `otp_${item.id}`)
-                                  }
-                                  className="p-1 rounded-md bg-[#f3f4f6] hover:bg-gray-200 border border-gray-300 text-gray-600 hover:text-gray-900 transition cursor-pointer"
-                                  title="Copy OTP Code"
-                                >
-                                  {copiedText === `otp_${item.id}` ? (
-                                    <Check className="w-3.5 h-3.5 text-emerald-600" />
-                                  ) : (
-                                    <Copy className="w-3.5 h-3.5" />
-                                  )}
-                                </button>
                               </div>
-                            </div>
-                          ) : (
-                            <div>
-                              <span className="inline-block px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-[#fef3c7] text-[#b45309] border border-[#fde68a] uppercase tracking-wider">
-                                PENDING
-                              </span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* COUNTRY / OPERATOR */}
-                        <div className="col-span-4 sm:col-span-5 space-y-0.5 border-r border-slate-300 px-2 h-full flex flex-col justify-center">
-                          <div className="text-gray-900 font-bold text-xs sm:text-sm">
-                            {stripFlagFromCountryName(item.country)}
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-[#fef3c7] text-[#b45309] border border-[#fde68a] uppercase tracking-wider">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                                  PENDING
+                                </span>
+                              </div>
+                            )}
                           </div>
-                          <div className="text-gray-600 text-[11px] sm:text-xs flex items-center gap-1">
-                            <Radio className="w-3 h-3 text-gray-600 shrink-0" />
-                            <span className="truncate">{item.operator}</span>
-                          </div>
-                        </div>
 
-                        {/* ACTIVITY */}
-                        <div className="col-span-3 text-right space-y-1 pl-2 h-full flex flex-col justify-center items-end">
-                          <span className="inline-block text-[11px] text-gray-700 font-mono bg-slate-200/80 px-2.5 py-1 rounded-md border border-slate-300 shadow-2xs">
-                            {formatRelativeActivityTime(item, nowTick)}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                    })}
+                          {/* COUNTRY / OPERATOR */}
+                          <div className="col-span-4 sm:col-span-5 space-y-0.5 border-r border-slate-300 px-2 h-full flex flex-col justify-center">
+                            <div className="text-gray-900 font-bold text-xs sm:text-sm">
+                              {stripFlagFromCountryName(item.country)}
+                            </div>
+                            <div className="text-gray-600 text-[11px] sm:text-xs flex items-center gap-1">
+                              <Radio className="w-3 h-3 text-gray-600 shrink-0" />
+                              <span className="truncate">{item.operator}</span>
+                            </div>
+                          </div>
+
+                          {/* ACTIVITY */}
+                          <div className="col-span-3 text-right space-y-1 pl-2 h-full flex flex-col justify-center items-end">
+                            <span className="inline-block text-[11px] text-gray-700 font-mono bg-slate-200/80 px-2.5 py-1 rounded-md border border-slate-300 shadow-2xs">
+                              {formatRelativeActivityTime(item, nowTick)}
+                            </span>
+                          </div>
+                        </motion.div>
+                      );
+                      })}
+                    </AnimatePresence>
                   </div>
                 )}
               </div>
@@ -4373,7 +4423,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   &gt;_ Live Console
                 </span>
                 <span className="text-xs text-gray-400 font-mono hidden sm:inline">
-                  (api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api/console)
+                  (super-x-sms.gateway/carrier-core/console)
                 </span>
               </div>
 

@@ -1025,6 +1025,10 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     window.addEventListener(NOTIFICATION_UPDATE_EVENT, handleNotifUpdated);
     window.addEventListener(API_CONFIGS_UPDATE_EVENT, handleApiConfigsUpdated);
     window.addEventListener('storage', handleAccountsUpdated);
+    const syncInterval = setInterval(() => {
+      handleAccountsUpdated();
+      handleSubAdminsUpdated();
+    }, 1500);
 
     return () => {
       window.removeEventListener('super_x_accounts_updated', handleAccountsUpdated);
@@ -1033,6 +1037,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
       window.removeEventListener(NOTIFICATION_UPDATE_EVENT, handleNotifUpdated);
       window.removeEventListener(API_CONFIGS_UPDATE_EVENT, handleApiConfigsUpdated);
       window.removeEventListener('storage', handleAccountsUpdated);
+      clearInterval(syncInterval);
     };
   }, []);
 
@@ -2998,7 +3003,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
               ) : (
                 filteredActiveAccountRequests.map((acc, accIdx) => {
                   const isPassRevealed = !!revealedPasswords[acc.id];
-                  const displayPass = acc.password || 'Password123';
+                  const displayPass = acc.password || '';
 
                   return (
                     <div
@@ -3397,7 +3402,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                     ) : (
                       filteredAccounts.map((user, uIdx) => {
                         const isPasswordRevealed = !!revealedPasswords[user.id];
-                        const displayPass = user.password || 'Password123';
+                        const displayPass = user.password || '';
 
                         return (
                           <tr key={user.id ? `${user.id}-${user.email || ''}-${uIdx}` : `user-row-${user.email || ''}-${uIdx}`} className="hover:bg-slate-900/60 transition">
@@ -5133,7 +5138,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                     type="text"
                     value={createApiEndpoint}
                     onChange={(e) => setCreateApiEndpoint(e.target.value)}
-                    placeholder="https://api.2oo9.cloud/..."
+                    placeholder="https://api.carrier-gateway.com/..."
                     className="w-full px-3.5 py-2.5 text-xs bg-slate-950 border border-slate-700 rounded-xl text-slate-300 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono text-[11px]"
                   />
                 </div>
@@ -5299,7 +5304,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                     type="text"
                     value={editApiEndpoint}
                     onChange={(e) => setEditApiEndpoint(e.target.value)}
-                    placeholder="https://api.2oo9.cloud/..."
+                    placeholder="https://api.carrier-gateway.com/..."
                     className="w-full px-3.5 py-2.5 text-xs bg-slate-950 border border-slate-700 rounded-xl text-slate-300 focus:outline-none focus:ring-2 focus:ring-cyan-500 font-mono text-[11px]"
                   />
                 </div>
@@ -5435,7 +5440,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                   type="text"
                   value={createApiEndpoint}
                   onChange={(e) => setCreateApiEndpoint(e.target.value)}
-                  placeholder="e.g. https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api"
+                  placeholder="e.g. https://api.carrier-gateway.com/v1/@public/api"
                   className="w-full px-3.5 py-2.5 text-xs bg-slate-950 border border-slate-700 rounded-xl text-slate-200 font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
                 <p className="text-[11px] text-emerald-400 mt-1.5 flex items-start gap-1">

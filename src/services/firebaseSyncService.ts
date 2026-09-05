@@ -156,8 +156,18 @@ export async function fetchAccountsFromFirebaseDirectly(): Promise<UserAccount[]
               const localTime = local.updatedAt || local.approvedAt || local.rejectedAt || local.createdAt || 0;
               const remoteTime = remote.updatedAt || remote.approvedAt || remote.rejectedAt || remote.createdAt || 0;
 
+              const finalPassword = (remote.password && remote.password.trim())
+                ? remote.password.trim()
+                : (local.password && local.password.trim())
+                ? local.password.trim()
+                : '';
+
               if (remoteTime >= localTime) {
-                accountMap.set(clean, { ...local, ...remote });
+                accountMap.set(clean, {
+                  ...local,
+                  ...remote,
+                  password: finalPassword || local.password || remote.password,
+                });
               }
             }
           }
@@ -408,12 +418,26 @@ export function initAccountsRealtimeSync() {
               const localTime = local.updatedAt || local.approvedAt || local.rejectedAt || local.createdAt || 0;
               const remoteTime = remote.updatedAt || remote.approvedAt || remote.rejectedAt || remote.createdAt || 0;
 
+              const finalPassword = (remote.password && remote.password.trim())
+                ? remote.password.trim()
+                : (local.password && local.password.trim())
+                ? local.password.trim()
+                : '';
+
               if (remoteTime > localTime) {
-                accountMap.set(clean, remote);
+                accountMap.set(clean, {
+                  ...local,
+                  ...remote,
+                  password: finalPassword || local.password || remote.password,
+                });
               } else if (localTime > remoteTime) {
                 saveAccountToFirebase(local, true);
               } else {
-                accountMap.set(clean, { ...local, ...remote });
+                accountMap.set(clean, {
+                  ...local,
+                  ...remote,
+                  password: finalPassword || local.password || remote.password,
+                });
               }
             }
           }

@@ -51,20 +51,23 @@ export async function fetchAccountsFromServer(): Promise<UserAccount[]> {
             if (!local) {
               mergedMap.set(clean, remote);
             } else {
-              // If remote is approved or newer, take remote
-              if (remote.status === 'approved' && local.status !== 'approved') {
-                mergedMap.set(clean, { ...local, ...remote, status: 'approved' });
-              } else if (local.status === 'approved' && remote.status !== 'approved') {
-                mergedMap.set(clean, { ...remote, ...local, status: 'approved' });
-              } else {
-                const localTime = local.updatedAt || local.approvedAt || local.createdAt || 0;
-                const remoteTime = remote.updatedAt || remote.approvedAt || remote.createdAt || 0;
-                if (remoteTime >= localTime) {
-                  mergedMap.set(clean, { ...local, ...remote });
-                } else {
-                  mergedMap.set(clean, { ...remote, ...local });
-                }
-              }
+              // Server is authoritative for status and role, preserve valid custom passwords
+              const finalPassword = (remote.password && remote.password.trim())
+                ? remote.password.trim()
+                : (local.password && local.password.trim())
+                ? local.password.trim()
+                : '';
+              mergedMap.set(clean, {
+                ...local,
+                ...remote,
+                password: finalPassword || local.password || remote.password,
+                status: remote.status,
+                role: remote.role || local.role || 'user',
+                banReason: remote.banReason !== undefined ? remote.banReason : local.banReason,
+                banRequest: remote.banRequest !== undefined ? remote.banRequest : local.banRequest,
+                note: remote.note !== undefined ? remote.note : local.note,
+                updatedAt: Math.max(local.updatedAt || 0, remote.updatedAt || 0, Date.now()),
+              });
             }
           }
         }
@@ -75,6 +78,7 @@ export async function fetchAccountsFromServer(): Promise<UserAccount[]> {
         localStorage.setItem('super_x_all_user_accounts', JSON.stringify(merged));
         localStorage.setItem('super_x_sms_backup_accounts', JSON.stringify(merged));
         window.dispatchEvent(new Event('super_x_accounts_updated'));
+        window.dispatchEvent(new Event('storage'));
       } catch {}
       return merged;
     }
@@ -213,7 +217,7 @@ export async function authenticateUserViaServer(
 }> {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 400);
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
 
     const res = await fetch('/api/accounts/login', {
       method: 'POST',
@@ -279,7 +283,68 @@ export async function purgeAccountsViaServer(): Promise<UserAccount[]> {
   return getAllAccounts();
 }
 
-// 9. Master Real-Time Synchronizer for all browsers
+// 8c. Instantly suspend account on server
+export async function suspendAccountOnServer(
+  idOrEmail: string,
+  reason?: string
+): Promise<boolean> {
+  try {
+    const res = await fetch('/api/accounts/suspend', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: idOrEmail, email: idOrEmail, reason }),
+    });
+    if (res.ok) {
+      // Re-fetch immediately to align local cache
+      fetchAccountsFromServer();
+      return true;
+    }
+  } catch (e: any) {
+    console.warn('[Server Auth] Suspend error:', e?.message);
+  }
+  return false;
+}
+
+// 8d. Instantly unsuspend account on server
+export async function unsuspendAccountOnServer(idOrEmail: string): Promise<boolean> {
+  try {
+    const res = await fetch('/api/accounts/unsuspend', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: idOrEmail, email: idOrEmail }),
+    });
+    if (res.ok) {
+      fetchAccountsFromServer();
+      return true;
+    }
+  } catch (e: any) {
+    console.warn('[Server Auth] Unsuspend error:', e?.message);
+  }
+  return false;
+}
+
+// 8e. Instantly update user role (admin / user) on server
+export async function updateUserRoleOnServer(
+  idOrEmail: string,
+  role: 'admin' | 'user'
+): Promise<boolean> {
+  try {
+    const res = await fetch('/api/accounts/role', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: idOrEmail, email: idOrEmail, role }),
+    });
+    if (res.ok) {
+      fetchAccountsFromServer();
+      return true;
+    }
+  } catch (e: any) {
+    console.warn('[Server Auth] Role update error:', e?.message);
+  }
+  return false;
+}
+
+// 9. Master Real-Time Synchronizer for all browsers (SSE + Fast-Polling)
 export function initServerRealtimeSync() {
   if (isInitialized || typeof window === 'undefined') return;
   isInitialized = true;
@@ -288,11 +353,50 @@ export function initServerRealtimeSync() {
   fetchAccountsFromServer();
   fetchSubAdminsFromServer();
 
-  // Polling every 3 seconds for instant updates when Admin approves accounts
+  // 9a. Real-Time Server-Sent Events (SSE) stream for sub-second, eye-blink updates
+  let eventSource: EventSource | null = null;
+  let sseReconnectTimer: any = null;
+
+  const connectSSE = () => {
+    if (typeof EventSource === 'undefined') return;
+    try {
+      if (eventSource) {
+        try {
+          eventSource.close();
+        } catch {}
+      }
+
+      eventSource = new EventSource('/api/accounts/events');
+
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data && (data.type === 'accounts_updated' || data.type === 'subadmins_updated')) {
+            // Instant sub-second refresh!
+            fetchAccountsFromServer();
+            fetchSubAdminsFromServer();
+          }
+        } catch {}
+      };
+
+      eventSource.onerror = () => {
+        try {
+          eventSource?.close();
+        } catch {}
+        eventSource = null;
+        clearTimeout(sseReconnectTimer);
+        sseReconnectTimer = setTimeout(connectSSE, 2000);
+      };
+    } catch {}
+  };
+
+  connectSSE();
+
+  // 9b. Fast-poll heartbeat every 1.5s as high-reliability redundancy
   setInterval(() => {
     fetchAccountsFromServer();
     fetchSubAdminsFromServer();
-  }, 3000);
+  }, 1500);
 
   // Sync immediately when user switches tabs or browser windows
   window.addEventListener('focus', () => {
@@ -308,6 +412,7 @@ export function initServerRealtimeSync() {
   });
 
   window.addEventListener('online', () => {
+    connectSSE();
     fetchAccountsFromServer();
     fetchSubAdminsFromServer();
   });

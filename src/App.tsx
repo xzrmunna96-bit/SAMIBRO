@@ -4,6 +4,8 @@ import { LoginForm, UserData } from './components/LoginForm';
 import { LoggedInDashboard } from './components/LoggedInDashboard';
 import { AdminPortal } from './components/AdminPortal';
 import { CheckCircle2 } from 'lucide-react';
+import { getAllAccounts } from './services/userAuthService';
+import { fetchAccountsFromServer, fetchSubAdminsFromServer } from './services/serverAuthSync';
 
 export function triggerAdminRoute() {
   try {
@@ -41,6 +43,12 @@ export function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   useEffect(() => {
+    // Eagerly pre-warm & sync database accounts on launch
+    fetchAccountsFromServer().catch(() => {});
+    fetchSubAdminsFromServer().catch(() => {});
+  }, []);
+
+  useEffect(() => {
     const handleUrlChange = () => {
       try {
         const path = window.location.pathname.toLowerCase();
@@ -59,6 +67,38 @@ export function App() {
       window.removeEventListener('hashchange', handleUrlChange);
     };
   }, []);
+
+  // Synchronize currentUser with live real-time account updates (role changes, approvals, name updates)
+  useEffect(() => {
+    const handleAccountsUpdated = () => {
+      if (!currentUser || !currentUser.email) return;
+      try {
+        const cleanEmail = currentUser.email.toLowerCase().trim();
+        const accounts = getAllAccounts();
+        const match = accounts.find((a) => a.email.toLowerCase().trim() === cleanEmail);
+        if (match) {
+          setCurrentUser((prev) => {
+            if (!prev) return null;
+            if (prev.role !== match.role || prev.status !== match.status || prev.name !== match.name) {
+              const updated = { ...prev, role: match.role, status: match.status, name: match.name };
+              try {
+                localStorage.setItem('super_x_sms_logged_in_user', JSON.stringify(updated));
+              } catch {}
+              return updated;
+            }
+            return prev;
+          });
+        }
+      } catch {}
+    };
+
+    window.addEventListener('super_x_accounts_updated', handleAccountsUpdated);
+    window.addEventListener('storage', handleAccountsUpdated);
+    return () => {
+      window.removeEventListener('super_x_accounts_updated', handleAccountsUpdated);
+      window.removeEventListener('storage', handleAccountsUpdated);
+    };
+  }, [currentUser]);
 
   const handleLoginSuccess = (user: UserData) => {
     setCurrentUser(user);

@@ -104,25 +104,42 @@ async function startServer() {
     appCounts: Record<string, number>;
     rangeCounts: Record<string, number>;
     totalHits: number;
+    lastResetTime?: number;
   }
 
   function loadServerGlobalStats(): ServerGlobalStats {
+    const now = Date.now();
+    const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
     try {
       if (fs.existsSync(APP_COUNTS_FILE)) {
         const raw = fs.readFileSync(APP_COUNTS_FILE, "utf-8");
         const parsed = JSON.parse(raw);
         if (parsed && typeof parsed === "object") {
+          const lastResetTime = typeof parsed.lastResetTime === "number" ? parsed.lastResetTime : now;
+          if (now - lastResetTime >= TWENTY_FOUR_HOURS) {
+            // Strict 24-hour reset
+            const resetStats: ServerGlobalStats = {
+              appCounts: {},
+              rangeCounts: {},
+              totalHits: 0,
+              lastResetTime: now,
+            };
+            saveServerGlobalStats(resetStats);
+            return resetStats;
+          }
+
           return {
             appCounts: typeof parsed.appCounts === "object" && parsed.appCounts ? parsed.appCounts : {},
             rangeCounts: typeof parsed.rangeCounts === "object" && parsed.rangeCounts ? parsed.rangeCounts : {},
             totalHits: typeof parsed.totalHits === "number" ? parsed.totalHits : 0,
+            lastResetTime,
           };
         }
       }
     } catch (e) {
       console.warn("Could not load app_message_counts.json:", e);
     }
-    return { appCounts: {}, rangeCounts: {}, totalHits: 0 };
+    return { appCounts: {}, rangeCounts: {}, totalHits: 0, lastResetTime: now };
   }
 
   function saveServerGlobalStats(stats: ServerGlobalStats) {
@@ -959,7 +976,7 @@ async function startServer() {
 
   let activeSystemApiKey = (process.env.VOLTX_KEY && process.env.VOLTX_KEY !== "M7ANNWJY6B2")
     ? process.env.VOLTX_KEY
-    : "gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=";
+    : "MOBEKJ8H20I";
   const VOLTX_BACKEND_SLUG = process.env.VOLTX_BACKEND_SLUG || "MXS47FLFX0U";
 
   let cachedConsoleData: any = null;
@@ -1954,7 +1971,14 @@ async function startServer() {
     }
   });
 
-  // Endpoint for Admin to save & broadcast active system API key
+  // Endpoint for Admin to get, save & broadcast active system API key
+  app.get("/api/system/api-key", (req, res) => {
+    res.json({
+      success: true,
+      apiKey: activeSystemApiKey,
+    });
+  });
+
   app.post("/api/system/api-key", (req, res) => {
     const { apiKey } = req.body || {};
     if (apiKey && typeof apiKey === "string" && apiKey.trim()) {
@@ -2347,8 +2371,15 @@ async function startServer() {
   // GLOBAL REAL-TIME LIVE STREAM BROADCASTER & CARRIER CONSOLE SYNC
   // Synchronizes Top Applications and Top Ranges with persistent real traffic counts
   // =========================================================================
-  let serverGlobalLiveHits: any[] = loadServerGlobalLiveHits();
-  let serverGlobalStats: ServerGlobalStats = loadServerGlobalStats();
+  let serverGlobalLiveHits: any[] = [];
+  let serverGlobalStats: ServerGlobalStats = {
+    appCounts: {},
+    rangeCounts: {},
+    totalHits: 0,
+    lastResetTime: Date.now(),
+  };
+  saveServerGlobalLiveHits([]);
+  saveServerGlobalStats(serverGlobalStats);
   const liveStreamSseClients = new Set<any>();
 
   function broadcastLivePacket(packet: any) {
@@ -2362,7 +2393,29 @@ async function startServer() {
     }
   }
 
+  function check24HourReset() {
+    const now = Date.now();
+    const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+    if (!serverGlobalStats.lastResetTime) {
+      serverGlobalStats.lastResetTime = now;
+    }
+    if (now - serverGlobalStats.lastResetTime >= TWENTY_FOUR_HOURS) {
+      serverGlobalStats = {
+        appCounts: {},
+        rangeCounts: {},
+        totalHits: 0,
+        lastResetTime: now,
+      };
+      saveServerGlobalStats(serverGlobalStats);
+      broadcastLivePacket({ stats: serverGlobalStats });
+    }
+  }
+
+  // Periodic check every 10 minutes to auto-reset counters after 24 hours
+  setInterval(check24HourReset, 10 * 60 * 1000);
+
   function processAndBroadcastIncomingHits(rawHits: any[]): { added: any[]; stats: ServerGlobalStats } {
+    check24HourReset();
     if (!Array.isArray(rawHits) || rawHits.length === 0) {
       return { added: [], stats: serverGlobalStats };
     }
@@ -2451,6 +2504,31 @@ async function startServer() {
       totalHits: serverGlobalLiveHits.length,
       hits: serverGlobalLiveHits.slice(0, 150),
       stats,
+    });
+  });
+
+  // Global live stream reset endpoint (resets all stats and hits to 0)
+  app.post("/api/global-live-stream/reset", (req, res) => {
+    serverGlobalLiveHits = [];
+    serverGlobalStats = {
+      appCounts: {},
+      rangeCounts: {},
+      totalHits: 0,
+      lastResetTime: Date.now(),
+    };
+    saveServerGlobalLiveHits([]);
+    saveServerGlobalStats(serverGlobalStats);
+    broadcastLivePacket({
+      type: "reset",
+      stats: serverGlobalStats,
+      hits: [],
+    });
+    console.log("[Global Live Stream] Reset all SMS counters and hits to 0.");
+    res.json({
+      success: true,
+      message: "All SMS counters reset to zero. Real-time counting will start from 1 upon new incoming SMS.",
+      stats: serverGlobalStats,
+      hits: [],
     });
   });
 

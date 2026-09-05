@@ -29,102 +29,12 @@ export const API_CONFIGS_UPDATE_EVENT = 'super_x_api_configs_updated';
 export const DEFAULT_API_CONFIGS: ApiConfigItem[] = [
   {
     id: 'slot-1',
-    name: 'Slot 1: Primary Multi-Carrier Gateway',
-    apiKey: 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=',
+    name: 'Primary System API Gateway',
+    apiKey: 'MOBEKJ8H20I',
     serviceType: 'ALL (Global Auto-Detect)',
     endpoint: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
     isActive: true,
-    notes: 'Primary High-Speed Global Gateway for all incoming SMS',
-    createdAt: Date.now(),
-  },
-  {
-    id: 'slot-2',
-    name: 'Slot 2: WhatsApp Dedicated Route',
-    apiKey: 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=',
-    serviceType: 'WhatsApp',
-    endpoint: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
-    isActive: true,
-    notes: 'WhatsApp Dedicated Real-time Fast Route',
-    createdAt: Date.now(),
-  },
-  {
-    id: 'slot-3',
-    name: 'Slot 3: Facebook & Meta Route',
-    apiKey: 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=',
-    serviceType: 'Facebook',
-    endpoint: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
-    isActive: true,
-    notes: 'Facebook & Meta Verification Gateway',
-    createdAt: Date.now(),
-  },
-  {
-    id: 'slot-4',
-    name: 'Slot 4: Telegram Routing Route',
-    apiKey: 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=',
-    serviceType: 'Telegram',
-    endpoint: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
-    isActive: true,
-    notes: 'Telegram Routing Terminal',
-    createdAt: Date.now(),
-  },
-  {
-    id: 'slot-5',
-    name: 'Slot 5: Google & Gmail Route',
-    apiKey: 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=',
-    serviceType: 'Google',
-    endpoint: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
-    isActive: true,
-    notes: 'Google G-Codes Instant Route',
-    createdAt: Date.now(),
-  },
-  {
-    id: 'slot-6',
-    name: 'Slot 6: IMO & Chat Verification Route',
-    apiKey: '',
-    serviceType: 'IMO',
-    endpoint: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
-    isActive: false,
-    notes: 'IMO Messenger Verification Route',
-    createdAt: Date.now(),
-  },
-  {
-    id: 'slot-7',
-    name: 'Slot 7: TikTok & Entertainment Route',
-    apiKey: '',
-    serviceType: 'TikTok',
-    endpoint: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
-    isActive: false,
-    notes: 'TikTok Verification Route',
-    createdAt: Date.now(),
-  },
-  {
-    id: 'slot-8',
-    name: 'Slot 8: INTS Carrier Gateway (Agent CDR)',
-    apiKey: 'XZRMUNNA1206:XZRMUNNA0079',
-    serviceType: 'ALL (INTS Multi-Route)',
-    endpoint: 'http://94.23.120.156/ints',
-    isActive: true,
-    notes: 'INTS Agent SMS CDR Gateway',
-    createdAt: Date.now(),
-  },
-  {
-    id: 'slot-9',
-    name: 'Slot 9: Custom API Gateway Route',
-    apiKey: '',
-    serviceType: 'ALL (Global Auto-Detect)',
-    endpoint: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
-    isActive: false,
-    notes: 'Custom Dedicated API Gateway',
-    createdAt: Date.now(),
-  },
-  {
-    id: 'slot-10',
-    name: 'Slot 10: Backup Multi-Carrier Route',
-    apiKey: '',
-    serviceType: 'ALL (Global Auto-Detect)',
-    endpoint: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
-    isActive: false,
-    notes: 'Backup Multi-Carrier Route',
+    notes: 'Single High-Speed Global Gateway for all incoming SMS & OTP',
     createdAt: Date.now(),
   },
 ];
@@ -135,25 +45,20 @@ export function getAllApiConfigs(): ApiConfigItem[] {
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        // Ensure we always have 10 slots populated
-        const slots: ApiConfigItem[] = [];
-        for (let i = 0; i < 10; i++) {
-          const defaultSlot = DEFAULT_API_CONFIGS[i];
-          const found = parsed[i] || parsed.find((p: any) => p.id === `slot-${i + 1}`) || defaultSlot;
-          const key = found?.apiKey === 'M7ANNWJY6B2' ? 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=' : (found?.apiKey || '');
-          slots.push({
-            id: `slot-${i + 1}`,
-            name: found?.name || `Slot ${i + 1}`,
-            apiKey: key,
-            serviceType: found?.serviceType || defaultSlot?.serviceType || 'ALL (Global Auto-Detect)',
-            endpoint: found?.endpoint || defaultSlot?.endpoint || 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
-            isActive: found?.isActive !== undefined ? found.isActive : defaultSlot?.isActive || false,
-            notes: found?.notes || defaultSlot?.notes || '',
-            createdAt: found?.createdAt || Date.now(),
-            lastLatencyMs: found?.lastLatencyMs,
-          });
-        }
-        return slots;
+        const found = parsed[0] || DEFAULT_API_CONFIGS[0];
+        const rawKey = (found.apiKey || '').trim();
+        const key = (!rawKey || rawKey === 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=' || rawKey === 'M7ANNWJY6B2') ? 'MOBEKJ8H20I' : rawKey;
+        return [{
+          id: 'slot-1',
+          name: found.name || 'Primary System API Gateway',
+          apiKey: key,
+          serviceType: 'ALL (Global Auto-Detect)',
+          endpoint: found.endpoint || 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
+          isActive: true,
+          notes: 'Single High-Speed Global Gateway for all incoming SMS & OTP',
+          createdAt: found.createdAt || Date.now(),
+          lastLatencyMs: found.lastLatencyMs,
+        }];
       }
     }
   } catch (err) {

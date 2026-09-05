@@ -2122,9 +2122,9 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
         {/* ================================================================= */}
         {(activeTab === 'api-management' || activeTab === 'console-api') && (
           <div className="space-y-6">
-            {/* Header / Master Controller Card */}
-            <section className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 space-y-5 shadow-xl">
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+            {/* Single System Main API Gateway Setup */}
+            <section className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 space-y-6 shadow-xl">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
                 <div className="flex items-start sm:items-center gap-3">
                   <div className="p-3 bg-emerald-500/15 border border-emerald-500/30 rounded-2xl text-emerald-400 shrink-0">
                     <Key className="w-6 h-6" />
@@ -2132,58 +2132,53 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                   <div>
                     <div className="flex items-center gap-2.5 flex-wrap">
                       <h2 className="text-lg sm:text-xl font-black text-white tracking-wide">
-                        API Management Hub
+                        System Main API Gateway
                       </h2>
                       <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-emerald-950 text-emerald-300 border border-emerald-500/40">
-                        10 Dedicated Slots
+                        Single API Mode
                       </span>
                     </div>
                     <p className="text-xs text-slate-400 mt-1 max-w-3xl leading-relaxed">
-                      Configure up to 10 dedicated API key slots. Enable or disable any slot dynamically to stream incoming SMS to the user portal in real-time.
+                      Configure the single system API key for all incoming carrier SMS & OTP routes across all services.
                     </p>
                   </div>
                 </div>
 
-                {/* Master Action Buttons */}
-                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <div className="flex items-center gap-2 shrink-0 flex-wrap">
                   <button
                     type="button"
-                    onClick={handleEnableAllSlots}
-                    className="px-3.5 py-2 rounded-xl text-xs font-black text-white bg-emerald-600 hover:bg-emerald-500 shadow-md shadow-emerald-950/60 transition cursor-pointer flex items-center gap-1.5 border border-emerald-400/40"
-                    title="Enable All 10 Slots"
+                    onClick={async () => {
+                      if (window.confirm('Reset all SMS counters and live hits to 0 across the entire portal? Real-time tracking will restart from 1 for new incoming SMS.')) {
+                        try {
+                          const res = await fetch('/api/global-live-stream/reset', { method: 'POST' });
+                          if (res.ok) {
+                            try {
+                              localStorage.removeItem('super_x_live_console_hits_24h');
+                            } catch {}
+                            setLiveStreamHits([]);
+                            showToast('All SMS hits & counters reset to ZERO! Real-time stream restarted from 1.');
+                          } else {
+                            showToast('Reset completed.');
+                          }
+                        } catch {
+                          showToast('Error resetting counters.');
+                        }
+                      }
+                    }}
+                    className="py-2 px-3.5 rounded-xl text-xs font-bold text-rose-300 bg-rose-950/70 hover:bg-rose-900/80 border border-rose-500/40 transition cursor-pointer flex items-center gap-1.5"
                   >
-                    <Play className="w-3.5 h-3.5 fill-current" />
-                    <span>Enable All</span>
+                    <Trash2 className="w-4 h-4 text-rose-400" />
+                    <span>Reset SMS Counters (Zero)</span>
                   </button>
 
                   <button
                     type="button"
-                    onClick={handleDisableAllSlots}
-                    className="px-3.5 py-2 rounded-xl text-xs font-black text-slate-300 bg-slate-800 hover:bg-slate-700 transition cursor-pointer flex items-center gap-1.5 border border-slate-700"
-                    title="Disable All Slots"
+                    onClick={() => handleTestPing('primary-api', apiKeyInput.trim() || 'MOBEKJ8H20I', 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api')}
+                    disabled={testingPingId === 'primary-api'}
+                    className="py-2 px-3.5 rounded-xl text-xs font-bold text-sky-300 bg-slate-800 hover:bg-slate-700 border border-sky-500/30 transition cursor-pointer flex items-center gap-1.5"
                   >
-                    <Pause className="w-3.5 h-3.5" />
-                    <span>Disable All</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleSaveAllSlots}
-                    className="px-3.5 py-2 rounded-xl text-xs font-black text-emerald-300 bg-emerald-950/80 hover:bg-emerald-900/80 border border-emerald-500/40 transition cursor-pointer flex items-center gap-1.5"
-                    title="Save All 10 Slots to Database"
-                  >
-                    <CheckCheck className="w-3.5 h-3.5" />
-                    <span>Save All</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleResetDefaultSlots}
-                    className="px-3 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 bg-slate-950 hover:bg-slate-800 transition cursor-pointer flex items-center gap-1.5 border border-slate-800"
-                    title="Reset to Default 10 Gateways"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span>Reset Defaults</span>
+                    <Activity className={`w-4 h-4 text-sky-400 ${testingPingId === 'primary-api' ? 'animate-spin' : ''}`} />
+                    <span>{testingPingId === 'primary-api' ? 'Pinging...' : 'Ping Test Connectivity'}</span>
                   </button>
                 </div>
               </div>
@@ -2191,248 +2186,97 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
               {/* Status Summary Strip */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-400">Active Slots:</span>
+                  <span className="text-xs font-bold text-slate-400">Active API Key:</span>
                   <span className="text-xs font-mono font-black text-emerald-400 bg-emerald-950/90 px-2.5 py-0.5 rounded-lg border border-emerald-500/30">
-                    {apiConfigsList.filter((s) => s.isActive && (s.apiKey || '').trim()).length} / 10 Active
+                    {apiKeyInput.trim() || 'MOBEKJ8H20I'}
                   </span>
                 </div>
                 <div className="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-400">Real-Time Multi-Stream:</span>
+                  <span className="text-xs font-bold text-slate-400">Gateway Route:</span>
                   <span className="text-xs font-mono font-black text-sky-400 bg-sky-950/90 px-2.5 py-0.5 rounded-lg border border-sky-500/30">
-                    Parallel Polling Active
+                    Global Auto-Detect
                   </span>
                 </div>
                 <div className="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-400">OTP Engine:</span>
-                  <span className="text-xs font-mono font-black text-amber-400 bg-amber-950/90 px-2.5 py-0.5 rounded-lg border border-amber-500/30">
-                    Auto Social Media Gateway
+                  <span className="text-xs font-bold text-slate-400">Stream Status:</span>
+                  <span className="text-xs font-mono font-black text-emerald-400 bg-emerald-950/90 px-2.5 py-0.5 rounded-lg border border-emerald-500/30 flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span>ONLINE</span>
                   </span>
                 </div>
               </div>
 
-              {/* 10 API Key Slots Grid */}
-              <div className="space-y-4 pt-2">
+              {/* Single API Input Box */}
+              <div className="p-5 bg-slate-950/90 border border-emerald-500/40 rounded-2xl space-y-4 shadow-xl shadow-emerald-950/20">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-black text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                  <label className="text-xs font-black text-emerald-400 uppercase tracking-wider flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-emerald-400" />
-                    <span>10 Dedicated API Key Slots</span>
-                  </h3>
+                    <span>Single System API Key:</span>
+                  </label>
                   <span className="text-[11px] text-slate-400 font-mono">
-                    Slots 01 - 10
+                    MOBEKJ8H20I
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  {Array.from({ length: 10 }).map((_, slotIdx) => {
-                    const slot = apiConfigsList[slotIdx] || DEFAULT_API_CONFIGS[slotIdx] || {
-                      id: `slot-${slotIdx + 1}`,
-                      name: `Slot ${slotIdx + 1}: Custom Gateway`,
-                      apiKey: '',
-                      serviceType: 'ALL (Global Auto-Detect)',
-                      endpoint: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
-                      isActive: false,
-                      notes: '',
-                      createdAt: Date.now(),
-                    };
-                    const isKeyConfigured = (slot.apiKey || '').trim().length > 0;
-                    const isSlotLive = slot.isActive && isKeyConfigured;
-                    const isRevealed = revealedApiKeys[slot.id || `slot-${slotIdx + 1}`];
-                    const pingStatus = apiPingStatusMap[slot.id || `slot-${slotIdx + 1}`];
-                    const isPinging = testingPingId === (slot.id || `slot-${slotIdx + 1}`);
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={apiKeyInput}
+                    onChange={(e) => setApiKeyInput(e.target.value)}
+                    placeholder="MOBEKJ8H20I"
+                    className="w-full px-4 py-3 font-mono text-sm bg-slate-900 border border-slate-700 rounded-xl text-emerald-300 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
 
-                    return (
-                      <div
-                        key={`api-slot-box-${slotIdx}`}
-                        className={`p-4 sm:p-5 rounded-2xl border transition-all duration-200 flex flex-col justify-between space-y-4 ${
-                          isSlotLive
-                            ? 'bg-slate-950/90 border-emerald-500/50 shadow-xl shadow-emerald-950/30 ring-1 ring-emerald-500/40'
-                            : isKeyConfigured
-                            ? 'bg-slate-950/70 border-amber-500/30 shadow-md'
-                            : 'bg-slate-950/50 border-slate-800 hover:border-slate-700'
-                        }`}
-                      >
-                        {/* Slot Header: Number + Name + Status + Toggle */}
-                        <div className="flex items-start justify-between gap-3 border-b border-slate-900 pb-3">
-                          <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                            <span
-                              className={`px-2.5 py-1 rounded-lg text-xs font-black font-mono shrink-0 ${
-                                isSlotLive
-                                  ? 'bg-emerald-500 text-slate-950 shadow-sm'
-                                  : isKeyConfigured
-                                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                                  : 'bg-slate-800 text-slate-400 border border-slate-700'
-                              }`}
-                            >
-                              SLOT {slotIdx + 1 < 10 ? `0${slotIdx + 1}` : slotIdx + 1}
-                            </span>
+                {apiPingStatusMap['primary-api'] && (
+                  <div
+                    className={`p-3 rounded-xl border text-xs font-bold flex items-center gap-2 ${
+                      apiPingStatusMap['primary-api'].success
+                        ? 'bg-emerald-950/80 border-emerald-500/40 text-emerald-200'
+                        : 'bg-rose-950/80 border-rose-500/40 text-rose-200'
+                    }`}
+                  >
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>
+                      {apiPingStatusMap['primary-api'].success
+                        ? `Connected (${apiPingStatusMap['primary-api'].latencyMs}ms latency) - Gateway Active`
+                        : `Notice: ${apiPingStatusMap['primary-api'].message}`}
+                    </span>
+                  </div>
+                )}
 
-                            <input
-                              type="text"
-                              value={slot.name || `Slot ${slotIdx + 1}`}
-                              onChange={(e) => handleUpdateSlotField(slotIdx, 'name', e.target.value)}
-                              placeholder={`Slot ${slotIdx + 1} Name`}
-                              className="text-xs font-bold text-white bg-transparent border-b border-transparent hover:border-slate-700 focus:border-emerald-500 focus:outline-none px-1 py-0.5 w-full truncate"
-                            />
-                          </div>
-
-                          {/* Live Status Pill & Toggle */}
-                          <div className="flex items-center gap-2 shrink-0">
-                            {isSlotLive ? (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-black bg-emerald-950/90 text-emerald-300 border border-emerald-500/50 flex items-center gap-1.5">
-                                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                                <span>LIVE</span>
-                              </span>
-                            ) : isKeyConfigured ? (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-950/80 text-amber-300 border border-amber-500/40 flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                                <span>STANDBY</span>
-                              </span>
-                            ) : (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-slate-900 text-slate-500 border border-slate-800">
-                                EMPTY
-                              </span>
-                            )}
-
-                            {/* Toggle Switch */}
-                            <button
-                              type="button"
-                              onClick={() => handleToggleSlotActive(slotIdx)}
-                              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                slot.isActive ? 'bg-emerald-600' : 'bg-slate-800'
-                              }`}
-                              title={slot.isActive ? 'Click to Disable this Slot' : 'Click to Enable this Slot'}
-                            >
-                              <span
-                                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                                  slot.isActive ? 'translate-x-4' : 'translate-x-0'
-                                }`}
-                              />
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Service Target Selector */}
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                          <label className="text-[11px] font-bold text-slate-400">
-                            Service Route:
-                          </label>
-                          <select
-                            value={slot.serviceType || 'ALL (Global Auto-Detect)'}
-                            onChange={(e) => handleUpdateSlotField(slotIdx, 'serviceType', e.target.value)}
-                            className="bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1 text-xs font-bold text-emerald-400 focus:outline-none focus:border-emerald-500 cursor-pointer"
-                          >
-                            <option value="ALL (Global Auto-Detect)">ALL (Global Auto-Detect)</option>
-                            <option value="WhatsApp">WhatsApp Dedicated Route</option>
-                            <option value="Facebook">Facebook & Meta Route</option>
-                            <option value="Telegram">Telegram Live Route</option>
-                            <option value="Google">Google & Gmail Route</option>
-                            <option value="IMO">IMO Messenger Route</option>
-                            <option value="TikTok">TikTok Verification Route</option>
-                            <option value="ALL (INTS Multi-Route)">INTS Carrier SMS CDR Route</option>
-                            <option value="Custom Route">Custom Multi-Gateway Route</option>
-                          </select>
-                        </div>
-
-                        {/* API Key Input Box */}
-                        <div className="space-y-1.5">
-                          <div className="flex items-center justify-between text-[11px]">
-                            <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">
-                              API Key (Slot {slotIdx + 1}):
-                            </span>
-                            <div className="flex items-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => toggleApiKeyVisibility(slot.id || `slot-${slotIdx + 1}`)}
-                                className="p-1 text-slate-400 hover:text-white transition cursor-pointer"
-                                title={isRevealed ? 'Hide API Key' : 'Show API Key'}
-                              >
-                                {isRevealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5 text-emerald-400" />}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => copyToClipboard(slot.apiKey || '', `Slot ${slotIdx + 1} API Key`)}
-                                className="p-1 text-slate-400 hover:text-emerald-400 transition cursor-pointer"
-                                title="Copy Key"
-                              >
-                                <Copy className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </div>
-
-                          <div className="relative">
-                            <input
-                              type={isRevealed ? 'text' : 'password'}
-                              value={slot.apiKey || ''}
-                              onChange={(e) => handleUpdateSlotField(slotIdx, 'apiKey', e.target.value)}
-                              placeholder={`Paste API Key for Slot ${slotIdx + 1} (e.g. gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0= or custom key)...`}
-                              className="w-full px-3.5 py-2.5 font-mono text-xs bg-slate-900/90 border border-slate-800 rounded-xl text-emerald-400 placeholder-slate-600 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-                            />
-                          </div>
-                        </div>
-
-                        {/* Ping Test Status if available */}
-                        {pingStatus && (
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={`text-[10px] font-mono font-bold px-2.5 py-1 rounded-lg border flex items-center gap-1.5 ${
-                                pingStatus.success
-                                  ? 'bg-emerald-950/90 text-emerald-300 border-emerald-500/40'
-                                  : 'bg-rose-950/90 text-rose-300 border-rose-500/40'
-                              }`}
-                            >
-                              <span
-                                className={`w-1.5 h-1.5 rounded-full ${
-                                  pingStatus.success ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'
-                                }`}
-                              />
-                              <span>
-                                {pingStatus.success
-                                  ? `Connected (${pingStatus.latencyMs}ms latency) - Live Gateway Active`
-                                  : `Failed: ${pingStatus.message}`}
-                              </span>
-                            </span>
-                          </div>
-                        )}
-
-                        {/* Slot Action Row */}
-                        <div className="pt-2 border-t border-slate-900 flex items-center justify-between gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleTestPing(slot.id || `slot-${slotIdx + 1}`, slot.apiKey, slot.endpoint)}
-                            disabled={isPinging || !slot.apiKey.trim()}
-                            className="py-1.5 px-3 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 transition cursor-pointer flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
-                            title="Test connectivity for this slot"
-                          >
-                            <Activity className={`w-3.5 h-3.5 text-sky-400 ${isPinging ? 'animate-spin' : ''}`} />
-                            <span>{isPinging ? 'Pinging...' : 'Ping Test'}</span>
-                          </button>
-
-                          <div className="flex items-center gap-1.5 flex-1 justify-end">
-                            {slot.apiKey && (
-                              <button
-                                type="button"
-                                onClick={() => handleUpdateSlotField(slotIdx, 'apiKey', '')}
-                                className="p-1.5 rounded-xl bg-slate-900 hover:bg-rose-950/60 text-slate-500 hover:text-rose-400 border border-slate-800 transition cursor-pointer"
-                                title="Clear Key"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-
-                            <button
-                              type="button"
-                              onClick={() => handleSaveSingleSlot(slotIdx)}
-                              className="py-1.5 px-4 rounded-xl text-xs font-black text-white bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 shadow-md transition cursor-pointer flex items-center gap-1.5 border border-emerald-400/40"
-                              title="Save and Activate this slot"
-                            >
-                              <Check className="w-3.5 h-3.5" />
-                              <span>Save & Activate</span>
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const key = apiKeyInput.trim() || 'MOBEKJ8H20I';
+                      setApiKeyInput(key);
+                      setMauthApiKey(key);
+                      setVoltxEndpointKey(key);
+                      try {
+                        await broadcastSystemApiKeyToServer(key);
+                      } catch {}
+                      const singleConfig: ApiConfigItem[] = [{
+                        id: 'slot-1',
+                        name: 'Primary System API Gateway',
+                        apiKey: key,
+                        serviceType: 'ALL (Global Auto-Detect)',
+                        endpoint: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
+                        isActive: true,
+                        notes: 'Single High-Speed Global Gateway for all incoming SMS & OTP',
+                        createdAt: Date.now(),
+                      }];
+                      saveAllApiConfigs(singleConfig);
+                      setApiConfigsList(singleConfig);
+                      window.dispatchEvent(new Event('voltx_key_updated'));
+                      window.dispatchEvent(new Event('super_x_api_key_updated'));
+                      showToast(`System API Key [${key}] saved & activated successfully!`);
+                    }}
+                    className="w-full sm:w-auto py-2.5 px-6 rounded-xl text-xs font-black text-white bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 shadow-lg shadow-emerald-950/50 transition cursor-pointer flex items-center justify-center gap-2 border border-emerald-400/40"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>Save & Activate System API Key</span>
+                  </button>
                 </div>
               </div>
             </section>

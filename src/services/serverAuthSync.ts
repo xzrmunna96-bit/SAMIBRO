@@ -73,6 +73,32 @@ export async function fetchAccountsFromServer(): Promise<UserAccount[]> {
         }
       });
 
+      // Ensure all active Sub-Admins are enforced in mergedMap as approved admin accounts
+      try {
+        const subAdmins = getAllSubAdmins();
+        subAdmins.forEach((sa) => {
+          if (sa && sa.email && sa.status === 'active') {
+            const clean = sa.email.toLowerCase().trim();
+            removeDeletedAccountEmail(clean);
+            const local = mergedMap.get(clean);
+            mergedMap.set(clean, {
+              id: sa.id || (local ? local.id : `user_sub_${Date.now()}`),
+              name: sa.name || (local ? local.name : clean.split('@')[0]),
+              email: sa.email,
+              username: clean.split('@')[0],
+              password: sa.password || (local ? local.password : 'Password123'),
+              accountCode: (local && local.accountCode) ? local.accountCode : getDedicatedAccountCode(clean),
+              status: 'approved',
+              role: 'admin',
+              createdAt: sa.createdAt || (local ? local.createdAt : Date.now()),
+              approvedAt: (local && local.approvedAt) ? local.approvedAt : Date.now(),
+              phoneOrTelegram: '@sub_admin',
+              note: 'Sub-Admin Staff Account (Dual Access)',
+            });
+          }
+        });
+      } catch {}
+
       const merged = Array.from(mergedMap.values());
       try {
         localStorage.setItem('super_x_all_user_accounts', JSON.stringify(merged));

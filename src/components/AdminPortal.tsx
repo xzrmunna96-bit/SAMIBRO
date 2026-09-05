@@ -1000,9 +1000,21 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
 
       // Live Revocation: If currently logged in as sub_admin and sub-admin was deleted by Main Admin
       if (adminSession.isAuthenticated && adminSession.role === 'sub_admin') {
-        const isStillValid = currentSubAdmins.some(
-          (sa) => sa.email.toLowerCase() === adminSession.email.toLowerCase() && sa.status === 'active'
-        );
+        const cleanSessEmail = (adminSession.email || '').toLowerCase().trim();
+        const isStillValid =
+          !cleanSessEmail ||
+          currentSubAdmins.length === 0 ||
+          currentSubAdmins.some((sa) => {
+            const saEmail = (sa.email || '').toLowerCase().trim();
+            const saUser = saEmail.split('@')[0];
+            return (
+              sa.status === 'active' &&
+              (saEmail === cleanSessEmail ||
+                saUser === cleanSessEmail ||
+                (sa.name && sa.name.toLowerCase().trim() === cleanSessEmail) ||
+                (sa.id && sa.id.toLowerCase().trim() === cleanSessEmail))
+            );
+          });
         if (!isStillValid) {
           const revokedSess: AdminSession = {
             isAuthenticated: false,
@@ -1013,6 +1025,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
           setAdminSession(revokedSess);
           try {
             sessionStorage.removeItem(ADMIN_SESSION_KEY);
+            sessionStorage.removeItem('super_x_admin_session');
           } catch {}
           showToast('Your Sub-Admin access has been revoked by Main Admin.');
         }

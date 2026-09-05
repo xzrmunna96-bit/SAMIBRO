@@ -292,6 +292,33 @@ async function startServer() {
       console.warn("Error reading accounts.json:", e);
     }
 
+    // Always merge active Sub-Admins as approved admin accounts
+    try {
+      const subAdmins = loadServerSubAdmins();
+      subAdmins.forEach((sa) => {
+        if (sa && sa.email && sa.status === "active") {
+          const clean = sa.email.toLowerCase().trim();
+          const existing = accountMap.get(clean);
+          accountMap.set(clean, {
+            id: sa.id || (existing ? existing.id : `user_sub_${Date.now()}`),
+            name: sa.name || (existing ? existing.name : clean.split("@")[0]),
+            email: sa.email,
+            username: clean.split("@")[0],
+            password: sa.password || (existing ? existing.password : "Password123"),
+            accountCode: (existing && existing.accountCode) ? existing.accountCode : "1000000002",
+            status: "approved",
+            role: "admin",
+            createdAt: sa.createdAt || (existing ? existing.createdAt : Date.now()),
+            approvedAt: (existing && existing.approvedAt) ? existing.approvedAt : Date.now(),
+            phoneOrTelegram: "@sub_admin",
+            note: "Sub-Admin Staff Account",
+          });
+        }
+      });
+    } catch (e) {
+      // ignore
+    }
+
     return Array.from(accountMap.values());
   }
 
@@ -797,6 +824,16 @@ async function startServer() {
           phoneOrTelegram: "@sub_admin",
           note: "Sub-Admin Staff Account",
         };
+
+        // Persist sub-admin into server accounts
+        try {
+          const currentAccs = loadServerAccounts();
+          const map = new Map<string, any>();
+          currentAccs.forEach((a) => map.set(a.email.toLowerCase().trim(), a));
+          map.set(subUser.email.toLowerCase().trim(), subUser);
+          saveServerAccounts(Array.from(map.values()));
+        } catch {}
+
         return res.json({
           success: true,
           status: "approved",

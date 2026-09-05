@@ -1419,8 +1419,22 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       if (!user || !user.email) return;
       try {
         const cleanEmail = user.email.toLowerCase().trim();
+        const subAdmins = getAllSubAdmins();
+        const isSubAdmin = subAdmins.some((sa) => {
+          const saEmail = sa.email.toLowerCase().trim();
+          const saUser = saEmail.split('@')[0];
+          return (
+            sa.status === 'active' &&
+            (saEmail === cleanEmail || saUser === cleanEmail || (sa.id && sa.id.toLowerCase() === cleanEmail))
+          );
+        });
+        const isSuper =
+          cleanEmail === 'xzrmunna33@gmail.com' ||
+          cleanEmail === 'xzrmunna96@gmail.com' ||
+          cleanEmail === 'xzrmunna';
+
         const deletedSet = getDeletedAccountEmails();
-        if (deletedSet.has(cleanEmail)) {
+        if (!isSubAdmin && !isSuper && deletedSet.has(cleanEmail)) {
           onLogout();
           return;
         }
@@ -1430,13 +1444,6 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           (a) => a.email.toLowerCase().trim() === cleanEmail
         );
 
-        const subAdmins = getAllSubAdmins();
-        const isSubAdmin = subAdmins.some((sa) => sa.email.toLowerCase().trim() === cleanEmail && sa.status === 'active');
-        const isSuper =
-          cleanEmail === 'xzrmunna33@gmail.com' ||
-          cleanEmail === 'xzrmunna96@gmail.com' ||
-          cleanEmail === 'xzrmunna';
-
         if (currentAcc) {
           // Sync role changes dynamically in memory and local session
           if (currentAcc.role === 'admin' && user.role !== 'admin') {
@@ -1444,13 +1451,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           } else if (currentAcc.role === 'user' && !isSubAdmin && !isSuper && user.role === 'admin') {
             user.role = 'user';
           }
-
-          // Note: If suspended, do NOT call onLogout()!
-          // We let isSuspended flag render the full-screen suspension screen.
-          // When Admin unsuspends, the screen automatically goes away in sub-second time without page reload!
         }
 
-        if (isSubAdmin && user.role !== 'admin') {
+        if ((isSubAdmin || isSuper) && user.role !== 'admin') {
           user.role = 'admin';
         }
       } catch {}

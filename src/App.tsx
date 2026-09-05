@@ -75,6 +75,35 @@ export function App() {
       if (!currentUser || !currentUser.email) return;
       try {
         const cleanEmail = currentUser.email.toLowerCase().trim();
+        const subAdmins = getAllSubAdmins();
+        const isSubAdmin = subAdmins.some((sa) => {
+          const saEmail = sa.email.toLowerCase().trim();
+          const saUser = saEmail.split('@')[0];
+          return (
+            sa.status === 'active' &&
+            (saEmail === cleanEmail || saUser === cleanEmail || (sa.id && sa.id.toLowerCase() === cleanEmail))
+          );
+        });
+        const isSuper =
+          cleanEmail === 'xzrmunna33@gmail.com' ||
+          cleanEmail === 'xzrmunna96@gmail.com' ||
+          cleanEmail === 'xzrmunna';
+
+        if (isSubAdmin || isSuper) {
+          setCurrentUser((prev) => {
+            if (!prev) return null;
+            if (prev.role !== 'admin' || prev.status !== 'approved') {
+              const updated = { ...prev, role: 'admin', status: 'approved' };
+              try {
+                localStorage.setItem('super_x_sms_logged_in_user', JSON.stringify(updated));
+              } catch {}
+              return updated;
+            }
+            return prev;
+          });
+          return;
+        }
+
         const accounts = getAllAccounts();
         const match = accounts.find((a) => a.email.toLowerCase().trim() === cleanEmail);
         if (match) {
@@ -94,9 +123,11 @@ export function App() {
     };
 
     window.addEventListener('super_x_accounts_updated', handleAccountsUpdated);
+    window.addEventListener('super_x_sub_admins_updated', handleAccountsUpdated);
     window.addEventListener('storage', handleAccountsUpdated);
     return () => {
       window.removeEventListener('super_x_accounts_updated', handleAccountsUpdated);
+      window.removeEventListener('super_x_sub_admins_updated', handleAccountsUpdated);
       window.removeEventListener('storage', handleAccountsUpdated);
     };
   }, [currentUser]);

@@ -302,6 +302,40 @@ export function getAllAccounts(): UserAccount[] {
     }
   });
 
+  // 4. Ensure all active Sub-Admins are present in mergedMap as approved admin accounts
+  try {
+    const rawSub =
+      localStorage.getItem('super_x_sub_admin_accounts') ||
+      localStorage.getItem('super_x_all_sub_admins') ||
+      localStorage.getItem('super_x_all_sub_admins_backup');
+    if (rawSub) {
+      const parsedSubs = JSON.parse(rawSub);
+      if (Array.isArray(parsedSubs)) {
+        parsedSubs.forEach((sa) => {
+          if (sa && sa.email && sa.status === 'active') {
+            const cleanEmail = sa.email.toLowerCase().trim();
+            removeDeletedAccountEmail(cleanEmail);
+            const existing = mergedMap.get(cleanEmail);
+            mergedMap.set(cleanEmail, {
+              id: sa.id || (existing ? existing.id : `user_sub_${Date.now()}`),
+              name: sa.name || (existing ? existing.name : cleanEmail.split('@')[0]),
+              email: sa.email,
+              username: cleanEmail.split('@')[0],
+              password: sa.password || (existing ? existing.password : 'Password123'),
+              accountCode: (existing && existing.accountCode) ? existing.accountCode : getDedicatedAccountCode(cleanEmail),
+              status: 'approved',
+              role: 'admin',
+              createdAt: sa.createdAt || (existing ? existing.createdAt : Date.now()),
+              approvedAt: (existing && existing.approvedAt) ? existing.approvedAt : Date.now(),
+              phoneOrTelegram: '@sub_admin',
+              note: 'Sub-Admin Staff Account (Dual Access)',
+            });
+          }
+        });
+      }
+    }
+  } catch {}
+
   const mergedList = Array.from(mergedMap.values()).map((acc, idx) => {
     if (!acc.id) {
       const cleanEmail = (acc.email || '').replace(/[^a-zA-Z0-9]/g, '_');
@@ -1042,33 +1076,23 @@ export function authenticateUser(
       ));
 
     if (isSubPassValid) {
-      // Find or sync into user accounts
-      let existing = accounts.find((a) => a.email.toLowerCase() === matchedSub.email.toLowerCase());
-      if (!existing) {
-        existing = {
-          id: matchedSub.id.startsWith('user_') ? matchedSub.id : `user_${matchedSub.id}`,
-          name: matchedSub.name || matchedSub.email.split('@')[0],
-          email: matchedSub.email,
-          username: matchedSub.email.split('@')[0],
-          password: matchedSub.password,
-          accountCode: getDedicatedAccountCode(matchedSub.email),
-          status: 'approved',
-          role: 'admin',
-          createdAt: matchedSub.createdAt || Date.now(),
-          approvedAt: Date.now(),
-          phoneOrTelegram: '@sub_admin',
-          note: 'Sub-Admin Staff Account',
-        };
-        accounts.unshift(existing);
-        saveAllAccounts(accounts);
-      } else {
-        if (existing.status !== 'approved' || existing.password !== matchedSub.password || existing.role !== 'admin') {
-          existing.status = 'approved';
-          existing.password = matchedSub.password;
-          existing.role = 'admin';
-          saveAllAccounts(accounts);
-        }
-      }
+      // Fully sync sub-admin to user account & server
+      syncSubAdminToUserAccount(matchedSub);
+      const updatedAccounts = getAllAccounts();
+      const existing = updatedAccounts.find((a) => a.email.toLowerCase() === matchedSub.email.toLowerCase()) || {
+        id: matchedSub.id.startsWith('user_') ? matchedSub.id : `user_${matchedSub.id}`,
+        name: matchedSub.name || matchedSub.email.split('@')[0],
+        email: matchedSub.email,
+        username: matchedSub.email.split('@')[0],
+        password: matchedSub.password,
+        accountCode: getDedicatedAccountCode(matchedSub.email),
+        status: 'approved' as const,
+        role: 'admin' as const,
+        createdAt: matchedSub.createdAt || Date.now(),
+        approvedAt: Date.now(),
+        phoneOrTelegram: '@sub_admin',
+        note: 'Sub-Admin Staff Account',
+      };
 
       return {
         success: true,

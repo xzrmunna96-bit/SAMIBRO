@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { GLOBAL_COUNTRIES_LIST } from '../services/countryHelper';
+import { getCountryFlagEmoji } from './LoggedInDashboard';
 
 interface FlagProps {
   countryCode: string;
@@ -145,8 +147,28 @@ const COUNTRY_NAME_TO_ISO: Record<string, string> = {
   'ZIMBABWE': 'zw',
 };
 
+/**
+ * Universal ISO Code Resolver
+ * Supports: Regional Indicator Emojis (🇲🇬), Full Names, Dial Codes, Ranges, etc.
+ */
 export function getIsoFromCountryInput(rawInput: string): string | null {
   if (!rawInput) return null;
+
+  // 1. Check if the string contains Regional Indicator flag emoji (e.g. 🇲🇬 -> MG)
+  const emojiMatches = rawInput.match(/[\u{1F1E6}-\u{1F1FF}]{2}/u);
+  if (emojiMatches && emojiMatches[0]) {
+    try {
+      const code1 = emojiMatches[0].codePointAt(0)! - 0x1F1E6 + 65;
+      const code2 = emojiMatches[0].codePointAt(2)! - 0x1F1E6 + 65;
+      if (code1 >= 65 && code1 <= 90 && code2 >= 65 && code2 <= 90) {
+        return (String.fromCharCode(code1) + String.fromCharCode(code2)).toLowerCase();
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // 2. Clean country name text
   const clean = rawInput
     .replace(/[\u{1F1E6}-\u{1F1FF}]{2}/gu, '')
     .replace(/\p{Extended_Pictographic}/gu, '')
@@ -156,51 +178,68 @@ export function getIsoFromCountryInput(rawInput: string): string | null {
     .trim()
     .toUpperCase();
 
-  if (!clean) return null;
-
+  // 3. Direct 2-letter ISO
   if (clean.length === 2 && /^[A-Z]{2}$/.test(clean)) {
     return clean.toLowerCase();
   }
 
-  if (COUNTRY_NAME_TO_ISO[clean]) {
+  // 4. Check against static country map
+  if (clean && COUNTRY_NAME_TO_ISO[clean]) {
     return COUNTRY_NAME_TO_ISO[clean];
   }
 
-  for (const [key, iso] of Object.entries(COUNTRY_NAME_TO_ISO)) {
-    if (clean.includes(key) || key.includes(clean)) {
-      return iso;
+  // 5. Partial match against static country map
+  if (clean) {
+    for (const [key, iso] of Object.entries(COUNTRY_NAME_TO_ISO)) {
+      if (clean.includes(key) || key.includes(clean)) {
+        return iso;
+      }
+    }
+  }
+
+  // 6. Check against full GLOBAL_COUNTRIES_LIST
+  if (clean) {
+    const matched = GLOBAL_COUNTRIES_LIST.find(
+      (c) =>
+        c.name.toUpperCase() === clean ||
+        c.name.toUpperCase().includes(clean) ||
+        clean.includes(c.name.toUpperCase())
+    );
+    if (matched) {
+      return matched.iso.toLowerCase();
+    }
+  }
+
+  // 7. Check if digits in rawInput match a dialCode / phone prefix (e.g. 26134 -> 261 -> Madagascar)
+  const digits = rawInput.replace(/\D/g, '');
+  if (digits.length >= 1) {
+    for (const len of [4, 3, 2, 1]) {
+      const prefix = digits.slice(0, len);
+      const matchDial = GLOBAL_COUNTRIES_LIST.find(
+        (c) => c.dialCode.replace(/\D/g, '') === prefix
+      );
+      if (matchDial) {
+        return matchDial.iso.toLowerCase();
+      }
     }
   }
 
   return null;
 }
 
-export function CountryFlag({ countryCode, className = "w-10 h-7 rounded-sm shadow-xs object-cover" }: FlagProps) {
-  const [imgFailed, setImgFailed] = useState(false);
-  const iso = getIsoFromCountryInput(countryCode);
+export function CountryFlag({
+  countryCode,
+  className = "",
+}: FlagProps) {
+  const emoji = getCountryFlagEmoji(countryCode);
 
-  if (iso && !imgFailed) {
-    return (
-      <div className="relative inline-block shrink-0 overflow-hidden rounded-xs border border-slate-200/90 shadow-2xs group hover:scale-105 transition-all duration-300">
-        <img
-          src={`https://flagcdn.com/w160/${iso}.png`}
-          alt={countryCode || 'Country Flag'}
-          onError={() => setImgFailed(true)}
-          className={`${className} animate-flag-float object-cover`}
-          loading="lazy"
-        />
-        {/* Glossy sheen overlay */}
-        <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/20 to-transparent pointer-events-none" />
-      </div>
-    );
-  }
-
-  // High quality Globe fallback (NO blue box with white circle!)
   return (
-    <div className={`${className} animate-flag-float relative flex items-center justify-center bg-gradient-to-br from-slate-800 via-blue-900 to-indigo-950 rounded-xs border border-blue-400/40 shadow-xs overflow-hidden`}>
-      <svg className="w-5 h-5 text-blue-300 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m18 0a9 9 0 01-9 9m9-9a9 9 0 00-9-9m0 18a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-      </svg>
-    </div>
+    <span
+      className={`inline-flex items-center justify-center shrink-0 leading-none text-base sm:text-lg select-none ${className}`}
+      role="img"
+      aria-label={countryCode || 'Country Flag'}
+    >
+      {emoji}
+    </span>
   );
 }

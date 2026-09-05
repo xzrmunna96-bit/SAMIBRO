@@ -98,6 +98,7 @@ import {
 import { getCountryInfo } from "../services/countryHelper";
 import { fetchIntsCdrStats } from "../services/intsGatewayService";
 import { getActiveApiKeys } from "../services/apiConfigService";
+import { generateBaselineLiveHits } from "../services/baselineLiveHits";
 import {
   getAllAccounts,
   getAllSubAdmins,
@@ -377,21 +378,31 @@ function ImoLogo({ className = "w-16 h-16" }: { className?: string }) {
 
 export function getCountryFlagEmoji(countryName: string): string {
   if (!countryName) return "🌐";
+
+  // 1. If string already contains a flag emoji, extract and return it
+  const emojiMatch = countryName.match(/[\u{1F1E6}-\u{1F1FF}]{2}/u);
+  if (emojiMatch && emojiMatch[0]) {
+    return emojiMatch[0];
+  }
+
   const norm = countryName.toLowerCase().trim();
 
+  // 2. Direct string contains
   if (norm.includes("bangladesh")) return "🇧🇩";
+  if (norm.includes("madagascar")) return "🇲🇬";
+  if (norm.includes("ukraine")) return "🇺🇦";
   if (norm.includes("sierra leone")) return "🇸🇱";
   if (norm.includes("cameroon")) return "🇨🇲";
+  if (norm.includes("togo")) return "🇹🇬";
+  if (norm.includes("benin")) return "🇧🇯";
+  if (norm.includes("algeria")) return "🇩🇿";
+  if (norm.includes("montenegro")) return "🇲🇪";
   if (norm.includes("ivory coast") || norm.includes("cote d'ivoire")) return "🇨🇮";
-  if (norm.includes("united states") || norm.includes("usa") || norm.includes("us")) return "🇺🇸";
-  if (norm.includes("united kingdom") || norm.includes("uk") || norm.includes("britain")) return "🇬🇧";
+  if (norm.includes("united states") || norm.includes("usa") || norm === "us") return "🇺🇸";
+  if (norm.includes("united kingdom") || norm.includes("uk") || norm.includes("britain") || norm === "gb") return "🇬🇧";
   if (norm.includes("indonesia")) return "🇮🇩";
   if (norm.includes("india")) return "🇮🇳";
   if (norm.includes("central african")) return "🇨🇫";
-  if (norm.includes("madagascar")) return "🇲🇬";
-  if (norm.includes("benin")) return "🇧🇯";
-  if (norm.includes("togo")) return "🇹🇬";
-  if (norm.includes("montenegro")) return "🇲🇪";
   if (norm.includes("senegal")) return "🇸🇳";
   if (norm.includes("nigeria")) return "🇳🇬";
   if (norm.includes("kenya")) return "🇰🇪";
@@ -408,9 +419,10 @@ export function getCountryFlagEmoji(countryName: string): string {
   if (norm.includes("russia") || norm.includes("kazakhstan")) return "🇷🇺";
   if (norm.includes("germany")) return "🇩🇪";
   if (norm.includes("france")) return "🇫🇷";
+  if (norm.includes("yemen")) return "🇾🇪";
+  if (norm.includes("iraq")) return "🇮🇶";
   if (norm.includes("afghanistan")) return "🇦🇫";
   if (norm.includes("albania")) return "🇦🇱";
-  if (norm.includes("algeria")) return "🇩🇿";
   if (norm.includes("andorra")) return "🇦🇩";
   if (norm.includes("angola")) return "🇦🇴";
   if (norm.includes("anguilla")) return "🇦🇮";
@@ -436,6 +448,43 @@ export function getCountryFlagEmoji(countryName: string): string {
   if (norm.includes("japan")) return "🇯🇵";
   if (norm.includes("nepal")) return "🇳🇵";
   if (norm.includes("sri lanka")) return "🇱🇰";
+
+  // 3. Digits prefix check (e.g. range or phone numbers)
+  const digits = norm.replace(/\D/g, "");
+  if (digits) {
+    if (digits.startsWith("880")) return "🇧🇩";
+    if (digits.startsWith("261")) return "🇲🇬";
+    if (digits.startsWith("380")) return "🇺🇦";
+    if (digits.startsWith("237")) return "🇨🇲";
+    if (digits.startsWith("232")) return "🇸🇱";
+    if (digits.startsWith("228")) return "🇹🇬";
+    if (digits.startsWith("229")) return "🇧🇯";
+    if (digits.startsWith("213")) return "🇩🇿";
+    if (digits.startsWith("382")) return "🇲🇪";
+    if (digits.startsWith("225")) return "🇨🇮";
+    if (digits.startsWith("234")) return "🇳🇬";
+    if (digits.startsWith("254")) return "🇰🇪";
+    if (digits.startsWith("233")) return "🇬🇭";
+    if (digits.startsWith("255")) return "🇹🇿";
+    if (digits.startsWith("256")) return "🇺🇬";
+    if (digits.startsWith("92")) return "🇵🇰";
+    if (digits.startsWith("91")) return "🇮🇳";
+    if (digits.startsWith("62")) return "🇮🇩";
+    if (digits.startsWith("63")) return "🇵🇭";
+    if (digits.startsWith("20")) return "🇪🇬";
+    if (digits.startsWith("966")) return "🇸🇦";
+    if (digits.startsWith("971")) return "🇦🇪";
+    if (digits.startsWith("44")) return "🇬🇧";
+    if (digits.startsWith("1")) return "🇺🇸";
+    if (digits.startsWith("967")) return "🇾🇪";
+    if (digits.startsWith("964")) return "🇮🇶";
+  }
+
+  // 4. Fallback to comprehensive country helper
+  try {
+    const info = getCountryInfo(norm);
+    if (info && info.flag) return info.flag;
+  } catch {}
 
   return "🌐";
 }
@@ -1105,19 +1154,73 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       const saved = localStorage.getItem("super_x_live_console_hits_24h");
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
+        if (Array.isArray(parsed) && parsed.length >= 10) {
           const now = Date.now();
           const oneDayAgo = now - 24 * 60 * 60 * 1000;
           // Keep only messages within the last 24 hours
-          return parsed.filter((item: any) => {
+          const filtered = parsed.filter((item: any) => {
             const t = typeof item.time === "number" ? item.time : (item.timestamp || new Date(item.time).getTime());
             return !isNaN(t) && t >= oneDayAgo;
           });
+          if (filtered.length >= 10) return filtered;
         }
       }
     } catch {}
-    return [];
+    return generateBaselineLiveHits();
   });
+
+  // Synchronize global live stream across all users and admins in real-time
+  useEffect(() => {
+    let isMounted = true;
+
+    const syncWithGlobalStream = async () => {
+      try {
+        const res = await fetch("/api/global-live-stream");
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.success && Array.isArray(data.hits) && data.hits.length > 0 && isMounted) {
+            setLiveHits((prev) => {
+              const prevSignatures = new Set(
+                prev.map((h) => `${h.range}_${h.time}_${h.sid}`)
+              );
+              const incomingNew = data.hits.filter(
+                (h: any) => !prevSignatures.has(`${h.range}_${h.time}_${h.sid}`)
+              );
+              if (incomingNew.length === 0) return prev;
+              const merged = [...incomingNew, ...prev];
+              return merged.slice(0, 150);
+            });
+          }
+        }
+      } catch {}
+    };
+
+    syncWithGlobalStream();
+    const pollTimer = setInterval(syncWithGlobalStream, 3500);
+
+    let sse: EventSource | null = null;
+    try {
+      sse = new EventSource("/api/global-live-stream/events");
+      sse.onmessage = (event) => {
+        try {
+          const packet = JSON.parse(event.data);
+          if (packet && (packet.range || packet.number || packet.sid)) {
+            setLiveHits((prev) => {
+              const sig = `${packet.range}_${packet.time}_${packet.sid}`;
+              if (prev.some((h) => `${h.range}_${h.time}_${h.sid}` === sig)) return prev;
+              return [packet, ...prev].slice(0, 150);
+            });
+          }
+        } catch {}
+      };
+    } catch {}
+
+    return () => {
+      isMounted = false;
+      clearInterval(pollTimer);
+      if (sse) sse.close();
+    };
+  }, []);
 
   // Save live hits to localStorage with debouncing (prevents UI freeze/hang)
   useEffect(() => {
@@ -1383,20 +1486,37 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       const hitCountry = getRealCountryName(hit.country, cleanRange).toUpperCase();
       const hitOperator = hit.operator || carrier.operator || "Direct Route";
 
-      // Group by range or carrier prefix (first 4-6 digits)
-      const rangeKey = cleanRange.length > 7 ? cleanRange.slice(0, 5) : cleanRange;
+      // Group by range or carrier prefix (first 4-7 digits)
+      let rangeKey = cleanRange;
+      if (cleanRange.startsWith("26134")) rangeKey = "26134";
+      else if (cleanRange.startsWith("213655")) rangeKey = "213655";
+      else if (cleanRange.startsWith("2287023")) rangeKey = "2287023";
+      else if (cleanRange.startsWith("23762")) rangeKey = "23762";
+      else if (cleanRange.startsWith("88017")) rangeKey = "88017";
+      else if (cleanRange.startsWith("23275")) rangeKey = "23275";
+      else if (cleanRange.startsWith("22997")) rangeKey = "22997";
+      else if (cleanRange.length > 7) rangeKey = cleanRange.slice(0, 5);
+
+      let finalCountry = hitCountry;
+      if (rangeKey === "26134") finalCountry = "MADAGASCAR";
+      else if (rangeKey === "213655") finalCountry = "ALGERIA";
+      else if (rangeKey === "2287023") finalCountry = "TOGO";
+      else if (rangeKey === "23762") finalCountry = "CAMEROON";
+      else if (rangeKey === "88017") finalCountry = "BANGLADESH";
+      else if (rangeKey === "23275") finalCountry = "SIERRA LEONE";
+      else if (rangeKey === "22997") finalCountry = "BENIN";
 
       if (rangeMap.has(rangeKey)) {
         const entry = rangeMap.get(rangeKey)!;
         entry.consoleHitCount += 1;
-        if (hit.sid) {
+        if (hit.sid && (hit.sid.toLowerCase().includes("facebook") || hit.sid.toLowerCase().includes("whatsapp"))) {
           entry.service = hit.sid;
         }
       } else {
         rangeMap.set(rangeKey, {
           id: rangeKey,
-          countryCode: hitCountry,
-          country: hitCountry,
+          countryCode: finalCountry,
+          country: finalCountry,
           range: rangeKey,
           service: hitService,
           operator: hitOperator,
@@ -2018,6 +2138,13 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           const merged = [...newEntries, ...prev];
           return merged.slice(0, 100);
         });
+
+        // Broadcast to global server pool so all other connected users & admins receive them
+        fetch("/api/global-live-stream/push", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ hits: combinedHits }),
+        }).catch(() => {});
       }
       if (access && access.length > 0) {
         setLiveAccessList((prev) => {
@@ -3449,13 +3576,14 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         className="p-3 sm:p-3.5 flex items-center justify-between gap-3 hover:bg-slate-50 transition cursor-pointer group"
                       >
                         {/* Left: Flag + Country Name & Range */}
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-10 sm:w-11 h-6 sm:h-7 shrink-0 flex items-center justify-center">
-                            <CountryFlag
-                              countryCode={item.countryCode || item.country}
-                              className="w-10 sm:w-11 h-6 sm:h-7 rounded-sm shadow-xs border border-slate-200 object-cover"
-                            />
-                          </div>
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span
+                            className="text-lg sm:text-xl leading-none shrink-0 select-none"
+                            role="img"
+                            aria-label={item.country}
+                          >
+                            {getCountryFlagEmoji(item.country || item.countryCode || item.range)}
+                          </span>
                           <div className="min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-bold text-slate-800 text-xs sm:text-sm uppercase tracking-wide group-hover:text-blue-600 transition-colors truncate">
@@ -4211,7 +4339,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         {/* COUNTRY / OPERATOR */}
                         <div className="col-span-4 sm:col-span-5 space-y-0.5 border-r border-slate-300 px-2 h-full flex flex-col justify-center">
                           <div className="text-gray-900 font-bold text-xs sm:text-sm">
-                            {item.country}
+                            {stripFlagFromCountryName(item.country)}
                           </div>
                           <div className="text-gray-600 text-[11px] sm:text-xs flex items-center gap-1">
                             <Radio className="w-3 h-3 text-gray-600 shrink-0" />
@@ -4815,7 +4943,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                 {item.operator}
                               </div>
                               <div className="text-[11px] text-slate-600">
-                                {item.country}
+                                {stripFlagFromCountryName(item.country)}
                               </div>
                             </td>
 

@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { LiveConsoleHit, stripFlagFromCountryName } from "../services/voltxApi";
 import { CountryFlag } from "./CountryFlags";
+import { getCountryFlagEmoji } from "./LoggedInDashboard";
 import { sendOtpToTelegram, extractOtpCode } from "../services/telegramService";
 
 export interface SmsTestRecord {
@@ -242,16 +243,17 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
                     className="hover:bg-amber-50/60 transition-colors group cursor-pointer"
                   >
                     {/* Column 1: Flag + Country Name & Range + Number */}
-                    <td className="py-3.5 px-4 align-top">
-                      <div className="flex items-start gap-3">
-                        <div className="shrink-0 mt-0.5">
-                          <CountryFlag
-                            countryCode={item.country}
-                            className="w-10 h-7 object-cover shadow-xs border border-slate-200 rounded-xs"
-                          />
-                        </div>
-                        <div className="space-y-0.5">
-                          <div className="font-bold text-slate-900 text-xs sm:text-[13px] tracking-wide uppercase">
+                    <td className="py-3 px-3 sm:px-4 align-top">
+                      <div className="flex items-start gap-2.5">
+                        <span
+                          className="text-lg sm:text-xl leading-none shrink-0 mt-0.5 select-none"
+                          role="img"
+                          aria-label={item.country}
+                        >
+                          {getCountryFlagEmoji(item.country || item.range)}
+                        </span>
+                        <div className="space-y-0.5 min-w-0">
+                          <div className="font-bold text-slate-900 text-xs sm:text-[13px] tracking-wide uppercase truncate">
                             {stripFlagFromCountryName(item.country)} {item.range}
                           </div>
                           <div className="font-medium text-slate-700 text-xs tracking-tight">
@@ -325,7 +327,9 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
                   <td className="py-2.5 px-4 font-bold text-slate-900">{tr.range}</td>
                   <td className="py-2.5 px-4">
                     <div className="flex items-center gap-2">
-                      <CountryFlag countryCode={tr.country} className="w-8 h-5 object-cover rounded-xs border border-slate-200" />
+                      <span className="text-base sm:text-lg leading-none shrink-0 select-none">
+                        {getCountryFlagEmoji(tr.country)}
+                      </span>
                       <span>{stripFlagFromCountryName(tr.country)}</span>
                     </div>
                   </td>

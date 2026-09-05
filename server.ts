@@ -36,6 +36,7 @@ async function startServer() {
   const NOTICE_FILE = path.join(DATA_DIR, "site_notice.json");
   const NOTIFICATIONS_FILE = path.join(DATA_DIR, "notifications.json");
   const LIVE_CHATS_FILE = path.join(DATA_DIR, "live_chats.json");
+  const GLOBAL_LIVE_HITS_FILE = path.join(DATA_DIR, "global_live_hits.json");
 
   const DEFAULT_NOTICE_TEXT = "SMS Portal - Premium Carrier Rates 📲 Instant Verification Codes & Physical Carrier Routes Active";
 
@@ -96,6 +97,178 @@ async function startServer() {
     } catch (e) {
       console.warn("Error writing live_chats.json:", e);
     }
+  }
+
+  function generateServerBaselineLiveHits(): any[] {
+    const now = Date.now();
+    const hits: any[] = [];
+
+    // 42 Facebook Live Hits (Madagascar 26134 as primary #1 TOP, plus Algeria & Togo)
+    const fbRanges = [
+      { range: "2613478912", country: "MADAGASCAR", operator: "National Carrier Gateway", count: 28 },
+      { range: "2136554901", country: "ALGERIA", operator: "National Carrier Gateway", count: 8 },
+      { range: "2287023412", country: "TOGO", operator: "Togo Telecom", count: 4 },
+      { range: "2327590123", country: "SIERRA LEONE", operator: "Orange SL", count: 2 },
+    ];
+
+    let fbIndex = 0;
+    fbRanges.forEach((group) => {
+      for (let i = 0; i < group.count; i++) {
+        const code = Math.floor(10000 + Math.random() * 90000);
+        const timeOffset = (fbIndex * 3.5 + Math.random() * 2) * 60 * 1000;
+        hits.push({
+          range: group.range,
+          number: `${group.range}${Math.floor(100 + Math.random() * 900)}`,
+          sid: "Facebook",
+          message: `${code} is your Facebook confirmation code. For your security, do not share this code.`,
+          time: now - timeOffset,
+          operator: group.operator,
+          country: group.country,
+        });
+        fbIndex++;
+      }
+    });
+
+    // 23 WhatsApp Live Hits (Cameroon 237, Algeria 213655, Bangladesh 88017, Togo 2287023)
+    const waRanges = [
+      { range: "2136558812", country: "ALGERIA", operator: "National Carrier Gateway", count: 9 },
+      { range: "2376201944", country: "CAMEROON", operator: "MTN Cameroon", count: 7 },
+      { range: "8801712903", country: "BANGLADESH", operator: "Grameenphone", count: 4 },
+      { range: "2287023881", country: "TOGO", operator: "Togo Telecom", count: 3 },
+    ];
+
+    let waIndex = 0;
+    waRanges.forEach((group) => {
+      for (let i = 0; i < group.count; i++) {
+        const p1 = Math.floor(100 + Math.random() * 900);
+        const p2 = Math.floor(100 + Math.random() * 900);
+        const timeOffset = (waIndex * 5.5 + Math.random() * 3) * 60 * 1000;
+        hits.push({
+          range: group.range,
+          number: `${group.range}${Math.floor(100 + Math.random() * 900)}`,
+          sid: "WhatsApp",
+          message: `Your WhatsApp code: ${p1}-${p2}. You can also tap on this link to verify your phone: v.whatsapp.com/${p1}${p2}`,
+          time: now - timeOffset,
+          operator: group.operator,
+          country: group.country,
+        });
+        waIndex++;
+      }
+    });
+
+    hits.push(
+      {
+        range: "2136551234",
+        country: "ALGERIA",
+        operator: "National Carrier Gateway",
+        sid: "Telegram",
+        message: `Telegram code: ${Math.floor(10000 + Math.random() * 90000)}`,
+        time: now - 18 * 60 * 1000,
+      },
+      {
+        range: "2287023999",
+        country: "TOGO",
+        operator: "Togo Telecom",
+        sid: "Google",
+        message: `G-${Math.floor(100000 + Math.random() * 900000)} is your Google verification code.`,
+        time: now - 22 * 60 * 1000,
+      },
+      {
+        range: "2299712034",
+        country: "BENIN",
+        operator: "MTN Benin",
+        sid: "IMO",
+        message: `Your IMO verification code is: ${Math.floor(1000 + Math.random() * 9000)}`,
+        time: now - 35 * 60 * 1000,
+      },
+      {
+        range: "2613499102",
+        country: "MADAGASCAR",
+        operator: "National Carrier Gateway",
+        sid: "Facebook",
+        message: `${Math.floor(10000 + Math.random() * 90000)} is your Facebook security code`,
+        time: now - 45 * 1000,
+      }
+    );
+
+    return hits.sort((a, b) => Number(b.time) - Number(a.time));
+  }
+
+  function loadServerGlobalLiveHits(): any[] {
+    try {
+      if (fs.existsSync(GLOBAL_LIVE_HITS_FILE)) {
+        const raw = fs.readFileSync(GLOBAL_LIVE_HITS_FILE, "utf-8");
+        const list = JSON.parse(raw);
+        if (Array.isArray(list) && list.length >= 10) {
+          return list;
+        }
+      }
+    } catch (e) {
+      console.warn("Could not load global_live_hits.json:", e);
+    }
+    const baseline = generateServerBaselineLiveHits();
+    saveServerGlobalLiveHits(baseline);
+    return baseline;
+  }
+
+  function saveServerGlobalLiveHits(list: any[]) {
+    try {
+      fs.writeFileSync(GLOBAL_LIVE_HITS_FILE, JSON.stringify(list.slice(0, 350), null, 2), "utf-8");
+    } catch (e) {
+      console.warn("Could not save global_live_hits.json:", e);
+    }
+  }
+
+  function generateNextServerLivePacket(): any {
+    const now = Date.now();
+    const pool = [
+      {
+        range: "26134" + Math.floor(10000 + Math.random() * 90000),
+        country: "MADAGASCAR",
+        operator: "National Carrier Gateway",
+        sid: "Facebook",
+        message: `${Math.floor(10000 + Math.random() * 90000)} is your Facebook confirmation code`,
+      },
+      {
+        range: "213655" + Math.floor(1000 + Math.random() * 9000),
+        country: "ALGERIA",
+        operator: "National Carrier Gateway",
+        sid: "WhatsApp",
+        message: `Your WhatsApp code: ${Math.floor(100 + Math.random() * 900)}-${Math.floor(100 + Math.random() * 900)}`,
+      },
+      {
+        range: "2287023" + Math.floor(100 + Math.random() * 900),
+        country: "TOGO",
+        operator: "Togo Telecom",
+        sid: "Facebook",
+        message: `${Math.floor(10000 + Math.random() * 90000)} is your Facebook verification code`,
+      },
+      {
+        range: "23762" + Math.floor(10000 + Math.random() * 90000),
+        country: "CAMEROON",
+        operator: "MTN Cameroon",
+        sid: "WhatsApp",
+        message: `Your WhatsApp code: ${Math.floor(100 + Math.random() * 900)}-${Math.floor(100 + Math.random() * 900)}`,
+      },
+      {
+        range: "213655" + Math.floor(1000 + Math.random() * 9000),
+        country: "ALGERIA",
+        operator: "National Carrier Gateway",
+        sid: "Telegram",
+        message: `Telegram code: ${Math.floor(10000 + Math.random() * 90000)}`,
+      },
+    ];
+
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    return {
+      range: pick.range,
+      number: pick.range,
+      sid: pick.sid,
+      message: pick.message,
+      time: now,
+      operator: pick.operator,
+      country: pick.country,
+    };
   }
 
   const INITIAL_SERVER_ACCOUNTS = [
@@ -1970,6 +2143,115 @@ async function startServer() {
     }
 
     res.json({ success: true, count: updated.length, messages: updated });
+  });
+
+  // =========================================================================
+  // GLOBAL REAL-TIME LIVE STREAM BROADCASTER & CARRIER CONSOLE SYNC
+  // Synchronizes Top Applications and Top Ranges across all users & admins
+  // =========================================================================
+  let serverGlobalLiveHits: any[] = loadServerGlobalLiveHits();
+  const liveStreamSseClients = new Set<any>();
+
+  function broadcastLivePacket(packet: any) {
+    const payload = `data: ${JSON.stringify(packet)}\n\n`;
+    for (const client of liveStreamSseClients) {
+      try {
+        client.write(payload);
+      } catch {
+        liveStreamSseClients.delete(client);
+      }
+    }
+  }
+
+  // Periodic active stream ticker to ensure all users see active traffic without interruption
+  setInterval(() => {
+    try {
+      const newHit = generateNextServerLivePacket();
+      serverGlobalLiveHits.unshift(newHit);
+      if (serverGlobalLiveHits.length > 300) {
+        serverGlobalLiveHits = serverGlobalLiveHits.slice(0, 300);
+      }
+      saveServerGlobalLiveHits(serverGlobalLiveHits);
+      broadcastLivePacket(newHit);
+    } catch (e) {
+      // ignore
+    }
+  }, 10000);
+
+  // Global live stream GET endpoint
+  app.get("/api/global-live-stream", (req, res) => {
+    res.json({
+      success: true,
+      count: serverGlobalLiveHits.length,
+      hits: serverGlobalLiveHits.slice(0, 150),
+      lastUpdated: Date.now(),
+    });
+  });
+
+  // Global live stream push endpoint (for clients/gateways to push real incoming hits)
+  app.post("/api/global-live-stream/push", (req, res) => {
+    const { hit, hits: incomingHits } = req.body || {};
+    const toPrepend: any[] = [];
+    if (hit && (hit.range || hit.number || hit.sid)) {
+      toPrepend.push(hit);
+    }
+    if (Array.isArray(incomingHits)) {
+      incomingHits.forEach((h) => {
+        if (h && (h.range || h.number || h.sid)) toPrepend.push(h);
+      });
+    }
+
+    if (toPrepend.length > 0) {
+      // Deduplicate against recent
+      const existingSignatures = new Set(
+        serverGlobalLiveHits.slice(0, 50).map((h) => `${h.range}_${h.time}_${h.sid}`)
+      );
+      const uniqueNew = toPrepend.filter(
+        (h) => !existingSignatures.has(`${h.range}_${h.time}_${h.sid}`)
+      );
+
+      if (uniqueNew.length > 0) {
+        serverGlobalLiveHits.unshift(...uniqueNew);
+        if (serverGlobalLiveHits.length > 300) {
+          serverGlobalLiveHits = serverGlobalLiveHits.slice(0, 300);
+        }
+        saveServerGlobalLiveHits(serverGlobalLiveHits);
+        uniqueNew.forEach((item) => broadcastLivePacket(item));
+      }
+    }
+
+    res.json({
+      success: true,
+      totalHits: serverGlobalLiveHits.length,
+      hits: serverGlobalLiveHits.slice(0, 150),
+    });
+  });
+
+  // SSE Real-time Live Stream Connection
+  app.get("/api/global-live-stream/events", (req, res) => {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders?.();
+
+    // Send initial snapshot
+    res.write(`event: connected\ndata: ${JSON.stringify({ status: "connected", totalHits: serverGlobalLiveHits.length })}\n\n`);
+
+    liveStreamSseClients.add(res);
+
+    const pingTimer = setInterval(() => {
+      try {
+        res.write(": ping\n\n");
+      } catch {
+        clearInterval(pingTimer);
+        liveStreamSseClients.delete(res);
+      }
+    }, 20000);
+
+    req.on("close", () => {
+      clearInterval(pingTimer);
+      liveStreamSseClients.delete(res);
+    });
   });
 
   // Health check endpoint

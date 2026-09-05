@@ -106,6 +106,7 @@ export interface LiveConsoleHit {
   time: number | string;
   operator?: string;
   country?: string;
+  number?: string;
 }
 
 export interface LiveAccessService {

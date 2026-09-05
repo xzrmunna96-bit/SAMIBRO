@@ -158,13 +158,11 @@ async function startServer() {
     if (combined.includes("imo")) return "IMO";
     if (combined.includes("msverify") || combined.includes("microsoft")) return "msverify";
     if (combined.includes("authmsg")) return "AUTHMSG";
-    if (combined.includes("iatsms")) return "iATSMS";
     if (combined.includes("google")) return "Google";
     if (combined.includes("baji")) return "Baji";
     if (combined.includes("instagram")) return "Instagram";
     if (combined.includes("tiktok")) return "TikTok";
-    if (combined.includes("verify")) return "Verify";
-    if (combined.includes("twitter") || combined.includes("x.com")) return "Twitter";
+    if (combined.includes("twitter") || combined.includes("x.com")) return "Twitter / X";
     if (combined.includes("apple")) return "Apple";
     if (combined.includes("amazon")) return "Amazon";
     if (combined.includes("snapchat")) return "Snapchat";
@@ -2371,15 +2369,8 @@ async function startServer() {
   // GLOBAL REAL-TIME LIVE STREAM BROADCASTER & CARRIER CONSOLE SYNC
   // Synchronizes Top Applications and Top Ranges with persistent real traffic counts
   // =========================================================================
-  let serverGlobalLiveHits: any[] = [];
-  let serverGlobalStats: ServerGlobalStats = {
-    appCounts: {},
-    rangeCounts: {},
-    totalHits: 0,
-    lastResetTime: Date.now(),
-  };
-  saveServerGlobalLiveHits([]);
-  saveServerGlobalStats(serverGlobalStats);
+  let serverGlobalLiveHits: any[] = loadServerGlobalLiveHits();
+  let serverGlobalStats: ServerGlobalStats = loadServerGlobalStats();
   const liveStreamSseClients = new Set<any>();
 
   function broadcastLivePacket(packet: any) {

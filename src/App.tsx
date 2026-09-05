@@ -3,6 +3,7 @@ import { LoginBrandShowcase } from './components/LoginBrandShowcase';
 import { LoginForm, UserData } from './components/LoginForm';
 import { LoggedInDashboard } from './components/LoggedInDashboard';
 import { AdminPortal } from './components/AdminPortal';
+import { ActiveAccountWidget } from './components/ActiveAccountWidget';
 import { CheckCircle2 } from 'lucide-react';
 import { getAllAccounts } from './services/userAuthService';
 import { fetchAccountsFromServer, fetchSubAdminsFromServer } from './services/serverAuthSync';
@@ -189,6 +190,9 @@ export function App() {
           </div>
         </div>
       </section>
+
+      {/* Floating Active Account Support Widget at bottom right */}
+      <ActiveAccountWidget />
     </main>
   );
 }

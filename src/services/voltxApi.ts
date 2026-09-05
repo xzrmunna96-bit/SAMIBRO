@@ -387,8 +387,6 @@ export function normalizeServiceId(rawSid: string, rawMessage: string): string {
   if (lowerSid.includes('huawei')) return 'Huawei';
   if (lowerSid.includes('authmsg')) return 'AUTHMSG';
   if (lowerSid.includes('msverify')) return 'msverify';
-  if (lowerSid.includes('verify')) return 'Verify';
-  if (lowerSid.includes('iatsms')) return 'iATSMS';
   if (lowerSid.includes('linkedin')) return 'LinkedIn';
 
   return sid || 'Service';

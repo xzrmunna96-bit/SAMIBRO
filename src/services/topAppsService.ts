@@ -20,10 +20,8 @@ export const DEFAULT_TOP_APPS: TopAppItem[] = [
   { id: 'baji', name: 'Baji / Baji999', range: '88017', status: 'active', isEnabled: true, category: 'Gaming / Betting' },
   { id: 'fb', name: 'FACEBOOK', range: '44740', status: 'active', isEnabled: true, category: 'Social' },
   { id: 'imo', name: 'IMO', range: '62812', status: 'active', isEnabled: true, category: 'Messaging' },
-  { id: 'verify', name: 'Verify', range: '88017', status: 'active', isEnabled: true, category: 'Verification' },
   { id: 'msverify', name: 'msverify', range: '14306', status: 'active', isEnabled: true, category: 'Verification' },
   { id: 'authmsg', name: 'AUTHMSG', range: '14322', status: 'active', isEnabled: true, category: 'Verification' },
-  { id: 'iatsms', name: 'iATSMS', range: '23274', status: 'active', isEnabled: true, category: 'Verification' },
   { id: 'amazon', name: 'Amazon', range: '15552', status: 'active', isEnabled: true, category: 'E-Commerce' },
   { id: 'shopee', name: 'Shopee', range: '62812', status: 'active', isEnabled: true, category: 'E-Commerce' },
   { id: 'avabet', name: 'AVABet', range: '38267', status: 'active', isEnabled: true, category: 'Gaming / Betting' },
@@ -50,16 +48,18 @@ export function getTopAppsConfig(): TopAppItem[] {
         // Merge and deduplicate by id to avoid duplicate keys in React render
         const map = new Map<string, TopAppItem>();
         parsed.forEach((p: any) => {
-          if (p && p.id) {
+          if (p && p.id && p.id !== 'verify' && p.id !== 'iatsms') {
             map.set(p.id, p);
           }
         });
         DEFAULT_TOP_APPS.forEach((d) => {
-          if (!map.has(d.id)) {
+          if (!map.has(d.id) && d.id !== 'verify' && d.id !== 'iatsms') {
             map.set(d.id, d);
           }
         });
-        const merged = Array.from(map.values());
+        const merged = Array.from(map.values()).filter(
+          (app) => app.id !== 'verify' && app.id !== 'iatsms'
+        );
         localStorage.setItem(TOP_APPS_STORAGE_KEY, JSON.stringify(merged));
         return merged;
       }
@@ -67,7 +67,9 @@ export function getTopAppsConfig(): TopAppItem[] {
   } catch (err) {
     console.error('Failed to load top apps config', err);
   }
-  return DEFAULT_TOP_APPS;
+  return DEFAULT_TOP_APPS.filter(
+    (app) => app.id !== 'verify' && app.id !== 'iatsms'
+  );
 }
 
 export function saveTopAppsConfig(apps: TopAppItem[]) {

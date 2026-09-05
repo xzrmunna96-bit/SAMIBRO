@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import { ActiveAccountWidget } from "./ActiveAccountWidget";
 import {
   Menu,
   Clock,
@@ -5910,21 +5911,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               </tbody>
             </table>
 
-            {/* Floating Orange Chat Bubble Icon matching Screenshot 1 */}
-            <div className="fixed bottom-6 right-6 z-20">
-              <button
-                type="button"
-                id="stream-floating-chat-btn"
-                onClick={() => {
-                  showDashboardToast("Super X SMS Support Desk", "info");
-                }}
-                className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-[#f97316] hover:bg-[#ea580c] text-white flex items-center justify-center shadow-lg hover:shadow-xl transition-all cursor-pointer transform hover:scale-105"
-                title="Support Chat"
-                aria-label="Support Chat"
-              >
-                <MessageSquare className="w-6 h-6" />
-              </button>
-            </div>
+            {/* Floating Orange Active Account Chat Bubble Icon matching Screenshot */}
+            <ActiveAccountWidget />
           </div>
         </div>
       )}

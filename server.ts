@@ -2702,7 +2702,7 @@ async function startServer() {
     res.json({
       success: true,
       count: serverGlobalLiveHits.length,
-      hits: serverGlobalLiveHits.slice(0, 150),
+      hits: serverGlobalLiveHits.slice(0, 500),
       stats: serverGlobalStats,
       lastUpdated: Date.now(),
     });

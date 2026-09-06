@@ -1234,6 +1234,47 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   useEffect(() => {
     let isMounted = true;
 
+    // Monotonic hit accumulator: only appends/merges new hits, NEVER drops or deletes existing messages
+    const mergeIncomingHits = (incoming: LiveConsoleHit[]) => {
+      if (!Array.isArray(incoming) || incoming.length === 0 || !isMounted) return;
+      setLiveHits((prev) => {
+        const map = new Map<string, LiveConsoleHit>();
+        // 1. Preserve all existing hits in memory
+        prev.forEach((h) => {
+          if (!h) return;
+          const timeVal = typeof h.time === "number" ? h.time : (new Date(h.time).getTime() || 0);
+          const sig = `${(h.range || "").replace(/\D/g, "")}_${timeVal}_${(h.sid || "").toLowerCase().trim()}_${(h.message || "").trim()}`;
+          if (sig) map.set(sig, h);
+        });
+
+        let hasNew = false;
+        // 2. Add incoming hits monotonically
+        incoming.forEach((h) => {
+          if (!h) return;
+          const timeVal = typeof h.time === "number" ? h.time : (new Date(h.time).getTime() || 0);
+          const sig = `${(h.range || "").replace(/\D/g, "")}_${timeVal}_${(h.sid || "").toLowerCase().trim()}_${(h.message || "").trim()}`;
+          if (sig && !map.has(sig)) {
+            map.set(sig, h);
+            hasNew = true;
+          }
+        });
+
+        // If no new hits arrived, return previous reference to prevent re-render & shaking
+        if (!hasNew) {
+          return prev;
+        }
+
+        // 3. Sort strictly newest on top
+        const sorted = Array.from(map.values()).sort((a, b) => {
+          const tA = typeof a.time === "number" ? a.time : (new Date(a.time).getTime() || 0);
+          const tB = typeof b.time === "number" ? b.time : (new Date(b.time).getTime() || 0);
+          return tB - tA;
+        });
+
+        return sorted.slice(0, 3000);
+      });
+    };
+
     const syncWithGlobalStream = async () => {
       try {
         const res = await fetch("/api/global-live-stream");
@@ -1243,17 +1284,19 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             if (data.stats) {
               setGlobalStats(data.stats);
             }
-            if (Array.isArray(data.hits)) {
-              if (data.hits.length === 0 || (data.stats && data.stats.totalHits === 0)) {
-                setLiveHits([]);
-                try {
-                  localStorage.removeItem("super_x_live_console_hits_24h");
-                } catch {}
-              } else {
-                setLiveHits(data.hits);
-              }
+            if (Array.isArray(data.hits) && data.hits.length > 0) {
+              mergeIncomingHits(data.hits);
             }
+            return;
           }
+        }
+      } catch {}
+
+      // Fallback for Vercel / serverless / static hosting: directly poll active SMS APIs
+      try {
+        const directResult = await fetchLiveConsoleDetailed();
+        if (directResult && isMounted && Array.isArray(directResult.hits) && directResult.hits.length > 0) {
+          mergeIncomingHits(directResult.hits);
         }
       } catch {}
     };
@@ -1268,7 +1311,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         try {
           const packet = JSON.parse(event.data);
           if (packet) {
-            if (packet.type === "reset" || (packet.stats && packet.stats.totalHits === 0)) {
+            if (packet.type === "reset") {
               setLiveHits([]);
               set24HourResetTimestamp(Date.now());
               try {
@@ -1278,16 +1321,12 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             if (packet.stats) {
               setGlobalStats(packet.stats);
             }
-            if (Array.isArray(packet.hits)) {
-              setLiveHits(packet.hits);
+            if (Array.isArray(packet.hits) && packet.hits.length > 0) {
+              mergeIncomingHits(packet.hits);
             }
             const hit = packet.hit || (packet.range || packet.number || packet.sid ? packet : null);
             if (hit && (hit.range || hit.number || hit.sid)) {
-              setLiveHits((prev) => {
-                const sig = `${hit.range}_${hit.time}_${hit.sid}_${hit.message || ""}`;
-                if (prev.some((h) => `${h.range}_${h.time}_${h.sid}_${h.message || ""}` === sig)) return prev;
-                return [hit, ...prev].slice(0, 500);
-              });
+              mergeIncomingHits([hit]);
             }
           }
         } catch {}
@@ -1383,11 +1422,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const getMonotonicCountForApp = useCallback((appName: string): number => {
     const activeKeys = getActiveApiKeys().filter((k) => k && k.trim() && k !== 'MOBEKJ8H20I');
     if (activeKeys.length === 0) return 0;
-    const clean = (appName || '').trim().toLowerCase();
     const hits = filterHitsForApp(active24hHits, appName);
-    const stored = appMonotonicCounts[clean] || 0;
-    return Math.max(stored, hits.length);
-  }, [active24hHits, appMonotonicCounts]);
+    return hits.length;
+  }, [active24hHits]);
 
   const [liveAccessList, setLiveAccessList] = useState<LiveAccessService[]>([]);
   const [liveSuccessOtps, setLiveSuccessOtps] = useState<LiveSuccessOtp[]>([]);
@@ -5699,19 +5736,19 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       {/* Notifications Modal for User */}
       {isNotifModalOpen && renderNotificationModal()}
 
-      {/* Live Console Stream Full Screen View when clicking an app (e.g. WhatsApp, Facebook, TikTok) */}
+      {/* Live Console Stream Full Screen View when clicking an app (e.g. WhatsApp, Facebook, TikTok, IMO) */}
       {activeAppConsoleService && (() => {
         const modalHits = filterHitsForApp(active24hHits, activeAppConsoleService);
-        const realCount = getMonotonicCountForApp(activeAppConsoleService);
+        const realCount = modalHits.length;
         return (
           <div
             id="app-console-stream-fullscreen"
-            className="fixed inset-0 z-50 bg-white flex flex-col overflow-hidden animate-in fade-in duration-150"
+            className="fixed inset-0 z-50 bg-white flex flex-col overflow-hidden"
           >
-            {/* Top Premium Minimal Navigation Bar */}
-            <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 border-b border-amber-500/30 px-3 sm:px-5 py-3 flex items-center justify-between shadow-md shrink-0">
+            {/* Top Premium Navigation Bar */}
+            <div className="bg-slate-900 border-b border-slate-700 px-3 sm:px-5 py-2.5 flex items-center justify-between shadow-md shrink-0">
               <div className="flex items-center gap-2.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-xs shadow-emerald-400/50" />
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-xs shadow-emerald-400/50" />
                 <div className="flex items-center gap-2">
                   <span className="font-black text-white text-sm sm:text-base tracking-wide uppercase">
                     {activeAppConsoleService}
@@ -5737,27 +5774,27 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               </button>
             </div>
 
-            {/* Full-Screen Pure Table matching Screenshot 1 */}
+            {/* Full-Screen Pure Table matching User Request */}
             <div className="flex-1 overflow-auto bg-slate-900 p-0 relative">
               <table className="w-full text-left text-xs sm:text-[13px] border-collapse bg-white border border-slate-300">
                 <thead className="bg-slate-900 sticky top-0 z-10 border-b-2 border-slate-700 text-slate-100 font-extrabold text-xs sm:text-[13px] uppercase tracking-wider">
                   <tr>
-                    <th className="py-3 px-3 sm:px-4 border-r border-slate-700 whitespace-nowrap bg-slate-900 text-slate-100">
+                    <th className="py-2.5 px-3 sm:px-4 border-r border-slate-700 whitespace-nowrap bg-slate-900 text-slate-100">
                       <div className="flex items-center gap-1">
                         <span>Range Name</span>
                         <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
                       </div>
                     </th>
-                    <th className="py-3 px-3 sm:px-4 border-r border-slate-700 whitespace-nowrap bg-slate-900 text-slate-100">
+                    <th className="py-2.5 px-3 sm:px-4 border-r border-slate-700 whitespace-nowrap bg-slate-900 text-slate-100">
                       Test Number
                     </th>
-                    <th className="py-3 px-3 sm:px-4 border-r border-slate-700 whitespace-nowrap bg-slate-900 text-slate-100">
+                    <th className="py-2.5 px-3 sm:px-4 border-r border-slate-700 whitespace-nowrap bg-slate-900 text-slate-100">
                       SID
                     </th>
-                    <th className="py-3 px-3 sm:px-4 border-r border-slate-700 bg-slate-900 text-slate-100 min-w-[200px]">
+                    <th className="py-2.5 px-3 sm:px-4 border-r border-slate-700 bg-slate-900 text-slate-100 min-w-[220px]">
                       Message content
                     </th>
-                    <th className="py-3 px-3 sm:px-4 whitespace-nowrap bg-slate-900 text-slate-100">
+                    <th className="py-2.5 px-3 sm:px-4 whitespace-nowrap bg-slate-900 text-slate-100">
                       Receive time
                     </th>
                   </tr>
@@ -5781,7 +5818,6 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   ) : (
                     (() => {
                       const dynamicRows = modalHits.map((h) => {
-                        const carrier = resolveCarrierDetails(h.range || "");
                         const timeMs = typeof h.time === "number"
                           ? (h.time < 10000000000 ? h.time * 1000 : h.time)
                           : (new Date(h.time).getTime() || Date.now());
@@ -5803,39 +5839,29 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         }
 
                         const resolvedCountry = getRealCountryName(h.country, h.range);
-                        const rawMsg = h.message || "";
+                        const rawMsg = (h.message || "").trim();
 
-                        // Match extracted OTP pattern
+                        // Match extracted OTP pattern (3 to 8 digits)
                         const extractedOtpMatch = rawMsg.match(/\b\d{3,4}[-\s]?\d{3,4}\b|\b\d{4,8}\b/);
                         const extractedOtp = extractedOtpMatch ? extractedOtpMatch[0] : null;
 
-                        // Privacy & Ownership verification
-                        const ownership = isHitOwnedByUser(h);
-                        const isOwnerOrAdmin = ownership.isOwner || user?.role === 'admin' || user?.role === 'subadmin';
-
-                        // Mask number if not owner/admin
+                        // Mask number as 9376241XXX style
                         const fullNumber = formatNumberWithAreaCode(h.range || "", resolvedCountry);
                         let displayTestNumber = fullNumber;
-                        if (!isOwnerOrAdmin && fullNumber) {
+                        if (fullNumber) {
                           const cleanNum = fullNumber.trim();
                           if (cleanNum.length > 5 && !cleanNum.endsWith("XXX") && !cleanNum.endsWith("xxx")) {
                             displayTestNumber = cleanNum.slice(0, -3) + "XXX";
                           }
                         }
 
-                        // Format Message Content & OTP Badge with "dc:" label
+                        // Strictly hide OTP codes from message text and dc label (replace with XXXX)
                         let displayMessage = rawMsg;
-                        let displayOtpBadge = "";
+                        const maskedOtpCode = extractedOtp ? "X".repeat(Math.max(4, extractedOtp.replace(/\D/g, '').length)) : "XXXX";
+                        const displayOtpBadge = `dc : ${maskedOtpCode}`;
 
                         if (extractedOtp) {
-                          const hashMask = "#".repeat(extractedOtp.length) || "######";
-                          if (isOwnerOrAdmin) {
-                            displayMessage = rawMsg;
-                            displayOtpBadge = `dc : ${extractedOtp}`;
-                          } else {
-                            displayMessage = rawMsg.replace(extractedOtp, hashMask);
-                            displayOtpBadge = `dc : ${hashMask}`;
-                          }
+                          displayMessage = rawMsg.replace(extractedOtp, maskedOtpCode);
                         }
 
                         return {
@@ -5847,7 +5873,6 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                           message: displayMessage,
                           rawMessage: rawMsg,
                           otp: extractedOtp,
-                          isOwnerOrAdmin,
                           displayOtpBadge,
                           time: rawTime,
                           relativeTime: relativeStr,
@@ -5866,65 +5891,46 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
                         return (
                           <tr
-                            key={`${hit.number}-${hit.time}-${idx}`}
-                            className={`transition-colors group ${
-                              isEvenRow
-                                ? "bg-white hover:bg-amber-50/70"
-                                : "bg-slate-50/90 hover:bg-amber-50/70"
+                            key={`${hit.range}-${hit.time}-${hit.number}-${idx}`}
+                            className={`group ${
+                              isEvenRow ? "bg-white hover:bg-slate-50" : "bg-slate-50/70 hover:bg-slate-100"
                             }`}
                           >
-                            {/* Range Name */}
-                            <td className="py-2.5 px-3 sm:px-4 border-r border-b border-slate-300 font-extrabold text-slate-900 align-middle leading-tight whitespace-nowrap">
+                            {/* Range Name - Compact, Bold, Top Aligned */}
+                            <td className="py-2.5 px-3 sm:px-4 border-r border-b border-slate-300 font-extrabold text-slate-900 align-top leading-snug whitespace-nowrap text-xs sm:text-[13px]">
                               <span className="tracking-tight uppercase">
                                 {rangeName}
                               </span>
                             </td>
 
-                            {/* Test Number (Masked as 232743XXX for non-owners) */}
-                            <td className="py-3.5 px-3 sm:px-4 border-r border-b border-slate-300 font-mono font-bold text-slate-900 align-top whitespace-nowrap">
-                              <div className="flex items-center gap-1.5">
-                                <span className={hit.isOwnerOrAdmin ? "text-emerald-700 font-extrabold" : "text-slate-800"}>
-                                  {hit.number || "—"}
-                                </span>
-                                {hit.fullNumber && hit.isOwnerOrAdmin && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      navigator.clipboard.writeText(hit.fullNumber.replace(/\D/g, ''));
-                                      showDashboardToast(`Number copied: ${hit.fullNumber}`, "success");
-                                    }}
-                                    className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-slate-800 p-0.5 rounded cursor-pointer transition"
-                                    title="Copy Full Number"
-                                  >
-                                    <Copy className="w-3.5 h-3.5" />
-                                  </button>
-                                )}
-                              </div>
+                            {/* Test Number (Masked as 9376241XXX) */}
+                            <td className="py-2.5 px-3 sm:px-4 border-r border-b border-slate-300 font-mono font-bold text-emerald-700 align-top whitespace-nowrap text-xs sm:text-[13px]">
+                              <span>
+                                {hit.number || "—"}
+                              </span>
                             </td>
 
                             {/* SID */}
-                            <td className="py-3.5 px-3 sm:px-4 border-r border-b border-slate-300 font-bold text-slate-900 align-top whitespace-nowrap">
-                              <span className="inline-flex items-center gap-1 font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 text-xs">
+                            <td className="py-2.5 px-3 sm:px-4 border-r border-b border-slate-300 font-bold text-slate-900 align-top whitespace-nowrap text-xs">
+                              <span className="inline-flex items-center gap-1 font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
                                 {hit.sid || activeAppConsoleService}
                               </span>
                             </td>
 
-                            {/* Message content + Prominent "dc:" OTP badge */}
-                            <td className="py-3.5 px-3 sm:px-4 border-r border-b border-slate-300 text-slate-800 text-xs sm:text-[13px] leading-relaxed max-w-xs sm:max-w-md break-words align-top font-sans">
-                              <div className="space-y-1.5">
-                                {hit.displayOtpBadge && (
-                                  <div className="inline-flex items-center px-2.5 py-1 rounded bg-emerald-200/70 text-emerald-950 font-mono font-extrabold text-xs">
-                                    <span className="tracking-wide">{hit.displayOtpBadge}</span>
-                                  </div>
-                                )}
-                                <div className="text-slate-800 leading-normal select-all font-mono text-xs">
+                            {/* Message content - No cyan/green box border, clean dc: XXXX text */}
+                            <td className="py-2.5 px-3 sm:px-4 border-r border-b border-slate-300 text-slate-800 text-xs sm:text-[13px] leading-snug max-w-xs sm:max-w-md break-words align-top font-sans">
+                              <div className="flex flex-col gap-1">
+                                <div className="font-mono text-emerald-800 text-xs font-bold tracking-wider">
+                                  {hit.displayOtpBadge}
+                                </div>
+                                <div className="text-slate-800 font-mono text-xs leading-normal select-all break-words">
                                   {hit.message || "—"}
                                 </div>
                               </div>
                             </td>
 
                             {/* Receive time */}
-                            <td className="py-3.5 px-3 sm:px-4 border-b border-slate-300 text-slate-800 whitespace-nowrap align-top text-xs sm:text-[13px]">
+                            <td className="py-2.5 px-3 sm:px-4 border-b border-slate-300 text-slate-800 whitespace-nowrap align-top text-xs sm:text-[13px]">
                               <div className="font-semibold text-slate-900">{hit.relativeTime}</div>
                               <div className="text-[11px] text-slate-500 font-mono mt-0.5">{hit.time}</div>
                             </td>

@@ -119,6 +119,10 @@ import {
   DEFAULT_USER_PERMISSIONS,
   UserPermissions,
 } from "../services/userAuthService";
+import {
+  sendUserOnlineHeartbeat,
+  markUserOffline,
+} from "../services/onlineTrackingService";
 import { triggerAdminRoute } from "../App";
 import { TelegramBotController } from "./TelegramBotController";
 import {
@@ -1422,9 +1426,34 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const getMonotonicCountForApp = useCallback((appName: string): number => {
     const activeKeys = getActiveApiKeys().filter((k) => k && k.trim() && k !== 'MOBEKJ8H20I');
     if (activeKeys.length === 0) return 0;
+    const clean = (appName || '').trim().toLowerCase();
     const hits = filterHitsForApp(active24hHits, appName);
-    return hits.length;
-  }, [active24hHits]);
+    const persisted = appMonotonicCounts[clean] || 0;
+    return Math.max(hits.length, persisted);
+  }, [active24hHits, appMonotonicCounts]);
+
+  // Real-time online heartbeat tracking for the active logged-in user
+  useEffect(() => {
+    if (!user || !user.email) return;
+
+    sendUserOnlineHeartbeat(user.email);
+
+    const hbInterval = setInterval(() => {
+      sendUserOnlineHeartbeat(user.email);
+    }, 25000);
+
+    const handleBeforeUnload = () => {
+      markUserOffline(user.email);
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      clearInterval(hbInterval);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      markUserOffline(user.email);
+    };
+  }, [user?.email]);
 
   const [liveAccessList, setLiveAccessList] = useState<LiveAccessService[]>([]);
   const [liveSuccessOtps, setLiveSuccessOtps] = useState<LiveSuccessOtp[]>([]);
@@ -1644,7 +1673,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       }
       return prev;
     });
-  }, [active24hHits, topAppsList, appMonotonicCounts]);
+  }, [active24hHits, topAppsList]);
 
   const [showAllTopApps, setShowAllTopApps] = useState(false);
   const [showAllTopRanges, setShowAllTopRanges] = useState(false);
@@ -3556,6 +3585,17 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   </span>
                 </span>
               )}
+            </button>
+
+            {/* Quick Header Logout Button for Instant Smooth Exit */}
+            <button
+              type="button"
+              id="header-quick-logout-btn"
+              onClick={onLogout}
+              className="p-2 rounded-xl bg-slate-800/90 hover:bg-rose-950/80 text-slate-300 hover:text-rose-300 border border-slate-700/80 hover:border-rose-500/40 transition cursor-pointer flex items-center justify-center min-w-[36px] min-h-[36px]"
+              title="Log Out of Account"
+            >
+              <LogOut className="w-4 h-4" />
             </button>
           </div>
         </div>

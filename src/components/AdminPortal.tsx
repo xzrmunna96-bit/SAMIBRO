@@ -46,6 +46,7 @@ import {
   ExternalLink,
   PlusCircle,
   Save,
+  Wrench,
 } from 'lucide-react';
 import {
   getAllNotifications,
@@ -136,7 +137,7 @@ import {
   IntsGatewayConfig,
 } from '../services/intsGatewayService';
 import { getCountryInfo } from '../services/countryHelper';
-import { registerUserInFirebaseAuth, fetchAccountsFromFirebaseDirectly, saveAccountToFirebase, purgeRemoteFirebaseAccountsExceptSuperAdmin } from '../services/firebaseSyncService';
+import { registerUserInFirebaseAuth, fetchAccountsFromFirebaseDirectly, saveAccountToFirebase, purgeRemoteFirebaseAccountsExceptSuperAdmin, saveMarqueeNoticeToFirebase } from '../services/firebaseSyncService';
 import { fetchAccountsFromServer, approveAccountOnServer, saveAccountToServer, purgeAccountsViaServer } from '../services/serverAuthSync';
 import { getBrandLogoComponent } from './BrandLogos';
 
@@ -145,6 +146,8 @@ const ADMIN_SESSION_KEY = 'super_x_admin_session_auth_v2';
 const DEFAULT_API_KEY = '';
 
 import { TelegramBotController } from './TelegramBotController';
+import { MaintenanceControlCard } from './MaintenanceControlCard';
+import { UserOnlineManagementCard } from './UserOnlineManagementCard';
 
 type AdminTab =
   | 'api-management'
@@ -156,7 +159,9 @@ type AdminTab =
   | 'top-apps'
   | 'live-chat'
   | 'admin-management'
-  | 'telegram-bot-control';
+  | 'telegram-bot-control'
+  | 'maintenance-mode'
+  | 'user-online-management';
 
 export interface AdminSession {
   isAuthenticated: boolean;
@@ -809,6 +814,9 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
       setIsNoticeSaved(true);
       showToast("Top Notice Banner text updated & published to all user panels!");
       setTimeout(() => setIsNoticeSaved(false), 3000);
+
+      // Persist to Firebase Firestore & RTDB real-time
+      saveMarqueeNoticeToFirebase(clean);
 
       // Also persist to server database
       fetch('/api/site-notice', {
@@ -2172,6 +2180,37 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                     Active
                   </span>
                 </button>
+
+                {/* 10. Global Maintenance Mode Switch */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('maintenance-mode')}
+                  className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-2 ${
+                    activeTab === 'maintenance-mode'
+                      ? 'bg-amber-600 text-white shadow-md shadow-amber-500/25'
+                      : 'text-amber-400 hover:text-amber-200 hover:bg-amber-950/40 border border-amber-500/20'
+                  }`}
+                >
+                  <Wrench className="w-4 h-4 text-amber-400" />
+                  <span>Website Maintenance</span>
+                </button>
+
+                {/* 11. User Online Management */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('user-online-management')}
+                  className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-2 ${
+                    activeTab === 'user-online-management'
+                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/25'
+                      : 'text-emerald-400 hover:text-emerald-200 hover:bg-emerald-950/40 border border-emerald-500/20'
+                  }`}
+                >
+                  <Activity className="w-4 h-4 text-emerald-400 animate-pulse" />
+                  <span>ইউজার অনলাইন ম্যানেজমেন্ট</span>
+                  <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-emerald-950/80 font-mono text-emerald-300 border border-emerald-500/30">
+                    Live
+                  </span>
+                </button>
               </>
             )}
           </div>
@@ -2439,7 +2478,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                         type="text"
                         value={telegramConfig.chatId}
                         onChange={(e) => setTelegramConfig({ ...telegramConfig, chatId: e.target.value })}
-                        placeholder="-1003626406102"
+                        placeholder="-1004476126020"
                         className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-emerald-300 focus:outline-none focus:border-sky-500"
                       />
                     </div>
@@ -2455,6 +2494,59 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                         className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-sky-500"
                       />
                     </div>
+                  </div>
+
+                  {/* Feature-specific toggles */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-950/70 border border-slate-800 rounded-xl">
+                    <label className="flex items-center justify-between p-2 rounded-lg bg-slate-900/80 border border-slate-800 cursor-pointer">
+                      <div>
+                        <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                          <span>SMS / OTP Forwarding</span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                            telegramConfig.otpForwardingEnabled
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                              : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                          }`}>
+                            {telegramConfig.otpForwardingEnabled ? 'Active' : 'Paused / Off'}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400">Forward received SMS OTPs to Telegram</p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={!!telegramConfig.otpForwardingEnabled}
+                        onChange={(e) => {
+                          const updated = { ...telegramConfig, otpForwardingEnabled: e.target.checked };
+                          setTelegramConfig(updated);
+                          saveTelegramConfig(updated);
+                          showToast(e.target.checked ? 'OTP forwarding enabled' : 'OTP forwarding paused / turned off');
+                        }}
+                        className="w-4 h-4 text-sky-500 rounded focus:ring-sky-400 bg-slate-800 border-slate-700 ml-2"
+                      />
+                    </label>
+
+                    <label className="flex items-center justify-between p-2 rounded-lg bg-slate-900/80 border border-slate-800 cursor-pointer">
+                      <div>
+                        <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                          <span>Account Activity Reports</span>
+                          <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-500/30 font-bold">
+                            Active
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400">Masked account creation & approval updates</p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={telegramConfig.activityReportsEnabled !== false}
+                        onChange={(e) => {
+                          const updated = { ...telegramConfig, activityReportsEnabled: e.target.checked };
+                          setTelegramConfig(updated);
+                          saveTelegramConfig(updated);
+                          showToast(e.target.checked ? 'Account reports enabled' : 'Account reports disabled');
+                        }}
+                        className="w-4 h-4 text-sky-500 rounded focus:ring-sky-400 bg-slate-800 border-slate-700 ml-2"
+                      />
+                    </label>
                   </div>
 
                   {tgTestResult && (
@@ -4857,6 +4949,30 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
               userRole={isSuperAdmin ? 'admin' : 'subadmin'}
               userEmail={adminSession.email}
               onRefreshData={() => setAccountsList(getAllAccounts())}
+            />
+          </section>
+        )}
+
+        {/* ================================================================= */}
+        {/* TAB 10: GLOBAL WEBSITE MAINTENANCE MODE SWITCH & BANNER          */}
+        {/* ================================================================= */}
+        {activeTab === 'maintenance-mode' && (
+          <section className="space-y-6">
+            <MaintenanceControlCard
+              currentAdminEmail={adminSession.email}
+              onToast={(msg) => showToast(msg)}
+            />
+          </section>
+        )}
+
+        {/* ================================================================= */}
+        {/* TAB 11: USER ONLINE MANAGEMENT & MULTI-IP CONTROLLER             */}
+        {/* ================================================================= */}
+        {activeTab === 'user-online-management' && (
+          <section className="space-y-6">
+            <UserOnlineManagementCard
+              currentAdminEmail={adminSession.email}
+              onToast={(msg) => showToast(msg)}
             />
           </section>
         )}

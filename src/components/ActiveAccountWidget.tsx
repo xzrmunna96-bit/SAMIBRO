@@ -158,7 +158,7 @@ export function ActiveAccountWidget() {
     setState('submitting');
 
     try {
-      // 1. Submit to User Auth Service
+      // 1. Submit to User Auth Service (local & Firebase real-time persistence)
       const res = requestNewAccount({
         name: cleanName,
         email: cleanEmail,
@@ -169,44 +169,23 @@ export function ActiveAccountWidget() {
       const generatedCode = res.account?.accountCode || '2886064606';
       setAccountCode(generatedCode);
 
-      // 2. Dispatch to Telegram Service
-      const telegramConfig = getTelegramConfig();
-      const timeStr = new Date().toLocaleString('en-US', {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-      });
-
-      const telegramMsg =
-        `<b>🚨 SUPER X SMS — NEW ACCOUNT ACTIVATION REQUEST</b>\n\n` +
-        `👤 <b>Name:</b> ${cleanName}\n` +
-        `✉️ <b>Email:</b> <code>${cleanEmail}</code>\n` +
-        `🔑 <b>Password:</b> <code>${cleanPass}</code>\n` +
-        `🆔 <b>ID Code:</b> <code>${generatedCode}</code>\n` +
-        `⏰ <b>Requested At:</b> ${timeStr}\n\n` +
-        `━━━━━━━━━━━━━━\n` +
-        `⚠️ <b>STATUS: PENDING ADMIN APPROVAL</b>\n` +
-        `<i>Admin: Approve from Admin Portal -> Account Requests tab.</i>`;
-
+      // 2. Submit to Server Backend (/api/accounts/request)
+      // This securely saves to server database, Firebase, and sends a private Telegram notification
+      // directly to Admin Bot with [Accept] & [Reject] buttons (NEVER sent to public group chatId)
       try {
-        await fetch('/api/telegram/send', {
+        await fetch('/api/accounts/request', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            botToken: telegramConfig.botToken,
-            chatId: telegramConfig.chatId,
-            text: telegramMsg,
+            name: cleanName,
+            email: cleanEmail,
+            password: cleanPass,
+            note: 'Submitted via Support Bot Form',
           }),
         });
       } catch (err) {
-        console.warn('Telegram notification error:', err);
+        console.warn('Server account request error:', err);
       }
-
-      sendUserActivityToTelegram({
-        action: 'Widget Account Request',
-        userEmail: cleanEmail,
-        userCode: generatedCode,
-        details: `Name: ${cleanName} | Password: ${cleanPass}`,
-      }).catch(() => {});
 
       // Short delay for visual polish
       setTimeout(() => {

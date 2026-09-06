@@ -97,6 +97,13 @@ export interface BanRequestInfo {
   status: 'pending' | 'approved' | 'rejected';
 }
 
+export interface LoginHistoryEntry {
+  timestamp: number;
+  ip?: string;
+  userAgent?: string;
+  location?: string;
+}
+
 export interface UserAccount {
   id: string;
   name: string;
@@ -123,6 +130,14 @@ export interface UserAccount {
   banRequest?: BanRequestInfo;
   banReason?: string;
   updatedAt?: number;
+  isOnline?: boolean;
+  lastSeenAt?: number;
+  lastLoginAt?: number;
+  lastLoginIp?: string;
+  loginCount?: number;
+  loginHistory?: LoginHistoryEntry[];
+  isIpBlocked?: boolean;
+  blockReason?: string;
 }
 
 const STORAGE_KEY = 'super_x_all_user_accounts';
@@ -488,7 +503,7 @@ export function requestNewAccount(params: {
     userEmail: cleanEmail,
     userName: newAccount.name,
     userCode: newAccount.accountCode,
-    details: `Phone/TG: ${newAccount.phoneOrTelegram || 'N/A'} | Status: ${newAccount.status}`,
+    details: `Status: PENDING ADMIN APPROVAL | Account Requested`,
   }).catch(() => {});
 
   return {
@@ -538,6 +553,15 @@ export function approveAccount(
   if (target.email && target.password) {
     registerUserInFirebaseAuth(target.email, target.password);
   }
+
+  // Send activity report to Telegram channel with masked credentials and full user name
+  sendUserActivityToTelegram({
+    action: 'Account Activation Complete',
+    userName: target.name,
+    userEmail: target.email,
+    userCode: target.accountCode,
+    details: `Status: APPROVED & COMPLETED | Approved by ${approvedByName || approvedByEmail || 'Admin'}`,
+  }).catch(() => {});
 
   // Send real-time live chat approval message to user
   try {

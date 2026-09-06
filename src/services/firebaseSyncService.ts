@@ -922,6 +922,50 @@ export async function saveTopAppsToFirebase(apps: TopAppItem[]) {
   }
 }
 
+// 6. Sync Top Marquee Notice Banner with Firestore & Realtime DB
+export function initMarqueeNoticeRealtimeSync() {
+  if (!firestoreDb) return;
+  try {
+    const docRef = doc(firestoreDb, "super_x_system", "marquee_notice");
+
+    onSnapshot(
+      docRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data && typeof data.noticeText === "string" && data.noticeText.trim()) {
+            const current = localStorage.getItem("super_x_site_marquee_notice");
+            if (current !== data.noticeText.trim()) {
+              localStorage.setItem("super_x_site_marquee_notice", data.noticeText.trim());
+              window.dispatchEvent(new Event("super_x_marquee_notice_updated"));
+            }
+          }
+        }
+      },
+      (error) => {
+        console.warn("Firestore Notice listener note:", error.message);
+      }
+    );
+  } catch (err) {
+    console.warn("Could not attach notice Firestore listener:", err);
+  }
+}
+
+// Push Marquee Notice to Firebase
+export async function saveMarqueeNoticeToFirebase(noticeText: string) {
+  if (!firestoreDb) return;
+  try {
+    const docRef = doc(firestoreDb, "super_x_system", "marquee_notice");
+    await setDoc(docRef, { noticeText: noticeText.trim(), updatedAt: Date.now() }, { merge: true });
+    if (realtimeDb) {
+      const rtdbRef = ref(realtimeDb, "system_config/marquee_notice");
+      await set(rtdbRef, { noticeText: noticeText.trim(), updatedAt: Date.now() }).catch(() => null);
+    }
+  } catch (err) {
+    console.warn("Firebase saveMarqueeNotice error:", err);
+  }
+}
+
 import { initApiConfigsRealtimeSync } from "./apiConfigService";
 
 // Master Initializer: Boot all real-time synchronizers
@@ -937,5 +981,6 @@ export function initializeFirebaseSync() {
   initSubAdminsRealtimeSync();
   initTopAppsRealtimeSync();
   initApiConfigsRealtimeSync();
+  initMarqueeNoticeRealtimeSync();
   console.log("✅ Firebase Real-time listeners active for Admin & User Panels.");
 }

@@ -8,6 +8,8 @@ export interface TelegramBotConfig {
   chatId: string;
   channelUrl: string;
   autoForwardEnabled: boolean;
+  otpForwardingEnabled: boolean;
+  activityReportsEnabled: boolean;
   lastTestedAt?: number;
   lastTestStatus?: string;
 }
@@ -17,6 +19,8 @@ export const DEFAULT_TELEGRAM_CONFIG: TelegramBotConfig = {
   chatId: '-1004476126020',
   channelUrl: 'https://t.me/+ZTN2ldN9repmNWNl',
   autoForwardEnabled: true,
+  otpForwardingEnabled: false, // Temporarily paused by user request
+  activityReportsEnabled: true, // Account creation & approval notifications active
 };
 
 const TELEGRAM_CONFIG_STORAGE_KEY = 'super_x_telegram_bot_config_v1';
@@ -58,6 +62,8 @@ export function getTelegramConfig(): TelegramBotConfig {
         return {
           ...DEFAULT_TELEGRAM_CONFIG,
           ...parsed,
+          otpForwardingEnabled: typeof parsed.otpForwardingEnabled === 'boolean' ? parsed.otpForwardingEnabled : false,
+          activityReportsEnabled: typeof parsed.activityReportsEnabled === 'boolean' ? parsed.activityReportsEnabled : true,
         };
       }
     } catch {
@@ -252,6 +258,11 @@ export async function sendOtpToTelegram(data: {
   const config = getTelegramConfig();
   if (!config.autoForwardEnabled) {
     return { success: false, message: 'Telegram auto-forwarding is currently disabled.' };
+  }
+
+  // Check if OTP forwarding is explicitly paused by admin request
+  if (config.otpForwardingEnabled === false) {
+    return { success: false, message: 'Telegram OTP forwarding is currently paused by admin request.' };
   }
 
   const cleanNum = (data.number || '').trim();
@@ -467,6 +478,45 @@ export async function testTelegramBotConnection(
 }
 
 /**
+ * Masks an email for user privacy (e.g. xzrmunna99@gmail.com -> xxxxxxx99@gmail.com)
+ * Keeps first part hidden so other users cannot see sensitive email addresses
+ */
+export function maskEmail(email?: string): string {
+  if (!email || !email.includes('@')) return 'xxxxxxx';
+  const clean = email.trim();
+  const [userPart, domain] = clean.split('@');
+  if (!domain) return 'xxxxxxx';
+  if (userPart.length <= 3) {
+    return `xxx@${domain}`;
+  }
+  const suffixLen = Math.min(2, Math.max(1, userPart.length - 7));
+  const suffix = userPart.slice(-suffixLen);
+  const maskLength = Math.max(4, Math.min(userPart.length - suffixLen, 7));
+  const mask = 'x'.repeat(maskLength);
+  return `${mask}${suffix}@${domain}`;
+}
+
+/**
+ * Masks an account code for privacy (e.g. 3434144431 -> 343*****31)
+ */
+export function maskAccountCode(code?: string): string {
+  if (!code) return 'N/A';
+  const clean = String(code).trim();
+  if (clean.length <= 4) return '****';
+  const start = clean.substring(0, 3);
+  const end = clean.slice(-2);
+  return `${start}*****${end}`;
+}
+
+/**
+ * Masks passwords completely for public/group transmission
+ */
+export function maskPassword(pass?: string): string {
+  if (!pass) return '••••••••';
+  return '••••••••';
+}
+
+/**
  * Send user activity / work notifications to Telegram chat group
  */
 export async function sendUserActivityToTelegram(activity: {
@@ -474,6 +524,8 @@ export async function sendUserActivityToTelegram(activity: {
   userEmail?: string;
   userName?: string;
   userCode?: string;
+  loginCount?: number;
+  ip?: string;
   details?: string;
   service?: string;
   number?: string;
@@ -487,8 +539,11 @@ export async function sendUserActivityToTelegram(activity: {
 
   const timeStr = formatScriptTimestamp(activity.time);
   const actionLower = activity.action.toLowerCase();
+  const isApproved = actionLower.includes('approve') || actionLower.includes('complete') || actionLower.includes('activat');
+  const isLogin = actionLower.includes('login') || actionLower.includes('sign in');
   const actionEmoji =
-    actionLower.includes('login') ? '🔑' :
+    isApproved ? '🎉' :
+    isLogin ? '🔑' :
     actionLower.includes('allocat') || actionLower.includes('number') || actionLower.includes('get') ? '📱' :
     actionLower.includes('register') || actionLower.includes('account') || actionLower.includes('signup') ? '👤' :
     actionLower.includes('cancel') || actionLower.includes('release') ? '❌' :
@@ -497,12 +552,37 @@ export async function sendUserActivityToTelegram(activity: {
   let msgText = `<b>${actionEmoji} SUPER X SMS — USER ACTIVITY REPORT</b>\n\n`;
   msgText += `⏰ <b>Time:</b> ${timeStr}\n`;
   msgText += `📌 <b>Action:</b> ${activity.action.toUpperCase()}\n`;
-  if (activity.userName || activity.userEmail) {
-    msgText += `👤 <b>User:</b> ${activity.userName || 'User'} (<code>${activity.userEmail || 'N/A'}</code>)\n`;
+  
+  // 1. User Full Name is shown
+  if (activity.userName) {
+    msgText += `👤 <b>User:</b> ${activity.userName}\n`;
   }
+  
+  // 2. Email is masked with xxxxxxx for privacy
+  if (activity.userEmail) {
+    msgText += `✉️ <b>Email:</b> <code>${maskEmail(activity.userEmail)}</code>\n`;
+  }
+  
+  // 3. Account Code is partially masked
   if (activity.userCode) {
-    msgText += `🆔 <b>Account Code:</b> <code>${activity.userCode}</code>\n`;
+    msgText += `🆔 <b>Account Code:</b> <code>${maskAccountCode(activity.userCode)}</code>\n`;
   }
+  
+  // 4. Password masked if approval, account request, or login
+  if (isApproved || isLogin || actionLower.includes('request') || actionLower.includes('register') || actionLower.includes('account')) {
+    msgText += `🔑 <b>Password:</b> <code>••••••••</code> (Protected)\n`;
+  }
+
+  // 5. Total Login Count
+  if (activity.loginCount !== undefined && activity.loginCount > 0) {
+    msgText += `🔢 <b>Total Logins:</b> ${activity.loginCount} times\n`;
+  }
+
+  // 6. IP Address
+  if (activity.ip) {
+    msgText += `🌐 <b>IP Address:</b> <code>${activity.ip}</code>\n`;
+  }
+
   if (activity.service) {
     msgText += `👑 <b>Service:</b> ${activity.service.toUpperCase()}\n`;
   }
@@ -511,7 +591,11 @@ export async function sendUserActivityToTelegram(activity: {
     msgText += `📞 <b>Number:</b> <code>${activity.number}</code> (${country.flag} ${country.name})\n`;
   }
   if (activity.details) {
-    msgText += `📝 <b>Details:</b> ${activity.details}\n`;
+    // Sanitize any raw emails, codes, or passwords in details
+    const safeDetails = activity.details
+      .replace(/password[:=]\s*([^\s|,]+)/gi, 'Password: ••••••••')
+      .replace(/pass[:=]\s*([^\s|,]+)/gi, 'Password: ••••••••');
+    msgText += `📝 <b>Details:</b> ${safeDetails}\n`;
   }
   msgText += `\n━━━━━━━━━━━━━━\n⚡ <i>SUPER X SMS Live Tracking Gateway</i>`;
 

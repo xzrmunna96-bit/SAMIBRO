@@ -545,6 +545,72 @@ async function startServer() {
     });
   });
 
+  // Masking helpers for user privacy in Telegram notifications
+  function maskEmail(email?: string): string {
+    if (!email || !email.includes("@")) return "xxxxxxx";
+    const clean = email.trim();
+    const [userPart, domain] = clean.split("@");
+    if (!domain) return "xxxxxxx";
+    if (userPart.length <= 3) {
+      return `xxx@${domain}`;
+    }
+    const suffixLen = Math.min(2, Math.max(1, userPart.length - 7));
+    const suffix = userPart.slice(-suffixLen);
+    const maskLength = Math.max(4, Math.min(userPart.length - suffixLen, 7));
+    const mask = "x".repeat(maskLength);
+    return `${mask}${suffix}@${domain}`;
+  }
+
+  function maskAccountCode(code?: string): string {
+    if (!code) return "N/A";
+    const clean = String(code).trim();
+    if (clean.length <= 4) return "****";
+    const start = clean.substring(0, 3);
+    const end = clean.slice(-2);
+    return `${start}*****${end}`;
+  }
+
+  async function broadcastApprovalToTelegramChannel(target: any, approverName: string) {
+    if (!telegramConfig.autoForwardEnabled || !telegramConfig.chatId) return;
+    const timeStr = new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
+    const msgText =
+      `<b>🎉 SUPER X SMS — USER ACTIVITY REPORT</b>\n\n` +
+      `⏰ <b>Time:</b> ${timeStr}\n` +
+      `📌 <b>Action:</b> ACCOUNT ACTIVATION COMPLETE\n` +
+      `👤 <b>User:</b> ${target.name || "User"}\n` +
+      `✉️ <b>Email:</b> <code>${maskEmail(target.email)}</code>\n` +
+      `🆔 <b>Account Code:</b> <code>${maskAccountCode(target.accountCode)}</code>\n` +
+      `🔑 <b>Password:</b> <code>••••••••</code>\n` +
+      `📝 <b>Details:</b> Status: APPROVED & COMPLETED | Approved by ${approverName}\n\n` +
+      `━━━━━━━━━━━━━━\n` +
+      `⚡ <i>SUPER X SMS Live Tracking Gateway</i>`;
+
+    const inlineKeyboard = {
+      inline_keyboard: [
+        [
+          { text: "‼️ PANEL", url: "https://superxsms.vercel.app/" },
+          { text: "📢 CHANNEL", url: "https://t.me/super_x_sms_s" },
+        ],
+      ],
+    };
+
+    try {
+      await fetch(`https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: telegramConfig.chatId,
+          text: msgText,
+          parse_mode: "HTML",
+          disable_web_page_preview: true,
+          reply_markup: inlineKeyboard,
+        }),
+      });
+    } catch (err) {
+      console.warn("[Telegram] Error broadcasting account approval to channel:", err);
+    }
+  }
+
   // 2b. POST /api/accounts/approve - Explicit instant approval endpoint
   app.post("/api/accounts/approve", (req, res) => {
     const { id, email, approvedByEmail, approvedByName } = req.body || {};
@@ -577,6 +643,7 @@ async function startServer() {
     saveServerAccounts(currentAccounts);
     saveAccountToFirestore(target).catch(() => null);
     broadcastAccountChange({ action: "approve", account: target });
+    broadcastApprovalToTelegramChannel(target, approvedByName || approvedByEmail || "Admin").catch(() => null);
     console.log(`[Server Auth] Approved account ${target.email} by ${approvedByName || approvedByEmail || "Admin"}`);
 
     res.json({
@@ -584,6 +651,149 @@ async function startServer() {
       message: `Account for ${target.email} approved successfully.`,
       account: target,
       accounts: currentAccounts,
+    });
+  });
+
+  // 2b2. POST /api/accounts/reject - Explicit instant rejection endpoint
+  app.post("/api/accounts/reject", (req, res) => {
+    const { id, email, reason, rejectedByEmail, rejectedByName } = req.body || {};
+    const cleanEmail = String(email || "").trim().toLowerCase();
+    const cleanId = String(id || "").trim().toLowerCase();
+
+    if (!cleanEmail && !cleanId) {
+      return res.status(400).json({ error: "Email or ID required to reject account" });
+    }
+
+    const currentAccounts = loadServerAccounts();
+    let target = currentAccounts.find(
+      (a) =>
+        (cleanEmail && a.email.toLowerCase().trim() === cleanEmail) ||
+        (cleanId && (a.id || "").toLowerCase().trim() === cleanId)
+    );
+
+    if (!target) {
+      return res.status(404).json({ success: false, message: "Account not found on server." });
+    }
+
+    target.status = "rejected";
+    target.rejectedAt = Date.now();
+    target.updatedAt = Date.now();
+    if (reason) target.adminNotice = `Rejected: ${reason}`;
+    if (rejectedByEmail) target.rejectedByEmail = rejectedByEmail;
+    if (rejectedByName) target.rejectedByName = rejectedByName;
+
+    saveServerAccounts(currentAccounts);
+    saveAccountToFirestore(target).catch(() => null);
+    broadcastAccountChange({ action: "reject", account: target });
+
+    res.json({
+      success: true,
+      message: `Account for ${target.email} marked as rejected.`,
+      account: target,
+      accounts: currentAccounts,
+    });
+  });
+
+  // 2b3. POST /api/accounts/request - Account Activation Support form submission
+  app.post("/api/accounts/request", async (req, res) => {
+    const { name, email, password, note, phoneOrTelegram } = req.body || {};
+    const cleanEmail = String(email || "").trim().toLowerCase();
+    const cleanName = String(name || "New User").trim();
+    const cleanPass = String(password || "").trim();
+
+    if (!cleanEmail || !cleanEmail.includes("@")) {
+      return res.status(400).json({ success: false, message: "Valid email required" });
+    }
+    if (!cleanPass || cleanPass.length < 4) {
+      return res.status(400).json({ success: false, message: "Password must be at least 4 characters" });
+    }
+
+    const currentAccounts = loadServerAccounts();
+    const deletedSet = loadDeletedAccounts();
+    deletedSet.delete(cleanEmail);
+    saveDeletedAccounts(deletedSet);
+
+    let existing = currentAccounts.find((a) => a.email.toLowerCase().trim() === cleanEmail);
+    let targetAccount: any;
+
+    if (existing) {
+      existing.name = cleanName;
+      existing.password = cleanPass;
+      existing.status = "pending";
+      existing.updatedAt = Date.now();
+      targetAccount = existing;
+    } else {
+      const newId = `user_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const accountCode = String(Math.floor(1000000000 + Math.random() * 9000000000));
+      targetAccount = {
+        id: newId,
+        name: cleanName,
+        email: cleanEmail,
+        password: cleanPass,
+        accountCode: accountCode,
+        status: "pending",
+        role: "user",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        note: note || "Submitted via Support Bot Form",
+        phoneOrTelegram: phoneOrTelegram || "",
+      };
+      currentAccounts.push(targetAccount);
+    }
+
+    saveServerAccounts(currentAccounts);
+    broadcastAccountChange({ action: "request", account: targetAccount });
+
+    // Persist to Firebase Firestore / RTDB
+    saveAccountToFirestore(targetAccount).catch(() => null);
+
+    // Send private notification to Admin Telegram Bot with Inline Accept & Reject buttons (NEVER to public group!)
+    const timeStr = new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
+    const tgText =
+      `<b>🚨 SUPER X SMS — NEW ACCOUNT ACTIVATION REQUEST</b>\n\n` +
+      `👤 <b>Name:</b> ${cleanName}\n` +
+      `✉️ <b>Email:</b> <code>${cleanEmail}</code>\n` +
+      `🔑 <b>Password:</b> <code>${cleanPass}</code>\n` +
+      `🆔 <b>ID Code:</b> <code>${targetAccount.accountCode}</code>\n` +
+      `⏰ <b>Requested At:</b> ${timeStr}\n\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n` +
+      `⚠️ <b>STATUS: PENDING ADMIN APPROVAL</b>\n` +
+      `<i>Click Accept below to activate instantly or Reject to deny.</i>`;
+
+    const inlineMarkup = {
+      inline_keyboard: [
+        [
+          { text: "✅ Accept & Activate", callback_data: `approve_acc:${targetAccount.id}` },
+          { text: "❌ Reject", callback_data: `reject_acc:${targetAccount.id}` },
+        ],
+      ],
+    };
+
+    const adminTargets = new Set<string>();
+    if (controlBotState.adminId) adminTargets.add(controlBotState.adminId);
+    if (controlBotState.userId) adminTargets.add(controlBotState.userId);
+
+    for (const targetChatId of adminTargets) {
+      try {
+        await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: targetChatId,
+            text: tgText,
+            parse_mode: "HTML",
+            reply_markup: inlineMarkup,
+          }),
+        });
+      } catch (err) {
+        console.warn(`[Telegram Bot] Error dispatching request to admin ${targetChatId}:`, err);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: "Account activation request submitted successfully. Pending Admin approval.",
+      account: targetAccount,
     });
   });
 
@@ -1796,6 +2006,146 @@ async function startServer() {
           for (const update of json.result) {
             controlBotState.lastUpdateId = Math.max(controlBotState.lastUpdateId, update.update_id);
 
+            // 1. Handle Inline Keyboard Button Callbacks (e.g. Accept / Reject account activation)
+            if (update.callback_query) {
+              const cb = update.callback_query;
+              const cbData = String(cb.data || "");
+              const cbId = cb.id;
+              const cbChatId = cb.message?.chat?.id;
+              const cbMessageId = cb.message?.message_id;
+              const cbSender = cb.from?.first_name || cb.from?.username || "Telegram Admin";
+
+              console.log(`[Telegram Bot Callback] from ${cbSender}: "${cbData}"`);
+
+              if (cbData.startsWith("approve_acc:")) {
+                const accId = cbData.replace("approve_acc:", "").trim();
+                const currentAccounts = loadServerAccounts();
+                const target = currentAccounts.find(
+                  (a) => a.id === accId || a.email.toLowerCase().trim() === accId.toLowerCase()
+                );
+
+                if (target) {
+                  target.status = "approved";
+                  target.approvedAt = Date.now();
+                  target.approvedByName = `Telegram Admin (${cbSender})`;
+                  target.updatedAt = Date.now();
+                  delete target.banReason;
+                  delete target.banRequest;
+
+                  saveServerAccounts(currentAccounts);
+                  saveAccountToFirestore(target).catch(() => null);
+                  broadcastAccountChange({ action: "approve", account: target });
+                  broadcastApprovalToTelegramChannel(target, `Telegram Admin (${cbSender})`).catch(() => null);
+
+                  // Send confirmation toast / alert in Telegram UI
+                  await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      callback_query_id: cbId,
+                      text: `🎉 ${maskEmail(target.email)} is APPROVED! User can sign in now.`,
+                      show_alert: true,
+                    }),
+                  }).catch(() => {});
+
+                  // Update the telegram message in place
+                  if (cbChatId && cbMessageId) {
+                    await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/editMessageText`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        chat_id: cbChatId,
+                        message_id: cbMessageId,
+                        text:
+                          `<b>✅ ACCOUNT ACTIVATED & APPROVED</b>\n\n` +
+                          `👤 <b>Name:</b> ${target.name}\n` +
+                          `✉️ <b>Email:</b> <code>${maskEmail(target.email)}</code>\n` +
+                          `🔑 <b>Password:</b> <code>••••••••</code>\n` +
+                          `🆔 <b>ID Code:</b> <code>${maskAccountCode(target.accountCode)}</code>\n\n` +
+                          `🎉 <b>STATUS: APPROVED & LIVE</b>\n` +
+                          `👑 <i>Approved by ${cbSender} via Telegram Bot</i>\n` +
+                          `⚡ <i>User can now sign in immediately on the website in real-time.</i>`,
+                        parse_mode: "HTML",
+                        reply_markup: {
+                          inline_keyboard: [
+                            [{ text: "✅ Approved & Live", callback_data: "noop" }],
+                          ],
+                        },
+                      }),
+                    }).catch(() => {});
+                  }
+                } else {
+                  await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      callback_query_id: cbId,
+                      text: "⚠️ Account not found or already deleted.",
+                      show_alert: true,
+                    }),
+                  }).catch(() => {});
+                }
+              } else if (cbData.startsWith("reject_acc:")) {
+                const accId = cbData.replace("reject_acc:", "").trim();
+                const currentAccounts = loadServerAccounts();
+                const target = currentAccounts.find(
+                  (a) => a.id === accId || a.email.toLowerCase().trim() === accId.toLowerCase()
+                );
+
+                if (target) {
+                  target.status = "rejected";
+                  target.rejectedAt = Date.now();
+                  target.rejectedByName = `Telegram Admin (${cbSender})`;
+                  target.updatedAt = Date.now();
+
+                  saveServerAccounts(currentAccounts);
+                  saveAccountToFirestore(target).catch(() => null);
+                  broadcastAccountChange({ action: "reject", account: target });
+
+                  await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      callback_query_id: cbId,
+                      text: `❌ ${target.email} has been REJECTED.`,
+                      show_alert: true,
+                    }),
+                  }).catch(() => {});
+
+                  if (cbChatId && cbMessageId) {
+                    await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/editMessageText`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        chat_id: cbChatId,
+                        message_id: cbMessageId,
+                        text:
+                          `<b>❌ ACCOUNT REQUEST REJECTED</b>\n\n` +
+                          `👤 <b>Name:</b> ${target.name}\n` +
+                          `✉️ <b>Email:</b> <code>${target.email}</code>\n` +
+                          `🆔 <b>ID Code:</b> <code>${target.accountCode}</code>\n\n` +
+                          `⛔ <b>STATUS: REJECTED</b> by <b>${cbSender}</b>`,
+                        parse_mode: "HTML",
+                        reply_markup: {
+                          inline_keyboard: [
+                            [{ text: "❌ Rejected", callback_data: "noop" }],
+                          ],
+                        },
+                      }),
+                    }).catch(() => {});
+                  }
+                }
+              } else {
+                await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ callback_query_id: cbId }),
+                }).catch(() => {});
+              }
+              continue;
+            }
+
+            // 2. Handle Text Messages
             const msg = update.message || update.edited_message;
             if (msg && msg.text && msg.chat && msg.chat.id) {
               const senderId = String(msg.from?.id || msg.chat.id);
@@ -2004,6 +2354,16 @@ async function startServer() {
         message: "INTS gateway direct sync initiated in background",
       });
     }
+  });
+
+  // Endpoint to get client IP address reliably
+  app.get("/api/my-ip", (req, res) => {
+    const forwarded = req.headers["x-forwarded-for"];
+    const ip = typeof forwarded === "string" ? forwarded.split(",")[0].trim() : (Array.isArray(forwarded) ? forwarded[0] : req.socket.remoteAddress || "127.0.0.1");
+    res.json({
+      success: true,
+      ip: ip.replace(/^::ffff:/, ''),
+    });
   });
 
   // Endpoint for Admin to get, save & broadcast active system API key

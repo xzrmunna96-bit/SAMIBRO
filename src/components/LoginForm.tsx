@@ -30,7 +30,7 @@ import {
   fetchAccountsFromServer,
   fetchSubAdminsFromServer,
 } from '../services/serverAuthSync';
-import { sendUserActivityToTelegram } from '../services/telegramService';
+import { recordUserLoginEvent } from '../services/onlineTrackingService';
 import { triggerAdminRoute } from '../App';
 
 export interface UserData {
@@ -166,13 +166,9 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
 
       if (result.success && result.user) {
         setIsLoading(false);
-        sendUserActivityToTelegram({
-          action: 'User Login',
-          userEmail: result.user.email,
-          userName: result.user.name,
-          userCode: result.user.accountCode,
-          details: `Role: ${result.user.role || 'Client'} | Portal Sign In`,
-        }).catch(() => {});
+        // Record login with IP detection, login increment, history logging, and masked Telegram alert
+        recordUserLoginEvent(result.user).catch(() => {});
+
         onLoginSuccess({
           email: result.user.email,
           name: result.user.name,

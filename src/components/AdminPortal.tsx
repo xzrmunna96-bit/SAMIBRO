@@ -175,7 +175,11 @@ function getInitialAdminSession(): AdminSession {
     return { isAuthenticated: false, role: 'super_admin', email: '', name: '' };
   }
   try {
-    const raw = sessionStorage.getItem(ADMIN_SESSION_KEY) || sessionStorage.getItem('super_x_admin_session');
+    const raw =
+      sessionStorage.getItem(ADMIN_SESSION_KEY) ||
+      sessionStorage.getItem('super_x_admin_session') ||
+      localStorage.getItem(ADMIN_SESSION_KEY) ||
+      localStorage.getItem('super_x_admin_session');
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && parsed.isAuthenticated) {
@@ -185,6 +189,35 @@ function getInitialAdminSession(): AdminSession {
   } catch {
     // ignore
   }
+
+  // Check if current user is logged in as Admin or Sub-Admin in main app storage
+  try {
+    const savedUser = localStorage.getItem('super_x_sms_logged_in_user');
+    if (savedUser) {
+      const user = JSON.parse(savedUser);
+      if (user && user.email && (user.role === 'admin' || user.role === 'sub_admin' || user.status === 'approved')) {
+        const cleanEmail = String(user.email).toLowerCase().trim();
+        const isSuper =
+          cleanEmail === 'xzrmunna33@gmail.com' ||
+          cleanEmail === 'xzrmunna96@gmail.com' ||
+          cleanEmail === 'xzrmunna';
+        const isSubOrAdmin =
+          isSuper ||
+          user.role === 'admin' ||
+          user.role === 'sub_admin' ||
+          getAllSubAdmins().some((sa) => sa.email.toLowerCase().trim() === cleanEmail || sa.email.split('@')[0].toLowerCase().trim() === cleanEmail);
+        if (isSubOrAdmin) {
+          return {
+            isAuthenticated: true,
+            role: isSuper ? 'super_admin' : 'sub_admin',
+            email: user.email,
+            name: user.name || (isSuper ? 'Super Admin' : 'Sub Admin'),
+          };
+        }
+      }
+    }
+  } catch {}
+
   return { isAuthenticated: false, role: 'super_admin', email: '', name: '' };
 }
 
@@ -217,6 +250,11 @@ const StreamPollCountdownBadge = React.memo(function StreamPollCountdownBadge({
 export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
   // Authentication State
   const [adminSession, setAdminSession] = useState<AdminSession>(() => getInitialAdminSession());
+  const adminSessionRef = React.useRef(adminSession);
+  useEffect(() => {
+    adminSessionRef.current = adminSession;
+  }, [adminSession]);
+
   const isAdminAuthenticated = adminSession.isAuthenticated;
   const isSuperAdmin = adminSession.role === 'super_admin';
 
@@ -1037,36 +1075,73 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
       const currentSubAdmins = getAllSubAdmins();
       setSubAdminsList(currentSubAdmins);
 
-      // Live Revocation: If currently logged in as sub_admin and sub-admin was deleted by Main Admin
-      if (adminSession.isAuthenticated && adminSession.role === 'sub_admin') {
-        const cleanSessEmail = (adminSession.email || '').toLowerCase().trim();
-        const isStillValid =
-          !cleanSessEmail ||
-          currentSubAdmins.length === 0 ||
-          currentSubAdmins.some((sa) => {
-            const saEmail = (sa.email || '').toLowerCase().trim();
-            const saUser = saEmail.split('@')[0];
-            return (
-              sa.status === 'active' &&
-              (saEmail === cleanSessEmail ||
-                saUser === cleanSessEmail ||
-                (sa.name && sa.name.toLowerCase().trim() === cleanSessEmail) ||
-                (sa.id && sa.id.toLowerCase().trim() === cleanSessEmail))
-            );
-          });
-        if (!isStillValid) {
-          const revokedSess: AdminSession = {
-            isAuthenticated: false,
-            role: 'super_admin',
-            email: '',
-            name: '',
-          };
-          setAdminSession(revokedSess);
+      // Live Revocation: Only revoke if explicitly deleted from both sub-admins list AND accounts list
+      const sess = adminSessionRef.current;
+      if (sess.isAuthenticated && sess.role === 'sub_admin') {
+        const cleanSessEmail = (sess.email || '').toLowerCase().trim();
+        if (!cleanSessEmail) return;
+
+        const currentAccounts = getAllAccounts();
+
+        const isSubInSubList = currentSubAdmins.some((sa) => {
+          const saEmail = (sa.email || '').toLowerCase().trim();
+          const saUser = saEmail.split('@')[0];
+          return (
+            sa.status === 'active' &&
+            (saEmail === cleanSessEmail ||
+              saUser === cleanSessEmail ||
+              (cleanSessEmail.includes('@') && saEmail.split('@')[0] === cleanSessEmail.split('@')[0]) ||
+              (sa.name && sa.name.toLowerCase().trim() === cleanSessEmail) ||
+              (sa.id && sa.id.toLowerCase().trim() === cleanSessEmail))
+          );
+        });
+
+        const isSubInAccountsList = currentAccounts.some((acc) => {
+          const accEmail = (acc.email || '').toLowerCase().trim();
+          const accUser = (acc.username || accEmail.split('@')[0]).toLowerCase().trim();
+          const accCode = (acc.accountCode || '').trim();
+          return (
+            (acc.role === 'admin' || (acc.role as string) === 'sub_admin' || (acc.role as string) === 'subadmin') &&
+            acc.status === 'approved' &&
+            (accEmail === cleanSessEmail ||
+              accUser === cleanSessEmail ||
+              accCode === cleanSessEmail ||
+              (cleanSessEmail.includes('@') && accEmail.split('@')[0] === cleanSessEmail.split('@')[0]) ||
+              (acc.id && acc.id.toLowerCase().trim() === cleanSessEmail))
+          );
+        });
+
+        // If lists are temporarily empty during initial sync, don't prematurely revoke
+        if (currentSubAdmins.length === 0 && currentAccounts.length === 0) return;
+
+        if (!isSubInSubList && !isSubInAccountsList && currentSubAdmins.length > 0 && currentAccounts.length > 0) {
+          let isStillApprovedLocally = false;
           try {
-            sessionStorage.removeItem(ADMIN_SESSION_KEY);
-            sessionStorage.removeItem('super_x_admin_session');
+            const savedUser = localStorage.getItem('super_x_sms_logged_in_user');
+            if (savedUser) {
+              const u = JSON.parse(savedUser);
+              if (u && u.email && (u.email.toLowerCase().trim() === cleanSessEmail || u.email.split('@')[0].toLowerCase().trim() === cleanSessEmail) && (u.role === 'admin' || u.role === 'sub_admin' || u.role === 'subadmin')) {
+                isStillApprovedLocally = true;
+              }
+            }
           } catch {}
-          showToast('Your Sub-Admin access has been revoked by Main Admin.');
+
+          if (!isStillApprovedLocally) {
+            const revokedSess: AdminSession = {
+              isAuthenticated: false,
+              role: 'super_admin',
+              email: '',
+              name: '',
+            };
+            setAdminSession(revokedSess);
+            try {
+              sessionStorage.removeItem(ADMIN_SESSION_KEY);
+              sessionStorage.removeItem('super_x_admin_session');
+              localStorage.removeItem(ADMIN_SESSION_KEY);
+              localStorage.removeItem('super_x_admin_session');
+            } catch {}
+            showToast('Your Sub-Admin access has been revoked by Main Admin.');
+          }
         }
       }
     };
@@ -1100,6 +1175,14 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
       'user-management',
       'manually-user',
       'live-chat',
+      'api-management',
+      'user-notification',
+      'top-apps',
+      'user-online-management',
+      'console-api',
+      'admin-management',
+      'telegram-bot-control',
+      'maintenance-mode',
     ];
     if (isAdminAuthenticated && !isSuperAdmin && !allowedSubAdminTabs.includes(activeTab)) {
       setActiveTab('active-account-management');
@@ -1143,6 +1226,8 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
       try {
         sessionStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(newSession));
         sessionStorage.setItem('super_x_admin_session', JSON.stringify(newSession));
+        localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(newSession));
+        localStorage.setItem('super_x_admin_session', JSON.stringify(newSession));
       } catch {}
 
       if (res.role === 'sub_admin') {
@@ -1164,6 +1249,8 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     try {
       sessionStorage.removeItem(ADMIN_SESSION_KEY);
       sessionStorage.removeItem('super_x_admin_session');
+      localStorage.removeItem(ADMIN_SESSION_KEY);
+      localStorage.removeItem('super_x_admin_session');
     } catch {}
     showToast('Admin session locked.');
   };
@@ -1776,6 +1863,13 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
       (conv.lastMessage && conv.lastMessage.text.toLowerCase().includes(q))
     );
   });
+
+  // Auto-select first chat conversation when none selected
+  useEffect(() => {
+    if (chatConversations.length > 0 && !activeChatUserEmail) {
+      setActiveChatUserEmail(chatConversations[0].userEmail);
+    }
+  }, [chatConversations, activeChatUserEmail]);
 
   const currentChatMessages = activeChatUserEmail
     ? getChatMessagesForUser(activeChatUserEmail)
@@ -4446,48 +4540,63 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
         {/* TAB 6: LIVE CHAT (REAL-TIME USER MESSAGES & ADMIN REPLY)          */}
         {/* ================================================================= */}
         {activeTab === 'live-chat' && (
-          <section className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-            <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between">
+          <section className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
+            {/* Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-800/80 bg-slate-900/95 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-purple-500/15 border border-purple-500/30 rounded-xl text-purple-400">
+                <div className="p-2.5 bg-emerald-500/15 border border-emerald-500/30 rounded-xl text-emerald-400 relative">
                   <MessageSquare className="w-5 h-5" />
+                  <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                  </span>
                 </div>
                 <div>
-                  <h2 className="text-base sm:text-lg font-black text-white">Live Support Chat</h2>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-base sm:text-lg font-black text-white">Live Support Chat</h2>
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold">
+                      Live Online
+                    </span>
+                  </div>
                   <p className="text-xs text-slate-400">
-                    Receive all user SMS / support queries in real-time and send instant replies.
+                    Real-time communications hub for Main Admin &amp; Sub-Admins
                   </p>
                 </div>
               </div>
 
-              {adminUnreadCount > 0 && (
-                <div className="px-3 py-1 rounded-full bg-rose-950 border border-rose-500/40 text-rose-300 text-xs font-bold">
-                  {adminUnreadCount} Unread User Messages
+              <div className="flex items-center gap-2">
+                <div className="px-3 py-1 rounded-lg bg-slate-950 border border-slate-800 text-slate-300 text-xs font-mono">
+                  Conversations: <span className="font-bold text-white">{chatConversations.length}</span>
                 </div>
-              )}
+                {adminUnreadCount > 0 && (
+                  <div className="px-3 py-1 rounded-lg bg-rose-950 border border-rose-500/40 text-rose-300 text-xs font-bold animate-pulse">
+                    {adminUnreadCount} Unread
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Split Screen Chat Layout */}
-            <div className="grid grid-cols-1 md:grid-cols-12 min-h-[550px] max-h-[700px]">
+            {/* Split Screen Layout */}
+            <div className="grid grid-cols-1 md:grid-cols-12 min-h-[560px] max-h-[720px]">
               {/* Left Column: User Conversations List */}
-              <div className="md:col-span-4 border-r border-slate-800 bg-slate-950 flex flex-col">
-                <div className="p-3 border-b border-slate-800">
+              <div className="md:col-span-4 border-r border-slate-800/80 bg-slate-950 flex flex-col">
+                <div className="p-3 border-b border-slate-800/80 bg-slate-950">
                   <div className="relative">
                     <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                     <input
                       type="text"
                       value={chatSearchQuery}
                       onChange={(e) => setChatSearchQuery(e.target.value)}
-                      placeholder="Search users..."
-                      className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                      placeholder="Search by user or email..."
+                      className="w-full pl-8 pr-3 py-2 text-xs bg-slate-900 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                     />
                   </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto divide-y divide-slate-800/60">
+                <div className="flex-1 overflow-y-auto divide-y divide-slate-900">
                   {chatConversations.length === 0 ? (
-                    <div className="p-6 text-center text-slate-500 text-xs">
-                      No user conversations yet.
+                    <div className="p-8 text-center text-slate-500 text-xs">
+                      No live support messages yet.
                     </div>
                   ) : (
                     chatConversations.map((conv, cIdx) => {
@@ -4499,18 +4608,22 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                           key={conv.userEmail ? `${conv.userEmail}-${cIdx}` : `conv-${cIdx}`}
                           type="button"
                           onClick={() => handleSelectChatUser(conv.userEmail)}
-                          className={`w-full text-left p-3.5 transition flex items-start justify-between gap-2 cursor-pointer ${
+                          className={`w-full text-left p-3.5 transition flex items-center gap-3 cursor-pointer ${
                             isSelected
-                              ? 'bg-purple-950/60 border-l-4 border-purple-500'
-                              : 'hover:bg-slate-900/60'
+                              ? 'bg-emerald-950/40 border-l-4 border-emerald-500'
+                              : 'hover:bg-slate-900/50'
                           }`}
                         >
+                          <div className="w-9 h-9 rounded-full bg-slate-800 border border-slate-700 text-emerald-400 flex items-center justify-center font-bold text-xs shrink-0">
+                            {conv.userName?.charAt(0).toUpperCase() || conv.userEmail?.charAt(0).toUpperCase()}
+                          </div>
+
                           <div className="min-w-0 flex-1">
-                            <div className="flex items-center justify-between">
+                            <div className="flex items-center justify-between gap-1">
                               <span className="font-bold text-white text-xs truncate">
                                 {conv.userName}
                               </span>
-                              <span className="text-[10px] text-slate-500">
+                              <span className="text-[10px] text-slate-500 shrink-0 font-mono">
                                 {conv.lastMessage?.timestamp
                                   ? new Date(conv.lastMessage.timestamp).toLocaleTimeString([], {
                                       hour: '2-digit',
@@ -4520,13 +4633,8 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                               </span>
                             </div>
                             <div className="text-[11px] text-slate-400 truncate">{conv.userEmail}</div>
-                            <div className="text-xs text-slate-300 truncate mt-1">
+                            <div className="text-xs text-slate-300 truncate mt-0.5">
                               {conv.lastMessage ? conv.lastMessage.text : 'No messages'}
-                            </div>
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-900 border border-slate-800 text-purple-300 font-mono">
-                                {conv.totalMessages} msgs total
-                              </span>
                             </div>
                           </div>
 
@@ -4542,14 +4650,14 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                 </div>
               </div>
 
-              {/* Right Column: Active Conversation & Reply Input */}
+              {/* Right Column: Active Thread & Input */}
               <div className="md:col-span-8 flex flex-col bg-slate-900">
                 {activeChatUserEmail ? (
                   <>
                     {/* Chat Header */}
-                    <div className="p-3.5 border-b border-slate-800 bg-slate-900/90 flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-400 flex items-center justify-center font-bold text-xs">
+                    <div className="p-3.5 border-b border-slate-800 bg-slate-950/80 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-full bg-emerald-950 border border-emerald-500/30 text-emerald-400 flex items-center justify-center font-bold text-sm">
                           {activeChatUserObj?.name?.charAt(0) || activeChatUserEmail.charAt(0).toUpperCase()}
                         </div>
                         <div>
@@ -4557,7 +4665,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                             <span className="font-bold text-white text-xs sm:text-sm">
                               {activeChatUserObj?.name || activeChatUserEmail.split('@')[0]}
                             </span>
-                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-950 font-mono text-indigo-300 border border-indigo-500/30">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 font-mono text-emerald-300 border border-slate-700">
                               ID: {activeChatUserObj?.accountCode || getDedicatedAccountCode(activeChatUserEmail)}
                             </span>
                           </div>
@@ -4569,19 +4677,19 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                         <button
                           type="button"
                           onClick={() => handleOpenResetModal(activeChatUserObj)}
-                          className="px-2.5 py-1 rounded-lg bg-blue-950/80 hover:bg-blue-900 text-blue-300 border border-blue-500/30 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                          className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-blue-300 border border-slate-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
                         >
-                          <Key className="w-3 h-3" />
-                          <span>Reset Password</span>
+                          <Key className="w-3.5 h-3.5" />
+                          <span>Reset Pass</span>
                         </button>
                       )}
                     </div>
 
                     {/* Messages Thread */}
-                    <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-950/50">
+                    <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-950/60">
                       {currentChatMessages.length === 0 ? (
                         <div className="h-full flex items-center justify-center text-slate-500 text-xs">
-                          No messages yet in this conversation.
+                          No messages in this conversation.
                         </div>
                       ) : (
                         currentChatMessages.map((msg, msgIdx) => {
@@ -4593,16 +4701,16 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                               className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'}`}
                             >
                               <div
-                                className={`max-w-md rounded-2xl px-4 py-2.5 text-xs ${
+                                className={`max-w-md rounded-2xl px-4 py-2.5 text-xs shadow-sm ${
                                   isAdmin
-                                    ? 'bg-purple-600 text-white rounded-br-xs'
-                                    : 'bg-slate-800 text-slate-100 rounded-bl-xs border border-slate-700'
+                                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-tr-xs font-medium'
+                                    : 'bg-slate-800 text-slate-100 rounded-tl-xs border border-slate-700/80'
                                 }`}
                               >
                                 <div className="text-[10px] font-bold opacity-75 mb-0.5">
-                                  {isAdmin ? 'Admin' : msg.senderName}
+                                  {isAdmin ? 'Super X Admin Support' : msg.senderName}
                                 </div>
-                                <div className="whitespace-pre-wrap">{msg.text}</div>
+                                <div className="whitespace-pre-wrap leading-relaxed">{msg.text}</div>
                               </div>
                               <span className="text-[10px] text-slate-500 mt-1 px-1 font-mono">
                                 {new Date(msg.timestamp).toLocaleTimeString([], {
@@ -4618,8 +4726,8 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                     </div>
 
                     {/* Quick Response Templates */}
-                    <div className="px-4 py-1.5 bg-slate-900 border-t border-slate-800/80 flex items-center gap-1.5 overflow-x-auto scrollbar-none">
-                      <span className="text-[10px] font-bold text-slate-400 shrink-0">Quick:</span>
+                    <div className="px-4 py-2 bg-slate-950 border-t border-slate-800/80 flex items-center gap-2 overflow-x-auto scrollbar-none">
+                      <span className="text-[10px] font-bold text-slate-500 shrink-0 uppercase tracking-wider">Quick Reply:</span>
                       {[
                         'Your account has been approved and activated.',
                         'We have reset your password. Please sign in.',
@@ -4630,35 +4738,36 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                           key={`quick-tmpl-${idx}`}
                           type="button"
                           onClick={() => handleSendTemplateReply(tmpl)}
-                          className="px-2 py-0.5 rounded-full bg-slate-800 hover:bg-purple-900/60 text-slate-300 hover:text-purple-200 text-[10px] whitespace-nowrap transition cursor-pointer border border-slate-700"
+                          className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-emerald-950 hover:text-emerald-300 text-slate-300 text-[11px] whitespace-nowrap transition cursor-pointer border border-slate-800"
                         >
                           {tmpl}
                         </button>
                       ))}
                     </div>
 
-                    {/* Admin Reply Input Box */}
-                    <form onSubmit={handleSendChatReply} className="p-3 border-t border-slate-800 bg-slate-900 flex items-center gap-2">
+                    {/* Reply Input Box */}
+                    <form onSubmit={handleSendChatReply} className="p-3 border-t border-slate-800 bg-slate-950 flex items-center gap-2">
                       <input
                         type="text"
                         value={adminChatInput}
                         onChange={(e) => setAdminChatInput(e.target.value)}
-                        placeholder="Type reply to user (delivers in real-time)..."
-                        className="flex-1 px-4 py-2.5 text-xs bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        placeholder="Type reply to user (delivers instantly to user dashboard)..."
+                        className="flex-1 px-4 py-2.5 text-xs bg-slate-900 border border-slate-800 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 placeholder-slate-500"
                       />
                       <button
                         type="submit"
                         disabled={!adminChatInput.trim()}
-                        className="px-4 py-2.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-md cursor-pointer shrink-0"
+                        className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-lg cursor-pointer shrink-0"
                       >
                         <Send className="w-3.5 h-3.5" />
-                        <span>Send</span>
+                        <span>Send Reply</span>
                       </button>
                     </form>
                   </>
                 ) : (
-                  <div className="h-full flex items-center justify-center p-6 text-center text-slate-500 text-xs">
-                    Select a conversation from the left to read user SMS &amp; send replies.
+                  <div className="h-full flex flex-col items-center justify-center p-8 text-center text-slate-500 text-xs gap-2">
+                    <MessageSquare className="w-8 h-8 text-slate-700 animate-pulse" />
+                    <span>Select a conversation from the left to read messages &amp; reply.</span>
                   </div>
                 )}
               </div>

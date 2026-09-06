@@ -525,18 +525,8 @@ export async function fetchLiveConsoleDetailed(apiKey?: string, customEndpoint?:
             }
           }
 
-          // Strictly filter out past historical messages that existed prior to API activation
-          if (activationTimestamp > 0 && parsedTime <= activationTimestamp) {
-            return;
-          }
-
           const sid = normalizeServiceId(hit.sid || hit.service || hit.service_name || '', rawMsg);
           const itemKey = `${rawRange}_${parsedTime}_${sid}_${rawMsg.substring(0, 30)}`;
-          const cleanSig = `${(rawRange || '').replace(/\D/g, '')}_${parsedTime}_${sid}_${rawMsg.trim()}`;
-
-          if (baselineSignatures.has(cleanSig) || baselineSignatures.has(itemKey)) {
-            return;
-          }
 
           if (!allHitsMap.has(itemKey)) {
             const finalHit: LiveConsoleHit = {

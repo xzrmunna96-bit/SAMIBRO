@@ -84,16 +84,37 @@ export function getAllApiConfigs(): ApiConfigItem[] {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
         // Filter out any default placeholder keys so API stays completely OFF until user explicitly supplies their API
-        return parsed.filter((c) => {
+        const valid = parsed.filter((c) => {
           if (!c || !c.apiKey) return false;
           const k = String(c.apiKey).trim();
           return k.length > 3 && k !== 'MOBEKJ8H20I' && k !== 'M7ANNWJY6B2' && k !== 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=';
         });
+        if (valid.length > 0) return valid;
       }
     }
   } catch (err) {
     console.error('Failed to load local API configs:', err);
   }
+
+  // Fallback: If no explicit config in localStorage, check if voltx_mauthapi_key or voltx_endpoint_key exists
+  try {
+    const activeKey = localStorage.getItem('voltx_mauthapi_key') || localStorage.getItem('voltx_endpoint_key');
+    if (activeKey && activeKey.trim() && activeKey.trim().length > 3 && activeKey.trim() !== 'MOBEKJ8H20I') {
+      return [
+        {
+          id: 'api_system_active',
+          name: 'SUPER X SMS Gateway',
+          apiKey: activeKey.trim(),
+          serviceType: 'ALL (Global Auto-Detect)',
+          endpoint: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
+          isActive: true,
+          notes: 'Auto-detected system API route',
+          createdAt: Date.now(),
+        },
+      ];
+    }
+  } catch {}
+
   return [];
 }
 

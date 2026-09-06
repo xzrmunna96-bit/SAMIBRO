@@ -352,10 +352,27 @@ export async function fetchSpecificSubAdminFromFirebase(
     }
 
     const subCol = collection(firestoreDb, "super_x_sub_admins");
-    const q = query(subCol, where("email", "==", clean));
-    const snap = await getDocs(q).catch(() => null);
-    if (snap && !snap.empty) {
-      return snap.docs[0].data() as SubAdminAccount;
+    // Query 1: Exact email match
+    const q1 = query(subCol, where("email", "==", clean));
+    const snap1 = await getDocs(q1).catch(() => null);
+    if (snap1 && !snap1.empty) {
+      return snap1.docs[0].data() as SubAdminAccount;
+    }
+
+    // Query 2: Email with default domain
+    if (!clean.includes("@")) {
+      const q2 = query(subCol, where("email", "==", clean + "@superxsms.com"));
+      const snap2 = await getDocs(q2).catch(() => null);
+      if (snap2 && !snap2.empty) {
+        return snap2.docs[0].data() as SubAdminAccount;
+      }
+    }
+
+    // Query 3: Match by ID
+    const q3 = query(subCol, where("id", "==", clean));
+    const snap3 = await getDocs(q3).catch(() => null);
+    if (snap3 && !snap3.empty) {
+      return snap3.docs[0].data() as SubAdminAccount;
     }
   } catch (err) {
     console.warn("fetchSpecificSubAdminFromFirebase note:", err);

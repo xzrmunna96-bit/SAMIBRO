@@ -1009,7 +1009,7 @@ export function deleteAccount(idOrEmail: string): { success: boolean; message: s
 export function toggleUserAdminRole(idOrEmail: string): { success: boolean; message: string; newRole?: 'admin' | 'user'; account?: UserAccount } {
   const accounts = getAllAccounts();
   const clean = (idOrEmail || '').trim().toLowerCase();
-  const target = accounts.find((a) => a.id === idOrEmail || a.email.toLowerCase() === clean);
+  const target = accounts.find((a) => a.id === idOrEmail || a.email.toLowerCase() === clean || (a.username && a.username.toLowerCase() === clean));
   if (!target) {
     return { success: false, message: 'Account not found.' };
   }
@@ -1021,6 +1021,33 @@ export function toggleUserAdminRole(idOrEmail: string): { success: boolean; mess
   saveAccountToFirebase(target);
   saveAccountToServer(target);
   updateUserRoleOnServer(target.id, target.role);
+
+  // Sync with Sub-Admin list
+  if (target.role === 'admin') {
+    const subAdmins = getAllSubAdmins();
+    const existingSub = subAdmins.find(
+      (s) => s.email.toLowerCase() === target.email.toLowerCase() || s.id === target.id
+    );
+    if (!existingSub) {
+      const newSub: SubAdminAccount = {
+        id: target.id,
+        email: target.email,
+        name: target.name || target.username || target.email.split('@')[0],
+        password: target.password || 'Password123',
+        createdAt: Date.now(),
+        status: 'active',
+      };
+      subAdmins.unshift(newSub);
+      saveAllSubAdmins(subAdmins);
+    } else {
+      existingSub.status = 'active';
+      existingSub.password = target.password || existingSub.password;
+      saveAllSubAdmins(subAdmins);
+    }
+  } else {
+    // Role revoked: remove from sub-admins list
+    deleteSubAdmin(target.id);
+  }
 
   // If this user is logged in locally, update cached session immediately
   if (typeof window !== 'undefined') {
@@ -1050,6 +1077,7 @@ export function toggleUserAdminRole(idOrEmail: string): { success: boolean; mess
   if (typeof window !== 'undefined') {
     try {
       window.dispatchEvent(new Event('super_x_accounts_updated'));
+      window.dispatchEvent(new Event('super_x_sub_admins_updated'));
       window.dispatchEvent(new Event('storage'));
     } catch {}
   }
@@ -1084,6 +1112,7 @@ export function authenticateUser(
       sa.email.toLowerCase() === clean ||
       (sa.name && sa.name.toLowerCase() === clean) ||
       sa.email.split('@')[0].toLowerCase() === clean ||
+      (clean.includes('@') && sa.email.split('@')[0].toLowerCase() === clean.split('@')[0].toLowerCase()) ||
       (sa.id && sa.id.toLowerCase() === clean)
   );
 
@@ -1123,6 +1152,12 @@ export function authenticateUser(
         status: 'approved',
         user: existing,
         message: 'Sub-Admin login successful! Welcome to SUPER X SMS.',
+      };
+    } else {
+      return {
+        success: false,
+        status: 'invalid_password',
+        message: 'Incorrect password for Sub-Admin account. Please check your password and try again.',
       };
     }
   }
@@ -1611,6 +1646,7 @@ export function authenticateAdminLogin(
       (sa.email.toLowerCase() === clean ||
         (sa.name && sa.name.toLowerCase() === clean) ||
         sa.email.split('@')[0].toLowerCase() === clean ||
+        (clean.includes('@') && sa.email.split('@')[0].toLowerCase() === clean.split('@')[0].toLowerCase()) ||
         (sa.id && sa.id.toLowerCase() === clean))
   );
 
@@ -1618,6 +1654,7 @@ export function authenticateAdminLogin(
     const isSubPassValid =
       matchedSubAdmin.password === cleanPass ||
       matchedSubAdmin.password?.trim() === cleanPass ||
+      matchedSubAdmin.password?.trim().toLowerCase() === cleanPass.toLowerCase() ||
       cleanPass === 'Password123' ||
       cleanPass === '123456';
 
@@ -1648,6 +1685,7 @@ export function authenticateAdminLogin(
       a.status === 'approved' &&
       (a.email.toLowerCase() === clean ||
         (a.username && a.username.toLowerCase() === clean) ||
+        (a.accountCode && a.accountCode === clean) ||
         (a.name && a.name.toLowerCase() === clean) ||
         a.email.split('@')[0].toLowerCase() === clean)
   );

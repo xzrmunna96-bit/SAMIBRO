@@ -1196,6 +1196,38 @@ async function startServer() {
     const updated = Array.from(subMap.values());
     saveServerSubAdmins(updated);
 
+    // Also auto-sync sub-admins to server accounts list so they exist as approved admin users
+    try {
+      const serverAccs = loadServerAccounts();
+      const accMap = new Map<string, any>();
+      serverAccs.forEach((a) => accMap.set(a.email.toLowerCase().trim(), a));
+
+      updated.forEach((sa) => {
+        if (sa && sa.email && sa.status === "active") {
+          const cleanEmail = sa.email.toLowerCase().trim();
+          const existingAcc = accMap.get(cleanEmail);
+          accMap.set(cleanEmail, {
+            id: sa.id || (existingAcc ? existingAcc.id : `user_sub_${Date.now()}`),
+            name: sa.name || (existingAcc ? existingAcc.name : cleanEmail.split("@")[0]),
+            email: sa.email,
+            username: cleanEmail.split("@")[0],
+            password: sa.password || (existingAcc ? existingAcc.password : "Password123"),
+            accountCode: existingAcc && existingAcc.accountCode ? existingAcc.accountCode : getDedicatedAccountCode(cleanEmail),
+            status: "approved",
+            role: "admin",
+            createdAt: sa.createdAt || (existingAcc ? existingAcc.createdAt : Date.now()),
+            approvedAt: existingAcc && existingAcc.approvedAt ? existingAcc.approvedAt : Date.now(),
+            phoneOrTelegram: "@sub_admin",
+            note: "Sub-Admin Staff Account (Dual Access Enabled)",
+          });
+        }
+      });
+
+      saveServerAccounts(Array.from(accMap.values()));
+    } catch (e) {
+      console.warn("Error auto-syncing sub-admins to server accounts:", e);
+    }
+
     res.json({
       success: true,
       count: updated.length,
@@ -1209,8 +1241,27 @@ async function startServer() {
     const rawEmail = String(req.body?.email || req.query.email || "").trim().toLowerCase();
 
     const current = loadServerSubAdmins();
-    const filtered = current.filter((s) => s.id !== rawId && s.email.toLowerCase() !== rawEmail);
+    const filtered = current.filter(
+      (s) => s.id !== rawId && s.email.toLowerCase() !== rawEmail && s.email.split("@")[0].toLowerCase() !== rawEmail
+    );
     saveServerSubAdmins(filtered);
+
+    // Also remove or revert from server accounts list
+    try {
+      const serverAccs = loadServerAccounts();
+      const updatedAccs = serverAccs.map((a) => {
+        if (
+          a.id === rawId ||
+          a.email.toLowerCase() === rawEmail ||
+          a.username?.toLowerCase() === rawEmail ||
+          a.email.split("@")[0].toLowerCase() === rawEmail
+        ) {
+          return { ...a, role: "user" };
+        }
+        return a;
+      });
+      saveServerAccounts(updatedAccs);
+    } catch {}
 
     res.json({
       success: true,
@@ -2770,7 +2821,32 @@ async function startServer() {
 
     toMerge.forEach((m) => {
       const id = m.id || `msg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-      chatMap.set(id, { ...m, id, timestamp: m.timestamp || Date.now() });
+      const messageObj = { ...m, id, timestamp: m.timestamp || Date.now() };
+
+      // Dispatch real-time Telegram Bot notification directly to Admin ID (NOT public OTP channel chatId)
+      if ((m.sender === "user" || !m.sender) && !m.notifiedTelegram) {
+        messageObj.notifiedTelegram = true;
+        const tgMsgText = `<b>💬 SUPER X SMS — NEW LIVE SUPPORT MESSAGE</b>\n\n` +
+          `👤 <b>Sender Name:</b> ${m.senderName || m.userEmail?.split('@')[0] || "User"}\n` +
+          `✉️ <b>User Email:</b> <code>${m.userEmail || "Unknown"}</code>\n` +
+          `⏰ <b>Time:</b> ${new Date(m.timestamp || Date.now()).toLocaleString()}\n\n` +
+          `💬 <b>Message:</b>\n<i>"${m.text || m.message || ""}"</i>\n\n` +
+          `━━━━━━━━━━━━━━\n` +
+          `⚡ <i>Reply from Admin Panel (/admin) or type <code>/reply ${m.userEmail} your_reply</code> in Telegram!</i>`;
+
+        fetch(`https://api.telegram.org/bot${controlBotState.botToken}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: controlBotState.adminId,
+            text: tgMsgText,
+            parse_mode: "HTML",
+            disable_web_page_preview: true,
+          }),
+        }).catch((err) => console.warn("Failed to dispatch live support message to Telegram Admin:", err));
+      }
+
+      chatMap.set(id, messageObj);
     });
 
     const updated = Array.from(chatMap.values()).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));

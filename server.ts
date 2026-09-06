@@ -1009,9 +1009,9 @@ async function startServer() {
     });
   });
 
-  let activeSystemApiKey = (process.env.VOLTX_KEY && process.env.VOLTX_KEY !== "M7ANNWJY6B2")
+  let activeSystemApiKey = (process.env.VOLTX_KEY && process.env.VOLTX_KEY !== "M7ANNWJY6B2" && process.env.VOLTX_KEY !== "MOBEKJ8H20I")
     ? process.env.VOLTX_KEY
-    : "MOBEKJ8H20I";
+    : "";
   const VOLTX_BACKEND_SLUG = process.env.VOLTX_BACKEND_SLUG || "MXS47FLFX0U";
 
   let cachedConsoleData: any = null;
@@ -2014,20 +2014,70 @@ async function startServer() {
     });
   });
 
-  app.post("/api/system/api-key", (req, res) => {
+  app.post("/api/system/api-key", async (req, res) => {
     const { apiKey } = req.body || {};
-    if (apiKey && typeof apiKey === "string" && apiKey.trim()) {
-      activeSystemApiKey = apiKey.trim();
-      cachedConsoleData = null; // Invalidate cache so fresh hits for new key are fetched
-      console.log(`[API Config] System API Key updated to: ${activeSystemApiKey}`);
-      res.json({
-        success: true,
-        apiKey: activeSystemApiKey,
-        message: "System API key saved & activated",
-      });
+    const key = typeof apiKey === "string" ? apiKey.trim() : "";
+    activeSystemApiKey = key;
+    cachedConsoleData = null;
+
+    // Reset all global live hits and stats to 0
+    serverGlobalLiveHits = [];
+    serverGlobalStats = {
+      appCounts: {},
+      rangeCounts: {},
+      totalHits: 0,
+      lastResetTime: Date.now(),
+    };
+    saveServerGlobalLiveHits([]);
+    saveServerGlobalStats(serverGlobalStats);
+
+    if (key) {
+      serverApiActivationTimestamp = Date.now();
+      serverBaselineSignatures.clear();
+      // Upstream baseline probe to capture all pre-existing messages on this key
+      try {
+        const targetUrl = `https://api.2oo9.cloud/${VOLTX_BACKEND_SLUG}/tnevs/@public/api/console`;
+        const probeRes = await fetch(targetUrl, {
+          headers: {
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json",
+            "mauthapi": key,
+            "x-voltx-endpoint-key": key,
+          },
+        });
+        if (probeRes.ok) {
+          const json: any = await probeRes.json();
+          const existing = json?.data?.hits;
+          if (Array.isArray(existing)) {
+            existing.forEach((h: any) => {
+              const hitTime = typeof h.time === "number" ? h.time : (h.timestamp || new Date(h.time).getTime() || 0);
+              const sig = `${(h.range || h.number || "").replace(/\D/g, "")}_${hitTime}_${(h.sid || "").trim().toLowerCase()}_${(h.message || "").trim()}`;
+              serverBaselineSignatures.add(sig);
+            });
+            console.log(`[API Config] Registered ${serverBaselineSignatures.size} pre-existing hits as baseline. Counters start from 0.`);
+          }
+        }
+      } catch (e) {
+        console.warn("[API Config] Upstream baseline check note:", e);
+      }
     } else {
-      res.status(400).json({ error: "Invalid API key provided" });
+      serverApiActivationTimestamp = 0;
+      serverBaselineSignatures.clear();
     }
+
+    broadcastLivePacket({
+      type: "reset",
+      stats: serverGlobalStats,
+      hits: [],
+    });
+
+    console.log(`[API Config] System API Key updated to: ${activeSystemApiKey || "OFF"}. Counters strictly starting from 0.`);
+    res.json({
+      success: true,
+      apiKey: activeSystemApiKey,
+      message: "System API key saved & activated with fresh 0 counter",
+      stats: serverGlobalStats,
+    });
   });
 
   // Universal Proxy route supporting any custom SMS endpoint & API key
@@ -2404,11 +2454,106 @@ async function startServer() {
 
   // =========================================================================
   // GLOBAL REAL-TIME LIVE STREAM BROADCASTER & CARRIER CONSOLE SYNC
-  // Synchronizes Top Applications and Top Ranges with persistent real traffic counts
+  // Synchronizes Top Applications and Top Ranges with exact 24-hour persistent traffic counts
   // =========================================================================
+  const KNOWN_TOP_APPS_LIST = [
+    { name: "WhatsApp" },
+    { name: "Telegram" },
+    { name: "Baji / Baji999" },
+    { name: "Baji" },
+    { name: "FACEBOOK" },
+    { name: "Facebook" },
+    { name: "IMO" },
+    { name: "msverify" },
+    { name: "AUTHMSG" },
+    { name: "Amazon" },
+    { name: "Shopee" },
+    { name: "AVABet" },
+    { name: "LinkedIn" },
+    { name: "PAYPAL" },
+    { name: "PayPal" },
+    { name: "Melbet" },
+    { name: "Bolt" },
+    { name: "Uber" },
+    { name: "Microsoft" },
+    { name: "TikTok" },
+    { name: "Apple" },
+    { name: "Huawei" },
+    { name: "Google" },
+    { name: "Instagram" },
+    { name: "Twitter / X" },
+    { name: "Twitter" },
+  ];
+
+  function isHitMatchingAppServer(hit: { sid?: string; message?: string }, appName: string): boolean {
+    if (!hit || !appName) return false;
+    const rawTarget = appName.toLowerCase().trim();
+    const targetKey = rawTarget.replace(/[^a-z0-9]/g, "");
+    const sid = (hit.sid || "").toLowerCase().trim();
+    const msg = (hit.message || "").toLowerCase();
+    const combined = `${sid} ${msg}`;
+
+    if (targetKey.includes("whatsapp") || targetKey === "wa") {
+      return combined.includes("whatsapp") || combined.includes("wa.me") || combined.includes("wa code") || sid === "wa";
+    }
+    if (targetKey.includes("facebook") || targetKey === "fb") {
+      return combined.includes("facebook") || combined.includes("fb-") || combined.includes("meta") || sid === "fb";
+    }
+    if (targetKey.includes("telegram") || targetKey === "tg") {
+      return combined.includes("telegram") || combined.includes("t.me") || combined.includes("tg code") || sid === "tg";
+    }
+    if (targetKey.includes("instagram") || targetKey === "insta" || targetKey === "ig") {
+      return combined.includes("instagram") || combined.includes("insta") || combined.includes("ig code") || combined.includes("ig-") || sid === "ig";
+    }
+    if (targetKey.includes("tiktok")) return combined.includes("tiktok");
+    if (targetKey.includes("imo")) return combined.includes("imo");
+    if (targetKey.includes("google")) return combined.includes("google") || combined.includes("gsuite") || combined.includes("g-");
+    if (targetKey.includes("baji")) return combined.includes("baji") || combined.includes("bj999");
+    if (targetKey.includes("twitter") || targetKey.includes("x") || rawTarget.includes("x")) return combined.includes("twitter") || combined.includes("x.com");
+    if (targetKey.includes("amazon")) return combined.includes("amazon");
+    if (targetKey.includes("apple")) return combined.includes("apple");
+    if (targetKey.includes("shopee")) return combined.includes("shopee");
+    if (targetKey.includes("avabet")) return combined.includes("avabet");
+    if (targetKey.includes("melbet")) return combined.includes("melbet");
+    if (targetKey.includes("linkedin")) return combined.includes("linkedin");
+    if (targetKey.includes("paypal")) return combined.includes("paypal");
+    if (targetKey.includes("bolt")) return combined.includes("bolt");
+    if (targetKey.includes("uber")) return combined.includes("uber");
+    if (targetKey.includes("microsoft") || targetKey.includes("msverify")) return combined.includes("microsoft") || combined.includes("msverify");
+    if (targetKey.includes("authmsg")) return combined.includes("authmsg") || combined.includes("auth code") || combined.includes("auth");
+    if (targetKey.includes("huawei")) return combined.includes("huawei");
+
+    return sid.includes(rawTarget) || msg.includes(rawTarget) || sid.includes(targetKey) || msg.includes(targetKey);
+  }
+
   let serverGlobalLiveHits: any[] = loadServerGlobalLiveHits();
   let serverGlobalStats: ServerGlobalStats = loadServerGlobalStats();
   const liveStreamSseClients = new Set<any>();
+  let serverApiActivationTimestamp = 0;
+  const serverBaselineSignatures = new Set<string>();
+
+  function recalculateGlobalStats() {
+    const appCounts: Record<string, number> = {};
+    const rangeCounts: Record<string, number> = {};
+
+    for (const h of serverGlobalLiveHits) {
+      const rangeKey = extractRangeKey(h.range || h.number, h.country);
+      rangeCounts[rangeKey] = (rangeCounts[rangeKey] || 0) + 1;
+
+      for (const app of KNOWN_TOP_APPS_LIST) {
+        if (isHitMatchingAppServer(h, app.name)) {
+          appCounts[app.name] = (appCounts[app.name] || 0) + 1;
+        }
+      }
+    }
+
+    serverGlobalStats.appCounts = appCounts;
+    serverGlobalStats.rangeCounts = rangeCounts;
+    serverGlobalStats.totalHits = serverGlobalLiveHits.length;
+  }
+
+  // Initial calculation on server boot
+  recalculateGlobalStats();
 
   function broadcastLivePacket(packet: any) {
     const payload = `data: ${JSON.stringify(packet)}\n\n`;
@@ -2421,26 +2566,51 @@ async function startServer() {
     }
   }
 
-  function check24HourReset() {
+  function check24HourReset(): boolean {
     const now = Date.now();
     const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
     if (!serverGlobalStats.lastResetTime) {
       serverGlobalStats.lastResetTime = now;
     }
+
+    // Strict 24-hour daily reset
     if (now - serverGlobalStats.lastResetTime >= TWENTY_FOUR_HOURS) {
+      serverGlobalLiveHits = [];
       serverGlobalStats = {
         appCounts: {},
         rangeCounts: {},
         totalHits: 0,
         lastResetTime: now,
       };
+      saveServerGlobalLiveHits([]);
+      saveServerGlobalStats(serverGlobalStats);
+      broadcastLivePacket({ type: "reset", stats: serverGlobalStats, hits: [] });
+      console.log("[Global Live Stream] 24-Hour Reset fired: All message counters reset to 0 daily.");
+      return true;
+    }
+
+    // Prune any hits older than 24 hours rolling window or before lastResetTime
+    const oneDayAgo = now - TWENTY_FOUR_HOURS;
+    const initialLen = serverGlobalLiveHits.length;
+    serverGlobalLiveHits = serverGlobalLiveHits.filter((h) => {
+      const t = typeof h.time === "number" ? h.time : (h.timestamp || new Date(h.time).getTime());
+      if (isNaN(t) || t < oneDayAgo) return false;
+      if (serverGlobalStats.lastResetTime && t < serverGlobalStats.lastResetTime) return false;
+      return true;
+    });
+
+    if (serverGlobalLiveHits.length !== initialLen) {
+      recalculateGlobalStats();
+      saveServerGlobalLiveHits(serverGlobalLiveHits);
       saveServerGlobalStats(serverGlobalStats);
       broadcastLivePacket({ stats: serverGlobalStats });
     }
+
+    return false;
   }
 
-  // Periodic check every 10 minutes to auto-reset counters after 24 hours
-  setInterval(check24HourReset, 10 * 60 * 1000);
+  // Periodic check every 5 minutes to auto-reset counters after 24 hours and prune old hits
+  setInterval(check24HourReset, 5 * 60 * 1000);
 
   function processAndBroadcastIncomingHits(rawHits: any[]): { added: any[]; stats: ServerGlobalStats } {
     check24HourReset();
@@ -2448,37 +2618,46 @@ async function startServer() {
       return { added: [], stats: serverGlobalStats };
     }
 
+    const now = Date.now();
+    const oneDayAgo = now - 24 * 60 * 60 * 1000;
+
+    // Track against ALL existing signatures in memory to strictly prevent duplicate counting
     const existingSignatures = new Set(
-      serverGlobalLiveHits.slice(0, 100).map((h) => `${h.range || ""}_${h.time || ""}_${h.sid || ""}_${h.message || ""}`)
+      serverGlobalLiveHits.map((h) => `${(h.range || h.number || "").replace(/\D/g, "")}_${h.time}_${(h.sid || "").trim().toLowerCase()}_${(h.message || "").trim()}`)
     );
 
     const validNew: any[] = [];
     for (const h of rawHits) {
       if (!h || (!h.range && !h.number && !h.sid && !h.message)) continue;
-      const sig = `${h.range || ""}_${h.time || ""}_${h.sid || ""}_${h.message || ""}`;
+
+      let hitTime = typeof h.time === "number" ? h.time : (h.timestamp || new Date(h.time).getTime());
+      if (isNaN(hitTime) || hitTime <= 0) hitTime = now;
+      if (hitTime < oneDayAgo) continue; // Skip hits older than 24 hours
+      // Strictly ignore hits that arrived prior to API activation or last reset timestamp
+      if (serverApiActivationTimestamp > 0 && hitTime <= serverApiActivationTimestamp) continue;
+      if (serverGlobalStats.lastResetTime && hitTime <= serverGlobalStats.lastResetTime) continue;
+
+      const sig = `${(h.range || h.number || "").replace(/\D/g, "")}_${hitTime}_${(h.sid || "").trim().toLowerCase()}_${(h.message || "").trim()}`;
+      if (serverBaselineSignatures.has(sig)) continue;
       if (!existingSignatures.has(sig)) {
         existingSignatures.add(sig);
-        validNew.push(h);
-
-        // Normalize service & range to monotonically increment stats
-        const appName = normalizeServiceName(h.sid, h.message);
-        const rangeKey = extractRangeKey(h.range || h.number, h.country);
-
-        serverGlobalStats.totalHits = (serverGlobalStats.totalHits || 0) + 1;
-        serverGlobalStats.appCounts[appName] = (serverGlobalStats.appCounts[appName] || 0) + 1;
-        serverGlobalStats.rangeCounts[rangeKey] = (serverGlobalStats.rangeCounts[rangeKey] || 0) + 1;
+        validNew.push({
+          ...h,
+          time: hitTime,
+        });
       }
     }
 
     if (validNew.length > 0) {
       serverGlobalLiveHits.unshift(...validNew);
-      if (serverGlobalLiveHits.length > 500) {
-        serverGlobalLiveHits = serverGlobalLiveHits.slice(0, 500);
+      if (serverGlobalLiveHits.length > 1000) {
+        serverGlobalLiveHits = serverGlobalLiveHits.slice(0, 1000);
       }
+      recalculateGlobalStats();
       saveServerGlobalLiveHits(serverGlobalLiveHits);
       saveServerGlobalStats(serverGlobalStats);
 
-      // Broadcast new hits with updated stats to connected SSE clients
+      // Broadcast new hits with strictly accurate stats to connected SSE clients
       validNew.forEach((item) => {
         broadcastLivePacket({
           hit: item,
@@ -2489,6 +2668,34 @@ async function startServer() {
 
     return { added: validNew, stats: serverGlobalStats };
   }
+
+  // Periodic background sync directly from Voltx upstream /console API
+  async function syncFromUpstreamVoltxConsole() {
+    if (!activeSystemApiKey || !activeSystemApiKey.trim()) return;
+    try {
+      const apiKey = activeSystemApiKey.trim();
+      const targetUrl = `https://api.2oo9.cloud/${VOLTX_BACKEND_SLUG}/tnevs/@public/api/console`;
+      const res = await fetch(targetUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          "Accept": "application/json",
+          "mauthapi": apiKey,
+          "x-voltx-endpoint-key": apiKey,
+        },
+      });
+      if (res.ok) {
+        const json: any = await res.json();
+        const hits = json?.data?.hits;
+        if (Array.isArray(hits) && hits.length > 0) {
+          processAndBroadcastIncomingHits(hits);
+        }
+      }
+    } catch {}
+  }
+
+  // Automatic background upstream polling disabled per user requirement to keep all social media SMS counters at 0
+  // setInterval(syncFromUpstreamVoltxConsole, 12000);
+  // setTimeout(syncFromUpstreamVoltxConsole, 2500);
 
   // Global live stream GET endpoint
   app.get("/api/global-live-stream", (req, res) => {

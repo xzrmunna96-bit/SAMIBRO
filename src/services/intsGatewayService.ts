@@ -22,7 +22,7 @@ export const DEFAULT_INTS_CONFIG: IntsGatewayConfig = {
   smsUrl: 'http://94.23.120.156/ints/agent/SMSCDRStats',
   username: 'XZRMUNNA1206',
   password: 'XZRMUNNA0079',
-  isActive: true,
+  isActive: false,
 };
 
 const INTS_CONFIG_STORAGE_KEY = 'super_x_ints_gateway_config_v1';

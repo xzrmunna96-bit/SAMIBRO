@@ -81,3 +81,144 @@ export function saveTopAppsConfig(apps: TopAppItem[]) {
     console.error('Failed to save top apps config', err);
   }
 }
+
+/**
+ * 24-Hour Reset & Time Window Utilities
+ */
+export const TOP_APPS_LAST_RESET_KEY = 'super_x_sms_last_reset_timestamp_24h';
+
+export function get24HourResetTimestamp(): number {
+  if (typeof window === 'undefined') return Date.now();
+  try {
+    const saved = localStorage.getItem(TOP_APPS_LAST_RESET_KEY);
+    if (saved) {
+      const n = Number(saved);
+      if (!isNaN(n) && n > 0) return n;
+    }
+  } catch {}
+  const now = Date.now();
+  try {
+    localStorage.setItem(TOP_APPS_LAST_RESET_KEY, String(now));
+  } catch {}
+  return now;
+}
+
+export function set24HourResetTimestamp(ts: number): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(TOP_APPS_LAST_RESET_KEY, String(ts));
+  } catch {}
+}
+
+export function checkAndApply24HourReset(): { didReset: boolean; lastResetTime: number } {
+  if (typeof window === 'undefined') return { didReset: false, lastResetTime: Date.now() };
+  const now = Date.now();
+  const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+  const lastReset = get24HourResetTimestamp();
+
+  if (now - lastReset >= TWENTY_FOUR_HOURS) {
+    try {
+      localStorage.removeItem('super_x_live_console_hits_24h');
+      localStorage.setItem(TOP_APPS_LAST_RESET_KEY, String(now));
+      window.dispatchEvent(new CustomEvent('super_x_24h_reset', { detail: { resetAt: now } }));
+    } catch {}
+    return { didReset: true, lastResetTime: now };
+  }
+  return { didReset: false, lastResetTime: lastReset };
+}
+
+/**
+ * Robust, Canonical App Matching
+ * Matches incoming SMS hits (by SID and content signatures) to Top Applications
+ */
+export function isHitMatchingApp(hit: { sid?: string; message?: string }, appNameOrId: string): boolean {
+  if (!hit || !appNameOrId) return false;
+  const rawTarget = appNameOrId.toLowerCase().trim();
+  const targetKey = rawTarget.replace(/[^a-z0-9]/g, '');
+  const sid = (hit.sid || '').toLowerCase().trim();
+  const msg = (hit.message || '').toLowerCase();
+  const combined = `${sid} ${msg}`;
+
+  if (targetKey.includes('whatsapp') || targetKey === 'wa') {
+    return combined.includes('whatsapp') || combined.includes('wa.me') || combined.includes('wa code') || sid === 'wa';
+  }
+  if (targetKey.includes('facebook') || targetKey === 'fb') {
+    return combined.includes('facebook') || combined.includes('fb-') || combined.includes('meta') || sid === 'fb';
+  }
+  if (targetKey.includes('telegram') || targetKey === 'tg') {
+    return combined.includes('telegram') || combined.includes('t.me') || combined.includes('tg code') || sid === 'tg';
+  }
+  if (targetKey.includes('instagram') || targetKey === 'insta' || targetKey === 'ig') {
+    return combined.includes('instagram') || combined.includes('insta') || combined.includes('ig code') || combined.includes('ig-') || sid === 'ig';
+  }
+  if (targetKey.includes('tiktok')) {
+    return combined.includes('tiktok');
+  }
+  if (targetKey.includes('imo')) {
+    return combined.includes('imo');
+  }
+  if (targetKey.includes('google')) {
+    return combined.includes('google') || combined.includes('gsuite') || combined.includes('g-');
+  }
+  if (targetKey.includes('baji')) {
+    return combined.includes('baji') || combined.includes('bj999');
+  }
+  if (targetKey.includes('twitter') || targetKey.includes('x') || rawTarget.includes('x')) {
+    return combined.includes('twitter') || combined.includes('x.com');
+  }
+  if (targetKey.includes('amazon')) {
+    return combined.includes('amazon');
+  }
+  if (targetKey.includes('apple')) {
+    return combined.includes('apple');
+  }
+  if (targetKey.includes('shopee')) {
+    return combined.includes('shopee');
+  }
+  if (targetKey.includes('avabet')) {
+    return combined.includes('avabet');
+  }
+  if (targetKey.includes('melbet')) {
+    return combined.includes('melbet');
+  }
+  if (targetKey.includes('linkedin')) {
+    return combined.includes('linkedin');
+  }
+  if (targetKey.includes('paypal')) {
+    return combined.includes('paypal');
+  }
+  if (targetKey.includes('bolt')) {
+    return combined.includes('bolt');
+  }
+  if (targetKey.includes('uber')) {
+    return combined.includes('uber');
+  }
+  if (targetKey.includes('microsoft') || targetKey.includes('msverify')) {
+    return combined.includes('microsoft') || combined.includes('msverify');
+  }
+  if (targetKey.includes('authmsg')) {
+    return combined.includes('authmsg') || combined.includes('auth code') || combined.includes('auth');
+  }
+  if (targetKey.includes('huawei')) {
+    return combined.includes('huawei');
+  }
+
+  return sid.includes(rawTarget) || msg.includes(rawTarget) || sid.includes(targetKey) || msg.includes(targetKey);
+}
+
+/**
+ * Filter hits for a specific app strictly within the 24-hour rolling window
+ */
+export function filterHitsForApp(hits: any[], appNameOrId: string, maxAgeMs = 24 * 60 * 60 * 1000): any[] {
+  if (!Array.isArray(hits) || hits.length === 0 || !appNameOrId) return [];
+  const now = Date.now();
+  const minTime = now - maxAgeMs;
+
+  return hits.filter((h) => {
+    if (!h) return false;
+    let t = typeof h.time === 'number' ? h.time : (h.timestamp || new Date(h.time).getTime());
+    if (isNaN(t) || t <= 0) t = now;
+    if (t < minTime) return false; // Enforce strict 24-hour limit
+    return isHitMatchingApp(h, appNameOrId);
+  });
+}

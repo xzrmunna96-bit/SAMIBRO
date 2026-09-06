@@ -26,18 +26,56 @@ export interface ApiConfigItem {
 export const API_CONFIGS_STORAGE_KEY = 'super_x_api_configs_list_v2';
 export const API_CONFIGS_UPDATE_EVENT = 'super_x_api_configs_updated';
 
-export const DEFAULT_API_CONFIGS: ApiConfigItem[] = [
-  {
-    id: 'slot-1',
-    name: 'Primary System API Gateway',
-    apiKey: 'MOBEKJ8H20I',
-    serviceType: 'ALL (Global Auto-Detect)',
-    endpoint: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
-    isActive: true,
-    notes: 'Single High-Speed Global Gateway for all incoming SMS & OTP',
-    createdAt: Date.now(),
-  },
-];
+export const DEFAULT_API_CONFIGS: ApiConfigItem[] = [];
+
+export const ACTIVATION_TIMESTAMP_KEY = 'super_x_api_activation_timestamp_v1';
+export const BASELINE_SIGNATURES_KEY = 'super_x_api_baseline_signatures_v1';
+
+export function getApiActivationTimestamp(): number {
+  try {
+    const saved = localStorage.getItem(ACTIVATION_TIMESTAMP_KEY);
+    if (saved) return Number(saved) || 0;
+  } catch {}
+  return 0;
+}
+
+export function setApiActivationTimestamp(ts: number) {
+  try {
+    if (ts > 0) {
+      localStorage.setItem(ACTIVATION_TIMESTAMP_KEY, String(ts));
+    } else {
+      localStorage.removeItem(ACTIVATION_TIMESTAMP_KEY);
+      localStorage.removeItem(BASELINE_SIGNATURES_KEY);
+    }
+  } catch {}
+}
+
+export function getBaselineSignatures(): Set<string> {
+  try {
+    const saved = localStorage.getItem(BASELINE_SIGNATURES_KEY);
+    if (saved) {
+      const arr = JSON.parse(saved);
+      if (Array.isArray(arr)) return new Set(arr);
+    }
+  } catch {}
+  return new Set();
+}
+
+export function addBaselineSignatures(signatures: string[]) {
+  try {
+    const existing = getBaselineSignatures();
+    signatures.forEach((s) => {
+      if (s && s.trim()) existing.add(s.trim());
+    });
+    localStorage.setItem(BASELINE_SIGNATURES_KEY, JSON.stringify(Array.from(existing).slice(0, 1000)));
+  } catch {}
+}
+
+export function clearBaselineSignatures() {
+  try {
+    localStorage.removeItem(BASELINE_SIGNATURES_KEY);
+  } catch {}
+}
 
 export function getAllApiConfigs(): ApiConfigItem[] {
   try {
@@ -45,26 +83,18 @@ export function getAllApiConfigs(): ApiConfigItem[] {
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        const found = parsed[0] || DEFAULT_API_CONFIGS[0];
-        const rawKey = (found.apiKey || '').trim();
-        const key = (!rawKey || rawKey === 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=' || rawKey === 'M7ANNWJY6B2') ? 'MOBEKJ8H20I' : rawKey;
-        return [{
-          id: 'slot-1',
-          name: found.name || 'Primary System API Gateway',
-          apiKey: key,
-          serviceType: 'ALL (Global Auto-Detect)',
-          endpoint: found.endpoint || 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
-          isActive: true,
-          notes: 'Single High-Speed Global Gateway for all incoming SMS & OTP',
-          createdAt: found.createdAt || Date.now(),
-          lastLatencyMs: found.lastLatencyMs,
-        }];
+        // Filter out any default placeholder keys so API stays completely OFF until user explicitly supplies their API
+        return parsed.filter((c) => {
+          if (!c || !c.apiKey) return false;
+          const k = String(c.apiKey).trim();
+          return k.length > 3 && k !== 'MOBEKJ8H20I' && k !== 'M7ANNWJY6B2' && k !== 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=';
+        });
       }
     }
   } catch (err) {
     console.error('Failed to load local API configs:', err);
   }
-  return DEFAULT_API_CONFIGS;
+  return [];
 }
 
 export function saveAllApiConfigs(configs: ApiConfigItem[]) {
@@ -225,8 +255,7 @@ export async function deleteApiConfig(configId: string) {
 
 export function getActiveApiConfigs(): ApiConfigItem[] {
   const all = getAllApiConfigs();
-  const active = all.filter((c) => c.isActive === true && (c.apiKey || '').trim().length > 0);
-  return active.length > 0 ? active : all.filter((c) => (c.apiKey || '').trim().length > 0);
+  return all.filter((c) => c.isActive === true && (c.apiKey || '').trim().length > 3 && c.apiKey.trim() !== 'MOBEKJ8H20I');
 }
 
 export function getActiveApiKeys(): string[] {
@@ -234,7 +263,7 @@ export function getActiveApiKeys(): string[] {
   const keys = new Set<string>();
   configs.forEach((c) => {
     const k = (c.apiKey || '').trim();
-    if (k && !k.includes(':') && k.length > 5) {
+    if (k && !k.includes(':') && k.length > 3 && k !== 'MOBEKJ8H20I' && k !== 'M7ANNWJY6B2') {
       keys.add(k);
     }
   });

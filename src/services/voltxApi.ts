@@ -5,29 +5,36 @@ import {
   getActiveApiConfigs,
   getActiveApiForService,
   ApiConfigItem,
+  getApiActivationTimestamp,
+  getBaselineSignatures,
 } from './apiConfigService';
 import { generateRealisticCarrierNumber } from './carrierNumberGenerator';
 import { getCountryInfo } from './countryHelper';
 import { extractOtpCode, sendOtpToTelegram } from './telegramService';
 import { fetchIntsCdrStats } from './intsGatewayService';
 
-export const DEFAULT_VOLTX_ENDPOINT_KEY = 'MOBEKJ8H20I';
-export const DEFAULT_MAUTH_API_KEY = 'MOBEKJ8H20I';
+export const DEFAULT_VOLTX_ENDPOINT_KEY = '';
+export const DEFAULT_MAUTH_API_KEY = '';
 export const VOLTX_BACKEND_SLUG = 'MXS47FLFX0U';
 
 export function getVoltxEndpointKey(): string {
   if (typeof window !== 'undefined') {
     const saved = localStorage.getItem('voltx_endpoint_key');
-    if (saved && saved.trim() && saved.trim() !== 'M7ANNWJY6B2' && saved.trim() !== 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=') return saved.trim();
+    if (saved && saved.trim() && saved.trim() !== 'MOBEKJ8H20I' && saved.trim() !== 'M7ANNWJY6B2' && saved.trim() !== 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=') return saved.trim();
   }
-  return DEFAULT_VOLTX_ENDPOINT_KEY;
+  return '';
 }
 
 export function setVoltxEndpointKey(key: string): void {
   if (typeof window !== 'undefined') {
     const trimmed = key.trim();
-    localStorage.setItem('voltx_endpoint_key', trimmed);
-    localStorage.setItem('voltx_mauthapi_key', trimmed);
+    if (!trimmed || trimmed === 'MOBEKJ8H20I') {
+      localStorage.removeItem('voltx_endpoint_key');
+      localStorage.removeItem('voltx_mauthapi_key');
+    } else {
+      localStorage.setItem('voltx_endpoint_key', trimmed);
+      localStorage.setItem('voltx_mauthapi_key', trimmed);
+    }
     window.dispatchEvent(new Event('voltx_key_updated'));
     broadcastSystemApiKeyToServer(trimmed).catch(() => {});
   }
@@ -36,16 +43,21 @@ export function setVoltxEndpointKey(key: string): void {
 export function getMauthApiKey(): string {
   if (typeof window !== 'undefined') {
     const saved = localStorage.getItem('voltx_mauthapi_key') || localStorage.getItem('voltx_endpoint_key');
-    if (saved && saved.trim() && saved.trim() !== 'M7ANNWJY6B2' && saved.trim() !== 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=') return saved.trim();
+    if (saved && saved.trim() && saved.trim() !== 'MOBEKJ8H20I' && saved.trim() !== 'M7ANNWJY6B2' && saved.trim() !== 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=') return saved.trim();
   }
-  return DEFAULT_MAUTH_API_KEY;
+  return '';
 }
 
 export function setMauthApiKey(key: string): void {
   if (typeof window !== 'undefined') {
     const trimmed = key.trim();
-    localStorage.setItem('voltx_mauthapi_key', trimmed);
-    localStorage.setItem('voltx_endpoint_key', trimmed);
+    if (!trimmed || trimmed === 'MOBEKJ8H20I') {
+      localStorage.removeItem('voltx_mauthapi_key');
+      localStorage.removeItem('voltx_endpoint_key');
+    } else {
+      localStorage.setItem('voltx_mauthapi_key', trimmed);
+      localStorage.setItem('voltx_endpoint_key', trimmed);
+    }
     window.dispatchEvent(new Event('voltx_key_updated'));
     broadcastSystemApiKeyToServer(trimmed).catch(() => {});
   }
@@ -157,6 +169,10 @@ export async function callVoltxApi<T>(
   const apiKey = options.apiKey || getMauthApiKey();
   const endpointKey = getVoltxEndpointKey();
   const customEndpoint = options.customEndpoint;
+
+  if (!apiKey && !endpointKey && !customEndpoint) {
+    return { meta: { code: 200, status: 'ok' }, data: [] as any, message: 'API is currently OFF' };
+  }
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -299,7 +315,7 @@ export function resolveCarrierDetails(range: string): { operator: string; countr
     return { operator: 'National Carrier Gateway', country: info.name };
   }
 
-  return { operator: 'Carrier Gateway Route', country: 'Bangladesh' };
+  return { operator: 'Carrier Gateway Route', country: 'International' };
 }
 
 export function stripFlagFromCountryName(name: string): string {
@@ -458,6 +474,9 @@ export async function fetchLiveConsoleDetailed(apiKey?: string, customEndpoint?:
 
   // Multi-API Pool Mode: Query all active configured APIs concurrently
   const activeConfigs = getActiveApiConfigs();
+  if (activeConfigs.length === 0) {
+    return { hits: [], code: 200, status: 'ok', message: 'API is currently OFF' };
+  }
   const allHitsMap = new Map<string, LiveConsoleHit>();
 
   const results = await Promise.allSettled(
@@ -486,6 +505,9 @@ export async function fetchLiveConsoleDetailed(apiKey?: string, customEndpoint?:
 
       if (rawHits.length > 0) {
         successCount++;
+        const activationTimestamp = getApiActivationTimestamp();
+        const baselineSignatures = getBaselineSignatures();
+
         rawHits.forEach((hit) => {
           const rawRange = hit.range || hit.number || hit.phone || '';
           const carrier = resolveCarrierDetails(rawRange);
@@ -503,8 +525,18 @@ export async function fetchLiveConsoleDetailed(apiKey?: string, customEndpoint?:
             }
           }
 
+          // Strictly filter out past historical messages that existed prior to API activation
+          if (activationTimestamp > 0 && parsedTime <= activationTimestamp) {
+            return;
+          }
+
           const sid = normalizeServiceId(hit.sid || hit.service || hit.service_name || '', rawMsg);
           const itemKey = `${rawRange}_${parsedTime}_${sid}_${rawMsg.substring(0, 30)}`;
+          const cleanSig = `${(rawRange || '').replace(/\D/g, '')}_${parsedTime}_${sid}_${rawMsg.trim()}`;
+
+          if (baselineSignatures.has(cleanSig) || baselineSignatures.has(itemKey)) {
+            return;
+          }
 
           if (!allHitsMap.has(itemKey)) {
             const finalHit: LiveConsoleHit = {
@@ -538,6 +570,11 @@ export async function fetchLiveConsoleDetailed(apiKey?: string, customEndpoint?:
     const intsResult = await fetchIntsCdrStats();
     if (intsResult.success && intsResult.hits.length > 0) {
       intsResult.hits.forEach((hit) => {
+        const hitTime = Number(hit.time) || 0;
+        const activationTimestamp = getApiActivationTimestamp();
+        if (activationTimestamp > 0 && hitTime <= activationTimestamp) {
+          return;
+        }
         const itemKey = `${hit.range}_${hit.time}_${hit.sid}_${hit.message.substring(0, 30)}`;
         if (!allHitsMap.has(itemKey)) {
           allHitsMap.set(itemKey, hit);

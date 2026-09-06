@@ -45,6 +45,7 @@ import {
   Settings,
   ExternalLink,
   PlusCircle,
+  Save,
 } from 'lucide-react';
 import {
   getAllNotifications,
@@ -117,6 +118,9 @@ import {
   KNOWN_SOCIAL_SERVICES,
   DEFAULT_API_CONFIGS,
   getActiveApiKeys,
+  setApiActivationTimestamp,
+  addBaselineSignatures,
+  clearBaselineSignatures,
 } from '../services/apiConfigService';
 import {
   getTelegramConfig,
@@ -138,7 +142,7 @@ import { getBrandLogoComponent } from './BrandLogos';
 
 const ADMIN_MASTER_PASSWORD = 'XZRMUNNA12061';
 const ADMIN_SESSION_KEY = 'super_x_admin_session_auth_v2';
-const DEFAULT_API_KEY = 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=';
+const DEFAULT_API_KEY = '';
 
 import { TelegramBotController } from './TelegramBotController';
 
@@ -679,14 +683,41 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     }
   };
 
-  const handleActivateApiConfig = (item: ApiConfigItem) => {
+  const handleActivateApiConfig = async (item: ApiConfigItem) => {
     setActiveApiConfig(item.id, item.serviceType);
     setApiKeyInput(item.apiKey);
     setMauthApiKey(item.apiKey);
     setVoltxEndpointKey(item.apiKey);
     setApiConfigsList(getAllApiConfigs());
-    fetchIncomingSmsHits(item.apiKey);
-    showToast(`Activated: ${item.name || item.serviceType} (${item.apiKey})`);
+
+    // Reset baseline timestamp & clear old hits so counting starts strictly from 0
+    const now = Date.now();
+    setApiActivationTimestamp(now);
+    clearBaselineSignatures();
+    try {
+      localStorage.removeItem('super_x_live_console_hits_24h');
+      localStorage.removeItem('super_x_app_monotonic_counts_v2');
+    } catch {}
+    setLiveStreamHits([]);
+
+    // Probe upstream to register existing historical messages as baseline
+    try {
+      const probe = await fetchLiveConsoleDetailed(item.apiKey);
+      if (probe.hits && probe.hits.length > 0) {
+        const sigs = probe.hits.map((h: any) => `${(h.range || h.number || '').replace(/\D/g, '')}_${h.time}_${(h.sid || '').trim().toLowerCase()}_${(h.message || '').trim()}`);
+        addBaselineSignatures(sigs);
+      }
+    } catch {}
+
+    try {
+      await broadcastSystemApiKeyToServer(item.apiKey);
+    } catch {}
+
+    window.dispatchEvent(new Event('voltx_key_updated'));
+    window.dispatchEvent(new Event('super_x_api_key_updated'));
+    window.dispatchEvent(new Event('storage'));
+
+    showToast(`Activated: ${item.name || item.serviceType} (${item.apiKey}) with fresh 0 counter`);
   };
 
   const handleDeleteApiConfigItem = async (id: string, serviceName: string) => {
@@ -1229,6 +1260,25 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
       setMauthApiKey(trimmed);
       setVoltxEndpointKey(trimmed);
 
+      // Reset baseline timestamp & clear old hits so counting starts strictly from 0
+      const now = Date.now();
+      setApiActivationTimestamp(now);
+      clearBaselineSignatures();
+      try {
+        localStorage.removeItem('super_x_live_console_hits_24h');
+        localStorage.removeItem('super_x_app_monotonic_counts_v2');
+      } catch {}
+      setLiveStreamHits([]);
+
+      // Probe upstream to register existing historical messages as baseline
+      try {
+        const probe = await fetchLiveConsoleDetailed(trimmed);
+        if (probe.hits && probe.hits.length > 0) {
+          const sigs = probe.hits.map((h: any) => `${(h.range || h.number || '').replace(/\D/g, '')}_${h.time}_${(h.sid || '').trim().toLowerCase()}_${(h.message || '').trim()}`);
+          addBaselineSignatures(sigs);
+        }
+      } catch {}
+
       // 3. Broadcast to all users
       try {
         await broadcastSystemApiKeyToServer(trimmed);
@@ -1241,8 +1291,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
       window.dispatchEvent(new Event('storage'));
 
       setIsApiKeySaved(true);
-      showToast(`API [${trimmed}] saved and activated! All services auto-connected.`);
-      await fetchIncomingSmsHits(trimmed);
+      showToast(`API [${trimmed}] saved and activated with fresh 0 counter!`);
       setTimeout(() => setIsApiKeySaved(false), 4000);
     } catch (err) {
       console.error('Error saving API key:', err);
@@ -1300,15 +1349,17 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
   };
 
   const handleResetToDefaultApiKey = async () => {
-    setApiKeyInput(DEFAULT_API_KEY);
-    setMauthApiKey(DEFAULT_API_KEY);
-    setVoltxEndpointKey(DEFAULT_API_KEY);
+    setApiKeyInput('');
+    setMauthApiKey('');
+    setVoltxEndpointKey('');
+    saveAllApiConfigs([]);
+    setApiConfigsList([]);
     try {
-      await broadcastSystemApiKeyToServer(DEFAULT_API_KEY);
+      await broadcastSystemApiKeyToServer('');
+      await fetch('/api/global-live-stream/reset', { method: 'POST' });
     } catch {}
     setIsApiKeySaved(true);
-    showToast(`Reset to default API key: ${DEFAULT_API_KEY}`);
-    await fetchIncomingSmsHits(DEFAULT_API_KEY);
+    showToast('API Turned OFF. All SMS counters reset to 0.');
     setTimeout(() => setIsApiKeySaved(false), 4000);
   };
 
@@ -2186,9 +2237,15 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
 
                   <button
                     type="button"
-                    onClick={() => handleTestPing('primary-api', apiKeyInput.trim() || 'MOBEKJ8H20I', 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api')}
-                    disabled={testingPingId === 'primary-api'}
-                    className="py-2 px-3.5 rounded-xl text-xs font-bold text-sky-300 bg-slate-800 hover:bg-slate-700 border border-sky-500/30 transition cursor-pointer flex items-center gap-1.5"
+                    onClick={() => {
+                      if (!apiKeyInput.trim()) {
+                        showToast('Please enter an API Key first');
+                        return;
+                      }
+                      handleTestPing('primary-api', apiKeyInput.trim(), 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api');
+                    }}
+                    disabled={!apiKeyInput.trim() || testingPingId === 'primary-api'}
+                    className="py-2 px-3.5 rounded-xl text-xs font-bold text-sky-300 bg-slate-800 hover:bg-slate-700 border border-sky-500/30 transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
                   >
                     <Activity className={`w-4 h-4 text-sky-400 ${testingPingId === 'primary-api' ? 'animate-spin' : ''}`} />
                     <span>{testingPingId === 'primary-api' ? 'Pinging...' : 'Ping Test Connectivity'}</span>
@@ -2200,8 +2257,12 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl flex items-center justify-between">
                   <span className="text-xs font-bold text-slate-400">Active API Key:</span>
-                  <span className="text-xs font-mono font-black text-emerald-400 bg-emerald-950/90 px-2.5 py-0.5 rounded-lg border border-emerald-500/30">
-                    {apiKeyInput.trim() || 'MOBEKJ8H20I'}
+                  <span className={`text-xs font-mono font-black px-2.5 py-0.5 rounded-lg border ${
+                    apiKeyInput.trim()
+                      ? 'text-emerald-400 bg-emerald-950/90 border-emerald-500/30'
+                      : 'text-amber-400 bg-amber-950/90 border-amber-500/30'
+                  }`}>
+                    {apiKeyInput.trim() ? apiKeyInput.trim() : 'OFF (Not Configured)'}
                   </span>
                 </div>
                 <div className="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl flex items-center justify-between">
@@ -2212,9 +2273,13 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                 </div>
                 <div className="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl flex items-center justify-between">
                   <span className="text-xs font-bold text-slate-400">Stream Status:</span>
-                  <span className="text-xs font-mono font-black text-emerald-400 bg-emerald-950/90 px-2.5 py-0.5 rounded-lg border border-emerald-500/30 flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <span>ONLINE</span>
+                  <span className={`text-xs font-mono font-black px-2.5 py-0.5 rounded-lg border flex items-center gap-1 ${
+                    apiKeyInput.trim()
+                      ? 'text-emerald-400 bg-emerald-950/90 border-emerald-500/30'
+                      : 'text-slate-400 bg-slate-900 border-slate-700'
+                  }`}>
+                    <span className={`w-2 h-2 rounded-full ${apiKeyInput.trim() ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+                    <span>{apiKeyInput.trim() ? 'ONLINE' : 'STANDBY (OFF)'}</span>
                   </span>
                 </div>
               </div>
@@ -2227,7 +2292,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                     <span>Single System API Key:</span>
                   </label>
                   <span className="text-[11px] text-slate-400 font-mono">
-                    MOBEKJ8H20I
+                    {apiKeyInput.trim() ? 'Active' : 'Currently OFF'}
                   </span>
                 </div>
 
@@ -2236,7 +2301,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                     type="text"
                     value={apiKeyInput}
                     onChange={(e) => setApiKeyInput(e.target.value)}
-                    placeholder="MOBEKJ8H20I"
+                    placeholder="Enter API Key to activate (Leave empty to keep OFF)"
                     className="w-full px-4 py-3 font-mono text-sm bg-slate-900 border border-slate-700 rounded-xl text-emerald-300 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
                   />
                 </div>
@@ -2262,12 +2327,28 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                   <button
                     type="button"
                     onClick={async () => {
-                      const key = apiKeyInput.trim() || 'MOBEKJ8H20I';
+                      const key = apiKeyInput.trim();
+                      if (!key) {
+                        setApiKeyInput('');
+                        setMauthApiKey('');
+                        setVoltxEndpointKey('');
+                        saveAllApiConfigs([]);
+                        setApiConfigsList([]);
+                        try {
+                          await broadcastSystemApiKeyToServer('');
+                          await fetch('/api/global-live-stream/reset', { method: 'POST' });
+                        } catch {}
+                        showToast('API turned OFF. All SMS counters reset to 0.');
+                        window.dispatchEvent(new Event('voltx_key_updated'));
+                        window.dispatchEvent(new Event('super_x_api_key_updated'));
+                        return;
+                      }
                       setApiKeyInput(key);
                       setMauthApiKey(key);
                       setVoltxEndpointKey(key);
                       try {
                         await broadcastSystemApiKeyToServer(key);
+                        await fetch('/api/global-live-stream/reset', { method: 'POST' });
                       } catch {}
                       const singleConfig: ApiConfigItem[] = [{
                         id: 'slot-1',
@@ -2283,12 +2364,13 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                       setApiConfigsList(singleConfig);
                       window.dispatchEvent(new Event('voltx_key_updated'));
                       window.dispatchEvent(new Event('super_x_api_key_updated'));
-                      showToast(`System API Key [${key}] saved & activated successfully!`);
+                      showToast(`API Activated: ${key}. Fresh count started from 0.`);
+                      await fetchIncomingSmsHits(key);
                     }}
-                    className="w-full sm:w-auto py-2.5 px-6 rounded-xl text-xs font-black text-white bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 shadow-lg shadow-emerald-950/50 transition cursor-pointer flex items-center justify-center gap-2 border border-emerald-400/40"
+                    className="py-3 px-6 rounded-xl font-black text-sm bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 shadow-lg shadow-emerald-500/25 transition-all flex items-center gap-2 cursor-pointer"
                   >
-                    <Check className="w-4 h-4" />
-                    <span>Save & Activate System API Key</span>
+                    <Save className="w-4 h-4" />
+                    <span>Save & Activate API Key</span>
                   </button>
                 </div>
               </div>

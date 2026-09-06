@@ -135,6 +135,10 @@ export const GLOBAL_COUNTRIES_LIST: GlobalCountryData[] = [
   { iso: 'BY', name: 'Belarus', flag: '🇧🇾', dialCode: '+375', region: 'Europe', operators: ['A1 Belarus', 'MTS Belarus', 'life:)'], topServices: ['Viber', 'Telegram', 'WhatsApp'], sampleRange: '37529', ratePerSms: '$0.23', status: 'Active', defaultHits: 56 },
   { iso: 'MD', name: 'Moldova', flag: '🇲🇩', dialCode: '+373', region: 'Europe', operators: ['Orange Moldova', 'Moldcell', 'Unité'], topServices: ['Viber', 'Telegram', 'WhatsApp'], sampleRange: '37342', ratePerSms: '$0.21', status: 'High Output', defaultHits: 128 },
   { iso: 'RS', name: 'Serbia', flag: '🇷🇸', dialCode: '+381', region: 'Europe', operators: ['Telekom Srbija (mts)', 'Yettel Srbija', 'A1 Srbija'], topServices: ['Viber', 'WhatsApp', 'Telegram'], sampleRange: '38164', ratePerSms: '$0.22', status: 'Active', defaultHits: 68 },
+  { iso: 'ME', name: 'Montenegro', flag: '🇲🇪', dialCode: '+382', region: 'Europe', operators: ['One Crna Gora', 'm:tel Montenegro', 'Crnogorski Telekom'], topServices: ['WhatsApp', 'Telegram', 'Facebook', 'Viber'], sampleRange: '38266', ratePerSms: '$0.24', status: 'Active', defaultHits: 85 },
+  { iso: 'XK', name: 'Kosovo', flag: '🇽🇰', dialCode: '+383', region: 'Europe', operators: ['Vala', 'IPKO'], topServices: ['WhatsApp', 'Telegram'], sampleRange: '38344', ratePerSms: '$0.24', status: 'Active', defaultHits: 45 },
+  { iso: 'SI', name: 'Slovenia', flag: '🇸🇮', dialCode: '+386', region: 'Europe', operators: ['A1 Slovenija', 'Telekom Slovenije', 'Telemach'], topServices: ['WhatsApp', 'Telegram'], sampleRange: '38641', ratePerSms: '$0.25', status: 'Active', defaultHits: 55 },
+  { iso: 'MK', name: 'North Macedonia', flag: '🇲🇰', dialCode: '+389', region: 'Europe', operators: ['Makedonski Telekom', 'A1 Makedonija'], topServices: ['Viber', 'WhatsApp', 'Telegram'], sampleRange: '38970', ratePerSms: '$0.23', status: 'Active', defaultHits: 60 },
   { iso: 'BG', name: 'Bulgaria', flag: '🇧🇬', dialCode: '+359', region: 'Europe', operators: ['A1 Bulgaria', 'Yettel Bulgaria', 'Vivacom'], topServices: ['Viber', 'WhatsApp', 'Telegram'], sampleRange: '35988', ratePerSms: '$0.21', status: 'Active', defaultHits: 58 },
   { iso: 'HR', name: 'Croatia', flag: '🇭🇷', dialCode: '+385', region: 'Europe', operators: ['Hrvatski Telekom', 'A1 Hrvatska', 'Telemach'], topServices: ['WhatsApp', 'Viber', 'Telegram'], sampleRange: '38591', ratePerSms: '$0.23', status: 'Active', defaultHits: 52 },
   { iso: 'SK', name: 'Slovakia', flag: '🇸🇰', dialCode: '+421', region: 'Europe', operators: ['Orange Slovensko', 'Telekom SK', 'O2 SK', '4ka'], topServices: ['WhatsApp', 'Telegram', 'Viber'], sampleRange: '421905', ratePerSms: '$0.22', status: 'Active', defaultHits: 47 },
@@ -197,22 +201,160 @@ export const GLOBAL_COUNTRIES_LIST: GlobalCountryData[] = [
  * Fast lookup map indexed by bare dial code (e.g. "880", "1", "966", "44")
  */
 export const COUNTRY_CODES_MAP: Record<string, { flag: string; name: string }> = (() => {
-  const map: Record<string, { flag: string; name: string }> = {};
+  const map: Record<string, { flag: string; name: string }> = {
+    '1': { flag: '🇺🇸', name: 'United States' },
+    '7': { flag: '🇷🇺', name: 'Russia' },
+    '77': { flag: '🇰🇿', name: 'Kazakhstan' },
+    '20': { flag: '🇪🇬', name: 'Egypt' },
+    '27': { flag: '🇿🇦', name: 'South Africa' },
+    '30': { flag: '🇬🇷', name: 'Greece' },
+    '31': { flag: '🇳🇱', name: 'Netherlands' },
+    '32': { flag: '🇧🇪', name: 'Belgium' },
+    '33': { flag: '🇫🇷', name: 'France' },
+    '34': { flag: '🇪🇸', name: 'Spain' },
+    '36': { flag: '🇭🇺', name: 'Hungary' },
+    '39': { flag: '🇮🇹', name: 'Italy' },
+    '40': { flag: '🇷🇴', name: 'Romania' },
+    '41': { flag: '🇨🇭', name: 'Switzerland' },
+    '43': { flag: '🇦🇹', name: 'Austria' },
+    '44': { flag: '🇬🇧', name: 'United Kingdom' },
+    '45': { flag: '🇩🇰', name: 'Denmark' },
+    '46': { flag: '🇸🇪', name: 'Sweden' },
+    '47': { flag: '🇳🇴', name: 'Norway' },
+    '48': { flag: '🇵🇱', name: 'Poland' },
+    '49': { flag: '🇩🇪', name: 'Germany' },
+    '51': { flag: '🇵🇪', name: 'Peru' },
+    '52': { flag: '🇲🇽', name: 'Mexico' },
+    '53': { flag: '🇨🇺', name: 'Cuba' },
+    '54': { flag: '🇦🇷', name: 'Argentina' },
+    '55': { flag: '🇧🇷', name: 'Brazil' },
+    '56': { flag: '🇨🇱', name: 'Chile' },
+    '57': { flag: '🇨🇴', name: 'Colombia' },
+    '58': { flag: '🇻🇪', name: 'Venezuela' },
+    '60': { flag: '🇲🇾', name: 'Malaysia' },
+    '61': { flag: '🇦🇺', name: 'Australia' },
+    '62': { flag: '🇮🇩', name: 'Indonesia' },
+    '63': { flag: '🇵🇭', name: 'Philippines' },
+    '64': { flag: '🇳🇿', name: 'New Zealand' },
+    '65': { flag: '🇸🇬', name: 'Singapore' },
+    '66': { flag: '🇹🇭', name: 'Thailand' },
+    '81': { flag: '🇯🇵', name: 'Japan' },
+    '82': { flag: '🇰🇷', name: 'South Korea' },
+    '84': { flag: '🇻🇳', name: 'Vietnam' },
+    '86': { flag: '🇨🇳', name: 'China' },
+    '90': { flag: '🇹🇷', name: 'Turkey' },
+    '91': { flag: '🇮🇳', name: 'India' },
+    '92': { flag: '🇵🇰', name: 'Pakistan' },
+    '93': { flag: '🇦🇫', name: 'Afghanistan' },
+    '94': { flag: '🇱🇰', name: 'Sri Lanka' },
+    '95': { flag: '🇲🇲', name: 'Myanmar' },
+    '98': { flag: '🇮🇷', name: 'Iran' },
+    '212': { flag: '🇲🇦', name: 'Morocco' },
+    '213': { flag: '🇩🇿', name: 'Algeria' },
+    '216': { flag: '🇹🇳', name: 'Tunisia' },
+    '218': { flag: '🇱🇾', name: 'Libya' },
+    '221': { flag: '🇸🇳', name: 'Senegal' },
+    '223': { flag: '🇲🇱', name: 'Mali' },
+    '224': { flag: '🇬🇳', name: 'Guinea' },
+    '225': { flag: '🇨🇮', name: 'Ivory Coast' },
+    '226': { flag: '🇧🇫', name: 'Burkina Faso' },
+    '227': { flag: '🇳🇪', name: 'Niger' },
+    '228': { flag: '🇹🇬', name: 'Togo' },
+    '229': { flag: '🇧🇯', name: 'Benin' },
+    '231': { flag: '🇱🇷', name: 'Liberia' },
+    '232': { flag: '🇸🇱', name: 'Sierra Leone' },
+    '233': { flag: '🇬🇭', name: 'Ghana' },
+    '234': { flag: '🇳🇬', name: 'Nigeria' },
+    '235': { flag: '🇹🇩', name: 'Chad' },
+    '237': { flag: '🇨🇲', name: 'Cameroon' },
+    '241': { flag: '🇬🇦', name: 'Gabon' },
+    '242': { flag: '🇨🇬', name: 'Congo' },
+    '243': { flag: '🇨🇩', name: 'DR Congo' },
+    '244': { flag: '🇦🇴', name: 'Angola' },
+    '249': { flag: '🇸🇩', name: 'Sudan' },
+    '250': { flag: '🇷🇼', name: 'Rwanda' },
+    '251': { flag: '🇪🇹', name: 'Ethiopia' },
+    '252': { flag: '🇸🇴', name: 'Somalia' },
+    '254': { flag: '🇰🇪', name: 'Kenya' },
+    '255': { flag: '🇹🇿', name: 'Tanzania' },
+    '256': { flag: '🇺🇬', name: 'Uganda' },
+    '258': { flag: '🇲🇿', name: 'Mozambique' },
+    '260': { flag: '🇿🇲', name: 'Zambia' },
+    '261': { flag: '🇲🇬', name: 'Madagascar' },
+    '263': { flag: '🇿🇼', name: 'Zimbabwe' },
+    '351': { flag: '🇵🇹', name: 'Portugal' },
+    '352': { flag: '🇱🇺', name: 'Luxembourg' },
+    '353': { flag: '🇮🇪', name: 'Ireland' },
+    '354': { flag: '🇮🇸', name: 'Iceland' },
+    '355': { flag: '🇦🇱', name: 'Albania' },
+    '356': { flag: '🇲🇹', name: 'Malta' },
+    '357': { flag: '🇨🇾', name: 'Cyprus' },
+    '358': { flag: '🇫🇮', name: 'Finland' },
+    '359': { flag: '🇧🇬', name: 'Bulgaria' },
+    '370': { flag: '🇱🇹', name: 'Lithuania' },
+    '371': { flag: '🇱🇻', name: 'Latvia' },
+    '372': { flag: '🇪🇪', name: 'Estonia' },
+    '373': { flag: '🇲🇩', name: 'Moldova' },
+    '374': { flag: '🇦🇲', name: 'Armenia' },
+    '375': { flag: '🇧🇾', name: 'Belarus' },
+    '380': { flag: '🇺🇦', name: 'Ukraine' },
+    '381': { flag: '🇷🇸', name: 'Serbia' },
+    '382': { flag: '🇲🇪', name: 'Montenegro' },
+    '383': { flag: '🇽🇰', name: 'Kosovo' },
+    '385': { flag: '🇭🇷', name: 'Croatia' },
+    '386': { flag: '🇸🇮', name: 'Slovenia' },
+    '387': { flag: '🇧🇦', name: 'Bosnia and Herzegovina' },
+    '389': { flag: '🇲🇰', name: 'North Macedonia' },
+    '420': { flag: '🇨🇿', name: 'Czech Republic' },
+    '421': { flag: '🇸🇰', name: 'Slovakia' },
+    '502': { flag: '🇬🇹', name: 'Guatemala' },
+    '503': { flag: '🇸🇻', name: 'El Salvador' },
+    '504': { flag: '🇭🇳', name: 'Honduras' },
+    '505': { flag: '🇳🇮', name: 'Nicaragua' },
+    '506': { flag: '🇨🇷', name: 'Costa Rica' },
+    '507': { flag: '🇵🇦', name: 'Panama' },
+    '509': { flag: '🇭🇹', name: 'Haiti' },
+    '591': { flag: '🇧🇴', name: 'Bolivia' },
+    '593': { flag: '🇪🇨', name: 'Ecuador' },
+    '595': { flag: '🇵🇾', name: 'Paraguay' },
+    '598': { flag: '🇺🇾', name: 'Uruguay' },
+    '852': { flag: '🇭🇰', name: 'Hong Kong' },
+    '853': { flag: '🇲🇴', name: 'Macau' },
+    '855': { flag: '🇰🇭', name: 'Cambodia' },
+    '856': { flag: '🇱🇦', name: 'Laos' },
+    '880': { flag: '🇧🇩', name: 'Bangladesh' },
+    '886': { flag: '🇹🇼', name: 'Taiwan' },
+    '960': { flag: '🇲🇻', name: 'Maldives' },
+    '961': { flag: '🇱🇧', name: 'Lebanon' },
+    '962': { flag: '🇯🇴', name: 'Jordan' },
+    '963': { flag: '🇸🇾', name: 'Syria' },
+    '964': { flag: '🇮🇶', name: 'Iraq' },
+    '965': { flag: '🇰🇼', name: 'Kuwait' },
+    '966': { flag: '🇸🇦', name: 'Saudi Arabia' },
+    '967': { flag: '🇾🇪', name: 'Yemen' },
+    '968': { flag: '🇴🇲', name: 'Oman' },
+    '970': { flag: '🇵🇸', name: 'Palestine' },
+    '971': { flag: '🇦🇪', name: 'United Arab Emirates' },
+    '972': { flag: '🇮🇱', name: 'Israel' },
+    '973': { flag: '🇧🇭', name: 'Bahrain' },
+    '974': { flag: '🇶🇦', name: 'Qatar' },
+    '975': { flag: '🇧🇹', name: 'Bhutan' },
+    '976': { flag: '🇲🇳', name: 'Mongolia' },
+    '977': { flag: '🇳🇵', name: 'Nepal' },
+    '992': { flag: '🇹🇯', name: 'Tajikistan' },
+    '993': { flag: '🇹🇲', name: 'Turkmenistan' },
+    '994': { flag: '🇦🇿', name: 'Azerbaijan' },
+    '995': { flag: '🇬🇪', name: 'Georgia' },
+    '996': { flag: '🇰🇬', name: 'Kyrgyzstan' },
+    '998': { flag: '🇺🇿', name: 'Uzbekistan' },
+  };
+
   GLOBAL_COUNTRIES_LIST.forEach((c) => {
     const cleanDial = c.dialCode.replace(/\D/g, '');
     if (cleanDial && !map[cleanDial]) {
       map[cleanDial] = { flag: c.flag, name: c.name };
     }
   });
-
-  // Ensure high-priority multi-country prefixes
-  map['1'] = { flag: '🇺🇸', name: 'United States / Canada' };
-  map['7'] = { flag: '🇷🇺', name: 'Russia / Kazakhstan' };
-  map['880'] = { flag: '🇧🇩', name: 'Bangladesh' };
-  map['91'] = { flag: '🇮🇳', name: 'India' };
-  map['92'] = { flag: '🇵🇰', name: 'Pakistan' };
-  map['966'] = { flag: '🇸🇦', name: 'Saudi Arabia' };
-  map['971'] = { flag: '🇦🇪', name: 'United Arab Emirates' };
 
   return map;
 })();
@@ -222,6 +364,13 @@ export const COUNTRY_CODES_MAP: Record<string, { flag: string; name: string }> =
  */
 export function getCountryInfo(phoneNumberOrRange: string): { flag: string; name: string; dialCode: string } {
   const digits = (phoneNumberOrRange || '').replace(/\D/g, '');
+  if (!digits) {
+    return {
+      flag: '🌐',
+      name: 'International',
+      dialCode: '',
+    };
+  }
 
   for (const len of [4, 3, 2, 1]) {
     const code = digits.slice(0, len);
@@ -237,7 +386,7 @@ export function getCountryInfo(phoneNumberOrRange: string): { flag: string; name
   // Check against full country list
   for (const c of GLOBAL_COUNTRIES_LIST) {
     const cleanDial = c.dialCode.replace(/\D/g, '');
-    if (digits.startsWith(cleanDial)) {
+    if (cleanDial && digits.startsWith(cleanDial)) {
       return {
         flag: c.flag,
         name: c.name,
@@ -246,10 +395,11 @@ export function getCountryInfo(phoneNumberOrRange: string): { flag: string; name
     }
   }
 
+  // Fallback to neutral International Route (NEVER hardcode to Bangladesh!)
   return {
-    flag: '🇧🇩',
-    name: 'Bangladesh',
-    dialCode: '+880',
+    flag: '🌐',
+    name: 'International Route',
+    dialCode: `+${digits.slice(0, 3)}`,
   };
 }
 

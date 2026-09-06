@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ActiveAccountWidget } from "./ActiveAccountWidget";
 import {
@@ -99,7 +99,11 @@ import {
 } from "../services/telegramService";
 import { getCountryInfo } from "../services/countryHelper";
 import { fetchIntsCdrStats } from "../services/intsGatewayService";
-import { getActiveApiKeys } from "../services/apiConfigService";
+import {
+  getActiveApiKeys,
+  getApiActivationTimestamp,
+  getBaselineSignatures,
+} from "../services/apiConfigService";
 import { generateBaselineLiveHits } from "../services/baselineLiveHits";
 import {
   getAllAccounts,
@@ -129,6 +133,11 @@ import {
   getTopAppsConfig,
   TOP_APPS_UPDATE_EVENT,
   TopAppItem,
+  filterHitsForApp,
+  isHitMatchingApp,
+  checkAndApply24HourReset,
+  get24HourResetTimestamp,
+  set24HourResetTimestamp,
 } from "../services/topAppsService";
 import { getBrandLogoComponent } from "./BrandLogos";
 import { CountryFlag } from "./CountryFlags";
@@ -1171,24 +1180,12 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const [keyInput, setKeyInput] = useState("");
 
   // Live Real Data State with 24-Hour Persistence & Automatic Reset
+  // Clean zero initialization: all social media counters start at 0
   const [liveHits, setLiveHits] = useState<LiveConsoleHit[]>(() => {
     try {
-      const saved = localStorage.getItem("super_x_live_console_hits_24h");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const now = Date.now();
-          const oneDayAgo = now - 24 * 60 * 60 * 1000;
-          // Keep only messages within the last 24 hours
-          const filtered = parsed.filter((item: any) => {
-            const t = typeof item.time === "number" ? item.time : (item.timestamp || new Date(item.time).getTime());
-            return !isNaN(t) && t >= oneDayAgo;
-          });
-          if (filtered.length > 0) return filtered;
-        }
-      }
+      localStorage.removeItem("super_x_live_console_hits_24h");
     } catch {}
-    return generateBaselineLiveHits();
+    return [];
   });
 
   const [globalStats, setGlobalStats] = useState<{
@@ -1196,6 +1193,42 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     rangeCounts: Record<string, number>;
     totalHits: number;
   }>({ appCounts: {}, rangeCounts: {}, totalHits: 0 });
+
+  // Listen for 24-hour reset events and check periodically
+  useEffect(() => {
+    try {
+      localStorage.removeItem("super_x_live_console_hits_24h");
+      localStorage.removeItem("super_x_app_monotonic_counts_v2");
+    } catch {}
+
+    const handleResetEvent = () => {
+      setLiveHits([]);
+      setAppMonotonicCounts({});
+      try {
+        localStorage.removeItem("super_x_live_console_hits_24h");
+        localStorage.removeItem("super_x_app_monotonic_counts_v2");
+      } catch {}
+    };
+
+    window.addEventListener("super_x_24h_reset", handleResetEvent);
+
+    const resetCheckInterval = setInterval(() => {
+      const check = checkAndApply24HourReset();
+      if (check.didReset) {
+        setLiveHits([]);
+        setAppMonotonicCounts({});
+        try {
+          localStorage.removeItem("super_x_live_console_hits_24h");
+          localStorage.removeItem("super_x_app_monotonic_counts_v2");
+        } catch {}
+      }
+    }, 60000);
+
+    return () => {
+      window.removeEventListener("super_x_24h_reset", handleResetEvent);
+      clearInterval(resetCheckInterval);
+    };
+  }, []);
 
   // Synchronize global live stream and monotonic stats across all users and admins in real-time
   useEffect(() => {
@@ -1237,6 +1270,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           if (packet) {
             if (packet.type === "reset" || (packet.stats && packet.stats.totalHits === 0)) {
               setLiveHits([]);
+              set24HourResetTimestamp(Date.now());
               try {
                 localStorage.removeItem("super_x_live_console_hits_24h");
               } catch {}
@@ -1244,12 +1278,15 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             if (packet.stats) {
               setGlobalStats(packet.stats);
             }
+            if (Array.isArray(packet.hits)) {
+              setLiveHits(packet.hits);
+            }
             const hit = packet.hit || (packet.range || packet.number || packet.sid ? packet : null);
             if (hit && (hit.range || hit.number || hit.sid)) {
               setLiveHits((prev) => {
                 const sig = `${hit.range}_${hit.time}_${hit.sid}_${hit.message || ""}`;
                 if (prev.some((h) => `${h.range}_${h.time}_${h.sid}_${h.message || ""}` === sig)) return prev;
-                return [hit, ...prev].slice(0, 150);
+                return [hit, ...prev].slice(0, 500);
               });
             }
           }
@@ -1264,13 +1301,13 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     };
   }, []);
 
-  // Save live hits to localStorage with debouncing (prevents UI freeze/hang)
+  // Save live hits to localStorage with debouncing (stores full 24-hour pool up to 500 hits)
   useEffect(() => {
     const timer = setTimeout(() => {
       try {
         const now = Date.now();
         const oneDayAgo = now - 24 * 60 * 60 * 1000;
-        const validHits = liveHits.slice(0, 80).filter((item: any) => {
+        const validHits = liveHits.slice(0, 500).filter((item: any) => {
           const t = typeof item.time === "number" ? item.time : (item.timestamp || new Date(item.time).getTime());
           return !isNaN(t) && t >= oneDayAgo;
         });
@@ -1293,7 +1330,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         });
         if (filtered.length !== prev.length) {
           try {
-            localStorage.setItem("super_x_live_console_hits_24h", JSON.stringify(filtered.slice(0, 80)));
+            localStorage.setItem("super_x_live_console_hits_24h", JSON.stringify(filtered.slice(0, 500)));
           } catch {}
           return filtered;
         }
@@ -1303,6 +1340,55 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
     return () => clearInterval(purgeInterval);
   }, []);
+
+  // Strict 24-Hour Active Hits Pool (Deduplicated & Canonical Source of Truth)
+  const active24hHits = useMemo(() => {
+    const activeKeys = getActiveApiKeys().filter((k) => k && k.trim() && k !== 'MOBEKJ8H20I');
+    if (activeKeys.length === 0) return [];
+
+    const now = Date.now();
+    const oneDayAgo = now - 24 * 60 * 60 * 1000;
+    const activationTime = getApiActivationTimestamp();
+    const baselineSignatures = getBaselineSignatures();
+    const seen = new Set<string>();
+    const result: LiveConsoleHit[] = [];
+
+    for (const h of liveHits) {
+      if (!h) continue;
+      const t = typeof h.time === "number" ? h.time : ((h as any).timestamp || new Date(h.time).getTime());
+      if (isNaN(t) || t < oneDayAgo) continue;
+      // Strictly filter out past historical messages that existed prior to API activation
+      if (activationTime > 0 && t <= activationTime) continue;
+      const sig = `${(h.range || "").replace(/\D/g, "")}_${t}_${(h.sid || "").toLowerCase().trim()}_${(h.message || "").trim()}`;
+      if (baselineSignatures.has(sig)) continue;
+      if (!seen.has(sig)) {
+        seen.add(sig);
+        result.push(h);
+      }
+    }
+
+    return result;
+  }, [liveHits]);
+
+  // Monotonic message counters for social apps (Count never drops down, only climbs upwards)
+  const [appMonotonicCounts, setAppMonotonicCounts] = useState<Record<string, number>>(() => {
+    try {
+      const saved = localStorage.getItem("super_x_app_monotonic_counts_v2");
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {};
+  });
+
+  // Calculate real-time count for any social media app, matching display on top and modal view inside
+  const getMonotonicCountForApp = useCallback((appName: string): number => {
+    const activeKeys = getActiveApiKeys().filter((k) => k && k.trim() && k !== 'MOBEKJ8H20I');
+    if (activeKeys.length === 0) return 0;
+    const clean = (appName || '').trim().toLowerCase();
+    const hits = filterHitsForApp(active24hHits, appName);
+    const stored = appMonotonicCounts[clean] || 0;
+    return Math.max(stored, hits.length);
+  }, [active24hHits, appMonotonicCounts]);
+
   const [liveAccessList, setLiveAccessList] = useState<LiveAccessService[]>([]);
   const [liveSuccessOtps, setLiveSuccessOtps] = useState<LiveSuccessOtp[]>([]);
   const [allocatedNumbers, setAllocatedNumbers] = useState<
@@ -1488,6 +1574,41 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     };
   }, []);
 
+  // Keep monotonic counts strictly non-decreasing when active API sends hits
+  useEffect(() => {
+    const activeKeys = getActiveApiKeys().filter((k) => k && k.trim() && k !== 'MOBEKJ8H20I');
+    if (activeKeys.length === 0) {
+      if (Object.keys(appMonotonicCounts).length > 0) {
+        setAppMonotonicCounts({});
+        try {
+          localStorage.removeItem("super_x_app_monotonic_counts_v2");
+        } catch {}
+      }
+      return;
+    }
+
+    setAppMonotonicCounts((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const app of topAppsList) {
+        const clean = (app.name || '').trim().toLowerCase();
+        const hitsCount = filterHitsForApp(active24hHits, app.name).length;
+        const current = next[clean] || 0;
+        if (hitsCount > current) {
+          next[clean] = hitsCount;
+          changed = true;
+        }
+      }
+      if (changed) {
+        try {
+          localStorage.setItem("super_x_app_monotonic_counts_v2", JSON.stringify(next));
+        } catch {}
+        return next;
+      }
+      return prev;
+    });
+  }, [active24hHits, topAppsList, appMonotonicCounts]);
+
   const [showAllTopApps, setShowAllTopApps] = useState(false);
   const [showAllTopRanges, setShowAllTopRanges] = useState(false);
   const [activeAppConsoleService, setActiveAppConsoleService] = useState<string | null>(null);
@@ -1529,7 +1650,11 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       else if (cleanRange.startsWith("22997")) rangeKey = "22997";
       else if (cleanRange.length > 7) rangeKey = cleanRange.slice(0, 5);
 
-      let finalCountry = hitCountry;
+      let finalCountry = (hitCountry || "").trim();
+      const info = getCountryInfo(cleanRange);
+      if (!finalCountry || finalCountry.toUpperCase() === "INTERNATIONAL" || (finalCountry.toUpperCase() === "BANGLADESH" && !cleanRange.startsWith("880"))) {
+        finalCountry = info.name.toUpperCase();
+      }
       if (rangeKey === "26134") finalCountry = "MADAGASCAR";
       else if (rangeKey === "213655") finalCountry = "ALGERIA";
       else if (rangeKey === "2287023") finalCountry = "TOGO";
@@ -1824,19 +1949,19 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     return extractOtpCode(message);
   };
 
-  // Helper to mask OTP code in message with 'X' (e.g. 088309 -> XXXXXX)
+  // Helper to mask OTP code in message with '#' (e.g. 088309 -> ######)
   const maskOtpInMessage = (
     message: string,
     otpCode: string | null,
   ): string => {
     if (!message) return "";
     if (otpCode) {
-      // Replace all numeric digits in the extracted OTP code with 'X'
-      const masked = otpCode.replace(/\d/g, "X");
+      // Replace all numeric digits in the extracted OTP code with '#'
+      const masked = "#".repeat(otpCode.length) || "######";
       return message.split(otpCode).join(masked);
     }
-    // Fallback: replace any isolated 4 to 8 digit numbers in message with 'X'
-    return message.replace(/\b\d{4,8}\b/g, (match) => "X".repeat(match.length));
+    // Fallback: replace any isolated 4 to 8 digit numbers in message with '#'
+    return message.replace(/\b\d{4,8}\b/g, (match) => "#".repeat(match.length));
   };
 
   // Helper to verify if an incoming live SMS packet belongs to the current user's allocated number
@@ -2112,8 +2237,13 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     if (isFetchingDataRef.current) return;
     isFetchingDataRef.current = true;
     try {
-      const activeKeys = getActiveApiKeys();
-      const targetKeys = activeKeys.length > 0 ? activeKeys : [apiKey];
+      const activeKeys = getActiveApiKeys().filter((k) => k && k.trim() && k !== 'MOBEKJ8H20I');
+      if (activeKeys.length === 0) {
+        // API is currently OFF - do not poll or push anything
+        isFetchingDataRef.current = false;
+        return;
+      }
+      const targetKeys = activeKeys;
 
       const consolePromises = targetKeys.map((k) =>
         fetchLiveConsoleDetailed(k).catch(() => ({ hits: [], code: 200, message: "OK", status: 200 }))
@@ -3476,38 +3606,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   {topAppsList
                     .filter((app) => app.isEnabled !== false)
                     .map((app, index) => {
-                      const appSearchName = app.name.toLowerCase();
-                      const realHitsForApp = liveHits.filter((h) => {
-                        const detected = detectServiceFromHit(h.sid || "", h.message || "").toLowerCase();
-                        if (detected === appSearchName || detected.includes(appSearchName) || appSearchName.includes(detected)) return true;
-                        
-                        const msg = (h.message || "").toLowerCase();
-                        const sid = (h.sid || "").toLowerCase();
-                        if (appSearchName === "whatsapp" && (sid.includes("whatsapp") || msg.includes("whatsapp") || msg.includes("wa.me") || sid === "wa")) return true;
-                        if (appSearchName === "facebook" && (sid.includes("facebook") || msg.includes("facebook") || msg.includes("meta") || sid === "fb")) return true;
-                        if (appSearchName === "telegram" && (sid.includes("telegram") || msg.includes("telegram") || msg.includes("t.me") || sid === "tg")) return true;
-                        if (appSearchName === "instagram" && (sid.includes("instagram") || msg.includes("instagram") || sid.includes("insta"))) return true;
-                        if (appSearchName === "tiktok" && (sid.includes("tiktok") || msg.includes("tiktok"))) return true;
-                        if (appSearchName === "imo" && (sid.includes("imo") || msg.includes("imo"))) return true;
-                        if (appSearchName === "google" && (sid.includes("google") || msg.includes("google") || msg.includes("g-"))) return true;
-                        if (appSearchName === "verify" && (sid.includes("verify") || msg.includes("verify") || msg.includes("code"))) return true;
-                        if (appSearchName === "msverify" && (sid.includes("msverify") || sid.includes("microsoft") || msg.includes("microsoft") || msg.includes("msverify"))) return true;
-                        if (appSearchName === "authmsg" && (sid.includes("authmsg") || sid.includes("auth") || msg.includes("auth") || msg.includes("otp"))) return true;
-                        if (appSearchName === "iatsms" && (sid.includes("iatsms") || sid.includes("iat") || msg.includes("iatsms"))) return true;
-                        if (appSearchName.includes("baji") && (sid.includes("baji") || msg.includes("baji"))) return true;
-                        if (appSearchName === "amazon" && (sid.includes("amazon") || msg.includes("amazon"))) return true;
-                        if (appSearchName === "shopee" && (sid.includes("shopee") || msg.includes("shopee"))) return true;
-                        if (appSearchName === "paypal" && (sid.includes("paypal") || msg.includes("paypal"))) return true;
-                        if (appSearchName === "apple" && (sid.includes("apple") || msg.includes("apple"))) return true;
-                        if (appSearchName === "microsoft" && (sid.includes("microsoft") || msg.includes("microsoft"))) return true;
-                        if (appSearchName === "huawei" && (sid.includes("huawei") || msg.includes("huawei"))) return true;
-
-                        return false;
-                      });
-                      const realCount = Math.max(
-                        globalStats?.appCounts?.[app.name] || 0,
-                        realHitsForApp.length
-                      );
+                      const realCount = getMonotonicCountForApp(app.name);
 
                       const row = Math.floor(index / 2);
                       const col = index % 2;
@@ -5600,325 +5699,249 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       {/* Notifications Modal for User */}
       {isNotifModalOpen && renderNotificationModal()}
 
-      {/* Live Console Stream Full Screen View when clicking an app (e.g. WhatsApp, Facebook, TikTok) matching user's exact Screenshot */}
-      {activeAppConsoleService && (
-        <div
-          id="app-console-stream-fullscreen"
-          className="fixed inset-0 z-50 bg-white flex flex-col overflow-hidden animate-in fade-in duration-150"
-        >
-          {/* Top Premium Minimal Navigation Bar */}
-          <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 border-b border-amber-500/30 px-3 sm:px-5 py-3 flex items-center justify-between shadow-md shrink-0">
-            <div className="flex items-center gap-2.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-xs shadow-emerald-400/50" />
-              <div className="flex items-center gap-2">
-                <span className="font-black text-white text-sm sm:text-base tracking-wide uppercase">
-                  {activeAppConsoleService}
-                </span>
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                  Live
-                </span>
+      {/* Live Console Stream Full Screen View when clicking an app (e.g. WhatsApp, Facebook, TikTok) */}
+      {activeAppConsoleService && (() => {
+        const modalHits = filterHitsForApp(active24hHits, activeAppConsoleService);
+        const realCount = getMonotonicCountForApp(activeAppConsoleService);
+        return (
+          <div
+            id="app-console-stream-fullscreen"
+            className="fixed inset-0 z-50 bg-white flex flex-col overflow-hidden animate-in fade-in duration-150"
+          >
+            {/* Top Premium Minimal Navigation Bar */}
+            <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 border-b border-amber-500/30 px-3 sm:px-5 py-3 flex items-center justify-between shadow-md shrink-0">
+              <div className="flex items-center gap-2.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-xs shadow-emerald-400/50" />
+                <div className="flex items-center gap-2">
+                  <span className="font-black text-white text-sm sm:text-base tracking-wide uppercase">
+                    {activeAppConsoleService}
+                  </span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                    Live
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-500/20 text-blue-300 border border-blue-500/40">
+                    {realCount} {realCount === 1 ? 'Message' : 'Messages'}
+                  </span>
+                </div>
               </div>
+
+              <button
+                type="button"
+                id="fullscreen-stream-close-btn"
+                onClick={() => setActiveAppConsoleService(null)}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition cursor-pointer flex items-center gap-1 text-xs font-semibold"
+                title="Close Stream"
+                aria-label="Close Stream"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
-            <button
-              type="button"
-              id="fullscreen-stream-close-btn"
-              onClick={() => setActiveAppConsoleService(null)}
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition cursor-pointer flex items-center gap-1 text-xs font-semibold"
-              title="Close Stream"
-              aria-label="Close Stream"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* Full-Screen Pure Table matching Screenshot 1 */}
-          <div className="flex-1 overflow-auto bg-slate-900 p-0 relative">
-            <table className="w-full text-left text-xs sm:text-[13px] border-collapse bg-white border border-slate-300">
-              <thead className="bg-slate-900 sticky top-0 z-10 border-b-2 border-slate-700 text-slate-100 font-extrabold text-xs sm:text-[13px] uppercase tracking-wider">
-                <tr>
-                  <th className="py-3 px-3 sm:px-4 border-r border-slate-700 whitespace-nowrap bg-slate-900 text-slate-100">
-                    <div className="flex items-center gap-1">
-                      <span>Range Name</span>
-                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
-                    </div>
-                  </th>
-                  <th className="py-3 px-3 sm:px-4 border-r border-slate-700 whitespace-nowrap bg-slate-900 text-slate-100">
-                    Test Number
-                  </th>
-                  <th className="py-3 px-3 sm:px-4 border-r border-slate-700 whitespace-nowrap bg-slate-900 text-slate-100">
-                    SID
-                  </th>
-                  <th className="py-3 px-3 sm:px-4 border-r border-slate-700 bg-slate-900 text-slate-100 min-w-[200px]">
-                    Message content
-                  </th>
-                  <th className="py-3 px-3 sm:px-4 whitespace-nowrap bg-slate-900 text-slate-100">
-                    Receive time
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-300 bg-white">
-                {(() => {
-                  const targetService = activeAppConsoleService.toLowerCase().trim();
-
-                  // Combine liveHits + liveSuccessOtps to maximize real hits
-                  const allAvailableHits: LiveConsoleHit[] = [
-                    ...liveHits,
-                    ...liveSuccessOtps.map((o) => ({
-                      range: o.number,
-                      sid: 'Carrier OTP Direct',
-                      message: o.message,
-                      time: typeof o.time === 'number' ? o.time : new Date(o.time).getTime() || Date.now(),
-                      country: getCountryInfo(o.number).name,
-                      operator: 'Carrier Gateway Route',
-                    })),
-                  ];
-
-                  const filteredHits = allAvailableHits.filter((h) => {
-                    const target = targetService.toLowerCase().trim();
-                    if (target === "all" || !target) return true;
-
-                    const detectedCat = detectServiceFromHit(h.sid || "", h.message || "").toLowerCase();
-                    const sid = (h.sid || "").toLowerCase();
-                    const msg = (h.message || "").toLowerCase();
-
-                    // Strict Social Media stream routing to avoid cross-contamination
-                    const targetKey = target.replace(/[^a-z0-9]/g, "");
-
-                    if (targetKey.includes("telegram")) {
-                      return detectedCat === "telegram" || msg.includes("telegram") || msg.includes("t.me") || sid.includes("telegram") || sid === "tg";
-                    }
-                    if (targetKey.includes("instagram")) {
-                      return detectedCat === "instagram" || msg.includes("instagram") || msg.includes("ig code") || sid.includes("instagram") || sid === "insta" || sid === "ig";
-                    }
-                    if (targetKey.includes("facebook")) {
-                      return detectedCat === "facebook" || msg.includes("facebook") || msg.includes("fb-") || msg.includes("meta") || sid.includes("facebook") || sid === "fb";
-                    }
-                    if (targetKey.includes("imo")) {
-                      return detectedCat === "imo" || msg.includes("imo") || sid.includes("imo");
-                    }
-                    if (targetKey.includes("whatsapp")) {
-                      return detectedCat === "whatsapp" || msg.includes("whatsapp") || msg.includes("wa.me") || sid.includes("whatsapp") || sid === "wa";
-                    }
-                    if (targetKey.includes("tiktok")) {
-                      return detectedCat === "tiktok" || msg.includes("tiktok") || sid.includes("tiktok");
-                    }
-                    if (targetKey.includes("google")) {
-                      return detectedCat === "google" || msg.includes("google") || msg.includes("g-") || sid.includes("google");
-                    }
-                    if (targetKey.includes("huawei")) {
-                      return detectedCat === "huawei" || msg.includes("huawei") || sid.includes("huawei");
-                    }
-                    if (targetKey.includes("baji")) {
-                      return detectedCat === "baji" || msg.includes("baji") || sid.includes("baji");
-                    }
-
-                    return detectedCat === targetKey || sid === targetKey || msg.includes(targetKey);
-                  });
-
-                  if (filteredHits.length === 0) {
-                    return (
-                      <tr>
-                        <td colSpan={5} className="py-20 text-center text-slate-500 bg-slate-50/50">
-                          <div className="flex flex-col items-center justify-center gap-2.5">
-                            <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 border border-slate-200">
-                              <TerminalIcon className="w-6 h-6 text-slate-500" />
-                            </div>
-                            <p className="font-bold text-slate-800 text-base">No Message Received</p>
-                            <p className="text-xs text-slate-500 max-w-md font-medium">
-                              No active live SMS or OTP received for <span className="font-bold text-slate-800">{activeAppConsoleService}</span> yet.
-                              Waiting for incoming carrier stream packets...
-                            </p>
+            {/* Full-Screen Pure Table matching Screenshot 1 */}
+            <div className="flex-1 overflow-auto bg-slate-900 p-0 relative">
+              <table className="w-full text-left text-xs sm:text-[13px] border-collapse bg-white border border-slate-300">
+                <thead className="bg-slate-900 sticky top-0 z-10 border-b-2 border-slate-700 text-slate-100 font-extrabold text-xs sm:text-[13px] uppercase tracking-wider">
+                  <tr>
+                    <th className="py-3 px-3 sm:px-4 border-r border-slate-700 whitespace-nowrap bg-slate-900 text-slate-100">
+                      <div className="flex items-center gap-1">
+                        <span>Range Name</span>
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
+                      </div>
+                    </th>
+                    <th className="py-3 px-3 sm:px-4 border-r border-slate-700 whitespace-nowrap bg-slate-900 text-slate-100">
+                      Test Number
+                    </th>
+                    <th className="py-3 px-3 sm:px-4 border-r border-slate-700 whitespace-nowrap bg-slate-900 text-slate-100">
+                      SID
+                    </th>
+                    <th className="py-3 px-3 sm:px-4 border-r border-slate-700 bg-slate-900 text-slate-100 min-w-[200px]">
+                      Message content
+                    </th>
+                    <th className="py-3 px-3 sm:px-4 whitespace-nowrap bg-slate-900 text-slate-100">
+                      Receive time
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-300 bg-white">
+                  {modalHits.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-20 text-center text-slate-500 bg-slate-50/50">
+                        <div className="flex flex-col items-center justify-center gap-2.5">
+                          <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 border border-slate-200">
+                            <TerminalIcon className="w-6 h-6 text-slate-500" />
                           </div>
-                        </td>
-                      </tr>
-                    );
-                  }
+                          <p className="font-bold text-slate-800 text-base">No Message Received</p>
+                          <p className="text-xs text-slate-500 max-w-md font-medium">
+                            No active live SMS or OTP received for <span className="font-bold text-slate-800">{activeAppConsoleService}</span> yet today.
+                            Waiting for incoming carrier stream packets...
+                          </p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    (() => {
+                      const dynamicRows = modalHits.map((h) => {
+                        const carrier = resolveCarrierDetails(h.range || "");
+                        const timeMs = typeof h.time === "number"
+                          ? (h.time < 10000000000 ? h.time * 1000 : h.time)
+                          : (new Date(h.time).getTime() || Date.now());
+                        const rawTime = typeof h.time === "number"
+                          ? new Date(timeMs).toISOString().replace("T", " ").substring(0, 19)
+                          : (h.time || new Date().toISOString().replace("T", " ").substring(0, 19));
+                        
+                        const diffSec = Math.max(0, Math.floor((nowTick - timeMs) / 1000));
+                        let relativeStr = "Just now";
+                        if (diffSec >= 45 && diffSec < 3600) {
+                          const mins = Math.floor(diffSec / 60);
+                          relativeStr = mins === 1 ? "1 min ago" : `${mins} mins ago`;
+                        } else if (diffSec >= 3600 && diffSec < 86400) {
+                          const hrs = Math.floor(diffSec / 3600);
+                          relativeStr = hrs === 1 ? "1 hr ago" : `${hrs} hrs ago`;
+                        } else if (diffSec >= 86400) {
+                          const days = Math.floor(diffSec / 86400);
+                          relativeStr = days === 1 ? "1 day ago" : `${days} days ago`;
+                        }
 
-                  const dynamicRows = filteredHits.map((h) => {
-                    const carrier = resolveCarrierDetails(h.range || "");
-                    const timeMs = typeof h.time === "number"
-                      ? (h.time < 10000000000 ? h.time * 1000 : h.time)
-                      : (new Date(h.time).getTime() || Date.now());
-                    const rawTime = typeof h.time === "number"
-                      ? new Date(timeMs).toISOString().replace("T", " ").substring(0, 19)
-                      : (h.time || new Date().toISOString().replace("T", " ").substring(0, 19));
-                    
-                    const diffSec = Math.max(0, Math.floor((nowTick - timeMs) / 1000));
-                    let relativeStr = "Just now";
-                    if (diffSec >= 45 && diffSec < 3600) {
-                      const mins = Math.floor(diffSec / 60);
-                      relativeStr = mins === 1 ? "1 min ago" : `${mins} mins ago`;
-                    } else if (diffSec >= 3600 && diffSec < 86400) {
-                      const hrs = Math.floor(diffSec / 3600);
-                      relativeStr = hrs === 1 ? "1 hr ago" : `${hrs} hrs ago`;
-                    } else if (diffSec >= 86400) {
-                      const days = Math.floor(diffSec / 86400);
-                      relativeStr = days === 1 ? "1 day ago" : `${days} days ago`;
-                    }
+                        const resolvedCountry = getRealCountryName(h.country, h.range);
+                        const rawMsg = h.message || "";
 
-                    const resolvedCountry = getRealCountryName(h.country, h.range);
-                    const rawMsg = h.message || "";
+                        // Match extracted OTP pattern
+                        const extractedOtpMatch = rawMsg.match(/\b\d{3,4}[-\s]?\d{3,4}\b|\b\d{4,8}\b/);
+                        const extractedOtp = extractedOtpMatch ? extractedOtpMatch[0] : null;
 
-                    // Match extracted OTP pattern
-                    const extractedOtpMatch = rawMsg.match(/\b\d{3,4}[-\s]?\d{3,4}\b|\b\d{4,8}\b/);
-                    const extractedOtp = extractedOtpMatch ? extractedOtpMatch[0] : null;
+                        // Privacy & Ownership verification
+                        const ownership = isHitOwnedByUser(h);
+                        const isOwnerOrAdmin = ownership.isOwner || user?.role === 'admin' || user?.role === 'subadmin';
 
-                    // Privacy & Ownership verification
-                    const ownership = isHitOwnedByUser(h);
-                    const isOwnerOrAdmin = ownership.isOwner || user?.role === 'admin' || user?.role === 'subadmin';
+                        // Mask number if not owner/admin
+                        const fullNumber = formatNumberWithAreaCode(h.range || "", resolvedCountry);
+                        let displayTestNumber = fullNumber;
+                        if (!isOwnerOrAdmin && fullNumber) {
+                          const cleanNum = fullNumber.trim();
+                          if (cleanNum.length > 5 && !cleanNum.endsWith("XXX") && !cleanNum.endsWith("xxx")) {
+                            displayTestNumber = cleanNum.slice(0, -3) + "XXX";
+                          }
+                        }
 
-                    // Mask number if not owner/admin
-                    const fullNumber = formatNumberWithAreaCode(h.range || "", resolvedCountry);
-                    let displayTestNumber = fullNumber;
-                    if (!isOwnerOrAdmin && fullNumber) {
-                      const cleanNum = fullNumber.trim();
-                      if (cleanNum.length > 5 && !cleanNum.endsWith("XXX") && !cleanNum.endsWith("xxx")) {
-                        displayTestNumber = cleanNum.slice(0, -3) + "XXX";
-                      }
-                    }
+                        // Format Message Content & OTP Badge with "dc:" label
+                        let displayMessage = rawMsg;
+                        let displayOtpBadge = "";
 
-                    // Format Message Content & OTP Badge with "dc:" label
-                    let displayMessage = rawMsg;
-                    let displayOtpBadge = "";
+                        if (extractedOtp) {
+                          const hashMask = "#".repeat(extractedOtp.length) || "######";
+                          if (isOwnerOrAdmin) {
+                            displayMessage = rawMsg;
+                            displayOtpBadge = `dc : ${extractedOtp}`;
+                          } else {
+                            displayMessage = rawMsg.replace(extractedOtp, hashMask);
+                            displayOtpBadge = `dc : ${hashMask}`;
+                          }
+                        }
 
-                    if (extractedOtp) {
-                      if (isOwnerOrAdmin) {
-                        displayMessage = rawMsg;
-                        displayOtpBadge = `dc: ${extractedOtp}`;
-                      } else {
-                        const maskedOtp = "XXXXXX";
-                        displayMessage = rawMsg.replace(extractedOtp, `dc: ${maskedOtp}`);
-                        displayOtpBadge = `dc: ${maskedOtp}`;
-                      }
-                    }
+                        return {
+                          country: resolvedCountry,
+                          range: h.range || "",
+                          number: displayTestNumber,
+                          fullNumber: fullNumber,
+                          sid: detectServiceFromHit(h.sid || "", rawMsg),
+                          message: displayMessage,
+                          rawMessage: rawMsg,
+                          otp: extractedOtp,
+                          isOwnerOrAdmin,
+                          displayOtpBadge,
+                          time: rawTime,
+                          relativeTime: relativeStr,
+                        };
+                      });
 
-                    return {
-                      country: resolvedCountry,
-                      range: h.range || "",
-                      number: displayTestNumber,
-                      fullNumber: fullNumber,
-                      sid: detectServiceFromHit(h.sid || "", rawMsg),
-                      message: displayMessage,
-                      rawMessage: rawMsg,
-                      otp: extractedOtp,
-                      isOwnerOrAdmin,
-                      displayOtpBadge,
-                      time: rawTime,
-                      relativeTime: relativeStr,
-                    };
-                  });
+                      return dynamicRows.map((hit, idx) => {
+                        const countryUpper = getRealCountryName(hit.country, hit.range).toUpperCase();
+                        const cleanCountry = countryUpper.replace(/[\d\sX]+$/i, "").trim();
+                        const rangeCode = (hit.range || "").trim();
+                        const rangeName = (rangeCode && !cleanCountry.includes(rangeCode))
+                          ? `${cleanCountry} ${rangeCode}`
+                          : (cleanCountry || rangeCode || countryUpper);
 
-                  return dynamicRows.map((hit, idx) => {
-                    const countryUpper = getRealCountryName(hit.country, hit.range).toUpperCase();
-                    const rangeName = hit.range
-                      ? `${countryUpper}\n${hit.range}`
-                      : countryUpper;
+                        const isEvenRow = idx % 2 === 0;
 
-                    const isEvenRow = idx % 2 === 0;
+                        return (
+                          <tr
+                            key={`${hit.number}-${hit.time}-${idx}`}
+                            className={`transition-colors group ${
+                              isEvenRow
+                                ? "bg-white hover:bg-amber-50/70"
+                                : "bg-slate-50/90 hover:bg-amber-50/70"
+                            }`}
+                          >
+                            {/* Range Name */}
+                            <td className="py-2.5 px-3 sm:px-4 border-r border-b border-slate-300 font-extrabold text-slate-900 align-middle leading-tight whitespace-nowrap">
+                              <span className="tracking-tight uppercase">
+                                {rangeName}
+                              </span>
+                            </td>
 
-                    return (
-                      <tr
-                        key={`${hit.number}-${hit.time}-${idx}`}
-                        className={`transition-colors group ${
-                          isEvenRow
-                            ? "bg-white hover:bg-amber-50/70"
-                            : "bg-slate-50/90 hover:bg-amber-50/70"
-                        }`}
-                      >
-                        {/* Range Name (Uppercase Country + Range code underneath) */}
-                        <td className="py-3.5 px-3 sm:px-4 border-r border-b border-slate-300 font-extrabold text-slate-900 align-top whitespace-pre-line leading-tight">
-                          <span className="tracking-tight uppercase">
-                            {rangeName}
-                          </span>
-                        </td>
-
-                        {/* Test Number (Masked as 232743XXX for non-owners) */}
-                        <td className="py-3.5 px-3 sm:px-4 border-r border-b border-slate-300 font-mono font-bold text-slate-900 align-top whitespace-nowrap">
-                          <div className="flex items-center gap-1.5">
-                            <span className={hit.isOwnerOrAdmin ? "text-emerald-700 font-extrabold" : "text-slate-800"}>
-                              {hit.number || "—"}
-                            </span>
-                            {hit.fullNumber && hit.isOwnerOrAdmin && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  navigator.clipboard.writeText(hit.fullNumber.replace(/\D/g, ''));
-                                  showDashboardToast(`Number copied: ${hit.fullNumber}`, "success");
-                                }}
-                                className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-slate-800 p-0.5 rounded cursor-pointer transition"
-                                title="Copy Full Number"
-                              >
-                                <Copy className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* SID */}
-                        <td className="py-3.5 px-3 sm:px-4 border-r border-b border-slate-300 font-bold text-slate-900 align-top whitespace-nowrap">
-                          <span className="inline-flex items-center gap-1 font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 text-xs">
-                            {hit.sid || activeAppConsoleService}
-                          </span>
-                        </td>
-
-                        {/* Message content + Prominent "dc:" OTP badge */}
-                        <td className="py-3.5 px-3 sm:px-4 border-r border-b border-slate-300 text-slate-800 text-xs sm:text-[13px] leading-relaxed max-w-xs sm:max-w-md break-words align-top font-sans">
-                          <div className="space-y-1.5">
-                            {hit.displayOtpBadge && (
-                              <div className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded font-mono font-extrabold text-xs border shadow-xs ${
-                                hit.isOwnerOrAdmin
-                                  ? "bg-emerald-100/90 text-emerald-950 border-emerald-400"
-                                  : "bg-amber-100/90 text-amber-950 border-amber-300"
-                              }`}>
-                                <span className="tracking-wide">{hit.displayOtpBadge}</span>
-                                {hit.isOwnerOrAdmin ? (
-                                  <span className="text-[10px] bg-emerald-200/80 text-emerald-900 px-1 py-0.2 rounded font-sans font-bold">
-                                    ✓ Your Code
-                                  </span>
-                                ) : (
-                                  <span className="text-[10px] bg-amber-200/80 text-amber-900 px-1 py-0.2 rounded font-sans font-bold">
-                                    🔒 Protected
-                                  </span>
-                                )}
-                                {hit.isOwnerOrAdmin && hit.otp && (
+                            {/* Test Number (Masked as 232743XXX for non-owners) */}
+                            <td className="py-3.5 px-3 sm:px-4 border-r border-b border-slate-300 font-mono font-bold text-slate-900 align-top whitespace-nowrap">
+                              <div className="flex items-center gap-1.5">
+                                <span className={hit.isOwnerOrAdmin ? "text-emerald-700 font-extrabold" : "text-slate-800"}>
+                                  {hit.number || "—"}
+                                </span>
+                                {hit.fullNumber && hit.isOwnerOrAdmin && (
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      navigator.clipboard.writeText(hit.otp!);
-                                      showDashboardToast(`Code Copied: ${hit.otp}`, "success");
+                                      navigator.clipboard.writeText(hit.fullNumber.replace(/\D/g, ''));
+                                      showDashboardToast(`Number copied: ${hit.fullNumber}`, "success");
                                     }}
-                                    className="text-emerald-900 hover:text-black p-0.5 ml-1 rounded cursor-pointer transition"
-                                    title="Copy OTP Code"
+                                    className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-slate-800 p-0.5 rounded cursor-pointer transition"
+                                    title="Copy Full Number"
                                   >
                                     <Copy className="w-3.5 h-3.5" />
                                   </button>
                                 )}
                               </div>
-                            )}
-                            <div className="text-slate-800 leading-normal select-all font-mono text-xs">
-                              {hit.message || "—"}
-                            </div>
-                          </div>
-                        </td>
+                            </td>
 
-                        {/* Receive time */}
-                        <td className="py-3.5 px-3 sm:px-4 border-b border-slate-300 text-slate-800 whitespace-nowrap align-top text-xs sm:text-[13px]">
-                          <div className="font-semibold text-slate-900">{hit.relativeTime}</div>
-                          <div className="text-[11px] text-slate-500 font-mono mt-0.5">{hit.time}</div>
-                        </td>
-                      </tr>
-                    );
-                  });
-                })()}
-              </tbody>
-            </table>
+                            {/* SID */}
+                            <td className="py-3.5 px-3 sm:px-4 border-r border-b border-slate-300 font-bold text-slate-900 align-top whitespace-nowrap">
+                              <span className="inline-flex items-center gap-1 font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 text-xs">
+                                {hit.sid || activeAppConsoleService}
+                              </span>
+                            </td>
 
-            {/* Floating Orange Active Account Chat Bubble Icon matching Screenshot */}
-            <ActiveAccountWidget />
+                            {/* Message content + Prominent "dc:" OTP badge */}
+                            <td className="py-3.5 px-3 sm:px-4 border-r border-b border-slate-300 text-slate-800 text-xs sm:text-[13px] leading-relaxed max-w-xs sm:max-w-md break-words align-top font-sans">
+                              <div className="space-y-1.5">
+                                {hit.displayOtpBadge && (
+                                  <div className="inline-flex items-center px-2.5 py-1 rounded bg-emerald-200/70 text-emerald-950 font-mono font-extrabold text-xs">
+                                    <span className="tracking-wide">{hit.displayOtpBadge}</span>
+                                  </div>
+                                )}
+                                <div className="text-slate-800 leading-normal select-all font-mono text-xs">
+                                  {hit.message || "—"}
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* Receive time */}
+                            <td className="py-3.5 px-3 sm:px-4 border-b border-slate-300 text-slate-800 whitespace-nowrap align-top text-xs sm:text-[13px]">
+                              <div className="font-semibold text-slate-900">{hit.relativeTime}</div>
+                              <div className="text-[11px] text-slate-500 font-mono mt-0.5">{hit.time}</div>
+                            </td>
+                          </tr>
+                        );
+                      });
+                    })()
+                  )}
+                </tbody>
+              </table>
+
+              {/* Floating Orange Active Account Chat Bubble Icon matching Screenshot */}
+              <ActiveAccountWidget />
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

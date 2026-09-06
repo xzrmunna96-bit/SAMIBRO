@@ -8,6 +8,8 @@ import {
   getAllSubAdmins,
   saveAllSubAdmins,
   getDeletedAccountEmails,
+  removeDeletedAccountEmail,
+  getDedicatedAccountCode,
   syncSubAdminToUserAccount,
 } from './userAuthService';
 

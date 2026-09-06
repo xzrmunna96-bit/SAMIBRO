@@ -16,6 +16,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { LiveConsoleHit, stripFlagFromCountryName } from "../services/voltxApi";
+import { getCountryInfo } from "../services/countryHelper";
 import { CountryFlag } from "./CountryFlags";
 import { getCountryFlagEmoji } from "./LoggedInDashboard";
 import { sendOtpToTelegram, extractOtpCode } from "../services/telegramService";
@@ -53,12 +54,12 @@ interface TestSmsItem {
 }
 
 const TOP_RANGES_DATA = [
-  { range: "BANGLADESH 37342", country: "BANGLADESH", payout: "€0.038", traffic: "High", success: "99.8%" },
-  { range: "IVORY COAST 9413", country: "IVORY COAST", payout: "€0.045", traffic: "Very High", success: "99.4%" },
-  { range: "IRAQ 34948", country: "IRAQ", payout: "€0.052", traffic: "High", success: "99.1%" },
-  { range: "YEMEN 4935", country: "YEMEN", payout: "€0.049", traffic: "High", success: "98.9%" },
-  { range: "SAUDI ARABIA 17590", country: "SAUDI ARABIA", payout: "€0.035", traffic: "Moderate", success: "99.7%" },
-  { range: "SRI LANKA 10348", country: "SRI LANKA", payout: "€0.042", traffic: "High", success: "99.2%" },
+  { range: "MONTENEGRO 382662", country: "MONTENEGRO", payout: "€0.048", traffic: "High", success: "99.8%" },
+  { range: "CAMEROON 23762", country: "CAMEROON", payout: "€0.045", traffic: "Very High", success: "99.4%" },
+  { range: "SIERRA LEONE 23276", country: "SIERRA LEONE", payout: "€0.052", traffic: "High", success: "99.1%" },
+  { range: "IVORY COAST 22507", country: "IVORY COAST", payout: "€0.049", traffic: "High", success: "98.9%" },
+  { range: "BANGLADESH 88017", country: "BANGLADESH", payout: "€0.035", traffic: "Moderate", success: "99.7%" },
+  { range: "SAUDI ARABIA 96655", country: "SAUDI ARABIA", payout: "€0.042", traffic: "High", success: "99.2%" },
 ];
 
 // Real-time Live Test SMS Table without demo/fake items
@@ -84,18 +85,52 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  const formatCountryAndRange = (countryStr: string, rangeStr: string, numberStr?: string) => {
+    const cleanCountryRaw = stripFlagFromCountryName(countryStr || "");
+    let countryName = cleanCountryRaw.replace(/[\d\sX]+$/i, "").trim();
+    if (!countryName) countryName = "INTERNATIONAL";
+
+    const rangeCode = (rangeStr || "").trim();
+
+    let fullTitle = countryName;
+    if (rangeCode && !countryName.includes(rangeCode)) {
+      fullTitle = `${countryName} ${rangeCode}`;
+    }
+
+    let subNumber = "";
+    if (numberStr) {
+      const cleanNum = numberStr.trim();
+      if (
+        cleanNum &&
+        cleanNum !== rangeCode &&
+        cleanNum !== fullTitle &&
+        !fullTitle.endsWith(cleanNum)
+      ) {
+        subNumber = cleanNum;
+      }
+    }
+
+    return { fullTitle, subNumber };
+  };
+
   // Map real live hits directly - no fake demo data
   const displayItems: TestSmsItem[] = React.useMemo(() => {
     if (liveHits && liveHits.length > 0) {
       return liveHits.map((h, i) => {
-        const countryUpper = (h.country || (h as any).countryName || "BANGLADESH").toUpperCase();
-        const rangeNum = h.range || (h as any).rangeCode || "37342";
-        const phoneNum = (h as any).number || (h as any).testNumber || h.range || `88017${Math.floor(1000000 + Math.random() * 9000000)}`;
+        const rawRange = (h.range || (h as any).rangeCode || "").trim();
+        const rawPhone = ((h as any).number || (h as any).testNumber || rawRange).trim();
+        const info = getCountryInfo(rawRange || rawPhone);
+
+        let countryName = (h.country || (h as any).countryName || "").trim();
+        if (!countryName || countryName.toUpperCase() === "INTERNATIONAL" || countryName.toUpperCase() === "BANGLADESH" && !rawRange.startsWith("880") && !rawPhone.startsWith("880")) {
+          countryName = info.name;
+        }
+
         return {
           id: (h as any).id || `hit_${i}_${Date.now()}`,
-          country: countryUpper,
-          range: rangeNum,
-          number: phoneNum,
+          country: countryName.toUpperCase(),
+          range: rawRange || info.dialCode.replace("+", ""),
+          number: rawPhone,
           sid: h.sid || (h as any).service || "WhatsApp",
           message: h.message || "Incoming SMS Packet",
           time: typeof h.time === "number" ? new Date(h.time * (h.time < 1e10 ? 1000 : 1)).toLocaleTimeString() : (h.time || "Just now"),
@@ -214,89 +249,171 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
           </div>
         </div>
 
-        {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs sm:text-sm border-collapse">
-            <thead>
-              <tr className="border-b border-slate-200 text-slate-800 text-xs font-bold bg-white">
-                <th className="py-3 px-4 w-[35%]">Live test SMS</th>
-                <th className="py-3 px-4 w-[20%]">SID</th>
-                <th className="py-3 px-4 w-[45%]">Message content</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-slate-800 bg-white">
-              {filteredItems.length === 0 ? (
-                <tr>
-                  <td colSpan={3} className="py-12 text-center text-slate-400 text-xs">
-                    No live test messages found
-                  </td>
-                </tr>
-              ) : (
-                filteredItems.map((item, idx) => (
-                  <tr
-                    key={item.id || `item_${idx}`}
+        {/* Content Container (Mobile Compact List + Desktop Table) */}
+        <div>
+          {/* Mobile View (< sm): Compact full-width cards eliminating narrow column squeezes and huge vertical gaps */}
+          <div className="block sm:hidden divide-y divide-slate-100">
+            {filteredItems.length === 0 ? (
+              <div className="py-8 text-center text-slate-400 text-xs">
+                No live test messages found
+              </div>
+            ) : (
+              filteredItems.map((item, idx) => {
+                const { fullTitle, subNumber } = formatCountryAndRange(item.country, item.range, item.number);
+                return (
+                  <div
+                    key={item.id || `mob_item_${idx}`}
                     onClick={() => {
                       if (onSelectService) {
                         onSelectService(item.sid, item.range);
                       }
                     }}
-                    className="hover:bg-amber-50/60 transition-colors group cursor-pointer"
+                    className="p-3 hover:bg-amber-50/60 transition-colors cursor-pointer space-y-1.5"
                   >
-                    {/* Column 1: Flag + Country Name & Range + Number */}
-                    <td className="py-3 px-3 sm:px-4 align-top">
-                      <div className="flex items-start gap-2.5">
+                    {/* Top Bar: Flag + Title + SID + Copy */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
                         <span
-                          className="text-lg sm:text-xl leading-none shrink-0 mt-0.5 select-none"
+                          className="text-base leading-none shrink-0 select-none"
                           role="img"
                           aria-label={item.country}
                         >
                           {getCountryFlagEmoji(item.country || item.range)}
                         </span>
-                        <div className="space-y-0.5 min-w-0">
-                          <div className="font-bold text-slate-900 text-xs sm:text-[13px] tracking-wide uppercase truncate">
-                            {stripFlagFromCountryName(item.country)} {item.range}
-                          </div>
-                          <div className="font-medium text-slate-700 text-xs tracking-tight">
-                            {item.number}
-                          </div>
+                        <div className="min-w-0 flex items-center gap-1.5 flex-wrap">
+                          <span className="font-bold text-slate-900 text-xs tracking-tight uppercase truncate">
+                            {fullTitle}
+                          </span>
+                          {subNumber && (
+                            <span className="text-[11px] font-medium text-slate-600 font-mono">
+                              ({subNumber})
+                            </span>
+                          )}
                         </div>
                       </div>
-                    </td>
 
-                    {/* Column 2: SID */}
-                    <td className="py-3.5 px-4 font-normal text-slate-800 text-xs sm:text-sm align-top">
-                      <span className="inline-flex items-center gap-1 font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                        {item.sid}
-                        <ExternalLink className="w-3 h-3 opacity-70" />
-                      </span>
-                    </td>
-
-                    {/* Column 3: Message content */}
-                    <td className="py-3.5 px-4 text-xs sm:text-[13px] leading-relaxed text-slate-900 font-normal align-top break-words">
-                      <div className="flex items-start justify-between gap-2">
-                        <span className="break-all whitespace-pre-wrap">{item.message}</span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="inline-flex items-center gap-1 font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 text-[11px]">
+                          {item.sid}
+                          <ExternalLink className="w-2.5 h-2.5 opacity-70" />
+                        </span>
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            copyToClipboard(item.message, `msg_${idx}`);
+                            copyToClipboard(item.message, `msg_mob_${idx}`);
                           }}
-                          className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-slate-800 p-1 transition cursor-pointer shrink-0"
+                          className="text-slate-400 hover:text-slate-800 p-1 transition cursor-pointer shrink-0"
                           title="Copy Message"
                         >
-                          {copiedId === `msg_${idx}` ? (
+                          {copiedId === `msg_mob_${idx}` ? (
                             <Check className="w-3.5 h-3.5 text-emerald-600" />
                           ) : (
                             <Copy className="w-3.5 h-3.5" />
                           )}
                         </button>
                       </div>
+                    </div>
+
+                    {/* Bottom Bar: Full-Width Message Content */}
+                    <div className="text-xs text-slate-900 font-normal leading-relaxed break-words bg-slate-50/90 p-2 rounded-md border border-slate-200/60 font-sans">
+                      {item.message}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Desktop View (>= sm): Standard 3-Column Table */}
+          <div className="hidden sm:block overflow-x-auto">
+            <table className="w-full text-left text-xs sm:text-sm border-collapse">
+              <thead>
+                <tr className="border-b border-slate-200 text-slate-800 text-xs font-bold bg-white">
+                  <th className="py-2.5 px-4 w-[30%]">Live test SMS</th>
+                  <th className="py-2.5 px-4 w-[18%]">SID</th>
+                  <th className="py-2.5 px-4 w-[52%]">Message content</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-800 bg-white">
+                {filteredItems.length === 0 ? (
+                  <tr>
+                    <td colSpan={3} className="py-12 text-center text-slate-400 text-xs">
+                      No live test messages found
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  filteredItems.map((item, idx) => {
+                    const { fullTitle, subNumber } = formatCountryAndRange(item.country, item.range, item.number);
+                    return (
+                      <tr
+                        key={item.id || `item_${idx}`}
+                        onClick={() => {
+                          if (onSelectService) {
+                            onSelectService(item.sid, item.range);
+                          }
+                        }}
+                        className="hover:bg-amber-50/60 transition-colors group cursor-pointer"
+                      >
+                        {/* Column 1: Flag + Clean Range Title */}
+                        <td className="py-2.5 px-4 align-top">
+                          <div className="flex items-start gap-2.5">
+                            <span
+                              className="text-lg sm:text-xl leading-none shrink-0 mt-0.5 select-none"
+                              role="img"
+                              aria-label={item.country}
+                            >
+                              {getCountryFlagEmoji(item.country || item.range)}
+                            </span>
+                            <div className="space-y-0.5 min-w-0">
+                              <div className="font-bold text-slate-900 text-xs sm:text-[13px] tracking-wide uppercase truncate">
+                                {fullTitle}
+                              </div>
+                              {subNumber && (
+                                <div className="font-medium text-slate-700 text-xs tracking-tight font-mono">
+                                  {subNumber}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Column 2: SID */}
+                        <td className="py-2.5 px-4 font-normal text-slate-800 text-xs sm:text-sm align-top">
+                          <span className="inline-flex items-center gap-1 font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                            {item.sid}
+                            <ExternalLink className="w-3 h-3 opacity-70" />
+                          </span>
+                        </td>
+
+                        {/* Column 3: Message Content */}
+                        <td className="py-2.5 px-4 text-xs sm:text-[13px] leading-relaxed text-slate-900 font-normal align-top break-words">
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="break-words whitespace-pre-wrap">{item.message}</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                copyToClipboard(item.message, `msg_${idx}`);
+                              }}
+                              className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-slate-800 p-1 transition cursor-pointer shrink-0"
+                              title="Copy Message"
+                            >
+                              {copiedId === `msg_${idx}` ? (
+                                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                              ) : (
+                                <Copy className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 

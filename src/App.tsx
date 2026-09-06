@@ -4,6 +4,7 @@ import { LoginForm, UserData } from './components/LoginForm';
 import { LoggedInDashboard } from './components/LoggedInDashboard';
 import { AdminPortal } from './components/AdminPortal';
 import { ActiveAccountWidget } from './components/ActiveAccountWidget';
+import { PopupBannerModal } from './components/PopupBannerModal';
 import { CheckCircle2 } from 'lucide-react';
 import { getAllAccounts, getAllSubAdmins } from './services/userAuthService';
 import { fetchAccountsFromServer, fetchSubAdminsFromServer } from './services/serverAuthSync';
@@ -224,6 +225,9 @@ export function App() {
 
       {/* Floating Active Account Support Widget at bottom right */}
       <ActiveAccountWidget />
+
+      {/* Website Notice Popup Banner Modal */}
+      <PopupBannerModal />
     </main>
   );
 }

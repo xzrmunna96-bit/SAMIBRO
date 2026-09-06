@@ -1386,13 +1386,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
   // Strict 24-Hour Active Hits Pool (Deduplicated & Canonical Source of Truth)
   const active24hHits = useMemo(() => {
-    const activeKeys = getActiveApiKeys().filter((k) => k && k.trim() && k !== 'MOBEKJ8H20I');
-    if (activeKeys.length === 0) return [];
-
     const now = Date.now();
     const oneDayAgo = now - 24 * 60 * 60 * 1000;
-    const activationTime = getApiActivationTimestamp();
-    const baselineSignatures = getBaselineSignatures();
     const seen = new Set<string>();
     const result: LiveConsoleHit[] = [];
 
@@ -1400,10 +1395,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       if (!h) continue;
       const t = typeof h.time === "number" ? h.time : ((h as any).timestamp || new Date(h.time).getTime());
       if (isNaN(t) || t < oneDayAgo) continue;
-      // Strictly filter out past historical messages that existed prior to API activation
-      if (activationTime > 0 && t <= activationTime) continue;
       const sig = `${(h.range || "").replace(/\D/g, "")}_${t}_${(h.sid || "").toLowerCase().trim()}_${(h.message || "").trim()}`;
-      if (baselineSignatures.has(sig)) continue;
       if (!seen.has(sig)) {
         seen.add(sig);
         result.push(h);
@@ -1424,8 +1416,6 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
   // Calculate real-time count for any social media app, matching display on top and modal view inside
   const getMonotonicCountForApp = useCallback((appName: string): number => {
-    const activeKeys = getActiveApiKeys().filter((k) => k && k.trim() && k !== 'MOBEKJ8H20I');
-    if (activeKeys.length === 0) return 0;
     const clean = (appName || '').trim().toLowerCase();
     const hits = filterHitsForApp(active24hHits, appName);
     const persisted = appMonotonicCounts[clean] || 0;
@@ -1642,17 +1632,6 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
   // Keep monotonic counts strictly non-decreasing when active API sends hits
   useEffect(() => {
-    const activeKeys = getActiveApiKeys().filter((k) => k && k.trim() && k !== 'MOBEKJ8H20I');
-    if (activeKeys.length === 0) {
-      if (Object.keys(appMonotonicCounts).length > 0) {
-        setAppMonotonicCounts({});
-        try {
-          localStorage.removeItem("super_x_app_monotonic_counts_v2");
-        } catch {}
-      }
-      return;
-    }
-
     setAppMonotonicCounts((prev) => {
       let changed = false;
       const next = { ...prev };
@@ -2304,12 +2283,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     isFetchingDataRef.current = true;
     try {
       const activeKeys = getActiveApiKeys().filter((k) => k && k.trim() && k !== 'MOBEKJ8H20I');
-      if (activeKeys.length === 0) {
-        // API is currently OFF - do not poll or push anything
-        isFetchingDataRef.current = false;
-        return;
-      }
-      const targetKeys = activeKeys;
+      const targetKeys = activeKeys.length > 0 ? activeKeys : [apiKey || getMauthApiKey() || ''];
 
       const consolePromises = targetKeys.map((k) =>
         fetchLiveConsoleDetailed(k).catch(() => ({ hits: [], code: 200, message: "OK", status: 200 }))

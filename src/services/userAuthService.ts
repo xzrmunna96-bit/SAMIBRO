@@ -255,13 +255,9 @@ function loadRawAccountsFromKey(key: string): UserAccount[] {
 }
 
 export function getAllAccounts(): UserAccount[] {
-  // Auto-run purge once to guarantee stale test accounts are permanently cleared
-  if (typeof window !== 'undefined' && !localStorage.getItem(GLOBAL_PURGE_V2_KEY)) {
-    return purgeAllAccountsExceptSuperAdmin();
-  }
-
   const primaryList = loadRawAccountsFromKey(STORAGE_KEY);
   const backupList = loadRawAccountsFromKey(BACKUP_STORAGE_KEY);
+  const secondaryList = loadRawAccountsFromKey('super_x_all_user_accounts');
   const deletedSet = getDeletedAccountEmails();
 
   // Map to merge and deduplicate accounts by clean email

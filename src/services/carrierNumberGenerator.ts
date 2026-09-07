@@ -254,71 +254,55 @@ export function generateRealisticCarrierNumber(
   const cleanInput = (rangeInput || "").trim();
   const digitsOnly = cleanInput.replace(/[^0-9]/g, "");
 
-  // Sort dial codes by length descending (e.g. 880 before 88, 228 before 22)
+  // Sort dial codes by length descending (e.g. 880 before 88, 228 before 22, 225 before 22)
   const sorted = [...KNOWN_CARRIER_COUNTRIES].sort(
     (a, b) => b.dialCode.length - a.dialCode.length
   );
 
   let countryDef: CarrierCountryDef = {
-    dialCode: digitsOnly.slice(0, 3) || "880",
+    dialCode: digitsOnly.slice(0, 3) || "225",
     country: "International",
-    operators: ["Physical Carrier Route", "Tier-1 Gateway"],
-    nationalLength: 8,
+    operators: ["Physical Carrier Route", "Moov / Orange Route"],
+    nationalLength: 10,
   };
 
-  // 1. Try to match preferred country if given
-  if (preferredCountry) {
-    const found = sorted.find(
-      (c) => c.country.toLowerCase() === preferredCountry.toLowerCase()
-    );
-    if (found) countryDef = found;
-  }
-
-  // 2. Try prefix match on digitsOnly
-  if (countryDef.country === "International" && digitsOnly) {
-    const found = sorted.find((c) => digitsOnly.startsWith(c.dialCode));
-    if (found) countryDef = found;
-  }
-
-  // 3. Fallback default
-  if (countryDef.country === "International") {
-    if (digitsOnly.startsWith("880")) {
-      countryDef = KNOWN_CARRIER_COUNTRIES.find((c) => c.dialCode === "880") || countryDef;
-    } else if (digitsOnly.startsWith("44")) {
-      countryDef = KNOWN_CARRIER_COUNTRIES.find((c) => c.dialCode === "44") || countryDef;
-    } else if (digitsOnly.startsWith("228")) {
-      countryDef = KNOWN_CARRIER_COUNTRIES.find((c) => c.dialCode === "228") || countryDef;
+  // 1. Try prefix match on digitsOnly
+  if (digitsOnly) {
+    const foundByDial = sorted.find((c) => digitsOnly.startsWith(c.dialCode));
+    if (foundByDial) {
+      countryDef = foundByDial;
     }
   }
 
-  const dialCode = countryDef.dialCode;
-  let nationalPart = "";
-
-  if (digitsOnly.startsWith(dialCode)) {
-    nationalPart = digitsOnly.slice(dialCode.length);
-  } else {
-    nationalPart = digitsOnly;
+  // 2. Try to match preferred country if given
+  if (preferredCountry) {
+    const foundByCountry = sorted.find(
+      (c) => c.country.toLowerCase() === preferredCountry.toLowerCase()
+    );
+    if (foundByCountry) countryDef = foundByCountry;
   }
 
-  // Determine needed remaining length
-  const targetNatLen = Math.max(countryDef.nationalLength, nationalPart.length + 3);
-  let randomSuffix = "";
-  const neededDigits = targetNatLen - nationalPart.length;
+  // Ensure digitsOnly starts with country dial code if available
+  let fullDigits = digitsOnly;
+  if (fullDigits && !fullDigits.startsWith(countryDef.dialCode)) {
+    fullDigits = `${countryDef.dialCode}${digitsOnly}`;
+  }
+  if (!fullDigits) {
+    fullDigits = `${countryDef.dialCode}0171`;
+  }
 
-  if (neededDigits > 0) {
-    for (let i = 0; i < neededDigits; i++) {
+  // Pad remaining digits to reach standard carrier length (min 10 digits total)
+  const targetTotalLen = Math.max(10, countryDef.dialCode.length + (countryDef.nationalLength || 7));
+  const needed = targetTotalLen - fullDigits.length;
+  let randomSuffix = "";
+  if (needed > 0) {
+    for (let i = 0; i < needed; i++) {
       randomSuffix += Math.floor(Math.random() * 10).toString();
     }
   }
 
-  let finalNational = nationalPart + randomSuffix;
-  if (!finalNational) {
-    finalNational = String(Math.floor(10000000 + Math.random() * 90000000));
-  }
-
-  // Format full international number
-  const noPlus = `${dialCode}${finalNational}`;
-  const full = `+${noPlus}`;
+  const finalNoPlus = fullDigits + randomSuffix;
+  const finalFull = `+${finalNoPlus}`;
 
   // Operator selection
   let operator = preferredOperator || "";
@@ -328,9 +312,9 @@ export function generateRealisticCarrierNumber(
   }
 
   return {
-    full_number: full,
-    national_number: finalNational,
-    no_plus_number: noPlus,
+    full_number: finalFull,
+    national_number: finalNoPlus, // Preserve exact user prefix without stripping country code
+    no_plus_number: finalNoPlus,
     country: countryDef.country,
     operator: operator || "Tier-1 Carrier",
   };

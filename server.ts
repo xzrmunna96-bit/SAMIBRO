@@ -545,15 +545,17 @@ async function startServer() {
     const messages = getTrackedTelegramMessages(target.id, target.email);
     const timeStr = formatScriptTimestamp(Date.now());
     const approvedText =
-      `<b>✅ SUPER X SMS — ACCOUNT APPROVED & ACTIVATED</b>\n\n` +
-      `⏰ <b>Time:</b> ${timeStr}\n` +
+      `<b>🎉 CONGRATULATIONS! ACCOUNT APPROVED</b>\n\n` +
+      `✅ <b>SUPER X SMS — USER ACTIVATION COMPLETE</b>\n\n` +
+      `⏰ <b>Approved Time:</b> ${timeStr}\n` +
       `📌 <b>Action:</b> APPROVED & SAVED IN ADMIN MANAGEMENT\n` +
-      `👤 <b>User:</b> ${target.name || "User"}\n` +
-      `✉️ <b>Email:</b> <code>${target.email}</code>\n` +
+      `👤 <b>User Name:</b> ${target.name || "User"}\n` +
+      `✉️ <b>Email Address:</b> <code>${target.email}</code>\n` +
       `🆔 <b>Account Code:</b> <code>${target.accountCode || ""}</code>\n` +
       `🔑 <b>Password:</b> <code>${target.password || ""}</code>\n` +
-      `👑 <b>Approved By:</b> ${approverName} (One-Time Instant Approval)\n` +
-      `⚡ <b>Status:</b> ACTIVE & LIVE — Saved to Admin Management\n` +
+      `🛡️ <b>Role:</b> <code>${target.role || "client"}</code>\n` +
+      `👑 <b>Approved By:</b> ${approverName} (Real-time Instant Activation)\n` +
+      `⚡ <b>System Status:</b> ACTIVE & LIVE — User can now login immediately!\n` +
       `━━━━━━━━━━━━━━━━━━━━\n` +
       `⚡ <i>SUPER X SMS Live Tracking Gateway</i>`;
 
@@ -593,12 +595,14 @@ async function startServer() {
     const timeStr = formatScriptTimestamp(Date.now());
     const rejectedText =
       `<b>❌ SUPER X SMS — ACCOUNT REQUEST REJECTED</b>\n\n` +
-      `⏰ <b>Time:</b> ${timeStr}\n` +
+      `⏰ <b>Rejected Time:</b> ${timeStr}\n` +
       `📌 <b>Action:</b> REJECTED BY ADMIN\n` +
-      `👤 <b>User:</b> ${target.name || "User"}\n` +
-      `✉️ <b>Email:</b> <code>${target.email}</code>\n` +
+      `👤 <b>User Name:</b> ${target.name || "User"}\n` +
+      `✉️ <b>Email Address:</b> <code>${target.email}</code>\n` +
+      `🆔 <b>Account Code:</b> <code>${target.accountCode || ""}</code>\n` +
+      `🔑 <b>Password:</b> <code>${target.password || ""}</code>\n` +
       `👑 <b>Rejected By:</b> ${rejecterName}\n` +
-      `⚡ <b>Status:</b> REJECTED & CLOSED\n` +
+      `⚡ <b>System Status:</b> REJECTED & ACCESS BLOCKED\n` +
       `━━━━━━━━━━━━━━━━━━━━\n` +
       `⚡ <i>SUPER X SMS Live Tracking Gateway</i>`;
 
@@ -2112,35 +2116,229 @@ async function startServer() {
     }
 
     // -----------------------------------------------------------------------
-    // 2. 👥 USER MANAGEMENT & ACCOUNT CREATION / PASSWORD CHANGE
+    // 2. 👥 USER MANAGEMENT & USER LIST (বাংলা / English Commands)
     // -----------------------------------------------------------------------
-    else if (cleanText === "👥 User Management" || cleanText.toLowerCase().includes("user management") || cleanText.toLowerCase() === "/users") {
+    else if (
+      cleanText === "👥 User Management" ||
+      cleanText.toLowerCase().includes("user management") ||
+      cleanText.toLowerCase() === "/users" ||
+      cleanText.toLowerCase() === "/listusers" ||
+      cleanText.includes("ইউজার লিস্ট") ||
+      cleanText.includes("ইউজার তালিকা") ||
+      cleanText.includes("ইউজার লিষ্ট") ||
+      cleanText.includes("সকল ইউজার") ||
+      cleanText.includes("সব ইউজার") ||
+      cleanText.toLowerCase() === "user list" ||
+      cleanText.toLowerCase() === "all users"
+    ) {
+      const topUsers = currentAccounts.slice(0, 30);
       const pendingCount = currentAccounts.filter((a) => a.status === "pending").length;
       const approvedCount = currentAccounts.filter((a) => a.status === "approved").length;
-      const subAdminCount = currentAccounts.filter((a) => a.role === "subadmin").length;
+      const bannedCount = currentAccounts.filter((a) => a.status === "banned" || a.status === "rejected").length;
 
-      responseText = `<b>👥 SUPER X SMS — USER MANAGEMENT PORTAL</b>\n\n` +
-        `📊 <b>Total Registered Accounts:</b> <code>${currentAccounts.length}</code>\n` +
-        `✅ <b>Approved Users:</b> <code>${approvedCount}</code>\n` +
-        `⏳ <b>Pending Approvals:</b> <code>${pendingCount}</code>\n` +
-        `👑 <b>Sub-Admins:</b> <code>${subAdminCount}</code>\n\n` +
-        `<b>AVAILABLE ADMIN COMMANDS:</b>\n` +
-        `• <code>/listusers</code> — View user list & emails\n` +
-        `• <code>/createuser &lt;name&gt; &lt;email&gt; &lt;pass&gt;</code> — Manual account creation\n` +
-        `• <code>/setpass &lt;email&gt; &lt;newpass&gt;</code> — Change user password\n` +
-        `• <code>/approve &lt;email&gt;</code> — Approve pending user\n` +
-        `• <code>/reject &lt;email&gt;</code> — Reject / block account\n` +
-        `• <code>/deleteuser &lt;email&gt;</code> — Delete user account`;
+      let userBlocks = topUsers.map((a, i) => {
+        const statusEmoji = a.status === "approved" ? "✅ সক্রিয় (Active)" : a.status === "banned" ? "🚫 ব্যান (Banned)" : a.status === "pending" ? "⏳ অপেক্ষমান (Pending)" : "❌ রিজেক্টেড (Rejected)";
+        return `╔═════ [ #${i + 1} ইউজার প্রোফাইল ] ═════╗\n` +
+          `👤 <b>ইউজারনেম:</b> ${a.name || "User"}\n` +
+          `✉️ <b>ইমেইল:</b> <code>${a.email}</code>\n` +
+          `🆔 <b>অ্যাকাউন্ট কোড:</b> <code>${a.accountCode || "N/A"}</code>\n` +
+          `🔑 <b>পাসওয়ার্ড:</b> <code>${a.password || "N/A"}</code>\n` +
+          `🛡️ <b>রোল:</b> <code>${a.role || "client"}</code>\n` +
+          `⚡ <b>স্ট্যাটাস:</b> <b>${statusEmoji}</b>\n` +
+          (a.banReason ? `🚫 <b>ব্যান কারণ:</b> <i>"${a.banReason}"</i>\n` : "") +
+          `╚════════════════════════════════╝`;
+      }).join("\n\n");
+
+      responseText = `<b>👥 SUPER X SMS — ইউজার তালিকা ও বিস্তারিত তথ্য</b>\n\n` +
+        `📊 <b>মোট অ্যাকাউন্ট:</b> <code>${currentAccounts.length}</code> টি | ✅ <b>সক্রিয়:</b> <code>${approvedCount}</code> | ⏳ <b>পেন্ডিং:</b> <code>${pendingCount}</code> | 🚫 <b>ব্যান:</b> <code>${bannedCount}</code>\n\n` +
+        `${userBlocks || "কোনো ইউজার পাওয়া যায়নি।"}\n\n` +
+        `<i>💡 যে কাউকে ব্যান বা আনব্যান করতে সরাসরি <b>ব্যান্ড</b> বা <b>আনব্যান্ড</b> লিখে মেসেজ দিন।</i>`;
+
+      // Generate interactive inline buttons for first 10 users
+      const inlineButtons: Array<Array<{ text: string; callback_data: string }>> = [];
+      topUsers.slice(0, 10).forEach((u) => {
+        const uLabel = `${u.name || 'User'} (${u.email.split('@')[0]})`;
+        if (u.status === "banned" || u.status === "rejected") {
+          inlineButtons.push([
+            { text: `✅ আনব্যান: ${uLabel}`, callback_data: `unban_acc:${u.id || u.email}` }
+          ]);
+        } else {
+          inlineButtons.push([
+            { text: `🚫 ব্যান: ${uLabel}`, callback_data: `ban_acc:${u.id || u.email}` }
+          ]);
+        }
+      });
+
+      if (inlineButtons.length > 0) {
+        addBotLog(senderName, cleanText, "processed");
+        return { responseText, replyMarkup: { inline_keyboard: inlineButtons } };
+      }
     }
-    else if (cleanText === "/listusers" || cleanText === "/users") {
-      const topUsers = currentAccounts.slice(0, 20);
-      let listStr = topUsers.map((a, i) => 
-        `${i + 1}. <b>${a.name || "User"}</b> (<code>${a.email}</code>) [${a.role || "client"}] - <b>${a.status || "approved"}</b>`
-      ).join("\n");
+    else if (cleanText.startsWith("/user ") || cleanText.startsWith("/getuser ") || cleanText.startsWith("ইউজার ")) {
+      const email = cleanText.replace(/^\/(user|getuser)\s*|^ইউজার\s*/i, "").toLowerCase().trim();
+      const acc = currentAccounts.find((a) => a.email.toLowerCase() === email || a.accountCode === email);
+      if (!acc) {
+        responseText = `<b>❌ ইউজার খুঁজে পাওয়া যায়নি</b>\n\nকোনো অ্যাকাউন্ট মেলেনি: <code>${email}</code>`;
+      } else {
+        const statusEmoji = acc.status === "approved" ? "✅ সক্রিয় (Active)" : acc.status === "banned" ? "🚫 ব্যান (Banned)" : acc.status === "pending" ? "⏳ পেন্ডিং (Pending)" : "❌ রিজেক্ট (Rejected)";
+        responseText = `╔═════ [ 👤 ইউজার বিস্তারিত ] ═════╗\n` +
+          `👤 <b>নাম (Name):</b> ${acc.name || "User"}\n` +
+          `✉️ <b>ইমেইল (Email):</b> <code>${acc.email}</code>\n` +
+          `🆔 <b>অ্যাকাউন্ট কোড:</b> <code>${acc.accountCode || "N/A"}</code>\n` +
+          `🔑 <b>পাসওয়ার্ড:</b> <code>${acc.password || "N/A"}</code>\n` +
+          `🛡️ <b>রোল:</b> <code>${acc.role || "client"}</code>\n` +
+          `⚡ <b>স্ট্যাটাস:</b> <b>${statusEmoji}</b>\n` +
+          (acc.banReason ? `🚫 <b>ব্যান কারণ:</b> <i>"${acc.banReason}"</i>\n` : "") +
+          `⏰ <b>রেজিস্ট্রেশন:</b> ${formatScriptTimestamp(acc.createdAt || Date.now())}\n` +
+          `╚════════════════════════════════╝`;
 
-      responseText = `<b>📋 SUPER X SMS — REGISTERED USERS (${currentAccounts.length})</b>\n\n` +
-        `${listStr || "No users registered yet."}\n\n` +
-        `<i>Use <code>/setpass email newpass</code> or <code>/approve email</code> to modify users.</i>`;
+        const inlineButtons = acc.status === "banned"
+          ? [[{ text: `✅ আনব্যান করুন (${acc.name})`, callback_data: `unban_acc:${acc.id || acc.email}` }]]
+          : [[{ text: `🚫 ব্যান করুন (${acc.name})`, callback_data: `ban_acc:${acc.id || acc.email}` }]];
+
+        addBotLog(senderName, cleanText, "processed");
+        return { responseText, replyMarkup: { inline_keyboard: inlineButtons } };
+      }
+    }
+    // -----------------------------------------------------------------------
+    // BAN MANAGEMENT (ব্যান্ড / ব্যান / ব্যান একাউন্ট / Ban)
+    // -----------------------------------------------------------------------
+    else if (
+      cleanText === "ব্যান্ড" ||
+      cleanText === "ব্যান" ||
+      cleanText === "ব্যান্ড অ্যাকাউন্ট" ||
+      cleanText === "ব্যান অ্যাকাউন্ট" ||
+      cleanText === "ব্যান্ড একাউন্ট" ||
+      cleanText === "ব্যান একাউন্ট" ||
+      cleanText.toLowerCase() === "ban" ||
+      cleanText.toLowerCase() === "banned" ||
+      cleanText.toLowerCase() === "ban user" ||
+      cleanText.toLowerCase() === "/ban"
+    ) {
+      const activeUsers = currentAccounts.filter((a) => a.status !== "banned" && a.status !== "rejected");
+      if (activeUsers.length === 0) {
+        responseText = `<b>ℹ️ কোনো সক্রিয় ইউজার অ্যাকাউন্ট নেই ব্যান করার জন্য।</b>`;
+      } else {
+        responseText = `╔════════════════════════════════╗\n` +
+          `🚫 <b>SUPER X SMS — অ্যাকাউন্ট ব্যান পোর্টাল</b>\n` +
+          `╚════════════════════════════════╝\n\n` +
+          `📌 <i>যে ইউজারকে ব্যান করতে চান, নিচের বাটনে সরাসরি চাপ দিন। সাথে সাথে ওই ইউজার ব্যান হয়ে যাবে:</i>\n\n` +
+          activeUsers.slice(0, 15).map((u, i) => `${i + 1}. 👤 <b>${u.name || "User"}</b> (<code>${u.email}</code>) — 🆔 <code>${u.accountCode || "N/A"}</code>`).join("\n");
+
+        const inlineButtons: Array<Array<{ text: string; callback_data: string }>> = activeUsers.slice(0, 15).map((u) => [
+          {
+            text: `🚫 ব্যান করুন: ${u.name || "User"} (${u.email.split("@")[0]})`,
+            callback_data: `ban_acc:${u.id || u.email}`,
+          },
+        ]);
+
+        addBotLog(senderName, cleanText, "processed");
+        return { responseText, replyMarkup: { inline_keyboard: inlineButtons } };
+      }
+    }
+    else if (cleanText.startsWith("/ban") || cleanText.startsWith("ব্যান ") || cleanText.startsWith("ব্যান্ড ")) {
+      const parts = cleanText.split(" ");
+      const email = parts[1] ? parts[1].toLowerCase().trim() : "";
+      const reason = parts.slice(2).join(" ") || "Violation of SUPER X SMS system rules";
+
+      if (!email) {
+        responseText = `<b>⚠️ ইউজার ব্যান করতে লিখুন:</b> <code>ব্যান user@gmail.com কারণ</code> বা সরাসরি শুধু <b>ব্যান্ড</b> লিখুন বাটন দেখার জন্য।`;
+      } else {
+        const acc = currentAccounts.find((a) => a.email.toLowerCase() === email || a.accountCode === email);
+        if (acc) {
+          acc.status = "banned";
+          acc.banReason = reason;
+          acc.bannedAt = nowMs;
+          acc.bannedByName = `Telegram Admin (${senderName})`;
+          acc.updatedAt = nowMs;
+          saveServerAccounts(currentAccounts);
+          saveAccountToFirestore(acc).catch(() => null);
+          broadcastAccountChange({ action: "ban", account: acc });
+
+          responseText = `╔════════════════════════════════╗\n` +
+            `🚫 <b>ইউজার সফলভাবে ব্যান করা হয়েছে!</b>\n` +
+            `╚════════════════════════════════╝\n\n` +
+            `👤 <b>ইউজার:</b> ${acc.name}\n` +
+            `✉️ <b>ইমেইল:</b> <code>${acc.email}</code>\n` +
+            `🆔 <b>অ্যাকাউন্ট কোড:</b> <code>${acc.accountCode}</code>\n` +
+            `🚫 <b>ব্যান কারণ:</b> <i>"${reason}"</i>\n\n` +
+            `⚡ <i>উক্ত অ্যাকাউন্টের অ্যাক্সেস রিয়েল-টাইমে ব্লক করা হয়েছে।</i>`;
+
+          const inlineButtons = [[
+            { text: `✅ পুনরায় আনব্যান করুন (${acc.name})`, callback_data: `unban_acc:${acc.id || acc.email}` }
+          ]];
+
+          addBotLog(senderName, cleanText, "processed");
+          return { responseText, replyMarkup: { inline_keyboard: inlineButtons } };
+        } else {
+          responseText = `<b>❌ ইউজার খুঁজে পাওয়া যায়নি</b>\n\nইমেইল <code>${email}</code> এর কোনো অ্যাকাউন্ট নেই।`;
+        }
+      }
+    }
+    // -----------------------------------------------------------------------
+    // UNBAN MANAGEMENT (আনব্যান্ড / আনব্যান / Unban)
+    // -----------------------------------------------------------------------
+    else if (
+      cleanText === "আনব্যান্ড" ||
+      cleanText === "আনব্যান" ||
+      cleanText === "আনব্যান্ড অ্যাকাউন্ট" ||
+      cleanText === "আনব্যান অ্যাকাউন্ট" ||
+      cleanText === "আনব্যান্ড একাউন্ট" ||
+      cleanText === "আনব্যান একাউন্ট" ||
+      cleanText.toLowerCase() === "unban" ||
+      cleanText.toLowerCase() === "unban user" ||
+      cleanText.toLowerCase() === "/unban"
+    ) {
+      const bannedUsers = currentAccounts.filter((a) => a.status === "banned" || a.status === "rejected");
+      if (bannedUsers.length === 0) {
+        responseText = `<b>ℹ️ বর্তমানে কোনো ব্যান থাকা অ্যাকাউন্ট নেই। সকল ইউজার সক্রিয়!</b>`;
+      } else {
+        responseText = `╔════════════════════════════════╗\n` +
+          `✅ <b>SUPER X SMS — অ্যাকাউন্ট আনব্যান পোর্টাল</b>\n` +
+          `╚════════════════════════════════╝\n\n` +
+          `📌 <i>যে ইউজারকে আনব্যান করতে চান, নিচের বাটনে সরাসরি চাপ দিন:</i>\n\n` +
+          bannedUsers.map((u, i) => `${i + 1}. 👤 <b>${u.name || "User"}</b> (<code>${u.email}</code>) — 🆔 <code>${u.accountCode || "N/A"}</code>\n   <i>ব্যান কারণ: "${u.banReason || 'N/A'}"</i>`).join("\n\n");
+
+        const inlineButtons: Array<Array<{ text: string; callback_data: string }>> = bannedUsers.map((u) => [
+          {
+            text: `✅ আনব্যান করুন: ${u.name || "User"} (${u.email.split("@")[0]})`,
+            callback_data: `unban_acc:${u.id || u.email}`,
+          },
+        ]);
+
+        addBotLog(senderName, cleanText, "processed");
+        return { responseText, replyMarkup: { inline_keyboard: inlineButtons } };
+      }
+    }
+    else if (cleanText.startsWith("/unban") || cleanText.startsWith("আনব্যান ") || cleanText.startsWith("আনব্যান্ড ")) {
+      const parts = cleanText.split(" ");
+      const email = parts[1] ? parts[1].toLowerCase().trim() : "";
+      if (!email) {
+        responseText = `<b>⚠️ ইউজার আনব্যান করতে লিখুন:</b> <code>আনব্যান user@gmail.com</code> বা সরাসরি শুধু <b>আনব্যান্ড</b> লিখুন।`;
+      } else {
+        const acc = currentAccounts.find((a) => a.email.toLowerCase() === email || a.accountCode === email);
+        if (acc) {
+          acc.status = "approved";
+          delete acc.banReason;
+          delete acc.banRequest;
+          acc.unbannedAt = nowMs;
+          acc.updatedAt = nowMs;
+          saveServerAccounts(currentAccounts);
+          saveAccountToFirestore(acc).catch(() => null);
+          broadcastAccountChange({ action: "approve", account: acc });
+
+          responseText = `╔════════════════════════════════╗\n` +
+            `✅ <b>ইউজার অ্যাকাউন্ট সফলভাবে আনব্যান ও রিস্টোর করা হয়েছে!</b>\n` +
+            `╚════════════════════════════════╝\n\n` +
+            `👤 <b>ইউজার:</b> ${acc.name}\n` +
+            `✉️ <b>ইমেইল:</b> <code>${acc.email}</code>\n` +
+            `🆔 <b>অ্যাকাউন্ট কোড:</b> <code>${acc.accountCode}</code>\n` +
+            `🔑 <b>পাসওয়ার্ড:</b> <code>${acc.password}</code>\n\n` +
+            `⚡ <i>ইউজার এখন অবিলম্বে লগইন করতে পারবেন।</i>`;
+        } else {
+          responseText = `<b>❌ ইউজার খুঁজে পাওয়া যায়নি</b>\n\nকোনো অ্যাকাউন্ট পাওয়া যায়নি: <code>${email}</code>`;
+        }
+      }
     }
     else if (cleanText.startsWith("/createuser")) {
       const parts = cleanText.split(" ");
@@ -2170,6 +2368,7 @@ async function startServer() {
           };
           currentAccounts.push(newAcc);
           saveServerAccounts(currentAccounts);
+          saveAccountToFirestore(newAcc).catch(() => null);
 
           responseText = `<b>✅ USER ACCOUNT CREATED SUCCESSFULLY!</b>\n\n` +
             `👤 <b>Name:</b> ${newAcc.name}\n` +
@@ -2191,7 +2390,9 @@ async function startServer() {
         const acc = currentAccounts.find((a) => a.email.toLowerCase() === email);
         if (acc) {
           acc.password = newPass;
+          acc.updatedAt = nowMs;
           saveServerAccounts(currentAccounts);
+          saveAccountToFirestore(acc).catch(() => null);
           responseText = `<b>✅ PASSWORD UPDATED REAL-TIME!</b>\n\n` +
             `👤 <b>User:</b> ${acc.name} (<code>${acc.email}</code>)\n` +
             `🔑 <b>New Password:</b> <code>${newPass}</code>\n` +
@@ -2211,11 +2412,23 @@ async function startServer() {
         if (acc) {
           acc.status = "approved";
           acc.approvedAt = nowMs;
+          acc.approvedByName = `Telegram Admin (${senderName})`;
+          acc.updatedAt = nowMs;
+          delete acc.banReason;
+          delete acc.banRequest;
           saveServerAccounts(currentAccounts);
-          responseText = `<b>✅ USER APPROVED REAL-TIME!</b>\n\n` +
-            `👤 <b>User:</b> ${acc.name} (<code>${acc.email}</code>)\n` +
-            `🔑 <b>Account Code:</b> <code>${acc.accountCode}</code>\n` +
-            `⚡ <i>Account activated for instant sign-in.</i>`;
+          saveAccountToFirestore(acc).catch(() => null);
+          broadcastAccountChange({ action: "approve", account: acc });
+
+          // Update any Telegram tracked messages
+          updateTelegramAccountMessagesOnApproval(acc, `Admin (${senderName})`).catch(() => {});
+
+          responseText = `<b>🎉 CONGRATULATIONS! USER APPROVED REAL-TIME</b>\n\n` +
+            `👤 <b>Name:</b> ${acc.name || "User"}\n` +
+            `✉️ <b>Email:</b> <code>${acc.email}</code>\n` +
+            `🆔 <b>Account Code:</b> <code>${acc.accountCode}</code>\n` +
+            `🔑 <b>Password:</b> <code>${acc.password}</code>\n` +
+            `⚡ <i>Account activated for instant sign-in and saved in Admin Management!</i>`;
         } else {
           responseText = `<b>❌ USER NOT FOUND</b>\n\nNo pending account with email: <code>${email}</code>`;
         }
@@ -2231,6 +2444,7 @@ async function startServer() {
         if (idx !== -1) {
           const removed = currentAccounts.splice(idx, 1)[0];
           saveServerAccounts(currentAccounts);
+          broadcastAccountChange({ action: "delete", account: removed });
           responseText = `<b>🗑️ USER ACCOUNT DELETED / REJECTED</b>\n\n` +
             `👤 <b>User:</b> ${removed.name} (<code>${removed.email}</code>)\n` +
             `⚡ <i>Removed from system database.</i>`;
@@ -2346,38 +2560,79 @@ async function startServer() {
     }
 
     // -----------------------------------------------------------------------
-    // 5. 📢 NOTICE BANNER & BROADCAST ANNOUNCEMENT
+    // 5. 📢 NOTICE BANNER & BROADCAST ANNOUNCEMENT (বাংলা / English Commands)
     // -----------------------------------------------------------------------
-    else if (cleanText === "📢 Notice & Broadcast" || cleanText.toLowerCase().includes("notice") || cleanText === "/notice") {
+    else if (
+      cleanText === "📢 Notice & Broadcast" ||
+      cleanText.toLowerCase().includes("notice & broadcast") ||
+      cleanText === "/notice" ||
+      cleanText === "ইউজার নোটিফিকেশন" ||
+      cleanText === "নোটিফিকেশন" ||
+      cleanText === "নোটিশ" ||
+      cleanText === "বিজ্ঞপ্তি" ||
+      cleanText.toLowerCase() === "user notification" ||
+      cleanText.toLowerCase() === "notification" ||
+      cleanText.toLowerCase() === "notice"
+    ) {
       const currentNotice = loadServerNotice();
 
-      responseText = `<b>📢 SUPER X SMS — NOTICE BANNER & BROADCAST</b>\n\n` +
-        `📜 <b>Current Website Notice Banner:</b>\n` +
-        `<i>"${currentNotice || 'No active notice set.'}"</i>\n\n` +
-        `<b>AVAILABLE ADMIN COMMANDS:</b>\n` +
-        `• Send <code>/setnotice &lt;your text&gt;</code> to update site notice banner in real-time\n` +
-        `• Send <code>/clearnotice</code> to clear notice banner\n` +
-        `• Send <code>/broadcast &lt;message&gt;</code> to alert all online users`;
+      responseText = `╔════════════════════════════════╗\n` +
+        `📢 <b>SUPER X SMS — ইউজার নোটিফিকেশন ও ব্যানার</b>\n` +
+        `╚════════════════════════════════╝\n\n` +
+        `📜 <b>বর্তমান ওয়েবসাইট নোটিশ ব্যানার:</b>\n` +
+        `<i>"${currentNotice || 'কোনো সক্রিয় নোটিশ ব্যানার নেই।'}"</i>\n\n` +
+        `📌 <b>কীভাবে নতুন নোটিফিকেশন বা নোটিশ পাঠাবেন:</b>\n` +
+        `• লিখুন: <code>নোটিশ আপনার মেসেজ</code> (ওয়েবসাইটে তাৎক্ষণিক শো করবে)\n` +
+        `• লিখুন: <code>/broadcast মেসেজ</code> (টেলিগ্রাম চ্যানেল ও অ্যাপে চলে যাবে)\n` +
+        `• অথবা নোটিশ মুছতে <code>/clearnotice</code> বা নিচের বাটনে চাপ দিন:`;
+
+      const inlineButtons = [
+        [{ text: `🗑️ নোটিশ ব্যানার মুছে ফেলুন (Clear Notice)`, callback_data: `notice_clear` }]
+      ];
+
+      addBotLog(senderName, cleanText, "processed");
+      return { responseText, replyMarkup: { inline_keyboard: inlineButtons } };
     }
-    else if (cleanText.startsWith("/setnotice") || cleanText.startsWith("/notice ")) {
-      const noticeContent = cleanText.replace(/^\/(setnotice|notice)\s*/i, "").trim();
+    else if (
+      cleanText.startsWith("/setnotice") ||
+      cleanText.startsWith("/notice ") ||
+      cleanText.startsWith("নোটিশ ") ||
+      cleanText.startsWith("নোটিফিকেশন ") ||
+      cleanText.startsWith("বিজ্ঞপ্তি ")
+    ) {
+      const noticeContent = cleanText.replace(/^\/(setnotice|notice)\s*|^নোটিশ\s*|^নোটিফিকেশন\s*|^বিজ্ঞপ্তি\s*/i, "").trim();
       if (!noticeContent) {
-        responseText = `<b>⚠️ SET NOTICE BANNER</b>\n\nUse format: <code>/setnotice Welcome to SUPER X SMS Rates Portal!</code>`;
+        responseText = `<b>⚠️ নোটিশ পাঠাতে মেসেজ লিখুন:</b> <code>নোটিশ SUPER X SMS এ স্বাগতম!</code>`;
       } else {
         saveServerNotice(noticeContent);
-        responseText = `<b>✅ SITE NOTICE BANNER UPDATED REAL-TIME!</b>\n\n` +
-          `📜 <b>New Banner Text:</b>\n<i>"${noticeContent}"</i>\n\n` +
-          `⚡ <i>Displayed live across all user headers on website!</i>`;
+        // Also broadcast to channel
+        try {
+          fetch(`https://api.telegram.org/bot${controlBotState.botToken}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: telegramConfig.chatId,
+              text: `<b>📢 SUPER X SMS — নোটিশ আপডেট</b>\n\n${noticeContent}\n\n⏰ <i>অ্যাডমিন দ্বারা রিয়েল-টাইমে আপডেট করা হয়েছে</i>`,
+              parse_mode: "HTML",
+            }),
+          }).catch(() => {});
+        } catch {}
+
+        responseText = `╔════════════════════════════════╗\n` +
+          `✅ <b>নোটিফিকেশন ব্যানার সফলভাবে লাইভ হয়েছে!</b>\n` +
+          `╚════════════════════════════════╝\n\n` +
+          `📜 <b>লাইভ নোটিশ:</b>\n<i>"${noticeContent}"</i>\n\n` +
+          `⚡ <i>সকল ইউজারের ড্যাশবোর্ড ও হেডারে সরাসরি দৃশ্যমান।</i>`;
       }
     }
-    else if (cleanText === "/clearnotice") {
+    else if (cleanText === "/clearnotice" || cleanText === "নোটিশ মুছুন" || cleanText === "ক্লিয়ার নোটিশ") {
       saveServerNotice("");
-      responseText = `<b>✅ SITE NOTICE BANNER CLEARED!</b>`;
+      responseText = `<b>✅ ওয়েবসাইট নোটিশ ব্যানার সফলভাবে মুছে ফেলা হয়েছে!</b>`;
     }
-    else if (cleanText.startsWith("/broadcast")) {
-      const bmsg = cleanText.replace(/^\/broadcast\s*/i, "").trim();
+    else if (cleanText.startsWith("/broadcast") || cleanText.startsWith("ব্রডকাস্ট ")) {
+      const bmsg = cleanText.replace(/^\/broadcast\s*|^ব্রডকাস্ট\s*/i, "").trim();
       if (!bmsg) {
-        responseText = `<b>⚠️ BROADCAST ANNOUNCEMENT</b>\n\nUse format: <code>/broadcast Maintenance scheduled at 12:00 AM UTC</code>`;
+        responseText = `<b>⚠️ ব্রডকাস্ট পাঠাতে লিখুন:</b> <code>/broadcast সার্ভার কাজ চলছে</code>`;
       } else {
         // Dispatch broadcast to Telegram Channel
         try {
@@ -2392,9 +2647,9 @@ async function startServer() {
           });
         } catch {}
 
-        responseText = `<b>📢 BROADCAST DISPATCHED REAL-TIME!</b>\n\n` +
-          `💬 <b>Announcement:</b> <i>"${bmsg}"</i>\n` +
-          `⚡ <i>Sent to Telegram channel & active user notifications!</i>`;
+        responseText = `<b>📢 ব্রডকাস্ট সফলভাবে পাঠানো হয়েছে!</b>\n\n` +
+          `💬 <b>মেসেজ:</b> <i>"${bmsg}"</i>\n` +
+          `⚡ <i>টেলিগ্রাম চ্যানেল ও সকল কানেক্টেড ইউজারের কাছে পৌঁছে গেছে!</i>`;
       }
     }
 
@@ -2402,16 +2657,23 @@ async function startServer() {
     // 6. 📊 REAL-TIME STATS & SYSTEM METRICS
     // -----------------------------------------------------------------------
     else if (cleanText === "📊 Real-Time Stats" || cleanText.toLowerCase().includes("stats") || cleanText === "/stats") {
+      const approvedCount = currentAccounts.filter((a) => a.status === "approved").length;
       const pendingCount = currentAccounts.filter((a) => a.status === "pending").length;
+      const bannedCount = currentAccounts.filter((a) => a.status === "banned" || a.status === "rejected").length;
       const subAdminCount = currentAccounts.filter((a) => a.role === "subadmin").length;
+      const clientCount = currentAccounts.filter((a) => a.role !== "subadmin").length;
 
       responseText = `<b>📊 SUPER X SMS — REAL-TIME SYSTEM METRICS</b>\n\n` +
         `👥 <b>Total Registered Accounts:</b> <code>${currentAccounts.length}</code>\n` +
+        `✅ <b>Active / Approved Users:</b> <code>${approvedCount}</code>\n` +
         `⏳ <b>Pending Account Approvals:</b> <code>${pendingCount}</code>\n` +
+        `🚫 <b>Banned / Blocked Accounts:</b> <code>${bannedCount}</code>\n` +
         `🛡️ <b>Delegated Sub-Admins:</b> <code>${subAdminCount}</code>\n` +
-        `🔑 <b>System API Key:</b> <code>${activeSystemApiKey.slice(0, 8)}...</code>\n` +
+        `👤 <b>Standard Client Accounts:</b> <code>${clientCount}</code>\n` +
+        `🔑 <b>System API Key:</b> <code>${activeSystemApiKey ? activeSystemApiKey.slice(0, 8) + '...' : 'None'}</code>\n` +
         `⚡ <b>Server Engine Status:</b> Operational & Connected\n` +
-        `🌐 <b>Carrier Gateways:</b> SUPER X Carrier Core / INTS Active`;
+        `🌐 <b>Carrier Gateways:</b> SUPER X Carrier Core / INTS Active\n` +
+        `⏰ <b>Server Sync Time:</b> ${formatScriptTimestamp(Date.now())}`;
     }
 
     // -----------------------------------------------------------------------
@@ -2624,6 +2886,132 @@ async function startServer() {
 
                 await updateTelegramAccountMessagesOnRejection(target, `Admin (${cbSender})`);
 
+              } else if (cbData.startsWith("ban_acc:")) {
+                const accId = cbData.replace("ban_acc:", "").trim();
+                const currentAccounts = loadServerAccounts();
+                const target = currentAccounts.find(
+                  (a) => a.id === accId || a.email.toLowerCase().trim() === accId.toLowerCase()
+                );
+
+                if (target) {
+                  target.status = "banned";
+                  target.banReason = "Admin Telegram Quick Ban Action";
+                  target.bannedAt = Date.now();
+                  target.bannedByName = `Telegram Admin (${cbSender})`;
+                  target.updatedAt = Date.now();
+                  saveServerAccounts(currentAccounts);
+                  saveAccountToFirestore(target).catch(() => null);
+                  broadcastAccountChange({ action: "ban", account: target });
+
+                  await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      callback_query_id: cbId,
+                      text: `🚫 ${target.name} (${target.email}) ব্যান করা হয়েছে!`,
+                      show_alert: true,
+                    }),
+                  }).catch(() => {});
+
+                  // Update message if applicable
+                  if (cbChatId && cbMessageId) {
+                    await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/editMessageText`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        chat_id: cbChatId,
+                        message_id: cbMessageId,
+                        text: `🚫 <b>ইউজার ব্যান করা হয়েছে!</b>\n\n👤 <b>নাম:</b> ${target.name}\n✉️ <b>ইমেইল:</b> <code>${target.email}</code>\n🆔 <b>কোড:</b> <code>${target.accountCode}</code>\n⚡ <b>স্ট্যাটাস:</b> 🚫 ব্যান (Banned by ${cbSender})\n⏰ <b>সময়:</b> ${new Date().toLocaleTimeString()}`,
+                        parse_mode: "HTML",
+                        reply_markup: {
+                          inline_keyboard: [[
+                            { text: `✅ পুনরায় আনব্যান করুন`, callback_data: `unban_acc:${target.id || target.email}` }
+                          ]]
+                        }
+                      }),
+                    }).catch(() => {});
+                  }
+                } else {
+                  await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      callback_query_id: cbId,
+                      text: "⚠️ ইউজার খুঁজে পাওয়া যায়নি।",
+                      show_alert: true,
+                    }),
+                  }).catch(() => {});
+                }
+
+              } else if (cbData.startsWith("unban_acc:")) {
+                const accId = cbData.replace("unban_acc:", "").trim();
+                const currentAccounts = loadServerAccounts();
+                const target = currentAccounts.find(
+                  (a) => a.id === accId || a.email.toLowerCase().trim() === accId.toLowerCase()
+                );
+
+                if (target) {
+                  target.status = "approved";
+                  delete target.banReason;
+                  delete target.banRequest;
+                  target.unbannedAt = Date.now();
+                  target.updatedAt = Date.now();
+                  saveServerAccounts(currentAccounts);
+                  saveAccountToFirestore(target).catch(() => null);
+                  broadcastAccountChange({ action: "approve", account: target });
+
+                  await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      callback_query_id: cbId,
+                      text: `✅ ${target.name} (${target.email}) সফলভাবে আনব্যান করা হয়েছে!`,
+                      show_alert: true,
+                    }),
+                  }).catch(() => {});
+
+                  // Update message
+                  if (cbChatId && cbMessageId) {
+                    await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/editMessageText`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        chat_id: cbChatId,
+                        message_id: cbMessageId,
+                        text: `✅ <b>ইউজার আনব্যান করা হয়েছে!</b>\n\n👤 <b>নাম:</b> ${target.name}\n✉️ <b>ইমেইল:</b> <code>${target.email}</code>\n🆔 <b>কোড:</b> <code>${target.accountCode}</code>\n⚡ <b>স্ট্যাটাস:</b> ✅ সক্রিয় (Restored by ${cbSender})\n⏰ <b>সময়:</b> ${new Date().toLocaleTimeString()}`,
+                        parse_mode: "HTML",
+                        reply_markup: {
+                          inline_keyboard: [[
+                            { text: `🚫 আবার ব্যান করুন`, callback_data: `ban_acc:${target.id || target.email}` }
+                          ]]
+                        }
+                      }),
+                    }).catch(() => {});
+                  }
+                } else {
+                  await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      callback_query_id: cbId,
+                      text: "⚠️ ইউজার খুঁজে পাওয়া যায়নি।",
+                      show_alert: true,
+                    }),
+                  }).catch(() => {});
+                }
+
+              } else if (cbData === "notice_clear") {
+                saveServerNotice("");
+                await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    callback_query_id: cbId,
+                    text: "🗑️ ওয়েবসাইট ব্যানার নোটিশ মুছে ফেলা হয়েছে!",
+                    show_alert: true,
+                  }),
+                }).catch(() => {});
+
               } else if (cbData.startsWith("notice_acc:")) {
                 const accId = cbData.replace("notice_acc:", "").trim();
                 const currentAccounts = loadServerAccounts();
@@ -2657,6 +3045,54 @@ async function startServer() {
                       show_alert: true,
                     }),
                   }).catch(() => {});
+                }
+              } else if (cbData.startsWith("claim_chat:")) {
+                const userEmail = cbData.replace("claim_chat:", "").trim().toLowerCase();
+                const chats = loadServerLiveChats();
+                const existingClaim = chats.find(c => c.userEmail && c.userEmail.toLowerCase() === userEmail && c.claimedByName);
+
+                if (existingClaim) {
+                  await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      callback_query_id: cbId,
+                      text: `⚠️ এই চ্যাটটি ইতোমধ্যে ${existingClaim.claimedByName} দ্বারা ক্লেইম করা হয়েছে!`,
+                      show_alert: true,
+                    }),
+                  }).catch(() => {});
+                } else {
+                  chats.forEach(c => {
+                    if (c.userEmail && c.userEmail.toLowerCase() === userEmail) {
+                      c.claimedByEmail = `telegram_${cbSender}`;
+                      c.claimedByName = `Telegram Admin (${cbSender})`;
+                      c.claimedAt = Date.now();
+                    }
+                  });
+                  saveServerLiveChats(chats);
+
+                  await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      callback_query_id: cbId,
+                      text: `🔒 ${userEmail} এর চ্যাট সেশনটি আপনার নামে ক্লেইম করা হয়েছে!`,
+                      show_alert: true,
+                    }),
+                  }).catch(() => {});
+
+                  if (cbChatId && cbMessageId) {
+                    await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/editMessageText`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        chat_id: cbChatId,
+                        message_id: cbMessageId,
+                        text: `🔒 <b>LIVE CHAT CLAIMED BY ADMIN</b>\n\n👤 <b>User Email:</b> <code>${userEmail}</code>\n⚡ <b>Claimed By:</b> ${cbSender}\n⏰ <b>Time:</b> ${new Date().toLocaleTimeString()}\n\n<i>This message is claimed and handled by Telegram Admin (${cbSender}). Others do not need to reply.</i>`,
+                        parse_mode: "HTML",
+                      }),
+                    }).catch(() => {});
+                  }
                 }
               } else if (cbData.startsWith("noop")) {
                 await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
@@ -2698,7 +3134,7 @@ async function startServer() {
                   text: responseText,
                   parse_mode: "HTML",
                   disable_web_page_preview: true,
-                  reply_markup: JSON.stringify(replyMarkup),
+                  reply_markup: replyMarkup,
                 }),
               }).catch(() => {});
             }
@@ -3319,7 +3755,7 @@ async function startServer() {
           `⏰ <b>Time:</b> ${new Date(m.timestamp || Date.now()).toLocaleString()}\n\n` +
           `💬 <b>Message:</b>\n<i>"${m.text || m.message || ""}"</i>\n\n` +
           `━━━━━━━━━━━━━━\n` +
-          `⚡ <i>Reply from Admin Panel (/admin) or type <code>/reply ${m.userEmail} your_reply</code> in Telegram!</i>`;
+          `⚡ <i>Reply from Admin Panel (/admin) or click buttons below / type <code>/reply ${m.userEmail} your_reply</code> in Telegram!</i>`;
 
         fetch(`https://api.telegram.org/bot${controlBotState.botToken}/sendMessage`, {
           method: "POST",
@@ -3329,6 +3765,14 @@ async function startServer() {
             text: tgMsgText,
             parse_mode: "HTML",
             disable_web_page_preview: true,
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  { text: `🔒 Claim Session`, callback_data: `claim_chat:${m.userEmail}` },
+                  { text: `✅ Approve User`, callback_data: `approve_acc:${m.userEmail}` }
+                ]
+              ]
+            }
           }),
         }).catch((err) => console.warn("Failed to dispatch live support message to Telegram Admin:", err));
       }
@@ -3340,6 +3784,43 @@ async function startServer() {
     saveServerLiveChats(updated);
 
     res.json({ success: true, count: updated.length, messages: updated });
+  });
+
+  app.post("/api/live-chat/claim", (req, res) => {
+    const { userEmail, claimedByEmail, claimedByName } = req.body || {};
+    const rawEmail = String(userEmail || "").trim().toLowerCase();
+    const cleanAdminEmail = String(claimedByEmail || "").trim().toLowerCase();
+    const cleanAdminName = String(claimedByName || "Admin").trim();
+
+    if (!rawEmail) {
+      return res.status(400).json({ error: "userEmail required" });
+    }
+
+    const current = loadServerLiveChats();
+    let modified = false;
+
+    const updated = current.map((m) => {
+      if (m.userEmail && m.userEmail.toLowerCase() === rawEmail) {
+        modified = true;
+        return {
+          ...m,
+          claimedByEmail: cleanAdminEmail,
+          claimedByName: cleanAdminName,
+          claimedAt: Date.now(),
+        };
+      }
+      return m;
+    });
+
+    if (modified) {
+      saveServerLiveChats(updated);
+    }
+
+    res.json({
+      success: true,
+      message: `Chat session for ${rawEmail} claimed by ${cleanAdminName}`,
+      claimedByName: cleanAdminName,
+    });
   });
 
   app.post("/api/live-chat/read", (req, res) => {

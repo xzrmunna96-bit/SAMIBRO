@@ -88,6 +88,11 @@ import {
   markChatAsReadByAdmin,
   getAdminUnreadChatCount,
   getAllChatConversations,
+  claimChatConversation,
+  isUserChatBlocked,
+  blockUserChat,
+  unblockUserChat,
+  handoverToAgent,
   ChatMessage,
   CHAT_UPDATE_EVENT,
 } from '../services/supportChatService';
@@ -1015,10 +1020,23 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
   // =========================================================================
   const [activeChatUserEmail, setActiveChatUserEmail] = useState<string>('');
   const [adminChatInput, setAdminChatInput] = useState('');
+  const [adminAgentName, setAdminAgentName] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('superx_admin_agent_name') || 'Admin Support';
+    }
+    return 'Admin Support';
+  });
   const [adminUnreadCount, setAdminUnreadCount] = useState<number>(() => getAdminUnreadChatCount());
   const [chatSearchQuery, setChatSearchQuery] = useState('');
   const [chatRefreshKey, setChatRefreshKey] = useState(0);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
+
+  const handleAgentNameChange = (val: string) => {
+    setAdminAgentName(val);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('superx_admin_agent_name', val);
+    }
+  };
 
   // Toast Helper
   const showToast = (msg: string) => {
@@ -1862,20 +1880,53 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     setAdminUnreadCount(getAdminUnreadChatCount());
   };
 
+  const handleClaimChatSession = () => {
+    if (!activeChatUserEmail) return;
+    const currentAgent = adminAgentName.trim() || adminSession.name || 'Support Agent';
+    claimChatConversation(activeChatUserEmail, adminSession.email, currentAgent);
+    setChatRefreshKey((k) => k + 1);
+    showToast(`Chat session claimed as "${currentAgent}"!`);
+  };
+
   const handleSendChatReply = (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeChatUserEmail || !adminChatInput.trim()) return;
 
-    sendAdminMessage(activeChatUserEmail, adminChatInput.trim());
+    const currentAgent = adminAgentName.trim() || adminSession.name || 'Support Agent';
+    claimChatConversation(activeChatUserEmail, adminSession.email, currentAgent);
+    sendAdminMessage(activeChatUserEmail, adminChatInput.trim(), currentAgent);
     setAdminChatInput('');
     setChatRefreshKey((k) => k + 1);
   };
 
   const handleSendTemplateReply = (template: string) => {
     if (!activeChatUserEmail) return;
-    sendAdminMessage(activeChatUserEmail, template);
+    const currentAgent = adminAgentName.trim() || adminSession.name || 'Support Agent';
+    claimChatConversation(activeChatUserEmail, adminSession.email, currentAgent);
+    sendAdminMessage(activeChatUserEmail, template, currentAgent);
     setChatRefreshKey((k) => k + 1);
     showToast('Template response sent!');
+  };
+
+  const handleHandoverAgent = () => {
+    if (!activeChatUserEmail) return;
+    const currentAgent = adminAgentName.trim() || adminSession.name || 'Support Agent';
+    claimChatConversation(activeChatUserEmail, adminSession.email, currentAgent);
+    handoverToAgent(activeChatUserEmail, currentAgent);
+    setChatRefreshKey((k) => k + 1);
+    showToast(`Agent handover greeting sent to user as "${currentAgent}"!`);
+  };
+
+  const handleToggleBlockChat = () => {
+    if (!activeChatUserEmail) return;
+    if (isUserChatBlocked(activeChatUserEmail)) {
+      unblockUserChat(activeChatUserEmail);
+      showToast('User chat unblocked.');
+    } else {
+      blockUserChat(activeChatUserEmail);
+      showToast('Chat closed & blocked for 24 hours.');
+    }
+    setChatRefreshKey((k) => k + 1);
   };
 
   // Filtered Lists
@@ -3245,7 +3296,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                           {acc.status === 'approved' && (
                             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-black border border-emerald-500/40">
                               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                              <span>APPROVED &amp; ACTIVE</span>
+                              <span>APPROVED &amp; ACTIVE {acc.approvedByName ? `(by ${acc.approvedByName})` : ''}</span>
                             </span>
                           )}
 
@@ -4842,7 +4893,14 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                                   : ''}
                               </span>
                             </div>
-                            <div className="text-[11px] text-slate-400 truncate">{conv.userEmail}</div>
+                            <div className="text-[11px] text-slate-400 truncate flex items-center justify-between gap-1">
+                              <span className="truncate">{conv.userEmail}</span>
+                              {conv.claimedByName && (
+                                <span className="shrink-0 px-1.5 py-0.2 rounded bg-emerald-950/80 text-emerald-300 text-[9px] font-bold border border-emerald-800/60">
+                                  🔒 {conv.claimedByName}
+                                </span>
+                              )}
+                            </div>
                             <div className="text-xs text-slate-300 truncate mt-0.5">
                               {conv.lastMessage ? conv.lastMessage.text : 'No messages'}
                             </div>
@@ -4865,9 +4923,9 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                 {activeChatUserEmail ? (
                   <>
                     {/* Chat Header */}
-                    <div className="p-3.5 border-b border-slate-800 bg-slate-950/80 flex items-center justify-between">
+                    <div className="p-3 border-b border-slate-800 bg-slate-950/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-emerald-950 border border-emerald-500/30 text-emerald-400 flex items-center justify-center font-bold text-sm">
+                        <div className="w-9 h-9 rounded-full bg-emerald-950 border border-emerald-500/30 text-emerald-400 flex items-center justify-center font-bold text-sm shrink-0">
                           {activeChatUserObj?.name?.charAt(0) || activeChatUserEmail.charAt(0).toUpperCase()}
                         </div>
                         <div>
@@ -4878,21 +4936,67 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 font-mono text-emerald-300 border border-slate-700">
                               ID: {activeChatUserObj?.accountCode || getDedicatedAccountCode(activeChatUserEmail)}
                             </span>
+                            {isUserChatBlocked(activeChatUserEmail) && (
+                              <span className="text-[10px] px-2 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-800 font-bold">
+                                🚫 Blocked (24h)
+                              </span>
+                            )}
                           </div>
                           <div className="text-[11px] text-slate-400 font-mono">{activeChatUserEmail}</div>
                         </div>
                       </div>
 
-                      {activeChatUserObj && (
+                      {/* Agent Controls */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* Agent Name Box */}
+                        <div className="flex items-center bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-slate-300 gap-1.5">
+                          <span className="text-[10px] text-slate-400 font-bold uppercase">Agent:</span>
+                          <input
+                            type="text"
+                            value={adminAgentName}
+                            onChange={(e) => handleAgentNameChange(e.target.value)}
+                            placeholder="Enter Agent Name..."
+                            className="bg-transparent text-white font-bold text-xs focus:outline-none w-28 sm:w-32 placeholder-slate-600"
+                            title="Your agent name shown to user in chat"
+                          />
+                        </div>
+
+                        {/* Claim Session Button */}
                         <button
                           type="button"
-                          onClick={() => handleOpenResetModal(activeChatUserObj)}
-                          className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-blue-300 border border-slate-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                          onClick={handleClaimChatSession}
+                          className="px-2.5 py-1.5 rounded-lg bg-indigo-950 hover:bg-indigo-900 text-indigo-200 border border-indigo-500/40 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                          title="Claim this chat session so other sub-admins know you are responding"
                         >
-                          <Key className="w-3.5 h-3.5" />
-                          <span>Reset Pass</span>
+                          <span>🔒 Claim Session</span>
                         </button>
-                      )}
+
+                        {/* Handover Button */}
+                        <button
+                          type="button"
+                          onClick={handleHandoverAgent}
+                          className="px-2.5 py-1.5 rounded-lg bg-emerald-950 hover:bg-emerald-900 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                          title="Handover session and send dynamic time greeting"
+                        >
+                          <span>👋 Handover</span>
+                        </button>
+
+                        {/* Block/Stop Chat Button */}
+                        <button
+                          type="button"
+                          onClick={handleToggleBlockChat}
+                          className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer border ${
+                            isUserChatBlocked(activeChatUserEmail)
+                              ? 'bg-blue-950 hover:bg-blue-900 text-blue-300 border-blue-500/40'
+                              : 'bg-rose-950 hover:bg-rose-900 text-rose-300 border-rose-500/40'
+                          }`}
+                          title="Stop chat for 24 hours"
+                        >
+                          <span>
+                            {isUserChatBlocked(activeChatUserEmail) ? '✅ Unblock' : '🚫 Stop Chat'}
+                          </span>
+                        </button>
+                      </div>
                     </div>
 
                     {/* Messages Thread */}
@@ -4918,7 +5022,9 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                                 }`}
                               >
                                 <div className="text-[10px] font-bold opacity-75 mb-0.5">
-                                  {isAdmin ? 'Super X Admin Support' : msg.senderName}
+                                  {isAdmin
+                                    ? (msg.senderName === 'SUPER X BOT' ? '🤖 SUPER X BOT (AI Reply)' : (msg.senderName || 'Super X Admin Support'))
+                                    : msg.senderName}
                                 </div>
                                 <div className="whitespace-pre-wrap leading-relaxed">{msg.text}</div>
                               </div>

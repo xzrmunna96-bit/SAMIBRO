@@ -79,18 +79,9 @@ export function ImoLogo({ className = "w-10 h-10" }: { className?: string }) {
 export function TikTokLogo({ className = "w-10 h-10" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="32" cy="32" r="28" fill="#000000" />
       <path
-        d="M44.5 25.8C41.6 25.8 39 24.3 37.5 22.1V35C37.5 40.5 33 45 27.5 45C22 45 17.5 40.5 17.5 35C17.5 29.5 22 25 27.5 25C28.2 25 28.8 25.1 29.5 25.3V30.1C28.9 29.9 28.2 29.8 27.5 29.8C24.6 29.8 22.3 32.1 22.3 35C22.3 37.9 24.6 40.2 27.5 40.2C30.4 40.2 32.7 37.9 32.7 35V15H37.5C37.5 18.2 40.1 20.8 43.3 20.8H44.5V25.8Z"
-        fill="#00F2FE"
-      />
-      <path
-        d="M43.5 24.8C40.6 24.8 38 23.3 36.5 21.1V34C36.5 39.5 32 44 26.5 44C21 44 16.5 39.5 16.5 34C16.5 28.5 21 24 26.5 24C27.2 24 27.8 24.1 28.5 24.3V29.1C27.9 28.9 27.2 28.8 26.5 28.8C23.6 28.8 21.3 31.1 21.3 34C21.3 36.9 23.6 39.2 26.5 39.2C29.4 39.2 31.7 36.9 31.7 34V14H36.5C36.5 17.2 39.1 19.8 42.3 19.8H43.5V24.8Z"
-        fill="#FF0050"
-      />
-      <path
-        d="M44 25.3C41.1 25.3 38.5 23.8 37 21.6V34.5C37 40 32.5 44.5 27 44.5C21.5 44.5 17 40 17 34.5C17 29 21.5 24.5 27 24.5C27.7 24.5 28.3 24.6 29 24.8V29.6C28.4 29.4 27.7 29.3 27 29.3C24.1 29.3 21.8 31.6 21.8 34.5C21.8 37.4 24.1 39.7 27 39.7C29.9 39.7 32.2 37.4 32.2 34.5V14.5H37C37 17.7 39.6 20.3 42.8 20.3H44V25.3Z"
-        fill="white"
+        d="M48 24C44 24 40.5 22 38.5 19V38C38.5 45.5 32.5 51.5 25 51.5C17.5 51.5 11.5 45.5 11.5 38C11.5 30.5 17.5 24.5 25 24.5C26 24.5 27 24.6 28 25V33C27 32.5 26 32.5 25 32.5C22 32.5 19.5 35 19.5 38C19.5 41 22 43.5 25 43.5C28 43.5 30.5 41 30.5 38V12H38.5C38.5 16 42 19.5 46.5 20V24H48Z"
+        fill="#000000"
       />
     </svg>
   );
@@ -100,13 +91,10 @@ export function TikTokLogo({ className = "w-10 h-10" }: { className?: string }) 
 export function MicrosoftLogo({ className = "w-10 h-10" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="32" cy="32" r="28" fill="#1E293B" />
-      <g transform="translate(18, 18)">
-        <rect x="0" y="0" width="13" height="13" fill="#F25022" />
-        <rect x="15" y="0" width="13" height="13" fill="#7FBA00" />
-        <rect x="0" y="15" width="13" height="13" fill="#00A4EF" />
-        <rect x="15" y="15" width="13" height="13" fill="#FFB900" />
-      </g>
+      <rect x="8" y="8" width="22" height="22" rx="2" fill="#002050" />
+      <rect x="34" y="8" width="22" height="22" rx="2" fill="#002050" />
+      <rect x="8" y="34" width="22" height="22" rx="2" fill="#002050" />
+      <rect x="34" y="34" width="22" height="22" rx="2" fill="#002050" />
     </svg>
   );
 }
@@ -140,10 +128,9 @@ export function GoogleLogo({ className = "w-10 h-10" }: { className?: string }) 
 export function AppleLogo({ className = "w-10 h-10" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="32" cy="32" r="28" fill="#111827" />
       <path
-        d="M37.9 32.2C37.9 28.4 41 26.5 41.2 26.4C39.4 23.8 36.6 23.4 35.6 23.3C33.2 23.1 30.8 24.8 29.5 24.8C28.3 24.8 26.3 23.4 24.3 23.4C21.7 23.4 19.3 24.9 18 27.2C15.3 31.9 17.3 38.8 19.9 42.6C21.2 44.4 22.7 46.5 24.6 46.4C26.5 46.3 27.2 45.2 29.4 45.2C31.6 45.2 32.3 46.4 34.2 46.4C36.2 46.4 37.5 44.5 38.7 42.7C40.1 40.7 40.7 38.7 40.8 38.6C40.7 38.5 37.9 37.4 37.9 32.2ZM34.2 20.3C35.3 18.9 36 17 35.8 15.1C34.1 15.2 32 16.2 30.8 17.6C29.8 18.8 28.9 20.8 29.2 22.6C31.1 22.8 33.1 21.6 34.2 20.3Z"
-        fill="white"
+        d="M39.9 33.2C39.9 28.4 43.5 26 43.7 25.9C41.6 22.8 38.3 22.3 37.1 22.2C34.2 21.9 31.3 23.9 29.8 23.9C28.3 23.9 25.9 22.2 23.5 22.2C20.4 22.2 17.5 24 15.9 26.8C12.7 32.4 15.1 40.7 18.2 45.3C19.8 47.5 21.6 50 23.9 49.9C26.1 49.8 27 48.5 29.6 48.5C32.2 48.5 33 49.9 35.3 49.9C37.7 49.9 39.3 47.6 40.7 45.4C42.4 43 43.1 40.6 43.2 40.5C43.1 40.4 39.9 39.1 39.9 33.2ZM35.5 18.9C36.8 17.2 37.6 15 37.4 12.7C35.4 12.8 32.9 14 31.5 15.7C30.3 17.1 29.2 19.5 29.6 21.7C31.8 21.9 34.2 20.5 35.5 18.9Z"
+        fill="#000000"
       />
     </svg>
   );
@@ -423,21 +410,17 @@ export function MsVerifyLogo({ className = "w-10 h-10" }: { className?: string }
 export function AuthMsgLogo({ className = "w-10 h-10" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="authGrad" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#334155" />
-          <stop offset="100%" stopColor="#1E293B" />
-        </linearGradient>
-      </defs>
-      <circle cx="32" cy="32" r="28" fill="url(#authGrad)" stroke="#F59E0B" strokeWidth="1.5" />
-      {/* Message bubble with keyhole */}
       <path
-        d="M19 22C19 19.8 20.8 18 23 18H41C43.2 18 45 19.8 45 22V36C45 38.2 43.2 40 41 40H28L21 45V40H23C20.8 40 19 38.2 19 36V22Z"
-        fill="#F59E0B"
+        d="M10 16C10 13.7909 11.7909 12 14 12H50C52.2091 12 54 13.7909 54 16V48C54 50.2091 52.2091 52 50 52H14C11.7909 52 10 50.2091 10 48V16Z"
+        fill="#111827"
       />
-      {/* Keyhole / Lock */}
-      <circle cx="32" cy="27" r="3" fill="#1E293B" />
-      <path d="M30.5 28.5L33.5 28.5L34 34L30 34L30.5 28.5Z" fill="#1E293B" />
+      <path
+        d="M14 16L32 32L50 16"
+        stroke="white"
+        strokeWidth="4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
@@ -480,15 +463,17 @@ export function IatSmsLogo({ className = "w-10 h-10" }: { className?: string }) 
 export function HuaweiLogo({ className = "w-10 h-10" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="32" cy="32" r="28" fill="#CF0A2C" />
-      <g transform="translate(18, 16)" fill="white">
-        <path d="M14 2C14 2 17 8 17 12C17 14 15.5 15.5 14 15.5C12.5 15.5 11 14 11 12C11 8 14 2 14 2Z" />
-        <path d="M8 5C8 5 12 10 12 14C12 16 10.5 17 9 17C7.5 17 6.5 15.5 6.5 14C6.5 10 8 5 8 5Z" />
-        <path d="M20 5C20 5 16 10 16 14C16 16 17.5 17 19 17C20.5 17 21.5 15.5 21.5 14C21.5 10 20 5 20 5Z" />
-        <path d="M3 11C3 11 8 14 8 18C8 19.5 7 21 5.5 21C4 21 3 19.5 3 18C3 15 3 11 3 11Z" />
-        <path d="M25 11C25 11 20 14 20 18C20 19.5 21 21 22.5 21C24 21 25 19.5 25 18C25 15 25 11 25 11Z" />
-        <rect x="2" y="24" width="24" height="2.5" rx="1" fill="white" />
-      </g>
+      <path
+        d="M10 16C10 13.7909 11.7909 12 14 12H50C52.2091 12 54 13.7909 54 16V48C54 50.2091 52.2091 52 50 52H14C11.7909 52 10 50.2091 10 48V16Z"
+        fill="#111827"
+      />
+      <path
+        d="M14 16L32 32L50 16"
+        stroke="white"
+        strokeWidth="4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }

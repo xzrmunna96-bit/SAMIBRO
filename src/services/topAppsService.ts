@@ -16,27 +16,27 @@ export const TOP_APPS_UPDATE_EVENT = 'super_x_top_apps_updated';
 
 export const DEFAULT_TOP_APPS: TopAppItem[] = [
   { id: 'wa', name: 'WhatsApp', range: '22501', status: 'active', isEnabled: true, category: 'Messaging' },
-  { id: 'tg', name: 'Telegram', range: '88017', status: 'active', isEnabled: true, category: 'Messaging' },
-  { id: 'baji', name: 'Baji / Baji999', range: '88017', status: 'active', isEnabled: true, category: 'Gaming / Betting' },
+  { id: 'tiktok', name: 'TikTok', range: '88017', status: 'active', isEnabled: true, category: 'Social' },
+  { id: 'microsoft', name: 'Microsoft', range: '15552', status: 'active', isEnabled: true, category: 'Tech' },
+  { id: 'apple', name: 'Apple', range: '44740', status: 'active', isEnabled: true, category: 'Tech' },
+  { id: 'authmsg', name: 'AUTHMSG', range: '14322', status: 'active', isEnabled: true, category: 'Verification' },
   { id: 'fb', name: 'FACEBOOK', range: '44740', status: 'active', isEnabled: true, category: 'Social' },
+  { id: 'huawei', name: 'Huawei', range: '23274', status: 'active', isEnabled: true, category: 'Tech' },
+  { id: 'paypal', name: 'PayPal', range: '1937', status: 'active', isEnabled: true, category: 'Finance' },
+  { id: 'tg', name: 'Telegram', range: '88017', status: 'active', isEnabled: true, category: 'Messaging' },
   { id: 'imo', name: 'IMO', range: '62812', status: 'active', isEnabled: true, category: 'Messaging' },
   { id: 'msverify', name: 'msverify', range: '14306', status: 'active', isEnabled: true, category: 'Verification' },
-  { id: 'authmsg', name: 'AUTHMSG', range: '14322', status: 'active', isEnabled: true, category: 'Verification' },
   { id: 'amazon', name: 'Amazon', range: '15552', status: 'active', isEnabled: true, category: 'E-Commerce' },
   { id: 'shopee', name: 'Shopee', range: '62812', status: 'active', isEnabled: true, category: 'E-Commerce' },
-  { id: 'avabet', name: 'AVABet', range: '38267', status: 'active', isEnabled: true, category: 'Gaming / Betting' },
-  { id: 'linkedin', name: 'LinkedIn', range: '5651', status: 'active', isEnabled: true, category: 'Social' },
-  { id: 'paypal', name: 'PAYPAL', range: '1937', status: 'active', isEnabled: true, category: 'Finance' },
-  { id: 'melbet', name: 'Melbet', range: '88019', status: 'active', isEnabled: true, category: 'Gaming / Betting' },
-  { id: 'bolt', name: 'Bolt', range: '23480', status: 'active', isEnabled: true, category: 'Rides' },
-  { id: 'uber', name: 'Uber', range: '15552', status: 'active', isEnabled: true, category: 'Rides' },
-  { id: 'microsoft', name: 'Microsoft', range: '15552', status: 'active', isEnabled: true, category: 'Tech' },
-  { id: 'tiktok', name: 'TikTok', range: '88017', status: 'active', isEnabled: true, category: 'Social' },
-  { id: 'apple', name: 'Apple', range: '44740', status: 'active', isEnabled: true, category: 'Tech' },
-  { id: 'huawei', name: 'Huawei', range: '23274', status: 'active', isEnabled: true, category: 'Tech' },
   { id: 'google', name: 'Google', range: '91987', status: 'active', isEnabled: true, category: 'Tech' },
   { id: 'instagram', name: 'Instagram', range: '23762', status: 'active', isEnabled: true, category: 'Social' },
   { id: 'twitter', name: 'Twitter / X', range: '62812', status: 'active', isEnabled: true, category: 'Social' },
+  { id: 'baji', name: 'Baji / Baji999', range: '88017', status: 'active', isEnabled: true, category: 'Gaming / Betting' },
+  { id: 'avabet', name: 'AVABet', range: '38267', status: 'active', isEnabled: true, category: 'Gaming / Betting' },
+  { id: 'linkedin', name: 'LinkedIn', range: '5651', status: 'active', isEnabled: true, category: 'Social' },
+  { id: 'melbet', name: 'Melbet', range: '88019', status: 'active', isEnabled: true, category: 'Gaming / Betting' },
+  { id: 'bolt', name: 'Bolt', range: '23480', status: 'active', isEnabled: true, category: 'Rides' },
+  { id: 'uber', name: 'Uber', range: '15552', status: 'active', isEnabled: true, category: 'Rides' },
 ];
 
 export function getTopAppsConfig(): TopAppItem[] {
@@ -127,83 +127,221 @@ export function checkAndApply24HourReset(): { didReset: boolean; lastResetTime: 
   return { didReset: false, lastResetTime: lastReset };
 }
 
+export function parseHitTimestamp(rawTime: any): number {
+  if (typeof rawTime === 'number') {
+    return rawTime < 10000000000 ? rawTime * 1000 : rawTime;
+  }
+  if (!rawTime) return Date.now();
+  const str = String(rawTime).trim();
+  const num = Number(str);
+  if (!isNaN(num) && num > 0) {
+    return num < 10000000000 ? num * 1000 : num;
+  }
+  const isoStr = str.includes(' ') && !str.includes('T') ? str.replace(' ', 'T') : str;
+  const parsed = new Date(isoStr).getTime();
+  return isNaN(parsed) ? Date.now() : parsed;
+}
+
+/**
+ * Detect canonical service category with 100% strictness to prevent cross-service OTP leakage
+ */
+export function detectCanonicalService(hit: { sid?: string; message?: string; service?: string }): string {
+  if (!hit) return 'Other';
+  const sid = ((hit as any).service || hit.sid || '').toLowerCase().trim();
+  const msg = (hit.message || '').toLowerCase();
+
+  // 1. WhatsApp
+  if (sid.includes('whatsapp') || sid === 'wa' || msg.includes('whatsapp') || msg.includes('wa.me') || msg.includes('wa code')) {
+    return 'WhatsApp';
+  }
+  // 2. Facebook / Meta
+  if (sid.includes('facebook') || sid === 'fb' || sid === 'meta' || msg.includes('facebook') || msg.includes('fb-') || msg.includes('fb code') || msg.includes('meta code')) {
+    return 'FACEBOOK';
+  }
+  // 3. Telegram
+  if (sid.includes('telegram') || sid === 'tg' || msg.includes('telegram') || msg.includes('t.me') || msg.includes('tg code')) {
+    return 'Telegram';
+  }
+  // 4. Instagram
+  if (sid.includes('instagram') || sid === 'insta' || sid === 'ig' || sid.startsWith('insta_') || msg.includes('instagram') || msg.includes('ig code') || msg.includes('ig-')) {
+    return 'Instagram';
+  }
+  // 5. TikTok
+  if (sid.includes('tiktok') || msg.includes('tiktok')) {
+    return 'TikTok';
+  }
+  // 6. IMO
+  if (sid.includes('imo') || msg.includes('imo code') || msg.includes('imo verification') || msg.includes('imo ')) {
+    return 'IMO';
+  }
+  // 7. Google
+  if (sid.includes('google') || sid === 'gsuite' || msg.includes('google verification') || msg.includes('g-') || msg.includes('google code')) {
+    return 'Google';
+  }
+  // 8. Apple
+  if (sid.includes('apple') || msg.includes('apple id') || msg.includes('apple code') || msg.includes('apple verification')) {
+    return 'Apple';
+  }
+  // 9. Microsoft
+  if (sid.includes('microsoft') || msg.includes('microsoft') || msg.includes('msft') || msg.includes('live.com') || msg.includes('xbox')) {
+    return 'Microsoft';
+  }
+  // 10. msverify
+  if (sid.includes('msverify') || msg.includes('msverify')) {
+    return 'msverify';
+  }
+  // 11. AUTHMSG
+  if (sid === 'authmsg' || (sid.includes('authmsg') && !sid.includes('facebook') && !sid.includes('whatsapp'))) {
+    return 'AUTHMSG';
+  }
+  // 12. Amazon
+  if (sid.includes('amazon') || msg.includes('amazon')) {
+    return 'Amazon';
+  }
+  // 13. Shopee
+  if (sid.includes('shopee') || msg.includes('shopee')) {
+    return 'Shopee';
+  }
+  // 14. Baji / Baji999
+  if (sid.includes('baji') || msg.includes('baji') || msg.includes('bj999')) {
+    return 'Baji / Baji999';
+  }
+  // 15. Melbet
+  if (sid.includes('melbet') || msg.includes('melbet')) {
+    return 'Melbet';
+  }
+  // 16. AVABet
+  if (sid.includes('avabet') || msg.includes('avabet')) {
+    return 'AVABet';
+  }
+  // 17. LinkedIn
+  if (sid.includes('linkedin') || msg.includes('linkedin')) {
+    return 'LinkedIn';
+  }
+  // 18. PAYPAL
+  if (sid.includes('paypal') || msg.includes('paypal')) {
+    return 'PAYPAL';
+  }
+  // 19. Uber
+  if (sid.includes('uber') || msg.includes('uber code')) {
+    return 'Uber';
+  }
+  // 20. Bolt
+  if (sid.includes('bolt') || msg.includes('bolt code')) {
+    return 'Bolt';
+  }
+  // 21. Snapchat
+  if (sid.includes('snapchat') || msg.includes('snapchat')) {
+    return 'Snapchat';
+  }
+  // 22. Viber
+  if (sid.includes('viber') || msg.includes('viber')) {
+    return 'Viber';
+  }
+  // 23. Discord
+  if (sid.includes('discord') || msg.includes('discord')) {
+    return 'Discord';
+  }
+  // 24. Huawei
+  if (sid.includes('huawei') || msg.includes('huawei')) {
+    return 'Huawei';
+  }
+  // 25. Twitter / X
+  if (sid === 'twitter' || sid === 'x' || sid === 'x.com' || msg.includes('twitter') || msg.includes('x.com')) {
+    return 'Twitter / X';
+  }
+
+  if (sid) {
+    return sid.charAt(0).toUpperCase() + sid.slice(1);
+  }
+  return 'Other';
+}
+
 /**
  * Robust, Canonical App Matching
- * Matches incoming SMS hits (by SID and content signatures) to Top Applications
+ * Matches incoming SMS hits strictly to the target application.
+ * Prevents false positives and cross-app OTP bleeding.
  */
-export function isHitMatchingApp(hit: { sid?: string; message?: string }, appNameOrId: string): boolean {
+export function isHitMatchingApp(hit: { sid?: string; message?: string; service?: string }, appNameOrId: string): boolean {
   if (!hit || !appNameOrId) return false;
-  const rawTarget = appNameOrId.toLowerCase().trim();
-  const targetKey = rawTarget.replace(/[^a-z0-9]/g, '');
-  const sid = (hit.sid || '').toLowerCase().trim();
-  const msg = (hit.message || '').toLowerCase();
-  const combined = `${sid} ${msg}`;
+  const canonical = detectCanonicalService(hit);
+  const target = appNameOrId.trim();
+  const targetLower = target.toLowerCase();
+  const targetKey = targetLower.replace(/[^a-z0-9]/g, '');
+  const canonicalLower = canonical.toLowerCase();
+  const canonicalKey = canonicalLower.replace(/[^a-z0-9]/g, '');
 
-  if (targetKey.includes('whatsapp') || targetKey === 'wa') {
-    return combined.includes('whatsapp') || combined.includes('wa.me') || combined.includes('wa code') || sid === 'wa';
+  if (canonicalKey === targetKey) return true;
+  if (canonicalLower === targetLower) return true;
+
+  if (targetKey === 'wa' || targetKey === 'whatsapp') {
+    return canonicalKey === 'whatsapp' || canonicalKey === 'wa';
   }
-  if (targetKey.includes('facebook') || targetKey === 'fb') {
-    return combined.includes('facebook') || combined.includes('fb-') || combined.includes('meta') || sid === 'fb';
+  if (targetKey === 'fb' || targetKey === 'facebook') {
+    return canonicalKey === 'facebook' || canonicalKey === 'fb';
   }
-  if (targetKey.includes('telegram') || targetKey === 'tg') {
-    return combined.includes('telegram') || combined.includes('t.me') || combined.includes('tg code') || sid === 'tg';
+  if (targetKey === 'tg' || targetKey === 'telegram') {
+    return canonicalKey === 'telegram' || canonicalKey === 'tg';
   }
-  if (targetKey.includes('instagram') || targetKey === 'insta' || targetKey === 'ig') {
-    return combined.includes('instagram') || combined.includes('insta') || combined.includes('ig code') || combined.includes('ig-') || sid === 'ig';
-  }
-  if (targetKey.includes('tiktok')) {
-    return combined.includes('tiktok');
-  }
-  if (targetKey.includes('imo')) {
-    return combined.includes('imo');
-  }
-  if (targetKey.includes('google')) {
-    return combined.includes('google') || combined.includes('gsuite') || combined.includes('g-');
+  if (targetKey === 'ig' || targetKey === 'insta' || targetKey === 'instagram') {
+    return canonicalKey === 'instagram' || canonicalKey === 'ig' || canonicalKey === 'insta';
   }
   if (targetKey.includes('baji')) {
-    return combined.includes('baji') || combined.includes('bj999');
+    return canonicalKey.includes('baji');
   }
-  if (targetKey.includes('twitter') || targetKey.includes('x') || rawTarget.includes('x')) {
-    return combined.includes('twitter') || combined.includes('x.com');
+  if (targetKey === 'msverify') {
+    return canonicalKey === 'msverify';
   }
-  if (targetKey.includes('amazon')) {
-    return combined.includes('amazon');
+  if (targetKey === 'authmsg') {
+    return canonicalKey === 'authmsg';
   }
-  if (targetKey.includes('apple')) {
-    return combined.includes('apple');
+  if (targetKey === 'microsoft') {
+    return canonicalKey === 'microsoft';
   }
-  if (targetKey.includes('shopee')) {
-    return combined.includes('shopee');
+  if (targetKey === 'apple') {
+    return canonicalKey === 'apple';
   }
-  if (targetKey.includes('avabet')) {
-    return combined.includes('avabet');
+  if (targetKey === 'tiktok') {
+    return canonicalKey === 'tiktok';
   }
-  if (targetKey.includes('melbet')) {
-    return combined.includes('melbet');
+  if (targetKey === 'imo') {
+    return canonicalKey === 'imo';
   }
-  if (targetKey.includes('linkedin')) {
-    return combined.includes('linkedin');
+  if (targetKey === 'google') {
+    return canonicalKey === 'google';
   }
-  if (targetKey.includes('paypal')) {
-    return combined.includes('paypal');
+  if (targetKey.includes('twitter') || targetKey === 'x') {
+    return canonicalKey.includes('twitter') || canonicalKey === 'x';
   }
-  if (targetKey.includes('bolt')) {
-    return combined.includes('bolt');
+  if (targetKey === 'amazon') {
+    return canonicalKey === 'amazon';
   }
-  if (targetKey.includes('uber')) {
-    return combined.includes('uber');
+  if (targetKey === 'shopee') {
+    return canonicalKey === 'shopee';
   }
-  if (targetKey.includes('microsoft') || targetKey.includes('msverify')) {
-    return combined.includes('microsoft') || combined.includes('msverify');
+  if (targetKey === 'avabet') {
+    return canonicalKey === 'avabet';
   }
-  if (targetKey.includes('authmsg')) {
-    return combined.includes('authmsg') || combined.includes('auth code') || combined.includes('auth');
+  if (targetKey === 'melbet') {
+    return canonicalKey === 'melbet';
   }
-  if (targetKey.includes('huawei')) {
-    return combined.includes('huawei');
+  if (targetKey === 'linkedin') {
+    return canonicalKey === 'linkedin';
+  }
+  if (targetKey === 'paypal') {
+    return canonicalKey === 'paypal';
+  }
+  if (targetKey === 'uber') {
+    return canonicalKey === 'uber';
+  }
+  if (targetKey === 'bolt') {
+    return canonicalKey === 'bolt';
+  }
+  if (targetKey === 'huawei') {
+    return canonicalKey === 'huawei';
   }
 
-  return sid.includes(rawTarget) || msg.includes(rawTarget) || sid.includes(targetKey) || msg.includes(targetKey);
+  return false;
 }
 
 /**
@@ -214,13 +352,16 @@ export function filterHitsForApp(hits: any[], appNameOrId: string, maxAgeMs = 24
   const now = Date.now();
   const minTime = now - maxAgeMs;
 
+  const isAll =
+    appNameOrId.trim().toUpperCase() === "ALL" ||
+    appNameOrId.trim().toUpperCase() === "ALL APPLICATIONS" ||
+    appNameOrId.trim().toUpperCase() === "ALL APPS";
+
   return hits.filter((h) => {
     if (!h) return false;
-    let t = typeof h.time === 'number'
-      ? (h.time < 10000000000 ? h.time * 1000 : h.time)
-      : (h.timestamp || new Date(h.time).getTime());
-    if (isNaN(t) || t <= 0) t = now;
+    const t = parseHitTimestamp(h.time ?? h.timestamp);
     if (t < minTime) return false; // Enforce strict 24-hour limit
+    if (isAll) return true;
     return isHitMatchingApp(h, appNameOrId);
   });
 }

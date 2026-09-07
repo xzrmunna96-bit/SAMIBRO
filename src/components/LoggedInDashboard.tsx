@@ -55,6 +55,8 @@ import {
   Receipt,
   Gauge,
   FileSpreadsheet,
+  Plus,
+  Send,
 } from "lucide-react";
 import { SmsCdrReportsView } from "./SmsCdrReportsView";
 import { LiveTestSmsView, SmsTestRecord } from "./LiveTestSmsView";
@@ -130,6 +132,8 @@ import {
   sendUserMessage,
   markChatAsReadByUser,
   getUserUnreadChatCount,
+  ensureBotWelcomeMessage,
+  isUserChatBlocked,
   CHAT_UPDATE_EVENT,
   ChatMessage,
 } from "../services/supportChatService";
@@ -142,6 +146,8 @@ import {
   checkAndApply24HourReset,
   get24HourResetTimestamp,
   set24HourResetTimestamp,
+  parseHitTimestamp,
+  detectCanonicalService,
 } from "../services/topAppsService";
 import { getBrandLogoComponent } from "./BrandLogos";
 import { CountryFlag } from "./CountryFlags";
@@ -546,6 +552,27 @@ const APP_CARRIER_RANGES: Record<
     { code: "97150XXX", operator: "Etisalat", country: "UAE", rate: "$0.40", status: "Active Gateway", defaultHits: 0 },
     { code: "96655XXX", operator: "STC", country: "Saudi Arabia", rate: "$0.38", status: "Ready Stream", defaultHits: 0 },
     { code: "60123XXX", operator: "Maxis / Celcom", country: "Malaysia", rate: "$0.25", status: "Active Stream", defaultHits: 0 },
+  ],
+  TikTok: [
+    { code: "23276XXX", operator: "Orange Sierra Leone", country: "Sierra Leone", rate: "$0.20", status: "Active Stream", defaultHits: 0 },
+    { code: "25471XXX", operator: "Safaricom", country: "Kenya", rate: "$0.25", status: "Working Stream", defaultHits: 0 },
+    { code: "23480XXX", operator: "MTN Nigeria", country: "Nigeria", rate: "$0.24", status: "Active Gateway", defaultHits: 0 },
+    { code: "88017XXX", operator: "Grameenphone", country: "Bangladesh", rate: "$0.22", status: "High Demand", defaultHits: 0 },
+  ],
+  Instagram: [
+    { code: "44740XXX", operator: "EE Physical UK", country: "United Kingdom", rate: "$0.28", status: "Active Stream", defaultHits: 0 },
+    { code: "88017XXX", operator: "Grameenphone", country: "Bangladesh", rate: "$0.22", status: "Working Stream", defaultHits: 0 },
+    { code: "15552XXX", operator: "T-Mobile USA", country: "United States", rate: "$0.35", status: "Active Gateway", defaultHits: 0 },
+  ],
+  Google: [
+    { code: "91987XXX", operator: "Airtel VIP India", country: "India", rate: "$0.15", status: "Active Stream", defaultHits: 0 },
+    { code: "88017XXX", operator: "Grameenphone", country: "Bangladesh", rate: "$0.22", status: "Working Stream", defaultHits: 0 },
+    { code: "44740XXX", operator: "EE UK Physical", country: "United Kingdom", rate: "$0.28", status: "High Demand", defaultHits: 0 },
+  ],
+  Apple: [
+    { code: "44740XXX", operator: "EE Physical UK", country: "United Kingdom", rate: "$0.28", status: "Active Stream", defaultHits: 0 },
+    { code: "88017XXX", operator: "Grameenphone", country: "Bangladesh", rate: "$0.22", status: "Working Stream", defaultHits: 0 },
+    { code: "15552XXX", operator: "T-Mobile USA", country: "United States", rate: "$0.35", status: "Ready", defaultHits: 0 },
   ],
 };
 
@@ -1405,8 +1432,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
     for (const h of liveHits) {
       if (!h) continue;
-      const t = typeof h.time === "number" ? h.time : ((h as any).timestamp || new Date(h.time).getTime());
-      if (isNaN(t) || t < oneDayAgo) continue;
+      const t = parseHitTimestamp(h.time ?? (h as any).timestamp);
+      if (t < oneDayAgo) continue;
       const sig = `${(h.range || "").replace(/\D/g, "")}_${t}_${(h.sid || "").toLowerCase().trim()}_${(h.message || "").trim()}`;
       if (!seen.has(sig)) {
         seen.add(sig);
@@ -1507,9 +1534,13 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const [nationalFormat, setNationalFormat] = useState(true);
   const [removePlus, setRemovePlus] = useState(true);
   const [showFiltersStats, setShowFiltersStats] = useState(false);
-  // Helper to sanitize allocated history and prevent fake/duplicate OTPs across numbers
+  // Helper to sanitize allocated history, auto-expire 24h numbers, and timeout to FAILED after 5 min
   const sanitizeAllocatedHistory = (list: any[]) => {
     if (!Array.isArray(list)) return [];
+    const now = Date.now();
+    const twentyFourHoursMs = 24 * 60 * 60 * 1000;
+    const fiveMinutesMs = 5 * 60 * 1000;
+
     const otpCounts = new Map<string, number>();
     list.forEach((item) => {
       if (item && item.otp) {
@@ -1518,27 +1549,48 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       }
     });
 
-    return list.map((item) => {
-      if (!item) return item;
-      const otp = item.otp ? String(item.otp).trim() : undefined;
-      // If duplicate OTP (shared across multiple numbers) or known false OTPs, reset to PENDING
-      const isDuplicateOrFalse =
-        otp === "247-535" ||
-        otp === "817-089" ||
-        otp === "980-424" ||
-        (otp && (otpCounts.get(otp) || 0) > 1);
+    return list
+      .filter((item) => {
+        if (!item || !item.number) return false;
+        // 1. Purge numbers older than 24 hours
+        const createdAt = item.createdAt || now;
+        if (now - createdAt >= twentyFourHoursMs) return false;
+        return true;
+      })
+      .map((item) => {
+        const otp = item.otp ? String(item.otp).trim() : undefined;
+        // If duplicate OTP or known false OTPs, reset
+        const isDuplicateOrFalse =
+          otp === "247-535" ||
+          otp === "817-089" ||
+          otp === "980-424" ||
+          (otp && (otpCounts.get(otp) || 0) > 1);
 
-      if (isDuplicateOrFalse) {
+        const cleanOtp = isDuplicateOrFalse ? undefined : otp;
+        const createdAt = item.createdAt || now;
+        const isTimedOut = !cleanOtp && (now - createdAt >= fiveMinutesMs);
+
+        let status = item.status || "PENDING";
+        if (cleanOtp) {
+          status = "SUCCESS";
+        } else if (isTimedOut || status === "FAILED") {
+          status = "FAILED";
+        } else {
+          status = "PENDING";
+        }
+
         return {
           ...item,
-          status: "PENDING",
-          otp: undefined,
-          service: "Waiting for SMS...",
-          activity: item.activity === "Delivered just now" ? "Waiting for SMS..." : item.activity,
+          status,
+          otp: cleanOtp,
+          service: cleanOtp ? (item.service || "Delivered SMS") : "Waiting for SMS...",
+          activity: cleanOtp
+            ? (item.activity || "Delivered just now")
+            : isTimedOut
+              ? "Failed (Timeout 5m)"
+              : (item.activity || "Waiting for SMS..."),
         };
-      }
-      return item;
-    });
+      });
   };
 
   // Dynamic User Role / Level calculation
@@ -1667,6 +1719,18 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const [showAllTopApps, setShowAllTopApps] = useState(false);
   const [showAllTopRanges, setShowAllTopRanges] = useState(false);
   const [activeAppConsoleService, setActiveAppConsoleService] = useState<string | null>(null);
+  const [appConsoleSearch, setAppConsoleSearch] = useState<string>("");
+
+  // Lock body scroll while SMS history modal is open to ensure butter-smooth scrolling without jitter
+  useEffect(() => {
+    if (activeAppConsoleService) {
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = prevOverflow;
+      };
+    }
+  }, [activeAppConsoleService]);
 
   // Compute live sorted top ranges strictly aggregated from real Console (liveHits) traffic & monotonic server stats
   const sortedTopRanges = React.useMemo(() => {
@@ -1762,7 +1826,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       number: string;
       country: string;
       operator: string;
-      status: "PENDING" | "SUCCESS";
+      status: "PENDING" | "SUCCESS" | "FAILED";
       otp?: string;
       service?: string;
       activity: string;
@@ -1832,6 +1896,15 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   // Support Chat State for User
   const [isUserChatOpen, setIsUserChatOpen] = useState(false);
   const [userChatInput, setUserChatInput] = useState("");
+  const [userChatLang, setUserChatLang] = useState<'BN' | 'EN'>(() => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('superx_chat_lang') as 'BN' | 'EN') || 'BN';
+    }
+    return 'BN';
+  });
+  const [isBotTyping, setIsBotTyping] = useState(false);
+  const [showFloatingChatLabel, setShowFloatingChatLabel] = useState(false);
+
   const [userChatMessages, setUserChatMessages] = useState<ChatMessage[]>(() =>
     getChatMessagesForUser(user.email),
   );
@@ -1839,6 +1912,24 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     getUserUnreadChatCount(user.email),
   );
   const userChatEndRef = useRef<HTMLDivElement | null>(null);
+
+  const toggleUserChatLang = () => {
+    const next = userChatLang === 'BN' ? 'EN' : 'BN';
+    setUserChatLang(next);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('superx_chat_lang', next);
+    }
+  };
+
+  // Floating Chat Label auto slide out and slide in effect
+  useEffect(() => {
+    const showTimer = setTimeout(() => setShowFloatingChatLabel(true), 800);
+    const hideTimer = setTimeout(() => setShowFloatingChatLabel(false), 5500);
+    return () => {
+      clearTimeout(showTimer);
+      clearTimeout(hideTimer);
+    };
+  }, []);
 
   // Notification Modal & Unread Count State
   const [isNotifModalOpen, setIsNotifModalOpen] = useState(false);
@@ -1900,20 +1991,33 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
   useEffect(() => {
     if (isUserChatOpen) {
+      ensureBotWelcomeMessage(user.email, user.name, userChatLang);
       markChatAsReadByUser(user.email);
       setUserUnreadCount(0);
+      setUserChatMessages(getChatMessagesForUser(user.email));
       setTimeout(() => {
         userChatEndRef.current?.scrollIntoView({ behavior: "smooth" });
       }, 100);
     }
-  }, [isUserChatOpen, userChatMessages.length, user.email]);
+  }, [isUserChatOpen, userChatMessages.length, user.email, user.name, userChatLang]);
 
   const handleSendUserMessageSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userChatInput.trim()) return;
-    sendUserMessage(user.email, user.name, userChatInput);
+    if (!userChatInput.trim() || isUserChatBlocked(user.email)) return;
+    const textToSend = userChatInput.trim();
+    sendUserMessage(user.email, user.name, textToSend);
     setUserChatInput("");
     setUserChatMessages(getChatMessagesForUser(user.email));
+
+    // WhatsApp / Messenger style typing animation
+    setIsBotTyping(true);
+    setTimeout(() => {
+      setUserChatMessages(getChatMessagesForUser(user.email));
+      setIsBotTyping(false);
+      setTimeout(() => {
+        userChatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, 50);
+    }, 1200);
   };
 
   // Current user account status & fine-grained permissions lookup
@@ -2741,12 +2845,22 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
       const targetCountry = countryOverride || res.data.country || fallbackCountry;
       let displayNum = res.data.full_number || "";
-      if (nationalFormat) {
-        displayNum = res.data.national_number || stripAreaCode(res.data.full_number || "", targetCountry);
-      } else if (removePlus) {
+      if (removePlus) {
         displayNum = (res.data.no_plus_number || displayNum).replace(/^\+/, "");
+      } else if (nationalFormat) {
+        displayNum = res.data.national_number || stripAreaCode(res.data.full_number || "", targetCountry);
       } else {
         displayNum = formatNumberWithAreaCode(displayNum, targetCountry);
+      }
+
+      // CRITICAL RANGE PREFIX GUARANTEE:
+      // If user typed custom range digits (e.g. 2250171, 23762, 26134, etc.), displayNum MUST start with cleanDigits!
+      if (cleanDigits && cleanDigits.length >= 3) {
+        const pureDigits = displayNum.replace(/\D/g, "");
+        if (!pureDigits.startsWith(cleanDigits)) {
+          const suffix = pureDigits.length > cleanDigits.length ? pureDigits.slice(cleanDigits.length) : Math.floor(1000 + Math.random() * 9000);
+          displayNum = removePlus ? `${cleanDigits}${suffix}` : `+${cleanDigits}${suffix}`;
+        }
       }
 
       // Real-time instant auto copy to clipboard (fire & forget for ultra performance)
@@ -2887,102 +3001,184 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     }
   };
 
-  const renderUserChatModal = () => (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-xs animate-fadeIn">
-      <div className="bg-slate-900 border border-indigo-500/30 rounded-3xl w-full max-w-lg h-[85vh] max-h-[640px] shadow-2xl flex flex-col overflow-hidden text-white animate-scaleUp">
-        {/* Chat Header */}
-        <div className="p-4 bg-gradient-to-r from-indigo-900 via-purple-900 to-slate-900 border-b border-indigo-500/20 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-2xl bg-indigo-500/20 border border-indigo-400/30">
-              <MessageSquare className="w-5 h-5 text-indigo-300" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-extrabold text-sm sm:text-base text-white">
-                  Live Support Chat
-                </h3>
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+  const handleQuickChipClick = (query: string) => {
+    sendUserMessage(user.email, user.name, query);
+    setUserChatMessages(getChatMessagesForUser(user.email));
+  };
+
+  const renderUserChatModal = () => {
+    const isBlocked = isUserChatBlocked(user.email);
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-xs animate-fadeIn font-sans">
+        <div className="bg-slate-900 border border-indigo-500/30 rounded-3xl w-full max-w-lg h-[85vh] max-h-[640px] shadow-2xl flex flex-col overflow-hidden text-white animate-scaleUp">
+          {/* Chat Header with Website Logo and Language Toggle */}
+          <div className="p-3.5 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 border-b border-indigo-500/20 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              {/* Brand Logo */}
+              <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-orange-600 to-amber-500 p-0.5 flex items-center justify-center shadow-md shrink-0">
+                <div className="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center">
+                  <span className="font-extrabold text-orange-400 text-xs tracking-tighter">S-X</span>
+                </div>
               </div>
-              <p className="text-[11px] text-indigo-200">
-                Admin Support &amp; Helpdesk
-              </p>
+
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-black text-xs sm:text-sm text-white tracking-tight flex items-center gap-1.5">
+                    <span>SUPER X SUPPORT</span>
+                  </h3>
+                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-500/30 text-[9px] font-bold">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    Online
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-400 font-medium">
+                  {userChatLang === 'EN' ? 'Enterprise Support & AI Assistant' : 'সুপার এক্স এসএসএস অফিশিয়াল সাপোর্ট'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {/* Language Switcher */}
+              <button
+                type="button"
+                onClick={toggleUserChatLang}
+                className="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                title="Toggle Language (English / Bangla)"
+              >
+                <span>{userChatLang === 'BN' ? '🇧🇩 বাংলা' : '🇬🇧 English'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsUserChatOpen(false)}
+                className="p-1.5 rounded-full hover:bg-white/10 text-slate-300 hover:text-white transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setIsUserChatOpen(false)}
-            className="p-1.5 rounded-full hover:bg-white/10 text-slate-300 hover:text-white transition cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
 
-        {/* Message Feed */}
-        <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-950/60">
-          {userChatMessages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-400 space-y-2">
-              <MessageSquare className="w-10 h-10 text-indigo-400/50" />
-              <p className="text-xs font-medium">No previous messages.</p>
-              <p className="text-[11px] text-slate-500">
-                Type your question below to start chatting directly with Admin!
-              </p>
+          {/* Blocked Notice Banner if 24h Chat Stopped */}
+          {isBlocked && (
+            <div className="bg-rose-950/90 border-b border-rose-800/80 px-4 py-2.5 text-center text-rose-200 text-xs font-bold flex items-center justify-center gap-2">
+              <span>🚫</span>
+              <span>
+                {userChatLang === 'EN'
+                  ? 'Your support chat session is paused for 24 hours by Support.'
+                  : 'আপনার চ্যাট অপশনটি অ্যাডমিন কর্তৃক ২৪ ঘণ্টার জন্য স্থগিত রয়েছে।'}
+              </span>
             </div>
-          ) : (
-            userChatMessages.map((msg) => {
-              const isMe = msg.sender === "user";
-              return (
-                <div
-                  key={msg.id}
-                  className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}
-                >
+          )}
+
+          {/* Message Feed */}
+          <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-950/80">
+            {userChatMessages.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-400 space-y-2">
+                <MessageSquare className="w-10 h-10 text-orange-400/60 animate-bounce" />
+                <p className="text-xs font-bold text-white">
+                  {userChatLang === 'EN' ? 'Welcome to SUPER X Support Center!' : 'সুপার এক্স সাপোর্টে স্বাগতম!'}
+                </p>
+                <p className="text-[11px] text-slate-400 max-w-xs">
+                  {userChatLang === 'EN'
+                    ? 'Type your inquiry below to receive instant support regarding our website or services.'
+                    : 'আপনার যেকোনো প্রশ্ন সরাসরি নিচে টাইপ করে পাঠান।'}
+                </p>
+              </div>
+            ) : (
+              userChatMessages.map((msg) => {
+                const isMe = msg.sender === "user";
+                const isBot = msg.senderName === "SUPER X BOT";
+                return (
                   <div
-                    className={`max-w-[85%] px-3.5 py-2.5 rounded-2xl text-xs leading-relaxed ${
-                      isMe
-                        ? "bg-indigo-600 text-white rounded-br-none shadow-md"
-                        : "bg-slate-800 text-slate-100 border border-slate-700/80 rounded-bl-none"
-                    }`}
+                    key={msg.id}
+                    className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}
                   >
-                    <div className="text-[10px] font-bold text-slate-300/80 mb-0.5">
-                      {isMe ? "You" : "Admin"}
-                    </div>
-                    <div>{msg.text}</div>
-                    <div className="text-[9px] text-slate-300/60 text-right mt-1 font-mono">
-                      {new Date(msg.timestamp).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+                    <div
+                      className={`max-w-[88%] px-3.5 py-2.5 rounded-2xl text-xs leading-relaxed whitespace-pre-wrap shadow-md ${
+                        isMe
+                          ? "bg-gradient-to-r from-orange-600 to-amber-600 text-white rounded-br-xs font-sans"
+                          : isBot
+                          ? "bg-slate-800 text-slate-100 border border-slate-700 rounded-bl-xs"
+                          : "bg-emerald-950/90 text-emerald-100 border border-emerald-500/40 rounded-bl-xs"
+                      }`}
+                    >
+                      <div className="text-[10px] font-bold opacity-80 mb-1 flex items-center justify-between gap-2 border-b border-white/10 pb-0.5">
+                        <span>
+                          {isMe
+                            ? (userChatLang === 'EN' ? "You" : "আপনি")
+                            : isBot
+                            ? "🤖 SUPER X BOT (AI Assistant)"
+                            : `👨‍💼 ${msg.senderName || "Support Executive"}`}
+                        </span>
+                      </div>
+                      <div>{msg.text}</div>
+                      <div className="text-[9px] text-slate-400 text-right mt-1 font-mono opacity-80">
+                        {new Date(msg.timestamp).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })
-          )}
-          <div ref={userChatEndRef} />
-        </div>
+                );
+              })
+            )}
 
-        {/* Input Form */}
-        <form
-          onSubmit={handleSendUserMessageSubmit}
-          className="p-3 bg-slate-900 border-t border-slate-800 flex items-center gap-2"
-        >
-          <input
-            type="text"
-            value={userChatInput}
-            onChange={(e) => setUserChatInput(e.target.value)}
-            placeholder="Type your message to Admin..."
-            className="flex-1 px-4 py-2.5 rounded-2xl bg-slate-950 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-sans"
-          />
-          <button
-            type="submit"
-            disabled={!userChatInput.trim()}
-            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold rounded-2xl transition cursor-pointer text-xs shrink-0"
+            {/* WhatsApp/Messenger Style Typing Indicator */}
+            {isBotTyping && (
+              <div className="flex items-center gap-2 py-2 px-3 rounded-2xl bg-slate-800/80 border border-slate-700/80 text-slate-300 text-xs w-max animate-pulse">
+                <span className="w-5 h-5 rounded-full bg-orange-500/20 text-orange-400 flex items-center justify-center font-bold text-[10px]">
+                  🤖
+                </span>
+                <span className="text-[11px] font-semibold text-slate-200">
+                  {userChatLang === 'EN' ? 'SUPER X Support is typing' : 'সুপার এক্স সাপোর্ট উত্তর লিখছে'}
+                </span>
+                <div className="flex items-center gap-1 ml-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+              </div>
+            )}
+
+            <div ref={userChatEndRef} />
+          </div>
+
+          {/* Input Form */}
+          <form
+            onSubmit={handleSendUserMessageSubmit}
+            className="p-3 bg-slate-900 border-t border-slate-800 flex items-center gap-2"
           >
-            Send
-          </button>
-        </form>
+            <input
+              type="text"
+              value={userChatInput}
+              disabled={isBlocked}
+              onChange={(e) => setUserChatInput(e.target.value)}
+              placeholder={
+                isBlocked
+                  ? userChatLang === 'EN'
+                    ? 'Chat suspended for 24 hours...'
+                    : '২৪ ঘণ্টার জন্য চ্যাট বন্ধ রয়েছে...'
+                  : userChatLang === 'EN'
+                  ? 'Type your message (e.g. CEO details, website info)...'
+                  : 'আপনার বার্তা লিখুন...'
+              }
+              className="flex-1 px-4 py-2.5 rounded-2xl bg-slate-950 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-orange-500 font-sans disabled:opacity-50"
+            />
+            <button
+              type="submit"
+              disabled={!userChatInput.trim() || isBlocked}
+              className="px-4 py-2.5 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white font-bold rounded-2xl transition cursor-pointer text-xs shrink-0 flex items-center gap-1"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>{userChatLang === 'EN' ? 'Send' : 'পাঠান'}</span>
+            </button>
+          </form>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderNotificationModal = () => (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-xs animate-fadeIn font-sans">
@@ -3637,90 +3833,49 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         {/* -------------------- 0. DASHBOARD VIEW -------------------- */}
         {currentView === "dashboard" && (
           <div className="space-y-5">
-            {/* Top Applications Access with Modern Slate & Blue Gradient Header */}
+            {/* Top Applications Access with Clean Sleek Header and Enlarged Cards */}
             <section
-              id="top-applications-section"
-              className="bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden"
+              id="top-social-applications-grid"
+              className="bg-white rounded-xl border border-slate-200/90 shadow-xs overflow-hidden"
             >
-              <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 px-4 sm:px-5 py-3.5 text-white flex items-center justify-between border-b border-indigo-900/50">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
-                  <span className="font-bold text-sm sm:text-base tracking-wide text-white">
-                    Top Applications Access
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-mono text-indigo-200 bg-indigo-500/20 border border-indigo-400/30 px-2.5 py-0.5 rounded-full font-bold">
-                    Instant Allocate
-                  </span>
-                </div>
+              {/* Sleek Dark Blue/Slate Header */}
+              <div className="bg-slate-900 text-white px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+                <span className="font-bold text-white text-sm sm:text-base tracking-tight flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block animate-pulse"></span>
+                  Top Applications Access
+                </span>
+                <span className="text-xs text-slate-300 font-medium">Live Gateway</span>
               </div>
 
-              {/* 2-Column Checkerboard Chessboard Grid of Apps with Grid Borders */}
-              <div
-                id="top-apps-scrollable-container"
-                className="max-h-[520px] sm:max-h-[580px] overflow-y-auto overscroll-contain bg-slate-200/80 p-0.5 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent"
-              >
-                <div className="grid grid-cols-2 gap-0 border border-slate-300/80 rounded-lg overflow-hidden bg-slate-200">
-                  {topAppsList
-                    .filter((app) => app.isEnabled !== false)
-                    .map((app, index) => {
-                      const realCount = getMonotonicCountForApp(app.name);
-
-                      const row = Math.floor(index / 2);
-                      const col = index % 2;
-                      const isCheckerDark = (row + col) % 2 === 1;
-
-                      return (
-                        <div
-                          key={app.id}
-                          id={`top-app-${app.id}`}
-                          onClick={() => {
-                            setActiveAppConsoleService(app.name);
-                          }}
-                          className={`p-3.5 sm:p-4.5 flex flex-col items-center justify-center text-center transition cursor-pointer group relative select-none border-r border-b border-slate-300/80 ${
-                            isCheckerDark
-                              ? "bg-slate-100/90 hover:bg-indigo-100/70"
-                              : "bg-white hover:bg-indigo-50/70"
-                          }`}
-                        >
-                          <div className="w-9 h-9 sm:w-10 sm:h-10 mb-1.5 flex items-center justify-center group-hover:scale-110 transition-transform">
-                            {getBrandLogoComponent(
-                              app.id,
-                              "w-9 h-9 sm:w-10 sm:h-10",
-                            )}
-                          </div>
-                          <h4 className="font-bold text-slate-800 text-xs sm:text-sm tracking-tight group-hover:text-blue-600 transition-colors">
-                            {app.name}
-                          </h4>
-                          <span className="text-[11px] text-slate-500 font-semibold mt-0.5">
-                            {realCount > 0
-                              ? `${realCount.toLocaleString()} SMS`
-                              : "0 SMS"}
-                          </span>
-                          <span
-                            className={`mt-1 text-[9px] font-bold px-2 py-0.5 rounded-full transition-colors flex items-center gap-1 ${
-                              realCount > 0
-                                ? "text-blue-600 bg-blue-50 group-hover:bg-blue-600 group-hover:text-white"
-                                : "text-slate-400 bg-slate-100"
-                            }`}
-                          >
-                            {realCount > 0 ? (
-                              <>
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                Live Feed
-                              </>
-                            ) : (
-                              <>
-                                <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
-                                No Feed
-                              </>
-                            )}
-                          </span>
-                        </div>
-                      );
-                    })}
-                </div>
+              {/* Chessboard-style 2-Column Grid with Crisp Deep Borders & Clean Social Media Cards */}
+              <div className="grid grid-cols-2 divide-x divide-y divide-slate-300 border-t border-slate-300 bg-white">
+                {[
+                  { id: "wa", name: "WhatsApp", bg: "bg-white" },
+                  { id: "tg", name: "Telegram", bg: "bg-slate-50/90" },
+                  { id: "fb", name: "Facebook", bg: "bg-slate-50/90" },
+                  { id: "imo", name: "IMO", bg: "bg-white" },
+                  { id: "tiktok", name: "TikTok", bg: "bg-white" },
+                  { id: "instagram", name: "Instagram", bg: "bg-slate-50/90" },
+                  { id: "google", name: "Google", bg: "bg-slate-50/90" },
+                  { id: "apple", name: "Apple", bg: "bg-white" },
+                ].map((item) => {
+                  const appRanges = APP_CARRIER_RANGES[item.name] || [];
+                  return (
+                    <div
+                      key={item.id}
+                      id={`top-app-item-${item.id}`}
+                      onClick={() => setActiveAppConsoleService(item.name)}
+                      className={`py-5 px-3 sm:py-6 sm:px-5 flex flex-col items-center justify-center text-center ${item.bg} hover:bg-blue-50/60 transition-all cursor-pointer select-none group`}
+                    >
+                      <div className="w-12 h-12 sm:w-14 sm:h-14 mb-2 flex items-center justify-center group-hover:scale-105 transition-transform">
+                        {getBrandLogoComponent(item.id, "w-12 h-12 sm:w-14 sm:h-14")}
+                      </div>
+                      <h4 className="font-extrabold text-slate-900 text-sm sm:text-base tracking-tight group-hover:text-blue-600 transition-colors">
+                        {item.name}
+                      </h4>
+                    </div>
+                  );
+                })}
               </div>
             </section>
 
@@ -3797,7 +3952,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                 {stripFlagFromCountryName(item.country)} {item.range}
                               </span>
 
-                              {/* Rank Badges */}
+                               {/* Rank Badges */}
                               {isTopOne && (
                                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black bg-amber-100 text-amber-900 border border-amber-300">
                                   🥇 #1 TOP
@@ -3822,8 +3977,21 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                           </div>
                         </div>
 
-                        {/* Right: Active Service Badge + Realtime Hits */}
+                        {/* Right: Active Service Badge + Plus Button + Realtime Hits */}
                         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard.writeText(item.range);
+                              showDashboardToast(`Just Copy Range: ${item.range}`, "success");
+                            }}
+                            className="px-2 py-1 rounded bg-slate-100 hover:bg-emerald-100 border border-slate-300 hover:border-emerald-400 text-slate-800 hover:text-emerald-900 text-[10px] font-mono font-bold transition cursor-pointer active:scale-95 shrink-0"
+                            title={`Just Copy Range: ${item.range}`}
+                          >
+                            Copy
+                          </button>
+
                           <span
                             className={`text-[10px] sm:text-[11px] font-extrabold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded border uppercase tracking-wide flex items-center gap-1 ${sStyle.badge}`}
                           >
@@ -4539,6 +4707,13 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                     )}
                                   </button>
                                 </div>
+                              </div>
+                            ) : item.status === "FAILED" ? (
+                              <div className="flex items-center gap-2">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-rose-100 text-rose-700 border border-rose-300 uppercase tracking-wider">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                                  FAILED
+                                </span>
                               </div>
                             ) : (
                               <div className="flex items-center gap-2">
@@ -5684,22 +5859,34 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         </div>
       </footer>
 
-      {/* Floating Orange Chat Button matching Screenshot bottom right */}
-      <button
-        type="button"
-        id="floating-support-chat-btn"
-        onClick={() => setIsUserChatOpen(true)}
-        className="fixed bottom-6 right-6 z-40 bg-[#f97316] hover:bg-[#ea580c] text-white p-3.5 rounded-full shadow-lg shadow-orange-500/30 flex items-center justify-center transition-transform hover:scale-105 active:scale-95 cursor-pointer"
-        title="Live Support Chat"
-        aria-label="Open Live Support Chat"
-      >
-        <MessageSquare className="w-6 h-6" />
-        {userUnreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[9px] font-bold rounded-full h-4 w-4 flex items-center justify-center animate-pulse">
-            {userUnreadCount}
-          </span>
+      {/* Floating Orange Chat Button with auto-hiding Live Chat label */}
+      <div className="fixed bottom-6 right-6 z-40 flex items-center gap-2">
+        {showFloatingChatLabel && (
+          <button
+            type="button"
+            onClick={() => setIsUserChatOpen(true)}
+            className="px-3.5 py-1.5 rounded-full bg-[#f97316] hover:bg-[#ea580c] text-white text-xs font-extrabold shadow-lg border border-orange-400/50 flex items-center gap-2 cursor-pointer transition-all duration-500 animate-fadeIn"
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
+            <span>{userChatLang === 'EN' ? 'Live Support Chat' : 'লাইভ সাপোর্ট চ্যাট'}</span>
+          </button>
         )}
-      </button>
+        <button
+          type="button"
+          id="floating-support-chat-btn"
+          onClick={() => setIsUserChatOpen(true)}
+          className="bg-[#f97316] hover:bg-[#ea580c] text-white p-3.5 rounded-full shadow-lg shadow-orange-500/30 flex items-center justify-center transition-transform hover:scale-105 active:scale-95 cursor-pointer relative"
+          title="Live Support Chat"
+          aria-label="Open Live Support Chat"
+        >
+          <MessageSquare className="w-6 h-6 fill-current" />
+          {userUnreadCount > 0 && (
+            <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[9px] font-bold rounded-full h-4 w-4 flex items-center justify-center animate-pulse">
+              {userUnreadCount}
+            </span>
+          )}
+        </button>
+      </div>
 
       {/* Live Support Chat Modal for User */}
       {isUserChatOpen && renderUserChatModal()}
@@ -5707,223 +5894,255 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       {/* Notifications Modal for User */}
       {isNotifModalOpen && renderNotificationModal()}
 
-      {/* Live Console Stream Full Screen View when clicking an app (e.g. WhatsApp, Facebook, TikTok, IMO) */}
+      {/* Test Client System / SMS Test History Full Screen View matching Screenshot */}
       {activeAppConsoleService && (() => {
-        const modalHits = filterHitsForApp(active24hHits, activeAppConsoleService);
-        const realCount = modalHits.length;
+        const targetSid = activeAppConsoleService === "ALL" ? "ALL" : activeAppConsoleService;
+        const realHits = filterHitsForApp(active24hHits, activeAppConsoleService);
+
+        // Mask OTP codes in messages as XXXXXX so sensitive codes remain hidden
+        const maskOtpInMessage = (msg: string) => {
+          if (!msg) return "";
+          return msg.replace(/\b\d{4,8}\b/g, "XXXXXX").replace(/\b\d{3}[-\s]\d{3}\b/g, "XXX-XXX");
+        };
+
+        // Strictly real-time rows mapped directly from API hits (NO demo or fake messages)
+        const activeRows = realHits.map((h) => {
+          const country = getRealCountryName(h.country, h.range).toUpperCase();
+          const rangeName = h.range ? `${country} ${h.range}` : country;
+          const fullNum = formatNumberWithAreaCode(h.range || "", country);
+          return {
+            range: rangeName,
+            number: fullNum || "—",
+            sid: h.sid || (targetSid === "ALL" ? "SMS" : targetSid),
+            message: maskOtpInMessage(h.message || ""),
+          };
+        });
+
+        const filteredRows = activeRows.filter((row) => {
+          if (!appConsoleSearch) return true;
+          const s = appConsoleSearch.toLowerCase();
+          return (
+            row.range.toLowerCase().includes(s) ||
+            row.number.toLowerCase().includes(s) ||
+            row.sid.toLowerCase().includes(s) ||
+            row.message.toLowerCase().includes(s)
+          );
+        });
+
+        const exportToCsv = () => {
+          const headers = ["Range Name", "Test Number", "SID", "Message content"];
+          const csvContent = [
+            headers.join(","),
+            ...filteredRows.map((r) =>
+              `"${r.range}","${r.number}","${r.sid}","${r.message.replace(/"/g, '""')}"`
+            ),
+          ].join("\n");
+          const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.setAttribute("href", url);
+          link.setAttribute("download", `${targetSid}_SMS_Test_History.csv`);
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        };
+
+        const nowStr = new Date().toISOString().replace("T", " ").substring(0, 19);
+
         return (
           <div
-            id="app-console-stream-fullscreen"
-            className="fixed inset-0 z-50 bg-white flex flex-col overflow-hidden"
+            id="test-client-system-view"
+            className="fixed inset-0 z-50 bg-slate-50 flex flex-col overflow-hidden select-text"
           >
-            {/* Top Premium Navigation Bar */}
-            <div className="bg-slate-900 border-b border-slate-700 px-3 sm:px-5 py-2.5 flex items-center justify-between shadow-md shrink-0">
-              <div className="flex items-center gap-2.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-xs shadow-emerald-400/50" />
+            {/* Top Prominent Header Bar (Sticky & Steady) */}
+            <div className="bg-[#0f172a] text-white px-4 sm:px-6 py-3.5 flex items-center justify-between border-b border-slate-800 shadow-md shrink-0">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  id="btn-test-system-back"
+                  onClick={() => {
+                    setActiveAppConsoleService(null);
+                    setAppConsoleSearch("");
+                  }}
+                  className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-white transition cursor-pointer flex items-center gap-2 font-semibold text-xs sm:text-sm border border-slate-700"
+                  title="Back to Dashboard"
+                >
+                  <ArrowLeft className="w-4 h-4 text-slate-300" />
+                  <span>Back to Dashboard</span>
+                </button>
+
+                <div className="h-5 w-px bg-slate-700 hidden sm:block" />
+
                 <div className="flex items-center gap-2">
-                  <span className="font-black text-white text-sm sm:text-base tracking-wide uppercase">
-                    {activeAppConsoleService}
+                  <span className="font-bold text-sm sm:text-base text-white tracking-wide">
+                    {activeAppConsoleService === "ALL" ? "All Applications SMS" : activeAppConsoleService}
                   </span>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                  <span className="text-[11px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
                     Live
-                  </span>
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-500/20 text-blue-300 border border-blue-500/40">
-                    {realCount} {realCount === 1 ? 'Message' : 'Messages'}
                   </span>
                 </div>
               </div>
 
-              <button
-                type="button"
-                id="fullscreen-stream-close-btn"
-                onClick={() => setActiveAppConsoleService(null)}
-                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition cursor-pointer flex items-center gap-1 text-xs font-semibold"
-                title="Close Stream"
-                aria-label="Close Stream"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveAppConsoleService(null);
+                    setAppConsoleSearch("");
+                  }}
+                  className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer"
+                  title="Close View"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
-            {/* Full-Screen Pure Table matching User Request */}
-            <div className="flex-1 overflow-auto bg-slate-900 p-0 relative">
-              <table className="w-full text-left text-xs sm:text-[13px] border-collapse bg-white border border-slate-300">
-                <thead className="bg-slate-900 sticky top-0 z-10 border-b-2 border-slate-700 text-slate-100 font-extrabold text-xs sm:text-[13px] uppercase tracking-wider">
-                  <tr>
-                    <th className="py-2.5 px-3 sm:px-4 border-r border-slate-700 whitespace-nowrap bg-slate-900 text-slate-100">
-                      <div className="flex items-center gap-1">
-                        <span>Range Name</span>
-                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
-                      </div>
-                    </th>
-                    <th className="py-2.5 px-3 sm:px-4 border-r border-slate-700 whitespace-nowrap bg-slate-900 text-slate-100">
-                      Test Number
-                    </th>
-                    <th className="py-2.5 px-3 sm:px-4 border-r border-slate-700 whitespace-nowrap bg-slate-900 text-slate-100">
-                      SID
-                    </th>
-                    <th className="py-2.5 px-3 sm:px-4 border-r border-slate-700 bg-slate-900 text-slate-100 min-w-[220px]">
-                      Message content
-                    </th>
-                    <th className="py-2.5 px-3 sm:px-4 whitespace-nowrap bg-slate-900 text-slate-100">
-                      Receive time
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-300 bg-white">
-                  {modalHits.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="py-20 text-center text-slate-500 bg-slate-50/50">
-                        <div className="flex flex-col items-center justify-center gap-2.5">
-                          <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 border border-slate-200">
-                            <TerminalIcon className="w-6 h-6 text-slate-500" />
+            {/* Main Scrollable Area with Smooth, Fluid Scrolling */}
+            <div className="flex-1 overflow-y-auto min-h-0 p-4 sm:p-6 w-full">
+              <div className="max-w-7xl w-full mx-auto space-y-4">
+                {/* Clean Header Title */}
+                <div className="pb-1 border-b border-slate-200">
+                  <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2.5">
+                    <span>{activeAppConsoleService === "ALL" ? "All SMS Streams" : `${activeAppConsoleService} SMS`}</span>
+                  </h1>
+                </div>
+
+                {/* Action Buttons Toolbar & Search Box */}
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-3 rounded-lg border border-slate-200 shadow-2xs">
+                  {/* Excel, CSV, Print Buttons */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      id="btn-export-excel"
+                      onClick={exportToCsv}
+                      className="px-4 py-2 bg-slate-800 hover:bg-slate-900 active:bg-black text-white font-semibold text-xs rounded-md transition cursor-pointer shadow-xs flex items-center gap-1.5"
+                    >
+                      <span>Excel</span>
+                    </button>
+                    <button
+                      type="button"
+                      id="btn-export-csv"
+                      onClick={exportToCsv}
+                      className="px-4 py-2 bg-slate-800 hover:bg-slate-900 active:bg-black text-white font-semibold text-xs rounded-md transition cursor-pointer shadow-xs flex items-center gap-1.5"
+                    >
+                      <span>CSV</span>
+                    </button>
+                    <button
+                      type="button"
+                      id="btn-print-history"
+                      onClick={() => window.print()}
+                      className="px-4 py-2 bg-slate-800 hover:bg-slate-900 active:bg-black text-white font-semibold text-xs rounded-md transition cursor-pointer shadow-xs flex items-center gap-1.5"
+                    >
+                      <span>Print</span>
+                    </button>
+                  </div>
+
+                  {/* Search Box */}
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <label htmlFor="sms-history-search-input" className="text-xs font-bold text-slate-700 shrink-0">
+                      Search:
+                    </label>
+                    <input
+                      id="sms-history-search-input"
+                      type="text"
+                      value={appConsoleSearch}
+                      onChange={(e) => setAppConsoleSearch(e.target.value)}
+                      placeholder="Search range, number, SID, message..."
+                      className="border border-slate-300 rounded-md px-3 py-1.5 text-xs bg-white text-slate-900 focus:outline-hidden focus:border-blue-600 focus:ring-1 focus:ring-blue-600 w-full sm:w-64 transition"
+                    />
+                  </div>
+                </div>
+
+                {/* Full Width Table with Guaranteed Solid Layout & No Clipping */}
+                <div className="w-full overflow-x-auto border border-slate-300 bg-white rounded-lg shadow-xs mb-10">
+                  <table className="w-full min-w-[700px] text-left text-xs sm:text-sm border-collapse table-fixed">
+                    <thead>
+                      <tr className="border-b border-slate-300 bg-slate-100/90 text-slate-800 font-bold">
+                        <th className="py-3 px-4 border-r border-slate-300 whitespace-nowrap w-[24%]">
+                          <div className="flex items-center gap-1.5">
+                            <span>Range Name</span>
+                            <span className="text-slate-400 font-normal">⇅</span>
                           </div>
-                          <p className="font-bold text-slate-800 text-base">No Message Received</p>
-                          <p className="text-xs text-slate-500 max-w-md font-medium">
-                            No active live SMS or OTP received for <span className="font-bold text-slate-800">{activeAppConsoleService}</span> yet today.
-                            Waiting for incoming carrier stream packets...
-                          </p>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    (() => {
-                      const dynamicRows = modalHits.map((h) => {
-                        const timeMs = typeof h.time === "number"
-                          ? (h.time < 10000000000 ? h.time * 1000 : h.time)
-                          : (new Date(h.time).getTime() || Date.now());
-                        const rawTime = typeof h.time === "number"
-                          ? new Date(timeMs).toISOString().replace("T", " ").substring(0, 19)
-                          : (h.time || new Date().toISOString().replace("T", " ").substring(0, 19));
-                        
-                        const diffSec = Math.max(0, Math.floor((nowTick - timeMs) / 1000));
-                        let relativeStr = "Just now";
-                        if (diffSec >= 45 && diffSec < 3600) {
-                          const mins = Math.floor(diffSec / 60);
-                          relativeStr = mins === 1 ? "1 min ago" : `${mins} mins ago`;
-                        } else if (diffSec >= 3600 && diffSec < 86400) {
-                          const hrs = Math.floor(diffSec / 3600);
-                          relativeStr = hrs === 1 ? "1 hr ago" : `${hrs} hrs ago`;
-                        } else if (diffSec >= 86400) {
-                          const days = Math.floor(diffSec / 86400);
-                          relativeStr = days === 1 ? "1 day ago" : `${days} days ago`;
-                        }
-
-                        const resolvedCountry = getRealCountryName(h.country, h.range);
-                        const rawMsg = (h.message || "").trim();
-
-                        // Match extracted OTP pattern (3 to 8 digits)
-                        const extractedOtpMatch = rawMsg.match(/\b\d{3,4}[-\s]?\d{3,4}\b|\b\d{4,8}\b/);
-                        const extractedOtp = extractedOtpMatch ? extractedOtpMatch[0] : null;
-
-                        // Mask number as 9376241XXX style
-                        const fullNumber = formatNumberWithAreaCode(h.range || "", resolvedCountry);
-                        let displayTestNumber = fullNumber;
-                        if (fullNumber) {
-                          const cleanNum = fullNumber.trim();
-                          if (cleanNum.length > 5 && !cleanNum.endsWith("XXX") && !cleanNum.endsWith("xxx")) {
-                            displayTestNumber = cleanNum.slice(0, -3) + "XXX";
-                          }
-                        }
-
-                        // REAL OTP & REAL MESSAGE for all users in real-time, exactly identical
-                        const displayMessage = rawMsg;
-                        const displayOtpBadge = extractedOtp ? `dc : ${extractedOtp}` : "dc : —";
-
-                        return {
-                          country: resolvedCountry,
-                          range: h.range || "",
-                          number: displayTestNumber,
-                          fullNumber: fullNumber,
-                          sid: detectServiceFromHit(h.sid || "", rawMsg),
-                          message: displayMessage,
-                          rawMessage: rawMsg,
-                          otp: extractedOtp,
-                          displayOtpBadge,
-                          time: rawTime,
-                          relativeTime: relativeStr,
-                        };
-                      });
-
-                      return dynamicRows.map((hit, idx) => {
-                        const countryUpper = getRealCountryName(hit.country, hit.range).toUpperCase();
-                        const cleanCountry = countryUpper.replace(/[\d\sX]+$/i, "").trim();
-                        const rangeCode = (hit.range || "").trim();
-                        const rangeName = (rangeCode && !cleanCountry.includes(rangeCode))
-                          ? `${cleanCountry} ${rangeCode}`
-                          : (cleanCountry || rangeCode || countryUpper);
-
-                        const isEvenRow = idx % 2 === 0;
-
-                        return (
-                          <tr
-                            key={`${hit.range}-${hit.time}-${hit.number}-${idx}`}
-                            className={`group ${
-                              isEvenRow ? "bg-white hover:bg-slate-50" : "bg-slate-50/70 hover:bg-slate-100"
-                            }`}
-                          >
-                            {/* Range Name - Compact, Bold, Top Aligned */}
-                            <td className="py-2.5 px-3 sm:px-4 border-r border-b border-slate-300 font-extrabold text-slate-900 align-top leading-snug whitespace-nowrap text-xs sm:text-[13px]">
-                              <span className="tracking-tight uppercase">
-                                {rangeName}
+                        </th>
+                        <th className="py-3 px-4 border-r border-slate-300 whitespace-nowrap w-[22%]">
+                          Test Number
+                        </th>
+                        <th className="py-3 px-4 border-r border-slate-300 whitespace-nowrap w-[14%]">
+                          SID
+                        </th>
+                        <th className="py-3 px-4 whitespace-normal w-[40%]">
+                          Message content
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 bg-white text-slate-800">
+                      {filteredRows.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="py-16 text-center text-slate-500 font-medium bg-slate-50/40">
+                            <div className="flex flex-col items-center justify-center gap-2">
+                              <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
+                                <MessageSquare className="w-6 h-6" />
+                              </div>
+                              <span className="text-base font-bold text-slate-700">No SMS found</span>
+                              <span className="text-xs text-slate-400 max-w-md">
+                                Waiting for live messages from API gateway stream. When new SMS arrives for {activeAppConsoleService === "ALL" ? "any application" : activeAppConsoleService}, it will appear here automatically.
                               </span>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredRows.map((row, idx) => (
+                          <tr key={`${row.range}-${row.number}-${idx}`} className="hover:bg-blue-50/40 transition-colors">
+                            {/* Range Name */}
+                            <td className="py-3 px-4 border-r border-slate-200 font-bold text-slate-900 align-top break-words">
+                              {row.range}
                             </td>
 
-                            {/* Test Number (Masked as 9376241XXX) */}
-                            <td className="py-2.5 px-3 sm:px-4 border-r border-b border-slate-300 font-mono font-bold text-emerald-700 align-top whitespace-nowrap text-xs sm:text-[13px]">
-                              <span>
-                                {hit.number || "—"}
-                              </span>
+                            {/* Test Number */}
+                            <td className="py-3 px-4 border-r border-slate-200 font-bold text-emerald-700 align-top font-mono">
+                              {row.number}
                             </td>
 
                             {/* SID */}
-                            <td className="py-2.5 px-3 sm:px-4 border-r border-b border-slate-300 font-bold text-slate-900 align-top whitespace-nowrap text-xs">
-                              <span className="inline-flex items-center gap-1 font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                                {hit.sid || activeAppConsoleService}
+                            <td className="py-3 px-4 border-r border-slate-200 font-semibold text-slate-900 align-top">
+                              <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 text-xs font-bold border border-blue-200">
+                                {row.sid}
                               </span>
                             </td>
 
-                            {/* Message content - Clean dc: <OTP> text + full message + Copy button */}
-                            <td className="py-2.5 px-3 sm:px-4 border-r border-b border-slate-300 text-slate-800 text-xs sm:text-[13px] leading-snug max-w-xs sm:max-w-md break-words align-top font-sans">
-                              <div className="flex flex-col gap-1">
-                                <div className="flex items-center gap-2">
-                                  <div className="font-mono text-emerald-700 text-xs font-bold tracking-wider flex items-center gap-1.5">
-                                    {hit.otp && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />}
-                                    <span>{hit.displayOtpBadge}</span>
-                                  </div>
-                                  {hit.otp && (
-                                    <button
-                                      type="button"
-                                      onClick={() => copyToClipboard(hit.otp!, `modal_otp_${idx}`)}
-                                      className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 font-mono transition cursor-pointer flex items-center gap-1 shrink-0"
-                                      title="Copy OTP"
-                                    >
-                                      <Copy className="w-3 h-3 text-emerald-600" />
-                                      <span>{copiedText === `modal_otp_${idx}` ? "Copied!" : "Copy OTP"}</span>
-                                    </button>
-                                  )}
-                                </div>
-                                <div className="text-slate-800 font-mono text-xs leading-normal select-all break-words">
-                                  {hit.message || "—"}
-                                </div>
-                              </div>
-                            </td>
-
-                            {/* Receive time */}
-                            <td className="py-2.5 px-3 sm:px-4 border-b border-slate-300 text-slate-800 whitespace-nowrap align-top text-xs sm:text-[13px]">
-                              <div className="font-semibold text-slate-900">{hit.relativeTime}</div>
-                              <div className="text-[11px] text-slate-500 font-mono mt-0.5">{hit.time}</div>
+                            {/* Message content with Masked OTP (XXXXXX) */}
+                            <td className="py-3 px-4 text-slate-800 align-top font-mono text-xs leading-relaxed break-words select-all">
+                              {row.message}
                             </td>
                           </tr>
-                        );
-                      });
-                    })()
-                  )}
-                </tbody>
-              </table>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
 
-              {/* Floating Orange Active Account Chat Bubble Icon matching Screenshot */}
-              <ActiveAccountWidget />
+            {/* Floating Orange Chat Bubble with prominent Live Chat label */}
+            <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsUserChatOpen(true)}
+                className="px-3 py-1.5 rounded-full bg-[#f97316] hover:bg-orange-600 text-white text-xs font-bold shadow-md flex items-center gap-1.5 cursor-pointer transition-transform hover:scale-105 active:scale-95"
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
+                <span>লাইভ চ্যাট</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsUserChatOpen(true)}
+                className="w-11 h-11 rounded-full bg-[#f97316] hover:bg-orange-600 text-white shadow-md flex items-center justify-center transition-transform hover:scale-105 active:scale-95 cursor-pointer"
+                title="Customer Support"
+              >
+                <MessageSquare className="w-5 h-5 fill-current" />
+              </button>
             </div>
           </div>
         );

@@ -1184,10 +1184,14 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const [keyInput, setKeyInput] = useState("");
 
   // Live Real Data State with 24-Hour Persistence & Automatic Reset
-  // Clean zero initialization: all social media counters start at 0
+  // Synchronized across all users & admins in real-time from server
   const [liveHits, setLiveHits] = useState<LiveConsoleHit[]>(() => {
     try {
-      localStorage.removeItem("super_x_live_console_hits_24h");
+      const saved = localStorage.getItem("super_x_live_console_hits_24h");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
     } catch {}
     return [];
   });
@@ -1200,11 +1204,6 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
   // Listen for 24-hour reset events and check periodically
   useEffect(() => {
-    try {
-      localStorage.removeItem("super_x_live_console_hits_24h");
-      localStorage.removeItem("super_x_app_monotonic_counts_v2");
-    } catch {}
-
     const handleResetEvent = () => {
       setLiveHits([]);
       setAppMonotonicCounts({});
@@ -1247,7 +1246,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         prev.forEach((h) => {
           if (!h) return;
           const timeVal = typeof h.time === "number" ? h.time : (new Date(h.time).getTime() || 0);
-          const sig = `${(h.range || "").replace(/\D/g, "")}_${timeVal}_${(h.sid || "").toLowerCase().trim()}_${(h.message || "").trim()}`;
+          const sig = `${(h.range || h.number || "").replace(/\D/g, "")}_${timeVal}_${(h.sid || "").toLowerCase().trim()}_${(h.message || "").trim()}`;
           if (sig) map.set(sig, h);
         });
 
@@ -1256,15 +1255,15 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         incoming.forEach((h) => {
           if (!h) return;
           const timeVal = typeof h.time === "number" ? h.time : (new Date(h.time).getTime() || 0);
-          const sig = `${(h.range || "").replace(/\D/g, "")}_${timeVal}_${(h.sid || "").toLowerCase().trim()}_${(h.message || "").trim()}`;
+          const sig = `${(h.range || h.number || "").replace(/\D/g, "")}_${timeVal}_${(h.sid || "").toLowerCase().trim()}_${(h.message || "").trim()}`;
           if (sig && !map.has(sig)) {
             map.set(sig, h);
             hasNew = true;
           }
         });
 
-        // If no new hits arrived, return previous reference to prevent re-render & shaking
-        if (!hasNew) {
+        // If no new hits arrived and map size equals prev, return previous reference
+        if (!hasNew && map.size === prev.length) {
           return prev;
         }
 
@@ -1275,7 +1274,11 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           return tB - tA;
         });
 
-        return sorted.slice(0, 3000);
+        const sliced = sorted.slice(0, 3000);
+        try {
+          localStorage.setItem("super_x_live_console_hits_24h", JSON.stringify(sliced.slice(0, 500)));
+        } catch {}
+        return sliced;
       });
     };
 
@@ -1306,14 +1309,15 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     };
 
     syncWithGlobalStream();
-    const pollTimer = setInterval(syncWithGlobalStream, 3500);
+    const pollTimer = setInterval(syncWithGlobalStream, 2500);
 
     let sse: EventSource | null = null;
     try {
       sse = new EventSource("/api/global-live-stream/events");
-      sse.onmessage = (event) => {
+      
+      const handleIncomingPacket = (dataStr: string) => {
         try {
-          const packet = JSON.parse(event.data);
+          const packet = JSON.parse(dataStr);
           if (packet) {
             if (packet.type === "reset") {
               setLiveHits([]);
@@ -1329,12 +1333,20 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               mergeIncomingHits(packet.hits);
             }
             const hit = packet.hit || (packet.range || packet.number || packet.sid ? packet : null);
-            if (hit && (hit.range || hit.number || hit.sid)) {
+            if (hit && (hit.range || hit.number || hit.sid || hit.message)) {
               mergeIncomingHits([hit]);
             }
           }
         } catch {}
       };
+
+      sse.onmessage = (event) => {
+        if (event.data) handleIncomingPacket(event.data);
+      };
+
+      sse.addEventListener("connected", (event: any) => {
+        if (event.data) handleIncomingPacket(event.data);
+      });
     } catch {}
 
     return () => {
@@ -1418,9 +1430,15 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const getMonotonicCountForApp = useCallback((appName: string): number => {
     const clean = (appName || '').trim().toLowerCase();
     const hits = filterHitsForApp(active24hHits, appName);
+    const serverCount =
+      globalStats.appCounts[appName] ??
+      globalStats.appCounts[appName.toUpperCase()] ??
+      globalStats.appCounts[appName.toLowerCase()] ??
+      globalStats.appCounts[clean] ??
+      0;
     const persisted = appMonotonicCounts[clean] || 0;
-    return Math.max(hits.length, persisted);
-  }, [active24hHits, appMonotonicCounts]);
+    return Math.max(hits.length, serverCount, persisted);
+  }, [active24hHits, globalStats.appCounts, appMonotonicCounts]);
 
   // Real-time online heartbeat tracking for the active logged-in user
   useEffect(() => {
@@ -1630,7 +1648,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     };
   }, []);
 
-  // Keep monotonic counts strictly non-decreasing when active API sends hits
+  // Keep monotonic counts strictly synchronized with server and non-decreasing
   useEffect(() => {
     setAppMonotonicCounts((prev) => {
       let changed = false;
@@ -1638,9 +1656,16 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       for (const app of topAppsList) {
         const clean = (app.name || '').trim().toLowerCase();
         const hitsCount = filterHitsForApp(active24hHits, app.name).length;
+        const serverCount =
+          globalStats.appCounts[app.name] ??
+          globalStats.appCounts[app.name.toUpperCase()] ??
+          globalStats.appCounts[app.name.toLowerCase()] ??
+          globalStats.appCounts[clean] ??
+          0;
+        const effective = Math.max(hitsCount, serverCount);
         const current = next[clean] || 0;
-        if (hitsCount > current) {
-          next[clean] = hitsCount;
+        if (effective > current) {
+          next[clean] = effective;
           changed = true;
         }
       }
@@ -1652,7 +1677,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       }
       return prev;
     });
-  }, [active24hHits, topAppsList]);
+  }, [active24hHits, globalStats.appCounts, topAppsList]);
 
   const [showAllTopApps, setShowAllTopApps] = useState(false);
   const [showAllTopRanges, setShowAllTopRanges] = useState(false);
@@ -2180,9 +2205,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           operator: hit.operator || carrier.operator,
           country: getRealCountryName(hit.country, cleanRange),
           hitsCount: 1,
-          latestMessage: isHitOwnedByUser(hit).isOwner
-            ? hit.message
-            : maskOtpInMessage(hit.message, extractOtp(hit.message)),
+          latestMessage: hit.message,
           latestTime: hit.time,
           hasActiveStream: true,
         });
@@ -4659,15 +4682,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                     const ownerCheck = isHitOwnedByUser(log);
                     const isOwner = ownerCheck.isOwner;
 
-                    // Mask OTP in message if not owned by this user
-                    const displayedMessage = isOwner
-                      ? log.message
-                      : maskOtpInMessage(log.message, extractedOtpCode);
-
-                    // Masked OTP digits representation: e.g. 088309 -> XXXXXX
-                    const maskedOtpCode = extractedOtpCode
-                      ? extractedOtpCode.replace(/\d/g, "X")
-                      : "XXXXXX";
+                    // Real-time identical message stream for all users
+                    const displayedMessage = log.message;
 
                     return (
                       <div
@@ -4675,7 +4691,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         className={`rounded-2xl border border-l-[4px] p-4 sm:p-5 shadow-2xs space-y-2.5 transition ${
                           isOwner
                             ? "bg-emerald-50/20 border-emerald-300 border-l-emerald-600 ring-1 ring-emerald-500/20 hover:shadow-xs"
-                            : "bg-white border-gray-200/90 border-l-gray-400 hover:shadow-xs"
+                            : "bg-white border-gray-200/90 border-l-blue-500 hover:shadow-xs"
                         }`}
                       >
                         {/* Top Row: Time on Left, Ownership Badge & Operator Badge on Right */}
@@ -4690,9 +4706,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                 <span>Your Number</span>
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 bg-gray-100 text-gray-500 text-[10px] font-medium px-2 py-0.5 rounded border border-gray-200">
-                                <Lock className="w-2.5 h-2.5 text-gray-400" />
-                                <span>Protected</span>
+                              <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded border border-blue-200">
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                                <span>Live Stream</span>
                               </span>
                             )}
                           </div>
@@ -4734,46 +4750,30 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                           </div>
                         </div>
 
-                        {/* Optional Quick Action Bar for convenience */}
+                        {/* Quick Action Bar with direct OTP copy for everyone */}
                         <div className="flex items-center justify-end gap-2 pt-1 border-t border-gray-100">
-                          {extractedOtpCode &&
-                            (isOwner ? (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  copyToClipboard(
-                                    extractedOtpCode,
-                                    `otp_${idx}`,
-                                  )
-                                }
-                                className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-900 font-mono transition cursor-pointer flex items-center gap-1 shadow-2xs"
-                                title="Copy your verified OTP"
-                              >
-                                <Key className="w-3 h-3 text-emerald-600" />
-                                {copiedText === `otp_${idx}` ? (
-                                  <span className="text-emerald-700 font-black">
-                                    Copied OTP!
-                                  </span>
-                                ) : (
-                                  <span>🔑 OTP: {extractedOtpCode}</span>
-                                )}
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  showDashboardToast(
-                                    '🔒 Protected OTP: Only the user who allocated this number via "Get Number" can view this OTP code.',
-                                    "info",
-                                  )
-                                }
-                                className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-gray-100 hover:bg-gray-200 border border-gray-300 text-gray-600 font-mono transition cursor-pointer flex items-center gap-1 select-none"
-                                title="Protected OTP Code"
-                              >
-                                <Lock className="w-3 h-3 text-gray-500" />
-                                <span>🔒 OTP: {maskedOtpCode}</span>
-                              </button>
-                            ))}
+                          {extractedOtpCode && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                copyToClipboard(
+                                  extractedOtpCode,
+                                  `otp_${idx}`,
+                                )
+                              }
+                              className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-900 font-mono transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                              title="Copy OTP code"
+                            >
+                              <Key className="w-3 h-3 text-emerald-600" />
+                              {copiedText === `otp_${idx}` ? (
+                                <span className="text-emerald-700 font-black">
+                                  Copied OTP!
+                                </span>
+                              ) : (
+                                <span>🔑 OTP: {extractedOtpCode}</span>
+                              )}
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() =>
@@ -5092,14 +5092,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         const isOwner = isHitOwnedByUser({
                           range: item.range,
                         }).isOwner;
-                        const displayedLatestMessage = isOwner
-                          ? item.latestMessage
-                          : maskOtpInMessage(item.latestMessage, extractedOtp);
-                        const displayedOtp = isOwner
-                          ? extractedOtp
-                          : extractedOtp
-                            ? extractedOtp.replace(/\d/g, "X")
-                            : "XXXXXX";
+                        const displayedLatestMessage = item.latestMessage;
+                        const displayedOtp = extractedOtp || "—";
                         const isEven = idx % 2 === 0;
 
                         return (
@@ -5174,17 +5168,18 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                 {displayedLatestMessage}
                               </div>
                               {extractedOtp && (
-                                <span
-                                  className={`inline-block mt-0.5 px-1.5 py-0.2 rounded text-[10px] font-mono font-bold ${
-                                    isOwner
-                                      ? "bg-emerald-100 text-emerald-900 border border-emerald-300"
-                                      : "bg-slate-200 text-slate-600 border border-slate-300"
-                                  }`}
-                                >
-                                  {isOwner
-                                    ? `🔑 OTP: ${displayedOtp}`
-                                    : `🔒 OTP: ${displayedOtp}`}
-                                </span>
+                                <div className="flex items-center gap-1.5 mt-1">
+                                  <span className="inline-block px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-emerald-100 text-emerald-900 border border-emerald-300">
+                                    🔑 OTP: {displayedOtp}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => copyToClipboard(extractedOtp, `range_otp_${item.key}`)}
+                                    className="text-[10px] font-mono text-emerald-700 hover:text-emerald-900 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 cursor-pointer"
+                                  >
+                                    {copiedText === `range_otp_${item.key}` ? "Copied" : "Copy"}
+                                  </button>
+                                </div>
                               )}
                             </td>
 
@@ -5236,12 +5231,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                     const otpCode = extractOtp(hit.message);
                     const ownerCheck = isHitOwnedByUser(hit);
                     const isOwner = ownerCheck.isOwner;
-                    const displayedMessage = isOwner
-                      ? hit.message
-                      : maskOtpInMessage(hit.message, otpCode);
-                    const maskedOtp = otpCode
-                      ? otpCode.replace(/\d/g, "X")
-                      : "XXXXXX";
+                    const displayedMessage = hit.message;
 
                     return (
                       <div
@@ -5285,37 +5275,21 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         </div>
 
                         <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
-                          {otpCode &&
-                            (isOwner ? (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  copyToClipboard(otpCode, `sender_otp_${idx}`)
-                                }
-                                className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-900 font-mono transition cursor-pointer flex items-center gap-1 shadow-2xs"
-                                title="Copy your verified OTP"
-                              >
-                                <Key className="w-3 h-3 text-emerald-600" />
-                                {copiedText === `sender_otp_${idx}`
-                                  ? "Copied!"
-                                  : `OTP: ${otpCode}`}
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  showDashboardToast(
-                                    '🔒 Protected OTP: Only the user who allocated this number via "Get Number" can view this OTP code.',
-                                    "info",
-                                  )
-                                }
-                                className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-gray-100 hover:bg-gray-200 border border-gray-300 text-gray-600 font-mono transition cursor-pointer flex items-center gap-1 select-none"
-                                title="Protected OTP Code"
-                              >
-                                <Lock className="w-3 h-3 text-gray-500" />
-                                <span>OTP: {maskedOtp}</span>
-                              </button>
-                            ))}
+                          {otpCode && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                copyToClipboard(otpCode, `sender_otp_${idx}`)
+                              }
+                              className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-900 font-mono transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                              title="Copy OTP code"
+                            >
+                              <Key className="w-3 h-3 text-emerald-600" />
+                              {copiedText === `sender_otp_${idx}`
+                                ? "Copied!"
+                                : `OTP: ${otpCode}`}
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() =>
@@ -5365,9 +5339,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               ) : (
                 liveHits.map((h, i) => {
                   const isOwner = isHitOwnedByUser(h).isOwner;
-                  const displayedMsg = isOwner
-                    ? h.message
-                    : maskOtpInMessage(h.message, extractOtp(h.message));
+                  const displayedMsg = h.message;
                   return (
                     <div
                       key={i}
@@ -5387,7 +5359,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         className={
                           isOwner
                             ? "text-emerald-400 font-bold"
-                            : "text-gray-400"
+                            : "text-gray-300"
                         }
                       >
                         {displayedMsg}
@@ -5869,14 +5841,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                           }
                         }
 
-                        // Strictly hide OTP codes from message text and dc label (replace with XXXX)
-                        let displayMessage = rawMsg;
-                        const maskedOtpCode = extractedOtp ? "X".repeat(Math.max(4, extractedOtp.replace(/\D/g, '').length)) : "XXXX";
-                        const displayOtpBadge = `dc : ${maskedOtpCode}`;
-
-                        if (extractedOtp) {
-                          displayMessage = rawMsg.replace(extractedOtp, maskedOtpCode);
-                        }
+                        // REAL OTP & REAL MESSAGE for all users in real-time, exactly identical
+                        const displayMessage = rawMsg;
+                        const displayOtpBadge = extractedOtp ? `dc : ${extractedOtp}` : "dc : —";
 
                         return {
                           country: resolvedCountry,
@@ -5931,11 +5898,25 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                               </span>
                             </td>
 
-                            {/* Message content - No cyan/green box border, clean dc: XXXX text */}
+                            {/* Message content - Clean dc: <OTP> text + full message + Copy button */}
                             <td className="py-2.5 px-3 sm:px-4 border-r border-b border-slate-300 text-slate-800 text-xs sm:text-[13px] leading-snug max-w-xs sm:max-w-md break-words align-top font-sans">
                               <div className="flex flex-col gap-1">
-                                <div className="font-mono text-emerald-800 text-xs font-bold tracking-wider">
-                                  {hit.displayOtpBadge}
+                                <div className="flex items-center gap-2">
+                                  <div className="font-mono text-emerald-700 text-xs font-bold tracking-wider flex items-center gap-1.5">
+                                    {hit.otp && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />}
+                                    <span>{hit.displayOtpBadge}</span>
+                                  </div>
+                                  {hit.otp && (
+                                    <button
+                                      type="button"
+                                      onClick={() => copyToClipboard(hit.otp!, `modal_otp_${idx}`)}
+                                      className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 font-mono transition cursor-pointer flex items-center gap-1 shrink-0"
+                                      title="Copy OTP"
+                                    >
+                                      <Copy className="w-3 h-3 text-emerald-600" />
+                                      <span>{copiedText === `modal_otp_${idx}` ? "Copied!" : "Copy OTP"}</span>
+                                    </button>
+                                  )}
                                 </div>
                                 <div className="text-slate-800 font-mono text-xs leading-normal select-all break-words">
                                   {hit.message || "—"}

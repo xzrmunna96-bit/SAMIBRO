@@ -43,6 +43,26 @@ async function startServer() {
   const LIVE_CHATS_FILE = path.join(DATA_DIR, "live_chats.json");
   const GLOBAL_LIVE_HITS_FILE = path.join(DATA_DIR, "global_live_hits.json");
   const APP_COUNTS_FILE = path.join(DATA_DIR, "app_message_counts.json");
+  const SYSTEM_API_KEY_FILE = path.join(DATA_DIR, "system_api_key.json");
+
+  function loadSystemApiKey(): string {
+    try {
+      if (fs.existsSync(SYSTEM_API_KEY_FILE)) {
+        const raw = fs.readFileSync(SYSTEM_API_KEY_FILE, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed.apiKey === "string" && parsed.apiKey.trim() && parsed.apiKey.trim() !== "MOBEKJ8H20I" && parsed.apiKey.trim() !== "M7ANNWJY6B2") {
+          return parsed.apiKey.trim();
+        }
+      }
+    } catch {}
+    return "MK1CB2Y3GI9";
+  }
+
+  function saveSystemApiKey(key: string) {
+    try {
+      fs.writeFileSync(SYSTEM_API_KEY_FILE, JSON.stringify({ apiKey: key, updatedAt: Date.now() }, null, 2), "utf-8");
+    } catch {}
+  }
 
   const DEFAULT_NOTICE_TEXT = "SMS Portal - Premium Carrier Rates 📲 Instant Verification Codes & Physical Carrier Routes Active";
 
@@ -1481,8 +1501,10 @@ async function startServer() {
 
   let activeSystemApiKey = (process.env.VOLTX_KEY && process.env.VOLTX_KEY !== "M7ANNWJY6B2" && process.env.VOLTX_KEY !== "MOBEKJ8H20I")
     ? process.env.VOLTX_KEY
-    : "";
-  const VOLTX_BACKEND_SLUG = process.env.VOLTX_BACKEND_SLUG || "MXS47FLFX0U";
+    : loadSystemApiKey();
+  const VOLTX_BACKEND_SLUG = (process.env.VOLTX_BACKEND_SLUG && process.env.VOLTX_BACKEND_SLUG !== "00")
+    ? process.env.VOLTX_BACKEND_SLUG
+    : "MXS47FLFX0U";
 
   let cachedConsoleData: any = null;
   let lastConsoleCacheTime = 0;
@@ -2651,66 +2673,45 @@ async function startServer() {
   app.post("/api/system/api-key", async (req, res) => {
     const { apiKey } = req.body || {};
     const key = typeof apiKey === "string" ? apiKey.trim() : "";
-    activeSystemApiKey = key;
+    activeSystemApiKey = key || "MK1CB2Y3GI9";
+    saveSystemApiKey(activeSystemApiKey);
     cachedConsoleData = null;
 
-    // Reset all global live hits and stats to 0
-    serverGlobalLiveHits = [];
-    serverGlobalStats = {
-      appCounts: {},
-      rangeCounts: {},
-      totalHits: 0,
-      lastResetTime: Date.now(),
-    };
-    saveServerGlobalLiveHits([]);
-    saveServerGlobalStats(serverGlobalStats);
-
-    if (key) {
+    if (activeSystemApiKey) {
       serverApiActivationTimestamp = Date.now();
       serverBaselineSignatures.clear();
-      // Upstream baseline probe to capture all pre-existing messages on this key
+      // Immediately sync live hits from upstream Voltx / 2oo9 console
       try {
-        const targetUrl = `https://api.2oo9.cloud/${VOLTX_BACKEND_SLUG}/tnevs/@public/api/console`;
-        const probeRes = await fetch(targetUrl, {
-          headers: {
-            "User-Agent": "Mozilla/5.0",
-            "Accept": "application/json",
-            "mauthapi": key,
-            "x-voltx-endpoint-key": key,
-          },
-        });
-        if (probeRes.ok) {
-          const json: any = await probeRes.json();
-          const existing = json?.data?.hits;
-          if (Array.isArray(existing)) {
-            existing.forEach((h: any) => {
-              const hitTime = typeof h.time === "number" ? h.time : (h.timestamp || new Date(h.time).getTime() || 0);
-              const sig = `${(h.range || h.number || "").replace(/\D/g, "")}_${hitTime}_${(h.sid || "").trim().toLowerCase()}_${(h.message || "").trim()}`;
-              serverBaselineSignatures.add(sig);
-            });
-            console.log(`[API Config] Registered ${serverBaselineSignatures.size} pre-existing hits as baseline. Counters start from 0.`);
-          }
-        }
+        await syncFromUpstreamVoltxConsole();
       } catch (e) {
-        console.warn("[API Config] Upstream baseline check note:", e);
+        console.warn("[API Config] Upstream sync note:", e);
       }
     } else {
       serverApiActivationTimestamp = 0;
       serverBaselineSignatures.clear();
+      serverGlobalLiveHits = [];
+      serverGlobalStats = {
+        appCounts: {},
+        rangeCounts: {},
+        totalHits: 0,
+        lastResetTime: Date.now(),
+      };
+      saveServerGlobalLiveHits([]);
+      saveServerGlobalStats(serverGlobalStats);
+      broadcastLivePacket({
+        type: "reset",
+        stats: serverGlobalStats,
+        hits: [],
+      });
     }
 
-    broadcastLivePacket({
-      type: "reset",
-      stats: serverGlobalStats,
-      hits: [],
-    });
-
-    console.log(`[API Config] System API Key updated to: ${activeSystemApiKey || "OFF"}. Counters strictly starting from 0.`);
+    console.log(`[API Config] System API Key updated to: ${activeSystemApiKey}. Live hits count: ${serverGlobalLiveHits.length}`);
     res.json({
       success: true,
       apiKey: activeSystemApiKey,
-      message: "System API key saved & activated with fresh 0 counter",
+      message: "System API key saved & live hits synced",
       stats: serverGlobalStats,
+      count: serverGlobalLiveHits.length,
     });
   });
 
@@ -3364,13 +3365,13 @@ async function startServer() {
   }
 
   // Automatic background upstream polling enabled for real-time social media SMS hits
-  setInterval(syncFromUpstreamVoltxConsole, 8000);
-  setTimeout(syncFromUpstreamVoltxConsole, 1000);
+  setInterval(syncFromUpstreamVoltxConsole, 5000);
+  setTimeout(syncFromUpstreamVoltxConsole, 500);
 
   // Global live stream GET endpoint
   app.get("/api/global-live-stream", async (req, res) => {
-    // If stream is currently empty or stale (>10s), trigger sync immediately before responding
-    if (serverGlobalLiveHits.length === 0 || Date.now() - lastUpstreamSyncTime > 10000) {
+    // If stream is currently empty or stale (>5s), trigger sync immediately before responding
+    if (serverGlobalLiveHits.length === 0 || Date.now() - lastUpstreamSyncTime > 5000) {
       try {
         await syncFromUpstreamVoltxConsole();
       } catch {}

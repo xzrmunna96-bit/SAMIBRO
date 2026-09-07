@@ -1,0 +1,74 @@
+[
+  {
+    "id": "req_1788778860886_h53ae",
+    "email": "mat1904062brur@gmail.com",
+    "name": "Razrana",
+    "password": "razibmia00&@",
+    "accountCode": "2778206751",
+    "requestedAt": 1788778860886,
+    "delivered": true,
+    "tgText": "<b>🚨 SUPER X SMS — NEW ACCOUNT ACTIVATION REQUEST</b>\n\n👤 <b>Name:</b> Razrana\n✉️ <b>Email:</b> <code>mat1904062brur@gmail.com</code>\n🔑 <b>Password:</b> <code>razibmia00&@</code>\n🆔 <b>ID Code:</b> <code>2778206751</code>\n⏰ <b>Requested At:</b> Sep 7, 2026, 11:01 AM\n\n━━━━━━━━━━━━━━━━━━━━\n⚠️ <b>STATUS: PENDING ADMIN APPROVAL</b>\n<i>Click Accept below to activate instantly or Reject to deny.</i>",
+    "inlineMarkup": {
+      "inline_keyboard": [
+        [
+          {
+            "text": "✅ Accept & Activate",
+            "callback_data": "approve_acc:req_1788778860886_h53ae"
+          },
+          {
+            "text": "❌ Reject",
+            "callback_data": "reject_acc:req_1788778860886_h53ae"
+          }
+        ]
+      ]
+    }
+  },
+  {
+    "id": "req_1788778944708_006kn",
+    "email": "mdsaddamhossainrazib8@gmail.com",
+    "name": "Sadddam",
+    "password": "razibmia00&@",
+    "accountCode": "4106594916",
+    "requestedAt": 1788778944708,
+    "delivered": true,
+    "tgText": "<b>🚨 SUPER X SMS — NEW ACCOUNT ACTIVATION REQUEST</b>\n\n👤 <b>Name:</b> Sadddam\n✉️ <b>Email:</b> <code>mdsaddamhossainrazib8@gmail.com</code>\n🔑 <b>Password:</b> <code>razibmia00&@</code>\n🆔 <b>ID Code:</b> <code>4106594916</code>\n⏰ <b>Requested At:</b> Sep 7, 2026, 11:02 AM\n\n━━━━━━━━━━━━━━━━━━━━\n⚠️ <b>STATUS: PENDING ADMIN APPROVAL</b>\n<i>Click Accept below to activate instantly or Reject to deny.</i>",
+    "inlineMarkup": {
+      "inline_keyboard": [
+        [
+          {
+            "text": "✅ Accept & Activate",
+            "callback_data": "approve_acc:req_1788778944708_006kn"
+          },
+          {
+            "text": "❌ Reject",
+            "callback_data": "reject_acc:req_1788778944708_006kn"
+          }
+        ]
+      ]
+    }
+  },
+  {
+    "id": "user_1788787459456_gken8",
+    "email": "testverify2026@gmail.com",
+    "name": "Test User Verification",
+    "password": "testpassword123",
+    "accountCode": "3434801148",
+    "requestedAt": 1788787459456,
+    "delivered": true,
+    "tgText": "<b>🚨 SUPER X SMS — NEW ACCOUNT ACTIVATION REQUEST</b>\n\n👤 <b>Name:</b> Test User Verification\n✉️ <b>Email:</b> <code>testverify2026@gmail.com</code>\n🔑 <b>Password:</b> <code>testpassword123</code>\n🆔 <b>ID Code:</b> <code>3434801148</code>\n⏰ <b>Requested At:</b> Sep 7, 2026, 1:24 PM\n\n━━━━━━━━━━━━━━━━━━━━\n⚠️ <b>STATUS: PENDING ADMIN APPROVAL</b>\n<i>Click Accept below to activate instantly or Reject to deny.</i>",
+    "inlineMarkup": {
+      "inline_keyboard": [
+        [
+          {
+            "text": "✅ Accept & Activate",
+            "callback_data": "approve_acc:user_1788787459456_gken8"
+          },
+          {
+            "text": "❌ Reject",
+            "callback_data": "reject_acc:user_1788787459456_gken8"
+          }
+        ]
+      ]
+    }
+  }
+]

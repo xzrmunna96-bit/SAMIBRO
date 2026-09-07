@@ -26,7 +26,18 @@ export interface ApiConfigItem {
 export const API_CONFIGS_STORAGE_KEY = 'super_x_api_configs_list_v2';
 export const API_CONFIGS_UPDATE_EVENT = 'super_x_api_configs_updated';
 
-export const DEFAULT_API_CONFIGS: ApiConfigItem[] = [];
+export const DEFAULT_API_CONFIGS: ApiConfigItem[] = [
+  {
+    id: 'primary-voltx-api',
+    name: 'Primary Voltx / 2oo9 Gateway',
+    apiKey: 'MK1CB2Y3GI9',
+    serviceType: 'ALL (Global Auto-Detect)',
+    endpoint: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
+    isActive: true,
+    notes: 'Active System Primary Gateway',
+    createdAt: Date.now(),
+  },
+];
 
 export const ACTIVATION_TIMESTAMP_KEY = 'super_x_api_activation_timestamp_v1';
 export const BASELINE_SIGNATURES_KEY = 'super_x_api_baseline_signatures_v1';
@@ -115,7 +126,7 @@ export function getAllApiConfigs(): ApiConfigItem[] {
     }
   } catch {}
 
-  return [];
+  return [...DEFAULT_API_CONFIGS];
 }
 
 export function saveAllApiConfigs(configs: ApiConfigItem[]) {

@@ -63,7 +63,10 @@ export const DEFAULT_USER_PERMISSIONS: UserPermissions = {
 };
 
 import { sendAdminMessage } from './supportChatService';
-import { sendUserActivityToTelegram } from './telegramService';
+import {
+  sendUserActivityToTelegram,
+  sendAccountActivationRequestToAdminTelegram,
+} from './telegramService';
 import {
   saveAccountToFirebase,
   deleteAccountFromFirebase,
@@ -429,13 +432,14 @@ export function requestNewAccount(params: {
   // Duplicate Email Check: If exists, update & approve if manual admin creation
   const existing = accounts.find((a) => a.email.toLowerCase() === cleanEmail);
   if (existing) {
-    if (params.isManualAdminCreation || params.password) {
+    if (params.isManualAdminCreation) {
       existing.password = params.password.trim();
       existing.status = 'approved';
       if (params.name?.trim()) existing.name = params.name.trim();
       if (params.phoneOrTelegram?.trim()) existing.phoneOrTelegram = params.phoneOrTelegram.trim();
       if (params.note?.trim()) existing.note = params.note.trim();
       existing.approvedAt = Date.now();
+      existing.updatedAt = Date.now();
 
       saveAllAccounts(accounts);
       saveAccountToFirebase(existing);
@@ -446,11 +450,38 @@ export function requestNewAccount(params: {
         message: `Account for ${cleanEmail} updated & activated! User can now sign in immediately.`,
         account: existing,
       };
+    } else {
+      // User is submitting/re-submitting their activation request from widget
+      if (existing.status === 'approved') {
+        return {
+          success: false,
+          message: `Your account (${cleanEmail}) is ALREADY approved and active! You can log in directly using your email and password.`,
+          account: existing,
+        };
+      }
+
+      // If pending or rejected, update credentials and ensure status remains strictly 'pending'
+      existing.password = params.password.trim();
+      existing.status = 'pending';
+      if (params.name?.trim()) existing.name = params.name.trim();
+      if (params.phoneOrTelegram?.trim()) existing.phoneOrTelegram = params.phoneOrTelegram.trim();
+      existing.note = params.note?.trim() || 'Active account request via registration form';
+      existing.updatedAt = Date.now();
+      delete existing.banReason;
+      delete existing.banRequest;
+
+      saveAllAccounts(accounts);
+      saveAccountToFirebase(existing);
+      saveAccountToServer(existing);
+
+      sendAccountActivationRequestToAdminTelegram(existing).catch(() => {});
+
+      return {
+        success: true,
+        message: 'Account activation request submitted! Status is PENDING. Admin will review and approve your account shortly.',
+        account: existing,
+      };
     }
-    return {
-      success: false,
-      message: `An account request for ${cleanEmail} has already been submitted or registered! Multiple submissions with the same email address are strictly prohibited.`,
-    };
   }
 
   // Strict Duplicate Phone Number Check: One phone number per account
@@ -481,6 +512,7 @@ export function requestNewAccount(params: {
     status: params.isManualAdminCreation ? 'approved' : 'pending',
     role: 'user',
     createdAt: Date.now(),
+    updatedAt: Date.now(),
     approvedAt: params.isManualAdminCreation ? Date.now() : undefined,
     phoneOrTelegram: params.phoneOrTelegram?.trim() || '',
     groupLink: params.groupLink?.trim() || '',
@@ -494,13 +526,17 @@ export function requestNewAccount(params: {
   saveAccountToFirebase(newAccount);
   saveAccountToServer(newAccount);
 
-  sendUserActivityToTelegram({
-    action: params.isManualAdminCreation ? 'Admin Created Account' : 'New Account Request',
-    userEmail: cleanEmail,
-    userName: newAccount.name,
-    userCode: newAccount.accountCode,
-    details: `Status: PENDING ADMIN APPROVAL | Account Requested`,
-  }).catch(() => {});
+  if (!params.isManualAdminCreation) {
+    sendAccountActivationRequestToAdminTelegram(newAccount).catch(() => {});
+  } else {
+    sendUserActivityToTelegram({
+      action: 'Admin Created Account',
+      userEmail: cleanEmail,
+      userName: newAccount.name,
+      userCode: newAccount.accountCode,
+      details: `Admin created user account`,
+    }).catch(() => {});
+  }
 
   return {
     success: true,

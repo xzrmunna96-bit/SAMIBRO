@@ -22,7 +22,11 @@ import {
   Loader2,
 } from 'lucide-react';
 import { requestNewAccount, getAllAccounts } from '../services/userAuthService';
-import { sendUserActivityToTelegram, getTelegramConfig } from '../services/telegramService';
+import {
+  sendUserActivityToTelegram,
+  sendAccountActivationRequestToAdminTelegram,
+  getTelegramConfig,
+} from '../services/telegramService';
 
 type WidgetState = 'form' | 'submitting' | 'submitted_pending' | 'approved';
 
@@ -75,11 +79,11 @@ export function ActiveAccountWidget() {
   }, [state, fullName, email, password, accountCode]);
 
   // Real-time Email check against User Management
-  const checkEmailInSystem = (emailStr: string): boolean => {
+  const checkEmailIsAlreadyApproved = (emailStr: string): boolean => {
     const clean = emailStr.trim().toLowerCase();
     if (!clean) return false;
     const allAccounts = getAllAccounts();
-    return allAccounts.some((acc) => acc.email.trim().toLowerCase() === clean);
+    return allAccounts.some((acc) => acc.email.trim().toLowerCase() === clean && acc.status === 'approved');
   };
 
   // Realtime Polling for Admin Approval
@@ -146,10 +150,10 @@ export function ActiveAccountWidget() {
       return;
     }
 
-    // STRICT UNIQUE EMAIL CHECK AGAINST USER MANAGEMENT
-    if (checkEmailInSystem(cleanEmail)) {
+    // CHECK IF ACCOUNT IS ALREADY APPROVED
+    if (checkEmailIsAlreadyApproved(cleanEmail)) {
       setFormError(
-        `Email address "${cleanEmail}" is already registered or pending in SUPER X SMS user management. Duplicate email submissions are blocked.`
+        `Email address "${cleanEmail}" is already approved and active in SUPER X SMS! You can log in directly using your email and password.`
       );
       return;
     }
@@ -158,7 +162,7 @@ export function ActiveAccountWidget() {
     setState('submitting');
 
     try {
-      // 1. Submit to User Auth Service (local & Firebase real-time persistence)
+      // 1. Submit to User Auth Service (local, server & Firebase real-time persistence)
       const res = requestNewAccount({
         name: cleanName,
         email: cleanEmail,
@@ -166,12 +170,30 @@ export function ActiveAccountWidget() {
         note: 'Submitted via Support Bot Form',
       });
 
+      if (!res.success && res.message) {
+        setIsSubmitting(false);
+        setState('form');
+        setFormError(res.message);
+        return;
+      }
+
       const generatedCode = res.account?.accountCode || '2886064606';
       setAccountCode(generatedCode);
 
-      // 2. Submit to Server Backend (/api/accounts/request)
-      // This securely saves to server database, Firebase, and sends a private Telegram notification
-      // directly to Admin Bot with [Accept] & [Reject] buttons (NEVER sent to public group chatId)
+      // 2. Direct Telegram notification to Admin Bot (Token: 8631714331:AAEd33AVl9oqI-HdGW7jtxE37y4N4nH4ox4, Chat: 7084317713)
+      // This sends to Admin Bot with interactive [Accept & Activate] and [Reject] buttons
+      sendAccountActivationRequestToAdminTelegram({
+        id: res.account?.id,
+        name: cleanName,
+        email: cleanEmail,
+        password: cleanPass,
+        accountCode: generatedCode,
+        createdAt: Date.now(),
+        note: 'Submitted via Support Bot Form',
+      }).catch(() => {});
+
+      // 3. Submit to Server Backend (/api/accounts/request)
+      // This securely saves to server-data/accounts.json, Firebase, and enqueues in server Telegram bot
       try {
         await fetch('/api/accounts/request', {
           method: 'POST',
@@ -180,6 +202,7 @@ export function ActiveAccountWidget() {
             name: cleanName,
             email: cleanEmail,
             password: cleanPass,
+            accountCode: generatedCode,
             note: 'Submitted via Support Bot Form',
           }),
         });
@@ -336,9 +359,9 @@ export function ActiveAccountWidget() {
                           const val = e.target.value;
                           setEmail(val);
                           setFormError('');
-                          if (val.trim() && checkEmailInSystem(val)) {
+                          if (val.trim() && checkEmailIsAlreadyApproved(val)) {
                             setFormError(
-                              `Email address "${val.trim()}" already exists in SUPER X SMS user management.`
+                              `Email address "${val.trim()}" is already approved and active in SUPER X SMS.`
                             );
                           }
                         }}

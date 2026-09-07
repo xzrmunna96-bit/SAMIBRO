@@ -40,6 +40,7 @@ async function startServer() {
   const DELETED_ACCOUNTS_FILE = path.join(DATA_DIR, "deleted_accounts.json");
   const NOTICE_FILE = path.join(DATA_DIR, "site_notice.json");
   const POPUP_BANNER_FILE = path.join(DATA_DIR, "popup_banner.json");
+  const MAINTENANCE_FILE = path.join(DATA_DIR, "maintenance.json");
   const NOTIFICATIONS_FILE = path.join(DATA_DIR, "notifications.json");
   const LIVE_CHATS_FILE = path.join(DATA_DIR, "live_chats.json");
   const GLOBAL_LIVE_HITS_FILE = path.join(DATA_DIR, "global_live_hits.json");
@@ -88,42 +89,87 @@ async function startServer() {
     }
   }
 
-  const DEFAULT_POPUP_BANNER = {
-    enabled: true,
+  const DEFAULT_MAINTENANCE_STATE = {
+    enabled: false,
+    title: "Website Under Scheduled Maintenance 🛠️",
+    message: "We are currently performing important system upgrades and maintenance to serve you better. Please check back shortly!",
     imageUrl: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80",
-    title: "ওয়েবসাইট মোটেন্যান্স নোটিশ 📢",
-    message: "আমাদের ওয়েবসাইটের কাজ চলার কারণে পূর্বে যারা অ্যাকাউন্ট অ্যাক্টিভ করার জন্য রিকোয়েস্ট পাঠিয়েছেন, তাদের সবগুলো রিজেক্ট করা হয়েছে। আপনারা নতুন করে আবার অ্যাকাউন্ট অ্যাক্টিভ করার জন্য তথ্যগুলো প্রদান করুন।",
-    buttonText: "অ্যাক্টিভেশন ফর্ম পূরণ করুন",
+    buttonText: "Join Telegram Channel",
     updatedAt: Date.now(),
+    updatedBy: "Admin",
   };
 
-  function loadPopupBanner(): any {
+  function loadMaintenanceState(): any {
     try {
-      if (fs.existsSync(POPUP_BANNER_FILE)) {
-        const raw = fs.readFileSync(POPUP_BANNER_FILE, "utf-8");
+      if (fs.existsSync(MAINTENANCE_FILE)) {
+        const raw = fs.readFileSync(MAINTENANCE_FILE, "utf-8");
         const parsed = JSON.parse(raw);
         if (parsed && typeof parsed === "object") {
-          return { ...DEFAULT_POPUP_BANNER, ...parsed };
+          return { ...DEFAULT_MAINTENANCE_STATE, ...parsed };
         }
+      } else if (fs.existsSync(POPUP_BANNER_FILE)) {
+        const popup = loadPopupBanner();
+        return {
+          ...DEFAULT_MAINTENANCE_STATE,
+          enabled: popup.enabled ?? false,
+          title: popup.title || DEFAULT_MAINTENANCE_STATE.title,
+          message: popup.message || DEFAULT_MAINTENANCE_STATE.message,
+          imageUrl: popup.imageUrl || DEFAULT_MAINTENANCE_STATE.imageUrl,
+        };
       }
     } catch {}
-    return DEFAULT_POPUP_BANNER;
+    return DEFAULT_MAINTENANCE_STATE;
   }
 
-  function savePopupBanner(data: any) {
+  function saveMaintenanceState(data: any) {
     try {
-      const existing = loadPopupBanner();
+      const existing = loadMaintenanceState();
       const updated = {
         ...existing,
         ...data,
         updatedAt: Date.now(),
       };
-      fs.writeFileSync(POPUP_BANNER_FILE, JSON.stringify(updated, null, 2), "utf-8");
+      fs.writeFileSync(MAINTENANCE_FILE, JSON.stringify(updated, null, 2), "utf-8");
+      try {
+        fs.writeFileSync(
+          POPUP_BANNER_FILE,
+          JSON.stringify(
+            {
+              enabled: updated.enabled,
+              imageUrl: updated.imageUrl,
+              title: updated.title,
+              message: updated.message,
+              buttonText: updated.buttonText || "Fill Activation Form",
+              updatedAt: updated.updatedAt,
+            },
+            null,
+            2
+          ),
+          "utf-8"
+        );
+      } catch {}
       return updated;
     } catch (e) {
-      console.warn("Error writing popup_banner.json:", e);
-      return DEFAULT_POPUP_BANNER;
+      console.warn("Error writing maintenance.json:", e);
+      return DEFAULT_MAINTENANCE_STATE;
     }
+  }
+
+  const DEFAULT_POPUP_BANNER = {
+    enabled: false,
+    imageUrl: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80",
+    title: "Website Under Scheduled Maintenance 📢",
+    message: "We are currently performing important system upgrades and maintenance to serve you better. Please check back shortly!",
+    buttonText: "Fill Activation Form",
+    updatedAt: Date.now(),
+  };
+
+  function loadPopupBanner(): any {
+    return loadMaintenanceState();
+  }
+
+  function savePopupBanner(data: any) {
+    return saveMaintenanceState(data);
   }
 
   function loadServerNotifications(): any[] {
@@ -540,9 +586,41 @@ async function startServer() {
     return `${year}/${month}/${day} – ${hours}:${mins}:${secs}`;
   }
 
-  async function updateTelegramAccountMessagesOnApproval(target: any, approverName: string) {
+  function extractAccountInfoFromTgMsg(msgText: string, accId: string) {
+    const text = msgText || "";
+    const emailMatch = text.match(/Email:\s*([^\s<\n]+)/i) || text.match(/✉️\s*Email:\s*([^\s<\n]+)/i);
+    const userMatch = text.match(/User:\s*([^\n<]+)/i) || text.match(/👤\s*User:\s*([^\n<]+)/i);
+    const codeMatch = text.match(/Account Code:\s*(\d+)/i) || text.match(/🆔\s*Account Code:\s*(\d+)/i);
+    const passMatch = text.match(/Password:\s*([^\n<]+)/i) || text.match(/🔑\s*Password:\s*([^\n<]+)/i);
+
+    const cleanEmail = (emailMatch ? emailMatch[1] : (accId.includes("@") ? accId : `${accId}@gmail.com`)).toLowerCase().trim();
+    const cleanName = userMatch ? userMatch[1].trim() : cleanEmail.split("@")[0];
+    const cleanCode = codeMatch ? codeMatch[1].trim() : (accId.match(/^\d+$/) ? accId : String(Math.floor(1000000000 + Math.random() * 9000000000)));
+    const cleanPass = passMatch ? passMatch[1].trim() : "User1234";
+
+    return {
+      id: accId.includes("@") ? `usr_${Date.now()}_${Math.random().toString(36).substring(2,6)}` : accId,
+      name: cleanName,
+      email: cleanEmail,
+      password: cleanPass,
+      accountCode: cleanCode,
+      status: "pending",
+      role: "user",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+  }
+
+  async function updateTelegramAccountMessagesOnApproval(target: any, approverName: string, directChatId?: string | number, directMessageId?: number) {
     const botToken = "8631714331:AAEd33AVl9oqI-HdGW7jtxE37y4N4nH4ox4";
     const messages = getTrackedTelegramMessages(target.id, target.email);
+    if (directChatId && directMessageId) {
+      const exists = messages.some(m => String(m.chatId) === String(directChatId) && m.messageId === directMessageId);
+      if (!exists) {
+        messages.push({ chatId: String(directChatId), messageId: directMessageId, accountId: target.id, email: target.email });
+      }
+    }
+
     const timeStr = formatScriptTimestamp(Date.now());
     const approvedText =
       `<b>🎉 CONGRATULATIONS! ACCOUNT APPROVED</b>\n\n` +
@@ -589,9 +667,16 @@ async function startServer() {
     }
   }
 
-  async function updateTelegramAccountMessagesOnRejection(target: any, rejecterName: string) {
+  async function updateTelegramAccountMessagesOnRejection(target: any, rejecterName: string, directChatId?: string | number, directMessageId?: number) {
     const botToken = "8631714331:AAEd33AVl9oqI-HdGW7jtxE37y4N4nH4ox4";
     const messages = getTrackedTelegramMessages(target.id, target.email);
+    if (directChatId && directMessageId) {
+      const exists = messages.some(m => String(m.chatId) === String(directChatId) && m.messageId === directMessageId);
+      if (!exists) {
+        messages.push({ chatId: String(directChatId), messageId: directMessageId, accountId: target.id, email: target.email });
+      }
+    }
+
     const timeStr = formatScriptTimestamp(Date.now());
     const rejectedText =
       `<b>❌ SUPER X SMS — ACCOUNT REQUEST REJECTED</b>\n\n` +
@@ -2748,21 +2833,39 @@ async function startServer() {
               if (cbData.startsWith("approve_acc:")) {
                 const accId = cbData.replace("approve_acc:", "").trim();
                 const currentAccounts = loadServerAccounts();
-                const target = currentAccounts.find(
-                  (a) => a.id === accId || a.email.toLowerCase().trim() === accId.toLowerCase()
+                let target = currentAccounts.find(
+                  (a) =>
+                    (a.id && a.id.toLowerCase() === accId.toLowerCase()) ||
+                    (a.email && a.email.toLowerCase().trim() === accId.toLowerCase()) ||
+                    (a.accountCode && String(a.accountCode).trim() === accId)
                 );
 
                 if (!target) {
-                  await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      callback_query_id: cbId,
-                      text: "⚠️ Account not found or already deleted.",
-                      show_alert: true,
-                    }),
-                  }).catch(() => {});
-                  continue;
+                  const queue = loadPendingTelegramQueue();
+                  const queued = queue.find(
+                    (q) =>
+                      (q.id && q.id.toLowerCase() === accId.toLowerCase()) ||
+                      (q.email && q.email.toLowerCase().trim() === accId.toLowerCase()) ||
+                      (q.accountCode && String(q.accountCode).trim() === accId)
+                  );
+
+                  if (queued) {
+                    target = {
+                      id: queued.id || `acc_${Date.now()}`,
+                      name: queued.name || queued.email.split("@")[0],
+                      email: queued.email.toLowerCase().trim(),
+                      password: queued.password || "User1234",
+                      accountCode: queued.accountCode || String(Math.floor(1000000000 + Math.random() * 9000000000)),
+                      status: "pending",
+                      role: "user",
+                      createdAt: queued.requestedAt || Date.now(),
+                      updatedAt: Date.now(),
+                    };
+                  } else {
+                    target = extractAccountInfoFromTgMsg(cb.message?.text || "", accId);
+                  }
+
+                  currentAccounts.push(target);
                 }
 
                 // Strict single approval constraint: If already approved by any admin, prevent duplicate approval
@@ -2772,8 +2875,8 @@ async function startServer() {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                       callback_query_id: cbId,
-                      text: `⚠️ এই অ্যাকাউন্টটি ইতোমধ্যে ${target.approvedByName || "Admin"} দ্বারা অ্যাপ্রুভ করা হয়েছে! বাকিদের পুনরায় অ্যাপ্রুভ করার প্রয়োজন নেই।`,
-                      show_alert: true,
+                      text: `ℹ️ ${target.name} (${target.email}) ইতোমধ্যে ${target.approvedByName || "Admin"} দ্বারা অ্যাপ্রুভড।`,
+                      show_alert: false,
                     }),
                   }).catch(() => {});
 
@@ -2784,7 +2887,7 @@ async function startServer() {
                       chatId: String(cbChatId),
                       messageId: cbMessageId,
                     });
-                    await updateTelegramAccountMessagesOnApproval(target, target.approvedByName || "Admin");
+                    await updateTelegramAccountMessagesOnApproval(target, target.approvedByName || "Admin", cbChatId, cbMessageId);
                   }
                   continue;
                 }
@@ -2800,14 +2903,14 @@ async function startServer() {
                 saveAccountToFirestore(target).catch(() => null);
                 broadcastAccountChange({ action: "approve", account: target });
 
-                // Send instant confirmation alert to the approving admin
+                // Send non-alert toast response (no modal popup)
                 await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
                     callback_query_id: cbId,
-                    text: `🎉 ${target.name} (${target.email}) সফলভাবে অ্যাপ্রুভ করা হয়েছে এবং অ্যাডমিন প্যানেলে সেভ হয়েছে!`,
-                    show_alert: true,
+                    text: `✅ ${target.name} (${target.email}) অ্যাপ্রুভড হয়ে গেছে!`,
+                    show_alert: false,
                   }),
                 }).catch(() => {});
 
@@ -2821,26 +2924,21 @@ async function startServer() {
                 }
 
                 // Instantly update all Telegram messages in group & chat so buttons disappear for everyone
-                await updateTelegramAccountMessagesOnApproval(target, `Admin (${cbSender})`);
+                await updateTelegramAccountMessagesOnApproval(target, `Admin (${cbSender})`, cbChatId, cbMessageId);
 
               } else if (cbData.startsWith("reject_acc:")) {
                 const accId = cbData.replace("reject_acc:", "").trim();
                 const currentAccounts = loadServerAccounts();
-                const target = currentAccounts.find(
-                  (a) => a.id === accId || a.email.toLowerCase().trim() === accId.toLowerCase()
+                let target = currentAccounts.find(
+                  (a) =>
+                    (a.id && a.id.toLowerCase() === accId.toLowerCase()) ||
+                    (a.email && a.email.toLowerCase().trim() === accId.toLowerCase()) ||
+                    (a.accountCode && String(a.accountCode).trim() === accId)
                 );
 
                 if (!target) {
-                  await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      callback_query_id: cbId,
-                      text: "⚠️ Account not found.",
-                      show_alert: true,
-                    }),
-                  }).catch(() => {});
-                  continue;
+                  target = extractAccountInfoFromTgMsg(cb.message?.text || "", accId);
+                  currentAccounts.push(target);
                 }
 
                 if (target.status === "approved") {
@@ -2850,7 +2948,7 @@ async function startServer() {
                     body: JSON.stringify({
                       callback_query_id: cbId,
                       text: `⚠️ Cannot reject: Already approved by ${target.approvedByName || "Admin"}!`,
-                      show_alert: true,
+                      show_alert: false,
                     }),
                   }).catch(() => {});
                   continue;
@@ -2871,7 +2969,7 @@ async function startServer() {
                   body: JSON.stringify({
                     callback_query_id: cbId,
                     text: `❌ ${target.email} রিজেক্ট করা হয়েছে।`,
-                    show_alert: true,
+                    show_alert: false,
                   }),
                 }).catch(() => {});
 
@@ -2884,61 +2982,56 @@ async function startServer() {
                   });
                 }
 
-                await updateTelegramAccountMessagesOnRejection(target, `Admin (${cbSender})`);
+                await updateTelegramAccountMessagesOnRejection(target, `Admin (${cbSender})`, cbChatId, cbMessageId);
 
               } else if (cbData.startsWith("ban_acc:")) {
                 const accId = cbData.replace("ban_acc:", "").trim();
                 const currentAccounts = loadServerAccounts();
-                const target = currentAccounts.find(
-                  (a) => a.id === accId || a.email.toLowerCase().trim() === accId.toLowerCase()
+                let target = currentAccounts.find(
+                  (a) =>
+                    (a.id && a.id.toLowerCase() === accId.toLowerCase()) ||
+                    (a.email && a.email.toLowerCase().trim() === accId.toLowerCase()) ||
+                    (a.accountCode && String(a.accountCode).trim() === accId)
                 );
 
-                if (target) {
-                  target.status = "banned";
-                  target.banReason = "Admin Telegram Quick Ban Action";
-                  target.bannedAt = Date.now();
-                  target.bannedByName = `Telegram Admin (${cbSender})`;
-                  target.updatedAt = Date.now();
-                  saveServerAccounts(currentAccounts);
-                  saveAccountToFirestore(target).catch(() => null);
-                  broadcastAccountChange({ action: "ban", account: target });
+                if (!target) {
+                  target = extractAccountInfoFromTgMsg(cb.message?.text || "", accId);
+                  currentAccounts.push(target);
+                }
 
-                  await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
+                target.status = "banned";
+                target.banReason = "Admin Telegram Quick Ban Action";
+                target.bannedAt = Date.now();
+                target.bannedByName = `Telegram Admin (${cbSender})`;
+                target.updatedAt = Date.now();
+                saveServerAccounts(currentAccounts);
+                saveAccountToFirestore(target).catch(() => null);
+                broadcastAccountChange({ action: "ban", account: target });
+
+                await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    callback_query_id: cbId,
+                    text: `🚫 ${target.name} (${target.email}) ব্যান করা হয়েছে!`,
+                    show_alert: false,
+                  }),
+                }).catch(() => {});
+
+                if (cbChatId && cbMessageId) {
+                  await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/editMessageText`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                      callback_query_id: cbId,
-                      text: `🚫 ${target.name} (${target.email}) ব্যান করা হয়েছে!`,
-                      show_alert: true,
-                    }),
-                  }).catch(() => {});
-
-                  // Update message if applicable
-                  if (cbChatId && cbMessageId) {
-                    await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/editMessageText`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        chat_id: cbChatId,
-                        message_id: cbMessageId,
-                        text: `🚫 <b>ইউজার ব্যান করা হয়েছে!</b>\n\n👤 <b>নাম:</b> ${target.name}\n✉️ <b>ইমেইল:</b> <code>${target.email}</code>\n🆔 <b>কোড:</b> <code>${target.accountCode}</code>\n⚡ <b>স্ট্যাটাস:</b> 🚫 ব্যান (Banned by ${cbSender})\n⏰ <b>সময়:</b> ${new Date().toLocaleTimeString()}`,
-                        parse_mode: "HTML",
-                        reply_markup: {
-                          inline_keyboard: [[
-                            { text: `✅ পুনরায় আনব্যান করুন`, callback_data: `unban_acc:${target.id || target.email}` }
-                          ]]
-                        }
-                      }),
-                    }).catch(() => {});
-                  }
-                } else {
-                  await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      callback_query_id: cbId,
-                      text: "⚠️ ইউজার খুঁজে পাওয়া যায়নি।",
-                      show_alert: true,
+                      chat_id: cbChatId,
+                      message_id: cbMessageId,
+                      text: `🚫 <b>ইউজার ব্যান করা হয়েছে!</b>\n\n👤 <b>নাম:</b> ${target.name}\n✉️ <b>ইমেইল:</b> <code>${target.email}</code>\n🆔 <b>কোড:</b> <code>${target.accountCode}</code>\n⚡ <b>স্ট্যাটাস:</b> 🚫 ব্যান (Banned by ${cbSender})\n⏰ <b>সময়:</b> ${new Date().toLocaleTimeString()}`,
+                      parse_mode: "HTML",
+                      reply_markup: {
+                        inline_keyboard: [[
+                          { text: `✅ পুনরায় আনব্যান করুন`, callback_data: `unban_acc:${target.id || target.email}` }
+                        ]]
+                      }
                     }),
                   }).catch(() => {});
                 }
@@ -2946,8 +3039,11 @@ async function startServer() {
               } else if (cbData.startsWith("unban_acc:")) {
                 const accId = cbData.replace("unban_acc:", "").trim();
                 const currentAccounts = loadServerAccounts();
-                const target = currentAccounts.find(
-                  (a) => a.id === accId || a.email.toLowerCase().trim() === accId.toLowerCase()
+                let target = currentAccounts.find(
+                  (a) =>
+                    (a.id && a.id.toLowerCase() === accId.toLowerCase()) ||
+                    (a.email && a.email.toLowerCase().trim() === accId.toLowerCase()) ||
+                    (a.accountCode && String(a.accountCode).trim() === accId)
                 );
 
                 if (target) {
@@ -2966,7 +3062,7 @@ async function startServer() {
                     body: JSON.stringify({
                       callback_query_id: cbId,
                       text: `✅ ${target.name} (${target.email}) সফলভাবে আনব্যান করা হয়েছে!`,
-                      show_alert: true,
+                      show_alert: false,
                     }),
                   }).catch(() => {});
 
@@ -2995,7 +3091,7 @@ async function startServer() {
                     body: JSON.stringify({
                       callback_query_id: cbId,
                       text: "⚠️ ইউজার খুঁজে পাওয়া যায়নি।",
-                      show_alert: true,
+                      show_alert: false,
                     }),
                   }).catch(() => {});
                 }
@@ -3008,44 +3104,40 @@ async function startServer() {
                   body: JSON.stringify({
                     callback_query_id: cbId,
                     text: "🗑️ ওয়েবসাইট ব্যানার নোটিশ মুছে ফেলা হয়েছে!",
-                    show_alert: true,
+                    show_alert: false,
                   }),
                 }).catch(() => {});
 
               } else if (cbData.startsWith("notice_acc:")) {
                 const accId = cbData.replace("notice_acc:", "").trim();
                 const currentAccounts = loadServerAccounts();
-                const target = currentAccounts.find(
-                  (a) => a.id === accId || a.email.toLowerCase().trim() === accId.toLowerCase()
+                let target = currentAccounts.find(
+                  (a) =>
+                    (a.id && a.id.toLowerCase() === accId.toLowerCase()) ||
+                    (a.email && a.email.toLowerCase().trim() === accId.toLowerCase()) ||
+                    (a.accountCode && String(a.accountCode).trim() === accId)
                 );
 
-                if (target) {
-                  target.adminNotice = "📢 Notice from Admin: Please verify your credentials or contact official Telegram support @super_x_sms_s.";
-                  target.updatedAt = Date.now();
-                  saveServerAccounts(currentAccounts);
-                  saveAccountToFirestore(target).catch(() => null);
-                  broadcastAccountChange({ action: "notice", account: target });
-
-                  await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      callback_query_id: cbId,
-                      text: `📢 ইউজারকে নোটিশ পাঠানো হয়েছে (${target.email})!`,
-                      show_alert: true,
-                    }),
-                  }).catch(() => {});
-                } else {
-                  await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      callback_query_id: cbId,
-                      text: "⚠️ Account not found.",
-                      show_alert: true,
-                    }),
-                  }).catch(() => {});
+                if (!target) {
+                  target = extractAccountInfoFromTgMsg(cb.message?.text || "", accId);
+                  currentAccounts.push(target);
                 }
+
+                target.adminNotice = "📢 Notice from Admin: Please verify your credentials or contact official Telegram support @super_x_sms_s.";
+                target.updatedAt = Date.now();
+                saveServerAccounts(currentAccounts);
+                saveAccountToFirestore(target).catch(() => null);
+                broadcastAccountChange({ action: "notice", account: target });
+
+                await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    callback_query_id: cbId,
+                    text: `📢 ইউজারকে নোটিশ পাঠানো হয়েছে (${target.email})!`,
+                    show_alert: false,
+                  }),
+                }).catch(() => {});
               } else if (cbData.startsWith("claim_chat:")) {
                 const userEmail = cbData.replace("claim_chat:", "").trim().toLowerCase();
                 const chats = loadServerLiveChats();

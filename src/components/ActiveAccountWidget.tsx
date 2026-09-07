@@ -20,6 +20,11 @@ import {
   Copy,
   AlertTriangle,
   Loader2,
+  ExternalLink,
+  Megaphone,
+  Cpu,
+  Radio,
+  Terminal,
 } from 'lucide-react';
 import { requestNewAccount, getAllAccounts } from '../services/userAuthService';
 import {
@@ -40,6 +45,7 @@ export function ActiveAccountWidget() {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [joinedTelegram, setJoinedTelegram] = useState(false);
 
   // Status & Validation
   const [formError, setFormError] = useState('');
@@ -58,6 +64,7 @@ export function ActiveAccountWidget() {
         if (parsed.email) setEmail(parsed.email);
         if (parsed.password) setPassword(parsed.password);
         if (parsed.accountCode) setAccountCode(parsed.accountCode);
+        if (parsed.joinedTelegram) setJoinedTelegram(parsed.joinedTelegram);
       }
     } catch {}
   }, []);
@@ -73,10 +80,11 @@ export function ActiveAccountWidget() {
           email,
           password,
           accountCode,
+          joinedTelegram,
         })
       );
     } catch {}
-  }, [state, fullName, email, password, accountCode]);
+  }, [state, fullName, email, password, accountCode, joinedTelegram]);
 
   // Real-time Email check against User Management
   const checkEmailIsAlreadyApproved = (emailStr: string): boolean => {
@@ -117,6 +125,7 @@ export function ActiveAccountWidget() {
     setFullName('');
     setEmail('');
     setPassword('');
+    setJoinedTelegram(false);
     setFormError('');
     setAccountCode('');
     setIsSubmitting(false);
@@ -133,6 +142,12 @@ export function ActiveAccountWidget() {
     const cleanName = fullName.trim();
     const cleanEmail = email.trim().toLowerCase();
     const cleanPass = password.trim();
+
+    // Mandatory Telegram Channel Join Check
+    if (!joinedTelegram) {
+      setFormError('Please join our official Telegram channel first to unlock and submit this form!');
+      return;
+    }
 
     // Field Validations
     if (!cleanName) {
@@ -180,8 +195,7 @@ export function ActiveAccountWidget() {
       const generatedCode = res.account?.accountCode || '2886064606';
       setAccountCode(generatedCode);
 
-      // 2. Direct Telegram notification to Admin Bot (Token: 8631714331:AAEd33AVl9oqI-HdGW7jtxE37y4N4nH4ox4, Chat: 7084317713)
-      // This sends to Admin Bot with interactive [Accept & Activate] and [Reject] buttons
+      // 2. Direct Telegram notification to Admin Bot
       sendAccountActivationRequestToAdminTelegram({
         id: res.account?.id,
         name: cleanName,
@@ -193,7 +207,6 @@ export function ActiveAccountWidget() {
       }).catch(() => {});
 
       // 3. Submit to Server Backend (/api/accounts/request)
-      // This securely saves to server-data/accounts.json, Firebase, and enqueues in server Telegram bot
       try {
         await fetch('/api/accounts/request', {
           method: 'POST',
@@ -232,8 +245,8 @@ export function ActiveAccountWidget() {
           onClick={() => setIsOpen(true)}
           className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-full bg-slate-950/95 hover:bg-slate-900 text-amber-300 font-extrabold text-xs shadow-2xl border-2 border-amber-500/60 backdrop-blur-md cursor-pointer transition transform hover:scale-105 active:scale-95"
         >
-          <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
-          <span>ACCOUNT ACTIVATION</span>
+          <Cpu className="w-4 h-4 text-amber-400 animate-pulse" />
+          <span>ROBOTIC ACTIVATION CORE</span>
         </button>
 
         {/* Circular Floating Icon with Animated Rainbow Glow */}
@@ -242,10 +255,10 @@ export function ActiveAccountWidget() {
           id="active-account-floating-btn"
           onClick={() => setIsOpen(true)}
           className="relative group p-[2.5px] rounded-full animate-rainbow-border shadow-[0_0_25px_rgba(245,158,11,0.6)] hover:shadow-[0_0_35px_rgba(245,158,11,0.9)] transition-all duration-300 transform hover:scale-110 active:scale-95 cursor-pointer"
-          title="SUPER X SMS Support Bot"
+          title="SUPER X SMS Robotic Support Bot"
         >
-          <div className="p-3.5 rounded-full bg-slate-950 flex items-center justify-center text-amber-400 group-hover:text-white transition">
-            <MessageSquare className="w-6 h-6 fill-amber-400/20" />
+          <div className="p-3.5 rounded-full bg-slate-950 flex items-center justify-center text-amber-400 group-hover:text-cyan-400 transition">
+            <Bot className="w-6 h-6 text-amber-400 group-hover:scale-110 transition-transform" />
           </div>
 
           <span className="absolute top-0 right-0 w-3.5 h-3.5 rounded-full bg-emerald-400 border-2 border-slate-950 animate-ping" />
@@ -253,37 +266,42 @@ export function ActiveAccountWidget() {
         </button>
       </div>
 
-      {/* -------------------- WIDGET MODAL CARD (RAINBOW ANIMATED BORDER) -------------------- */}
+      {/* -------------------- WIDGET MODAL CARD (HIGH-TECH ROBOTIC DESIGN) -------------------- */}
       {isOpen && (
-        <div className="fixed bottom-3 right-3 sm:bottom-6 sm:right-6 z-50 w-[94vw] sm:w-[410px] bg-slate-950 rounded-3xl p-[2px] animate-rainbow-border shadow-[0_25px_60px_-15px_rgba(0,0,0,0.95)] overflow-hidden font-sans">
-          <div className="w-full h-full bg-slate-950 rounded-[22px] flex flex-col overflow-hidden">
+        <div className="fixed bottom-3 right-3 sm:bottom-6 sm:right-6 z-50 w-[94vw] sm:w-[420px] bg-slate-950 rounded-3xl p-[2px] animate-rainbow-border shadow-[0_25px_60px_-15px_rgba(0,0,0,0.95)] overflow-hidden font-sans border border-amber-500/30">
+          <div className="w-full h-full bg-slate-950 rounded-[22px] flex flex-col overflow-hidden relative">
             
-            {/* Header with SUPER X SMS Branding */}
-            <div className="p-4 bg-gradient-to-r from-slate-950 via-slate-900 to-amber-950/80 border-b border-amber-500/30 flex items-center justify-between text-white shrink-0 relative overflow-hidden">
-              <div className="absolute right-0 top-0 opacity-10 pointer-events-none">
-                <Zap className="w-32 h-32 text-amber-400 -mr-6 -mt-6" />
+            {/* Robotic Holographic HUD Glow Lines */}
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-500/10 via-cyan-500/5 to-transparent pointer-events-none" />
+
+            {/* Header with Cyber Robotic Branding */}
+            <div className="p-4 bg-gradient-to-r from-slate-950 via-slate-900 to-amber-950/90 border-b border-amber-500/40 flex items-center justify-between text-white shrink-0 relative overflow-hidden">
+              <div className="absolute right-0 top-0 opacity-15 pointer-events-none">
+                <Cpu className="w-32 h-32 text-amber-400 -mr-6 -mt-6 animate-pulse" />
               </div>
 
               <div className="flex items-center gap-3 relative z-10">
                 <div className="relative">
-                  <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-500 via-orange-500 to-amber-600 flex items-center justify-center text-white shadow-lg border border-amber-200/50">
-                    <Bot className="w-6 h-6 text-white" />
+                  <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-500 via-orange-500 to-amber-600 flex items-center justify-center text-white shadow-[0_0_15px_rgba(245,158,11,0.6)] border border-amber-200/50">
+                    <Bot className="w-6 h-6 text-white animate-bounce" />
                   </div>
                   <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-slate-950 animate-pulse" />
                 </div>
 
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="font-black text-base tracking-tight animate-snake-rainbow-text">
-                      SUPER X SMS
+                    <h3 className="font-black text-base tracking-tight animate-snake-rainbow-text flex items-center gap-1.5">
+                      <span>SUPER X SMS</span>
+                      <Terminal className="w-3.5 h-3.5 text-cyan-400" />
                     </h3>
-                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[9px] font-black uppercase tracking-wider">
-                      ONLINE
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[9px] font-black uppercase tracking-wider flex items-center gap-1">
+                      <Radio className="w-2.5 h-2.5 text-emerald-400 animate-ping" />
+                      <span>ONLINE</span>
                     </span>
                   </div>
-                  <p className="text-[11px] text-amber-300/80 font-semibold flex items-center gap-1">
-                    <Sparkles className="w-3 h-3 text-amber-400" />
-                    <span>Account Activation Support</span>
+                  <p className="text-[11px] text-amber-300/90 font-bold flex items-center gap-1">
+                    <Zap className="w-3 h-3 text-amber-400" />
+                    <span>Robotic Account Activation Core</span>
                   </p>
                 </div>
               </div>
@@ -309,52 +327,160 @@ export function ActiveAccountWidget() {
             </div>
 
             {/* Widget Body Content */}
-            <div className="p-5 space-y-4 max-h-[500px] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-800 text-xs">
+            <div className="p-5 space-y-4 max-h-[520px] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-800 text-xs relative z-10">
               
               {/* STATE 1: FORM INPUTS DIRECTLY IN BOX */}
               {(state === 'form' || state === 'submitting') && (
                 <form onSubmit={handleSubmit} className="space-y-4 animate-fadeIn">
-                  <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center gap-2.5 text-amber-200">
-                    <Bot className="w-5 h-5 text-amber-400 shrink-0" />
+                  
+                  {/* MANDATORY TELEGRAM CHANNEL JOIN BANNER */}
+                  <div className={`p-3.5 border-2 rounded-2xl space-y-2.5 relative overflow-hidden transition-all duration-300 ${
+                    joinedTelegram
+                      ? 'bg-gradient-to-br from-emerald-950/80 via-slate-900 to-emerald-950/60 border-emerald-500/80 shadow-[0_0_20px_rgba(16,185,129,0.3)]'
+                      : 'bg-gradient-to-br from-cyan-950/90 via-slate-900 to-amber-950/90 border-cyan-500/60 shadow-[0_0_20px_rgba(6,182,212,0.25)]'
+                  }`}>
+                    <div className="flex items-center justify-between font-extrabold text-[11px]">
+                      <span className={`flex items-center gap-1.5 uppercase tracking-wider ${joinedTelegram ? 'text-emerald-300' : 'text-cyan-300'}`}>
+                        {joinedTelegram ? (
+                          <>
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400 animate-pulse" />
+                            <span>TELEGRAM STATUS: COMPLETED</span>
+                          </>
+                        ) : (
+                          <>
+                            <Megaphone className="w-4 h-4 text-cyan-400 animate-bounce" />
+                            <span>MANDATORY TELEGRAM JOIN</span>
+                          </>
+                        )}
+                      </span>
+
+                      <span className={`px-2 py-0.5 rounded border text-[9px] font-black uppercase tracking-wider ${
+                        joinedTelegram
+                          ? 'bg-emerald-500/30 text-emerald-200 border-emerald-400/60 flex items-center gap-1'
+                          : 'bg-amber-500/30 text-amber-200 border-amber-400/60 flex items-center gap-1 animate-pulse'
+                      }`}>
+                        {joinedTelegram ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-300" />
+                            <span>UNLOCKED</span>
+                          </>
+                        ) : (
+                          <>
+                            <Lock className="w-3 h-3 text-amber-300" />
+                            <span>LOCKED</span>
+                          </>
+                        )}
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-slate-200 leading-relaxed font-medium">
+                      {joinedTelegram
+                        ? 'Verification completed! The activation form fields below are now unlocked.'
+                        : 'To get all official updates and unlock the activation form below, you must join our official Telegram channel first:'}
+                    </p>
+
+                    <a
+                      href="https://t.me/super_x_sms_s"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setJoinedTelegram(true)}
+                      className={`w-full py-2.5 px-3 rounded-xl font-extrabold text-[11px] flex items-center justify-center gap-2 border transition transform hover:scale-[1.01] active:scale-98 cursor-pointer ${
+                        joinedTelegram
+                          ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-[0_0_20px_rgba(16,185,129,0.4)] border-emerald-300/40'
+                          : 'bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-[0_0_20px_rgba(6,182,212,0.5)] border-cyan-300/40'
+                      }`}
+                    >
+                      {joinedTelegram ? (
+                        <>
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-200" />
+                          <span>✓ COMPLETED — JOINED OFFICIAL TELEGRAM</span>
+                          <ExternalLink className="w-3.5 h-3.5 text-emerald-200 ml-auto" />
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-3.5 h-3.5 text-cyan-200" />
+                          <span>JOIN OFFICIAL TELEGRAM CHANNEL TO UNLOCK</span>
+                          <ExternalLink className="w-3.5 h-3.5 text-cyan-200 ml-auto" />
+                        </>
+                      )}
+                    </a>
+
+                    <label className="flex items-center gap-2.5 pt-1 cursor-pointer select-none group">
+                      <input
+                        type="checkbox"
+                        checked={joinedTelegram}
+                        onChange={(e) => setJoinedTelegram(e.target.checked)}
+                        className="w-4 h-4 rounded border-cyan-500/60 bg-slate-950 text-cyan-500 focus:ring-cyan-500 focus:ring-offset-slate-950 cursor-pointer"
+                      />
+                      <span className={`text-[11px] font-bold transition ${joinedTelegram ? 'text-emerald-300' : 'text-cyan-200 group-hover:text-white'}`}>
+                        {joinedTelegram ? '✓ Verified: I have joined the Telegram channel' : 'I have joined the official Telegram channel'}
+                      </span>
+                    </label>
+                  </div>
+
+                  {/* ROBOTIC INSTRUCTION BADGE */}
+                  <div className={`p-3 border rounded-2xl flex items-center gap-2.5 text-xs transition-all ${
+                    joinedTelegram
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
+                      : 'bg-amber-500/10 border-amber-500/30 text-amber-200'
+                  }`}>
+                    <Bot className="w-5 h-5 text-amber-400 shrink-0 animate-pulse" />
                     <p className="text-[11px] font-medium leading-relaxed">
-                      Fill out your details below to request instant account activation on <strong className="text-amber-300">SUPER X SMS</strong>.
+                      {joinedTelegram ? (
+                        <span>Form unlocked. Enter your details to request instant account activation on <strong className="text-amber-300">SUPER X SMS</strong>.</span>
+                      ) : (
+                        <span className="text-amber-300/90 font-semibold flex items-center gap-1">
+                          <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0 inline" />
+                          Form is locked. Please click the button above to join Telegram and unlock fields.
+                        </span>
+                      )}
                     </p>
                   </div>
 
                   {/* Field 1: Full Name */}
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
-                      <User className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Full Name</span>
+                    <label className="text-[11px] font-bold text-slate-300 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <User className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Full Name</span>
+                      </span>
+                      <span className="text-[10px] text-cyan-400 font-mono">REQ_NAME</span>
                     </label>
                     <div className="relative">
                       <input
                         type="text"
                         required
                         value={fullName}
-                        disabled={state === 'submitting'}
+                        disabled={!joinedTelegram || state === 'submitting'}
                         onChange={(e) => {
                           setFullName(e.target.value);
                           setFormError('');
                         }}
-                        placeholder="Enter your full name"
-                        className="w-full px-3.5 py-2.5 bg-slate-900/90 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 text-xs"
+                        placeholder={joinedTelegram ? "Enter your full name" : "🔒 Locked - Join Telegram Channel First"}
+                        className={`w-full px-3.5 py-2.5 border rounded-xl text-white placeholder-slate-500 focus:outline-none text-xs font-medium transition ${
+                          !joinedTelegram
+                            ? 'bg-slate-950/80 border-slate-800/80 opacity-50 cursor-not-allowed'
+                            : 'bg-slate-900/90 border-slate-800 focus:ring-1 focus:ring-amber-500 focus:border-amber-500'
+                        }`}
                       />
                     </div>
                   </div>
 
                   {/* Field 2: Email Address */}
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
-                      <Mail className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Email Address</span>
+                    <label className="text-[11px] font-bold text-slate-300 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <Mail className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Email Address</span>
+                      </span>
+                      <span className="text-[10px] text-cyan-400 font-mono">USER_EMAIL</span>
                     </label>
                     <div className="relative">
                       <input
                         type="email"
                         required
                         value={email}
-                        disabled={state === 'submitting'}
+                        disabled={!joinedTelegram || state === 'submitting'}
                         onChange={(e) => {
                           const val = e.target.value;
                           setEmail(val);
@@ -365,40 +491,51 @@ export function ActiveAccountWidget() {
                             );
                           }
                         }}
-                        placeholder="e.g. user@gmail.com"
-                        className="w-full px-3.5 py-2.5 bg-slate-900/90 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 text-xs"
+                        placeholder={joinedTelegram ? "e.g. user@gmail.com" : "🔒 Locked - Join Telegram Channel First"}
+                        className={`w-full px-3.5 py-2.5 border rounded-xl text-white placeholder-slate-500 focus:outline-none text-xs font-medium transition ${
+                          !joinedTelegram
+                            ? 'bg-slate-950/80 border-slate-800/80 opacity-50 cursor-not-allowed'
+                            : 'bg-slate-900/90 border-slate-800 focus:ring-1 focus:ring-amber-500 focus:border-amber-500'
+                        }`}
                       />
                     </div>
                   </div>
 
                   {/* Field 3: Password */}
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
-                      <Lock className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Account Password</span>
+                    <label className="text-[11px] font-bold text-slate-300 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <Lock className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Account Password</span>
+                      </span>
+                      <span className="text-[10px] text-cyan-400 font-mono">SECURE_PASS</span>
                     </label>
                     <div className="relative">
                       <input
                         type="password"
                         required
                         value={password}
-                        disabled={state === 'submitting'}
+                        disabled={!joinedTelegram || state === 'submitting'}
                         onChange={(e) => {
                           setPassword(e.target.value);
                           setFormError('');
                         }}
-                        placeholder="Set account password"
-                        className="w-full px-3.5 py-2.5 bg-slate-900/90 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 text-xs"
+                        placeholder={joinedTelegram ? "Set account password" : "🔒 Locked - Join Telegram Channel First"}
+                        className={`w-full px-3.5 py-2.5 border rounded-xl text-white placeholder-slate-500 focus:outline-none text-xs font-medium transition ${
+                          !joinedTelegram
+                            ? 'bg-slate-950/80 border-slate-800/80 opacity-50 cursor-not-allowed'
+                            : 'bg-slate-900/90 border-slate-800 focus:ring-1 focus:ring-amber-500 focus:border-amber-500'
+                        }`}
                       />
                     </div>
                   </div>
 
                   {/* Inline Error Box */}
                   {formError && (
-                    <div className="p-3 bg-red-950/80 border border-red-500/60 rounded-xl text-red-200 text-[11px] space-y-1 animate-shake">
+                    <div className="p-3 bg-red-950/90 border-2 border-red-500/70 rounded-xl text-red-200 text-[11px] space-y-1 animate-shake shadow-[0_0_15px_rgba(239,68,68,0.3)]">
                       <div className="flex items-center gap-1.5 font-bold text-red-400">
                         <AlertTriangle className="w-4 h-4 shrink-0" />
-                        <span>Validation Error</span>
+                        <span>Validation Alert</span>
                       </div>
                       <p>{formError}</p>
                     </div>
@@ -407,17 +544,26 @@ export function ActiveAccountWidget() {
                   {/* SUBMIT BUTTON */}
                   <button
                     type="submit"
-                    disabled={state === 'submitting'}
-                    className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-700 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(245,158,11,0.5)] transition transform hover:scale-[1.02] active:scale-98 cursor-pointer disabled:opacity-50"
+                    disabled={!joinedTelegram || state === 'submitting'}
+                    className={`w-full py-3.5 px-4 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 border transition transform cursor-pointer ${
+                      !joinedTelegram
+                        ? 'bg-slate-900 border-slate-800 text-slate-500 cursor-not-allowed opacity-60'
+                        : 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-400 hover:to-orange-500 text-slate-950 shadow-[0_0_25px_rgba(245,158,11,0.6)] border-amber-300/40 hover:scale-[1.02] active:scale-98'
+                    }`}
                   >
                     {state === 'submitting' ? (
                       <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
                         <span>Submitting Request...</span>
+                      </>
+                    ) : !joinedTelegram ? (
+                      <>
+                        <Lock className="w-4 h-4 text-amber-400" />
+                        <span>LOCKED (JOIN TELEGRAM TO UNLOCK)</span>
                       </>
                     ) : (
                       <>
-                        <Send className="w-4 h-4" />
+                        <Send className="w-4 h-4 text-slate-950" />
                         <span>SUBMIT REQUEST</span>
                       </>
                     )}

@@ -1426,19 +1426,12 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     return {};
   });
 
-  // Calculate real-time count for any social media app, matching display on top and modal view inside
+  // Calculate real-time count for any social media app, strictly counted from actual received SMS/OTP hits
   const getMonotonicCountForApp = useCallback((appName: string): number => {
-    const clean = (appName || '').trim().toLowerCase();
+    if (!appName) return 0;
     const hits = filterHitsForApp(active24hHits, appName);
-    const serverCount =
-      globalStats.appCounts[appName] ??
-      globalStats.appCounts[appName.toUpperCase()] ??
-      globalStats.appCounts[appName.toLowerCase()] ??
-      globalStats.appCounts[clean] ??
-      0;
-    const persisted = appMonotonicCounts[clean] || 0;
-    return Math.max(hits.length, serverCount, persisted);
-  }, [active24hHits, globalStats.appCounts, appMonotonicCounts]);
+    return hits.length;
+  }, [active24hHits]);
 
   // Real-time online heartbeat tracking for the active logged-in user
   useEffect(() => {
@@ -1648,7 +1641,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     };
   }, []);
 
-  // Keep monotonic counts strictly synchronized with server and non-decreasing
+  // Sync app counts with actual received hits
   useEffect(() => {
     setAppMonotonicCounts((prev) => {
       let changed = false;
@@ -1656,16 +1649,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       for (const app of topAppsList) {
         const clean = (app.name || '').trim().toLowerCase();
         const hitsCount = filterHitsForApp(active24hHits, app.name).length;
-        const serverCount =
-          globalStats.appCounts[app.name] ??
-          globalStats.appCounts[app.name.toUpperCase()] ??
-          globalStats.appCounts[app.name.toLowerCase()] ??
-          globalStats.appCounts[clean] ??
-          0;
-        const effective = Math.max(hitsCount, serverCount);
-        const current = next[clean] || 0;
-        if (effective > current) {
-          next[clean] = effective;
+        if (next[clean] !== hitsCount) {
+          next[clean] = hitsCount;
           changed = true;
         }
       }
@@ -1677,7 +1662,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       }
       return prev;
     });
-  }, [active24hHits, globalStats.appCounts, topAppsList]);
+  }, [active24hHits, topAppsList]);
 
   const [showAllTopApps, setShowAllTopApps] = useState(false);
   const [showAllTopRanges, setShowAllTopRanges] = useState(false);
@@ -3708,10 +3693,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                           <h4 className="font-bold text-slate-800 text-xs sm:text-sm tracking-tight group-hover:text-blue-600 transition-colors">
                             {app.name}
                           </h4>
-                          <span className="text-[11px] text-slate-500 font-normal mt-0.5">
+                          <span className="text-[11px] text-slate-500 font-semibold mt-0.5">
                             {realCount > 0
-                              ? `${realCount.toLocaleString()} message`
-                              : "0 message"}
+                              ? `${realCount.toLocaleString()} SMS`
+                              : "0 SMS"}
                           </span>
                           <span
                             className={`mt-1 text-[9px] font-bold px-2 py-0.5 rounded-full transition-colors flex items-center gap-1 ${

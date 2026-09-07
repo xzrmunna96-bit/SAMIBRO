@@ -216,7 +216,9 @@ export function filterHitsForApp(hits: any[], appNameOrId: string, maxAgeMs = 24
 
   return hits.filter((h) => {
     if (!h) return false;
-    let t = typeof h.time === 'number' ? h.time : (h.timestamp || new Date(h.time).getTime());
+    let t = typeof h.time === 'number'
+      ? (h.time < 10000000000 ? h.time * 1000 : h.time)
+      : (h.timestamp || new Date(h.time).getTime());
     if (isNaN(t) || t <= 0) t = now;
     if (t < minTime) return false; // Enforce strict 24-hour limit
     return isHitMatchingApp(h, appNameOrId);

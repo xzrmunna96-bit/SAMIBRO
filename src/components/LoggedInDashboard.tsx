@@ -5967,54 +5967,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   )}
                 </div>
 
-                {/* Profile Photo Quick Selector */}
-                <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div
-                      onClick={handleOpenGalleryPicker}
-                      className="w-14 h-14 rounded-2xl bg-slate-900 border border-slate-700 flex items-center justify-center overflow-hidden cursor-pointer shrink-0 shadow-inner group"
-                      title="Click to choose image from gallery"
-                    >
-                      {profileAvatar ? (
-                        <img src={profileAvatar} alt="Avatar Preview" className="w-full h-full object-cover group-hover:opacity-80 transition" />
-                      ) : (
-                        <ImageIcon className="w-6 h-6 text-slate-500 group-hover:text-emerald-400 transition" />
-                      )}
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-white flex items-center gap-1.5">
-                        <span>Profile Photo</span>
-                        {profileAvatar && <span className="text-emerald-400 text-xs font-normal">(Uploaded)</span>}
-                      </h4>
-                      <p className="text-xs text-slate-400">
-                        Click below to choose any photo from your phone or PC gallery.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 w-full sm:w-auto">
-                    <button
-                      type="button"
-                      onClick={handleOpenGalleryPicker}
-                      className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md cursor-pointer transition active:scale-95"
-                    >
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>Choose From Gallery</span>
-                    </button>
-                    {profileAvatar && (
-                      <button
-                        type="button"
-                        onClick={handleRemoveProfileAvatar}
-                        className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-rose-950/80 text-slate-300 hover:text-rose-300 text-xs font-bold transition cursor-pointer border border-slate-700"
-                        title="Remove photo"
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <form onSubmit={handleSaveProfileInfo} className="space-y-4 text-xs sm:text-sm">
+                <div className="space-y-4 text-xs sm:text-sm">
                   <div>
                     <label className="block text-slate-300 font-bold mb-1">
                       Full Name / Account Title:
@@ -6022,7 +5975,15 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                     <input
                       type="text"
                       value={profileName}
-                      onChange={(e) => setProfileName(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setProfileName(val);
+                        updateUserProfileAndPassword({
+                          email: user.email,
+                          name: val,
+                        });
+                        reloadUsers();
+                      }}
                       placeholder="Enter full name"
                       className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-teal-400 transition"
                     />
@@ -6050,48 +6011,20 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                     <input
                       type="text"
                       value={profilePhone}
-                      onChange={(e) => setProfilePhone(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setProfilePhone(val);
+                        updateUserProfileAndPassword({
+                          email: user.email,
+                          phoneOrTelegram: val,
+                        });
+                        reloadUsers();
+                      }}
                       placeholder="+8801700000000 or @telegram_handle"
                       className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-teal-400 transition font-mono"
                     />
                   </div>
-
-                  <div>
-                    <label className="block text-slate-300 font-bold mb-1">
-                      Account Note / Registration Form Details:
-                    </label>
-                    <input
-                      type="text"
-                      value={profileNote}
-                      onChange={(e) => setProfileNote(e.target.value)}
-                      placeholder="Form submission details or note"
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-teal-400 transition"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-300 font-bold mb-1">
-                      Profile Avatar Image URL (Optional):
-                    </label>
-                    <input
-                      type="text"
-                      value={profileAvatar}
-                      onChange={(e) => setProfileAvatar(e.target.value)}
-                      placeholder="https://example.com/my-avatar.png (Or use gallery button above)"
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-teal-400 transition text-xs font-mono"
-                    />
-                  </div>
-
-                  <div className="pt-2">
-                    <button
-                      type="submit"
-                      className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer active:scale-95"
-                    >
-                      <Check className="w-4 h-4" />
-                      <span>Save & Sync Profile</span>
-                    </button>
-                  </div>
-                </form>
+                </div>
               </div>
 
               {/* 2. User Proxy API Session Section (সকল তথ্যের নিচে এপিআই) */}

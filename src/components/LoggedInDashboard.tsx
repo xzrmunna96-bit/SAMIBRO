@@ -61,6 +61,8 @@ import {
 import { SmsCdrReportsView } from "./SmsCdrReportsView";
 import { LiveTestSmsView, SmsTestRecord } from "./LiveTestSmsView";
 import { SmsTestHistoryView } from "./SmsTestHistoryView";
+import { UserApiSessionCard } from "./UserApiSessionCard";
+import { TwoFactorAuthCard } from "./TwoFactorAuthCard";
 import {
   getAllNotifications,
   getNotificationsForUser,
@@ -807,6 +809,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     | "liveTestSms"
     | "smsTestHistory"
     | "telegramBot"
+    | "userApiSession"
   >(() => {
     const fromUrl = getViewFromUrlHash();
     if (fromUrl) {
@@ -831,6 +834,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           "adminRequests",
           "liveTestSms",
           "smsTestHistory",
+          "userApiSession",
         ].includes(savedView)
       ) {
         return savedView as any;
@@ -1142,6 +1146,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const [profileName, setProfileName] = useState(user.name || "");
   const [profilePhone, setProfilePhone] = useState(user.phoneOrTelegram || "");
   const [profileNote, setProfileNote] = useState(user.note || "");
+  const [profileAvatar, setProfileAvatar] = useState(user.avatarUrl || "");
   const [profileNewPassword, setProfileNewPassword] = useState("");
   const [profileConfirmPassword, setProfileConfirmPassword] = useState("");
   const [profileSaveSuccess, setProfileSaveSuccess] = useState<string | null>(null);
@@ -1151,6 +1156,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     setProfileName(user.name || "");
     setProfilePhone(user.phoneOrTelegram || "");
     setProfileNote(user.note || "");
+    setProfileAvatar(user.avatarUrl || "");
   }, [user]);
 
   const handleSaveProfileInfo = (e: React.FormEvent) => {
@@ -1163,6 +1169,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       name: profileName,
       phoneOrTelegram: profilePhone,
       note: profileNote,
+      avatarUrl: profileAvatar,
     });
 
     if (res.success) {
@@ -3654,6 +3661,26 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               )}
             </div>
 
+            {/* User API Session Navigation Item */}
+            <button
+              type="button"
+              id="sidebar-item-user-api"
+              onClick={() => handleNavClick("userApiSession")}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer ${
+                currentView === "userApiSession"
+                  ? "bg-teal-600 text-white shadow-sm"
+                  : "text-slate-300 hover:bg-slate-800/70 hover:text-white"
+              }`}
+            >
+              <Key className="w-4.5 h-4.5 shrink-0 opacity-90 text-teal-400" />
+              <span className="flex items-center justify-between w-full">
+                <span>User API Session</span>
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-teal-500/20 text-teal-300 border border-teal-500/30">
+                  NEW
+                </span>
+              </span>
+            </button>
+
             {/* Profile Navigation Item */}
             <button
               type="button"
@@ -5608,19 +5635,26 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
         {/* -------------------- 7. PROFILE VIEW -------------------- */}
         {currentView === "profile" && (
-          <div className="space-y-6">
-            {/* Header Title Card */}
-            <div className="bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 rounded-2xl p-5 sm:p-6 text-white shadow-xl border border-slate-700/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center text-slate-950 font-black text-2xl shadow-lg shadow-amber-500/20 shrink-0">
-                  {(profileName || user.name || "U")[0].toUpperCase()}
+          <div className="space-y-6 animate-fadeIn max-w-4xl mx-auto">
+            {/* Cyber Hero Banner Header */}
+            <div className="bg-gradient-to-r from-slate-900 via-indigo-950/80 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-2xl border border-indigo-500/30 relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-6">
+              <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute bottom-0 left-0 w-96 h-96 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
+
+              <div className="flex items-center gap-5 relative z-10">
+                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-tr from-emerald-500 via-teal-500 to-cyan-400 flex items-center justify-center text-slate-950 font-black text-2xl sm:text-3xl shadow-[0_0_30px_rgba(16,185,129,0.3)] shrink-0 border-2 border-white/20 overflow-hidden">
+                  {profileAvatar ? (
+                    <img src={profileAvatar} alt="Profile Avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    (profileName || user.name || "U")[0].toUpperCase()
+                  )}
                 </div>
-                <div>
+                <div className="space-y-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                      {profileName || user.name || "Agent User"}
+                    <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                      {profileName || user.name || "SUPER X User"}
                     </h2>
-                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-mono font-bold ${
+                    <span className={`px-3 py-0.5 rounded-full text-xs font-mono font-bold uppercase tracking-wider ${
                       currentUserDisplayRole === 'Admin'
                         ? 'bg-amber-500/20 text-amber-300 border border-amber-400/40'
                         : currentUserDisplayRole === 'Sub-Admin'
@@ -5629,38 +5663,51 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                     }`}>
                       {currentUserDisplayRole}
                     </span>
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/40">
-                      Active
+                    <span className="px-3 py-0.5 rounded-full text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 uppercase">
+                      VERIFIED
                     </span>
                   </div>
-                  <p className="text-xs text-slate-300 font-mono mt-1 flex items-center gap-2">
-                    <span>Email: {user.email}</span>
-                    <span className="text-slate-500">•</span>
-                    <span>Code: <strong className="text-amber-400">{accountCode}</strong></span>
+                  <p className="text-xs sm:text-sm text-slate-300 font-mono flex items-center gap-2 flex-wrap pt-0.5">
+                    <span>Identity: <strong className="text-teal-300">{user.email}</strong></span>
+                    <span className="text-slate-600">•</span>
+                    <span>Account ID: <strong className="text-amber-300">{accountCode}</strong></span>
                   </p>
                 </div>
+              </div>
+
+              <div className="relative z-10 flex items-center gap-3 self-start md:self-auto">
+                <a
+                  href="https://t.me/super_x_support"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white font-extrabold text-xs uppercase tracking-wider shadow-lg flex items-center gap-2 border border-teal-300/30 transition hover:scale-105 active:scale-95 cursor-pointer"
+                >
+                  <Send className="w-4 h-4 text-teal-100" />
+                  <span>CONTACT MANAGER</span>
+                </a>
               </div>
             </div>
 
             {/* Toast Alerts for Profile Actions */}
             {profileSaveSuccess && (
-              <div className="p-4 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-sm font-semibold flex items-center gap-2">
+              <div className="p-4 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-sm font-semibold flex items-center gap-2">
                 <CheckCircle className="w-5 h-5 text-emerald-400 shrink-0" />
                 <span>{profileSaveSuccess}</span>
               </div>
             )}
             {profileSaveError && (
-              <div className="p-4 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-sm font-semibold flex items-center gap-2">
+              <div className="p-4 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-sm font-semibold flex items-center gap-2">
                 <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0" />
                 <span>{profileSaveError}</span>
               </div>
             )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Profile Details Form Card */}
-              <div className="bg-slate-900/90 rounded-2xl p-5 sm:p-6 border border-slate-800 shadow-xl space-y-4">
+            {/* Vertical Stack Layout (লাম্বালম্বি) */}
+            <div className="space-y-6">
+              {/* 1. Profile Details Form Card */}
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
                 <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
-                  <User className="w-5 h-5 text-amber-400" />
+                  <User className="w-5 h-5 text-teal-400" />
                   <h3 className="text-lg font-bold text-white tracking-tight">
                     Submitted Profile & Registration Info
                   </h3>
@@ -5676,7 +5723,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                       value={profileName}
                       onChange={(e) => setProfileName(e.target.value)}
                       placeholder="Enter full name"
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-amber-400 transition"
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-teal-400 transition"
                     />
                   </div>
 
@@ -5704,7 +5751,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                       value={profilePhone}
                       onChange={(e) => setProfilePhone(e.target.value)}
                       placeholder="+8801700000000 or @telegram_handle"
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-amber-400 transition font-mono"
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-teal-400 transition font-mono"
                     />
                   </div>
 
@@ -5717,7 +5764,20 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                       value={profileNote}
                       onChange={(e) => setProfileNote(e.target.value)}
                       placeholder="Form submission details or note"
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-amber-400 transition"
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-teal-400 transition"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 font-bold mb-1">
+                      Profile Avatar Image URL (Optional):
+                    </label>
+                    <input
+                      type="text"
+                      value={profileAvatar}
+                      onChange={(e) => setProfileAvatar(e.target.value)}
+                      placeholder="https://example.com/my-avatar.png"
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-teal-400 transition text-xs font-mono"
                     />
                   </div>
 
@@ -5733,10 +5793,13 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 </form>
               </div>
 
-              {/* Security & Change Password Card */}
-              <div className="bg-slate-900/90 rounded-2xl p-5 sm:p-6 border border-slate-800 shadow-xl space-y-4">
+              {/* 2. User Proxy API Session Section (সকল তথ্যের নিচে এপিআই) */}
+              <UserApiSessionCard userEmail={user.email} userName={user.name} accountCode={accountCode} />
+
+              {/* 3. Security & Change Password Card (তার নিচে নতুন ইউজার পাসওয়ার্ড চেঞ্জ) */}
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
                 <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
-                  <Key className="w-5 h-5 text-blue-400" />
+                  <Key className="w-5 h-5 text-indigo-400" />
                   <h3 className="text-lg font-bold text-white tracking-tight">
                     Update Account Password
                   </h3>
@@ -5752,7 +5815,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                       value={profileNewPassword}
                       onChange={(e) => setProfileNewPassword(e.target.value)}
                       placeholder="Enter new password (min 4 chars)"
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-blue-400 transition"
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-indigo-400 transition"
                     />
                   </div>
 
@@ -5765,7 +5828,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                       value={profileConfirmPassword}
                       onChange={(e) => setProfileConfirmPassword(e.target.value)}
                       placeholder="Re-type new password"
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-blue-400 transition"
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-indigo-400 transition"
                     />
                   </div>
 
@@ -5782,7 +5845,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   <div className="pt-2">
                     <button
                       type="submit"
-                      className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold transition-all shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                      className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold transition-all shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                     >
                       <Lock className="w-4 h-4" />
                       <span>Update Password</span>
@@ -5790,7 +5853,17 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   </div>
                 </form>
               </div>
+
+              {/* 4. 2FA Two-Factor Authentication Security Card */}
+              <TwoFactorAuthCard userEmail={user.email} userName={user.name} />
             </div>
+          </div>
+        )}
+
+        {/* User API Session Standalone View */}
+        {currentView === "userApiSession" && (
+          <div className="animate-fadeIn">
+            <UserApiSessionCard userEmail={user.email} userName={user.name} />
           </div>
         )}
 

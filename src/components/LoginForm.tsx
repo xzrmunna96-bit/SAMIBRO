@@ -489,13 +489,13 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
 
               <div className="pt-2 flex flex-col gap-2">
                 <a
-                  href="https://t.me/xzrmunna"
+                  href="https://t.me/super_x_support"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full py-3 px-4 rounded-full bg-gradient-to-r from-sky-600 to-blue-600 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition cursor-pointer shadow-md"
                 >
                   <Send className="w-4 h-4" />
-                  <span>Contact Admin on Telegram</span>
+                  <span>Contact Manager on Telegram</span>
                 </a>
                 <button
                   type="button"

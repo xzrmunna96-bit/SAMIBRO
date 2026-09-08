@@ -19,6 +19,8 @@ export function triggerAdminRoute() {
   window.dispatchEvent(new Event('hashchange'));
 }
 
+import { MaintenanceOverlay } from './components/MaintenanceOverlay';
+
 export function App() {
   const [currentUser, setCurrentUser] = useState<UserData | null>(() => {
     try {
@@ -174,7 +176,12 @@ export function App() {
 
   // 2. When logged in -> render the complete full-screen SMS/OTP Dashboard matching the portal layout
   if (currentUser) {
-    return <LoggedInDashboard user={currentUser} onLogout={handleLogout} />;
+    return (
+      <>
+        <MaintenanceOverlay />
+        <LoggedInDashboard user={currentUser} onLogout={handleLogout} />
+      </>
+    );
   }
 
   // 3. Otherwise -> Regular Modern Login Viewport Matching Reference Image
@@ -183,6 +190,7 @@ export function App() {
       id="main-login-viewport"
       className="min-h-screen w-full relative flex items-center justify-center p-3 sm:p-6 md:p-10 font-sans overflow-x-hidden selection:bg-teal-600 selection:text-white bg-gradient-to-br from-[#f3f8d2] via-[#e6f3aa] to-[#d4eb89]"
     >
+      <MaintenanceOverlay />
       {/* Floating Organic Fluid circles matching image background */}
       <div className="fixed top-0 left-0 w-80 h-80 bg-[#bef264]/40 rounded-full blur-3xl pointer-events-none -translate-x-1/3 -translate-y-1/3" />
       <div className="fixed bottom-0 right-0 w-96 h-96 bg-[#86efac]/35 rounded-full blur-3xl pointer-events-none translate-x-1/3 translate-y-1/3" />

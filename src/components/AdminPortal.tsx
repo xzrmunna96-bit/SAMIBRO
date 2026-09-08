@@ -158,6 +158,7 @@ import { UserOnlineManagementCard } from './UserOnlineManagementCard';
 
 type AdminTab =
   | 'api-management'
+  | 'unlock-api-session'
   | 'console-api'
   | 'active-account-management'
   | 'user-management'
@@ -309,6 +310,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
 
       const adminTabTitles: Record<string, string> = {
         'api-management': 'API Configuration',
+        'unlock-api-session': 'Unlock API Session',
         'console-api': 'Console Realtime',
         'active-account-management': 'Pending Approvals',
         'user-management': 'User Management',
@@ -334,11 +336,69 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
 
   // Active Account Management Tab State
   const [activeAccSearch, setActiveAccSearch] = useState('');
+  const [quickUnlockAccountId, setQuickUnlockAccountId] = useState('');
   const [activeAccFilter, setActiveAccFilter] = useState<'ALL' | 'pending' | 'approved' | 'rejected'>('pending');
   const [noticeModalUser, setNoticeModalUser] = useState<UserAccount | null>(null);
   const [noticeModalText, setNoticeModalText] = useState('');
   const [rejectModalUser, setRejectModalUser] = useState<UserAccount | null>(null);
   const [rejectModalReason, setRejectModalReason] = useState('');
+
+  // Dedicated Unlock API Management Session State
+  const [userApiKeysList, setUserApiKeysList] = useState<any[]>([]);
+  const [unlockInputCode, setUnlockInputCode] = useState('');
+  const [unlockSearchQuery, setUnlockSearchQuery] = useState('');
+  const [unlockListTab, setUnlockListTab] = useState<'unlocked' | 'locked'>('unlocked');
+  const [showKeyMap, setShowKeyMap] = useState<Record<string, boolean>>({});
+
+  const fetchAdminUserApiKeys = async () => {
+    try {
+      const res = await fetch('/api/admin/user-api-keys');
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.keys)) {
+        setUserApiKeysList(data.keys);
+      }
+    } catch (e) {
+      console.error('Error fetching admin user API keys:', e);
+    }
+  };
+
+  useEffect(() => {
+    if (isAdminAuthenticated) {
+      fetchAdminUserApiKeys();
+      const interval = setInterval(fetchAdminUserApiKeys, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [isAdminAuthenticated]);
+
+  const handleUnlockUserKey = async (accountCodeOrEmail: string, activeStatus: boolean = true) => {
+    if (!accountCodeOrEmail || !accountCodeOrEmail.trim()) {
+      showToast('Please enter an Account ID or Email address');
+      return;
+    }
+    try {
+      const res = await fetch('/api/admin/user-api-keys/unlock-by-account-id', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountCode: accountCodeOrEmail.trim(),
+          email: accountCodeOrEmail.trim(),
+          active: activeStatus,
+        }),
+      });
+      const data = await res.json();
+      if (data && data.success) {
+        showToast(data.message || `API Key ${activeStatus ? 'Unlocked' : 'Locked'} Successfully!`);
+        setUnlockInputCode('');
+        setQuickUnlockAccountId('');
+        fetchAdminUserApiKeys();
+        reloadAccountsFromFirebaseAndServer();
+      } else {
+        showToast('Error: ' + (data?.error || 'Failed to update API key status'));
+      }
+    } catch (err: any) {
+      showToast('Failed to update API key: ' + err.message);
+    }
+  };
 
   // =========================================================================
   // SECTION 1: CONSOLE API KEY & REAL-TIME INCOMING SMS
@@ -2251,6 +2311,24 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                   </span>
                 </button>
 
+                {/* 1.5 Dedicated Unlock API Management Session */}
+                <button
+                  type="button"
+                  id="admin-tab-unlock-api-session"
+                  onClick={() => setActiveTab('unlock-api-session')}
+                  className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-2 ${
+                    activeTab === 'unlock-api-session'
+                      ? 'bg-teal-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  }`}
+                >
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  <span>Unlock API Session</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                    {userApiKeysList.filter((k) => k.active).length} Unlocked
+                  </span>
+                </button>
+
                 {/* 2. User Account Requests / Active Account Management */}
                 <button
                   type="button"
@@ -3087,6 +3165,357 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
         )}
 
         {/* ================================================================= */}
+        {/* TAB: UNLOCK API MANAGEMENT SESSION (এপিআই আনলক সেশন)             */}
+        {/* ================================================================= */}
+        {activeTab === 'unlock-api-session' && (() => {
+          const allCombinedUsers = accountsList.map((acc) => {
+            const keyRecord = userApiKeysList.find(
+              (k) => k.email && k.email.toLowerCase() === acc.email.toLowerCase()
+            );
+            return {
+              ...acc,
+              apiKeyRecord: keyRecord,
+              isUnlocked: !!(keyRecord && keyRecord.active),
+              apiKey: keyRecord?.apiKey || null,
+            };
+          });
+
+          userApiKeysList.forEach((k) => {
+            if (k.email && !allCombinedUsers.some((u) => u.email.toLowerCase() === k.email.toLowerCase())) {
+              allCombinedUsers.push({
+                email: k.email,
+                name: k.name || k.email.split('@')[0],
+                accountCode: k.accountCode || getDedicatedAccountCode(k.email),
+                status: 'approved',
+                apiKeyRecord: k,
+                isUnlocked: !!k.active,
+                apiKey: k.apiKey || null,
+              } as any);
+            }
+          });
+
+          const unlockedUsers = allCombinedUsers.filter((u) => u.isUnlocked);
+          const lockedUsers = allCombinedUsers.filter((u) => !u.isUnlocked);
+
+          const filteredList = (unlockListTab === 'unlocked' ? unlockedUsers : lockedUsers).filter((u) => {
+            if (!unlockSearchQuery.trim()) return true;
+            const q = unlockSearchQuery.toLowerCase().trim();
+            return (
+              (u.name || '').toLowerCase().includes(q) ||
+              (u.email || '').toLowerCase().includes(q) ||
+              (u.accountCode || '').toLowerCase().includes(q) ||
+              (u.apiKey || '').toLowerCase().includes(q)
+            );
+          });
+
+          return (
+            <div className="space-y-6 animate-fadeIn">
+              {/* Header Banner */}
+              <div className="bg-gradient-to-r from-slate-900 via-teal-950/40 to-slate-900 border border-teal-500/30 rounded-3xl p-6 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 rounded-2xl bg-teal-500/20 border border-teal-500/40 flex items-center justify-center text-teal-300 shadow-[0_0_20px_rgba(20,184,166,0.3)] shrink-0">
+                    <ShieldCheck className="w-7 h-7" />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                        Unlock API Management (এপিআই আনলক সেশন)
+                      </h2>
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-teal-500/20 text-teal-300 border border-teal-500/40">
+                        REALTIME DATABASE
+                      </span>
+                    </div>
+                    <p className="text-xs sm:text-sm text-slate-300">
+                      ইনপুট বক্সে ইউজারের ১০ ডিজিটের Account ID বসিয়ে 'আনলক এপিআই' বাটনে চাপলেই তার ইউজার প্যানেলে রিয়েলটাইমে এপিআই সুবিধা চালু হয়ে যাবে।
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={fetchAdminUserApiKeys}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold transition flex items-center gap-2 shrink-0 cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-teal-400" />
+                  <span>Refresh Realtime API List</span>
+                </button>
+              </div>
+
+              {/* Main 2-Column Layout */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                
+                {/* LEFT COLUMN: Unlock Form & Quick Guide */}
+                <div className="lg:col-span-5 space-y-6">
+                  {/* Unlock API Card Form */}
+                  <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-5">
+                    <div className="flex items-center gap-2 pb-2 border-b border-slate-800">
+                      <Key className="w-5 h-5 text-teal-400" />
+                      <h3 className="text-lg font-bold text-white">আনলক এপিআই ফর্ম (Unlock API)</h3>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                          ইউজারের ১০-ডিজিট Account ID বা ইমেইল:
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={unlockInputCode}
+                            onChange={(e) => setUnlockInputCode(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleUnlockUserKey(unlockInputCode, true);
+                            }}
+                            placeholder="যেমন: 2886064606 অথবা user@email.com"
+                            className="w-full bg-slate-950 border-2 border-teal-500/40 rounded-2xl px-4 py-3 text-sm font-mono text-white placeholder-slate-500 focus:outline-none focus:border-teal-400 transition shadow-inner"
+                          />
+                          {unlockInputCode && (
+                            <button
+                              onClick={() => setUnlockInputCode('')}
+                              className="absolute right-3 top-3 text-slate-500 hover:text-white text-xs font-bold"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => handleUnlockUserKey(unlockInputCode, true)}
+                          className="py-3 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white font-extrabold text-xs uppercase tracking-wider transition shadow-lg shadow-teal-900/30 flex items-center justify-center gap-2 cursor-pointer"
+                        >
+                          <ShieldCheck className="w-4 h-4" />
+                          <span>আনলক এপিআই</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleUnlockUserKey(unlockInputCode, false)}
+                          className="py-3 px-4 rounded-2xl bg-slate-800 hover:bg-slate-700 text-rose-300 border border-rose-500/30 font-extrabold text-xs uppercase tracking-wider transition flex items-center justify-center gap-2 cursor-pointer"
+                        >
+                          <Lock className="w-4 h-4 text-rose-400" />
+                          <span>লক এপিআই</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Stats Counter Overview */}
+                    <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-800/80">
+                      <div className="bg-slate-950 p-3 rounded-2xl border border-emerald-500/30 text-center">
+                        <span className="text-[10px] font-bold text-slate-400 block uppercase">Unlocked</span>
+                        <span className="text-xl font-black text-emerald-400 font-mono">{unlockedUsers.length}</span>
+                      </div>
+                      <div className="bg-slate-950 p-3 rounded-2xl border border-amber-500/30 text-center">
+                        <span className="text-[10px] font-bold text-slate-400 block uppercase">Locked</span>
+                        <span className="text-xl font-black text-amber-400 font-mono">{lockedUsers.length}</span>
+                      </div>
+                      <div className="bg-slate-950 p-3 rounded-2xl border border-indigo-500/30 text-center">
+                        <span className="text-[10px] font-bold text-slate-400 block uppercase">Total Users</span>
+                        <span className="text-xl font-black text-indigo-400 font-mono">{allCombinedUsers.length}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bangla Instructions Card */}
+                  <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 space-y-3">
+                    <h4 className="text-xs font-bold text-teal-300 uppercase tracking-wider flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-teal-400" />
+                      <span>কিভাবে কাজ করে? (How It Works)</span>
+                    </h4>
+                    <ul className="text-xs text-slate-300 space-y-2 leading-relaxed">
+                      <li className="flex items-start gap-2">
+                        <span className="w-5 h-5 rounded-full bg-teal-500/20 text-teal-300 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">১</span>
+                        <span>ইউজার তার ড্যাশবোর্ড থেকে ১০ ডিজিটের <strong>Account ID</strong> আপনাকে পাঠাবে।</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="w-5 h-5 rounded-full bg-teal-500/20 text-teal-300 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">২</span>
+                        <span>এখানে Account ID বসিয়ে <strong>'আনলক এপিআই'</strong> বাটনে ক্লিক করলে সাথে সাথে সেই ইউজারের জন্য রিয়েলটাইমে এপিআই চালু হয়ে যাবে।</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="w-5 h-5 rounded-full bg-teal-500/20 text-teal-300 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">৩</span>
+                        <span>ডানপাশের তালিকা থেকে আনলক করা যেকোনো ইউজারের এপিআই যেকোনো সময় বন্ধ করতে <strong>'Lock Access'</strong> চাপুন।</span>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+
+                {/* RIGHT COLUMN: Unlocked & Locked Users List */}
+                <div className="lg:col-span-7 space-y-5">
+                  <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
+                    {/* Header Controls & Filter Tabs */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+                      <div className="flex items-center gap-2 bg-slate-950 p-1 rounded-2xl border border-slate-800">
+                        <button
+                          type="button"
+                          onClick={() => setUnlockListTab('unlocked')}
+                          className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-2 ${
+                            unlockListTab === 'unlocked'
+                              ? 'bg-emerald-600 text-white shadow-md'
+                              : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          <ShieldCheck className="w-3.5 h-3.5" />
+                          <span>আনলক এপিআই ইউজার ({unlockedUsers.length})</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setUnlockListTab('locked')}
+                          className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-2 ${
+                            unlockListTab === 'locked'
+                              ? 'bg-amber-600 text-white shadow-md'
+                              : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          <Lock className="w-3.5 h-3.5" />
+                          <span>লক ইউজার তালিকা ({lockedUsers.length})</span>
+                        </button>
+                      </div>
+
+                      {/* Search Bar */}
+                      <div className="relative w-full sm:w-64">
+                        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                        <input
+                          type="text"
+                          value={unlockSearchQuery}
+                          onChange={(e) => setUnlockSearchQuery(e.target.value)}
+                          placeholder="Search Name, Email or ID..."
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-teal-400"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Table / Cards List */}
+                    {filteredList.length === 0 ? (
+                      <div className="text-center py-12 text-slate-500 text-xs space-y-2">
+                        <Key className="w-8 h-8 text-slate-600 mx-auto" />
+                        <p>
+                          {unlockListTab === 'unlocked'
+                            ? 'কোনো আনলক ইউজার পাওয়া যায়নি। বামের বক্সে Account ID বসিয়ে আনলক করুন।'
+                            : 'কোনো লক ইউজার খুঁজে পাওয়া যায়নি।'}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
+                        {filteredList.map((userItem, idx) => {
+                          const displayAccCode = userItem.accountCode || getDedicatedAccountCode(userItem.email);
+                          const isShowingKey = !!showKeyMap[userItem.email];
+                          const keyStr = userItem.apiKey || 'No key generated yet';
+
+                          return (
+                            <div
+                              key={`unlock-user-card-${userItem.email}-${idx}`}
+                              className="bg-slate-950 border border-slate-800/80 hover:border-teal-500/40 rounded-2xl p-4 transition space-y-3"
+                            >
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                {/* User Info */}
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <h4 className="font-bold text-sm text-white">{userItem.name || 'SUPER X User'}</h4>
+                                    {userItem.isUnlocked ? (
+                                      <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                                        UNLOCKED
+                                      </span>
+                                    ) : (
+                                      <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                        LOCKED
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div className="flex items-center gap-3 text-xs text-slate-400 flex-wrap">
+                                    <span>{userItem.email}</span>
+                                    <span className="text-slate-600">•</span>
+                                    <div className="flex items-center gap-1 font-mono text-indigo-300 bg-indigo-950/80 px-2 py-0.5 rounded border border-indigo-500/30">
+                                      <span className="text-slate-400 font-sans text-[10px]">ID:</span>
+                                      <strong className="text-xs">{displayAccCode}</strong>
+                                      <button
+                                        onClick={() => {
+                                          navigator.clipboard.writeText(displayAccCode);
+                                          showToast('Account ID Copied!');
+                                        }}
+                                        className="text-indigo-400 hover:text-white ml-1 cursor-pointer"
+                                        title="Copy Account ID"
+                                      >
+                                        <Copy className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Action Toggle Button */}
+                                <div className="shrink-0 self-start sm:self-center">
+                                  {userItem.isUnlocked ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUnlockUserKey(userItem.email, false)}
+                                      className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                                    >
+                                      <Lock className="w-3.5 h-3.5" />
+                                      <span>Lock Access (বন্ধ করুন)</span>
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUnlockUserKey(userItem.email, true)}
+                                      className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold transition shadow-md flex items-center gap-1.5 cursor-pointer"
+                                    >
+                                      <ShieldCheck className="w-3.5 h-3.5" />
+                                      <span>Unlock (আনলক করুন)</span>
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* API Key Box */}
+                              {userItem.isUnlocked && (
+                                <div className="p-2.5 bg-slate-900 rounded-xl border border-slate-800 flex items-center justify-between gap-2 text-xs font-mono">
+                                  <div className="flex items-center gap-2 overflow-hidden text-emerald-300">
+                                    <Key className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                    <span className="truncate select-all">
+                                      {isShowingKey ? keyStr : '••••••••••••••••••••••••••••••••'}
+                                    </span>
+                                  </div>
+
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                      onClick={() =>
+                                        setShowKeyMap((prev) => ({ ...prev, [userItem.email]: !prev[userItem.email] }))
+                                      }
+                                      className="p-1 rounded text-slate-400 hover:text-white transition cursor-pointer"
+                                    >
+                                      {isShowingKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        if (userItem.apiKey) {
+                                          navigator.clipboard.writeText(userItem.apiKey);
+                                          showToast('API Key Copied!');
+                                        }
+                                      }}
+                                      className="p-1 rounded text-slate-400 hover:text-emerald-400 transition cursor-pointer"
+                                    >
+                                      <Copy className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ================================================================= */}
         {/* TAB: ACTIVE ACCOUNT MANAGEMENT (Active User Accounts)       */}
         {/* ================================================================= */}
         {activeTab === 'active-account-management' && (
@@ -3622,6 +4051,44 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
               </button>
             </div>
 
+            {/* Quick API Key Unlock Box */}
+            <div className="p-4 rounded-2xl bg-slate-900 border border-emerald-500/30 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-lg">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
+                  <Key className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-white flex items-center gap-2">
+                    <span>Quick API Key Unlock (ইউজার এপিআই আনলক)</span>
+                    <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono text-[10px]">
+                      ACCOUNT ID
+                    </span>
+                  </h4>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Enter or paste user's 10-digit Account ID or Email to instantly unlock and activate their API key.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 w-full md:w-auto">
+                <input
+                  type="text"
+                  value={quickUnlockAccountId}
+                  onChange={(e) => setQuickUnlockAccountId(e.target.value)}
+                  placeholder="Paste Account ID (e.g. 2886064606)"
+                  className="bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400 w-full md:w-64"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleUnlockUserKey(quickUnlockAccountId)}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs transition cursor-pointer flex items-center gap-1.5 shadow-md shrink-0 whitespace-nowrap"
+                >
+                  <Key className="w-3.5 h-3.5" />
+                  <span>আনলক কি (Unlock Key)</span>
+                </button>
+              </div>
+            </div>
+
             {/* User List Table */}
             <div className="rounded-xl border border-slate-800 bg-slate-950 overflow-hidden">
               <div className="overflow-x-auto">
@@ -3729,9 +4196,20 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                               )}
                             </td>
 
-                            {/* Actions: Suspend/Unsuspend, Answer, Reset Password */}
+                            {/* Actions: Suspend/Unsuspend, Unlock Key, Answer, Reset Password */}
                             <td className="py-3.5 px-4 text-right whitespace-nowrap">
                               <div className="inline-flex items-center gap-1.5">
+                                {/* 0. Unlock Key (আনলক কি) */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleUnlockUserKey(user.accountCode || user.email)}
+                                  className="px-2.5 py-1.5 rounded-lg bg-emerald-950/90 hover:bg-emerald-900 text-emerald-300 border border-emerald-500/40 font-bold text-xs transition cursor-pointer flex items-center gap-1"
+                                  title="Unlock API Key by Account ID"
+                                >
+                                  <Key className="w-3.5 h-3.5 text-emerald-400" />
+                                  <span>আনলক কি</span>
+                                </button>
+
                                 {/* 1. Suspend / Unsuspend */}
                                 <button
                                   type="button"

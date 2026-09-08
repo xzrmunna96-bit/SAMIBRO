@@ -46,6 +46,44 @@ async function startServer() {
   const GLOBAL_LIVE_HITS_FILE = path.join(DATA_DIR, "global_live_hits.json");
   const APP_COUNTS_FILE = path.join(DATA_DIR, "app_message_counts.json");
   const SYSTEM_API_KEY_FILE = path.join(DATA_DIR, "system_api_key.json");
+  const USER_API_KEYS_FILE = path.join(DATA_DIR, "user_api_keys.json");
+  const TELEGRAM_JOINS_FILE = path.join(DATA_DIR, "telegram_joins.json");
+
+  function loadTelegramJoins(): Record<string, any> {
+    try {
+      if (fs.existsSync(TELEGRAM_JOINS_FILE)) {
+        const raw = fs.readFileSync(TELEGRAM_JOINS_FILE, "utf-8");
+        return JSON.parse(raw) || {};
+      }
+    } catch {}
+    return {};
+  }
+
+  function saveTelegramJoins(data: Record<string, any>) {
+    try {
+      fs.writeFileSync(TELEGRAM_JOINS_FILE, JSON.stringify(data, null, 2), "utf-8");
+    } catch (err) {
+      console.warn("Could not save telegram_joins.json:", err);
+    }
+  }
+
+  function loadUserApiKeys(): Record<string, any> {
+    try {
+      if (fs.existsSync(USER_API_KEYS_FILE)) {
+        const raw = fs.readFileSync(USER_API_KEYS_FILE, "utf-8");
+        return JSON.parse(raw) || {};
+      }
+    } catch {}
+    return {};
+  }
+
+  function saveUserApiKeys(data: Record<string, any>) {
+    try {
+      fs.writeFileSync(USER_API_KEYS_FILE, JSON.stringify(data, null, 2), "utf-8");
+    } catch (err) {
+      console.warn("Could not save user_api_keys.json:", err);
+    }
+  }
 
   function loadSystemApiKey(): string {
     try {
@@ -642,7 +680,7 @@ async function startServer() {
         [{ text: `✅ APPROVED by ${approverName}`, callback_data: "noop_approved" }],
         [
           { text: "‼️ OPEN PANEL", url: "https://superxsms.vercel.app/" },
-          { text: "📢 CHANNEL", url: "https://t.me/super_x_sms_s" },
+          { text: "📢 CHANNEL", url: "https://t.me/super_x_support" },
         ],
       ],
     };
@@ -776,7 +814,7 @@ async function startServer() {
         ],
         [
           { text: "‼️ PANEL", url: "https://superxsms.vercel.app/" },
-          { text: "📢 CHANNEL", url: "https://t.me/super_x_sms_s" },
+          { text: "📢 CHANNEL", url: "https://t.me/super_x_support" },
         ],
       ],
     };
@@ -1130,7 +1168,7 @@ async function startServer() {
       inline_keyboard: [
         [
           { text: "‼️ PANEL", url: "https://superxsms.vercel.app/" },
-          { text: "📢 CHANNEL", url: "https://t.me/super_x_sms_s" },
+          { text: "📢 CHANNEL", url: "https://t.me/super_x_support" },
         ],
       ],
     };
@@ -3123,7 +3161,7 @@ async function startServer() {
                   currentAccounts.push(target);
                 }
 
-                target.adminNotice = "📢 Notice from Admin: Please verify your credentials or contact official Telegram support @super_x_sms_s.";
+                target.adminNotice = "📢 Notice from Admin: Please verify your credentials or contact official Telegram support @super_x_support.";
                 target.updatedAt = Date.now();
                 saveServerAccounts(currentAccounts);
                 saveAccountToFirestore(target).catch(() => null);
@@ -3730,6 +3768,18 @@ async function startServer() {
     }
   });
 
+  // Maintenance System Endpoints
+  app.get("/api/system/maintenance", (req, res) => {
+    const maintenance = loadMaintenanceState();
+    res.json(maintenance);
+  });
+
+  app.post("/api/system/maintenance", (req, res) => {
+    const maintenance = saveMaintenanceState(req.body || {});
+    console.log("[Server Maintenance] Maintenance state updated:", maintenance.enabled);
+    res.json({ success: true, maintenance });
+  });
+
   // Popup Banner Endpoints
   app.get("/api/popup-banner", (req, res) => {
     const banner = loadPopupBanner();
@@ -3740,6 +3790,332 @@ async function startServer() {
     const banner = savePopupBanner(req.body || {});
     console.log("[Server Banner] Popup banner config updated");
     res.json({ success: true, message: "Popup banner updated successfully", banner });
+  });
+
+  // Telegram Verification Endpoints
+  app.post("/api/telegram/verify-join", (req, res) => {
+    const clientIp = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown_ip";
+    const userEmail = String(req.body?.email || req.body?.userEmail || clientIp).trim().toLowerCase();
+    
+    const joins = loadTelegramJoins();
+    joins[userEmail] = {
+      verified: true,
+      timestamp: Date.now(),
+      ip: clientIp,
+    };
+    saveTelegramJoins(joins);
+
+    res.json({
+      success: true,
+      verified: true,
+      message: "Telegram join verified successfully via SUPER X SMS Telegram Core",
+      timestamp: Date.now(),
+    });
+  });
+
+  app.get("/api/telegram/status", (req, res) => {
+    const clientIp = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown_ip";
+    const userEmail = String(req.query.email || req.query.userEmail || clientIp).trim().toLowerCase();
+    
+    const joins = loadTelegramJoins();
+    const joinRecord = joins[userEmail];
+    
+    res.json({
+      success: true,
+      verified: !!(joinRecord && joinRecord.verified),
+      record: joinRecord || null,
+    });
+  });
+
+  // User Proxy API Auth Middleware Helper
+  function validateUserApiKey(req: any, res: any): { valid: boolean; keyRecord?: any } {
+    const rawKey = (
+      req.query.api_key ||
+      req.query.key ||
+      req.headers["x-api-key"] ||
+      (req.headers.authorization && req.headers.authorization.replace("Bearer ", "")) ||
+      ""
+    ).toString().trim();
+
+    if (!rawKey) {
+      res.status(401).json({
+        meta: { code: 401, status: "error" },
+        error: "API key is missing. Provide ?api_key=SUPER_X_SMS_API_... or X-API-KEY header.",
+        contact: "Contact SUPER X SMS Admin on Telegram (@super_x_support) to request or unlock an active API key.",
+      });
+      return { valid: false };
+    }
+
+    const keys = loadUserApiKeys();
+    const keyRecord = keys[rawKey];
+
+    if (!keyRecord || !keyRecord.active) {
+      res.status(403).json({
+        meta: { code: 403, status: "error" },
+        error: "Invalid or locked API key.",
+        contact: "Contact SUPER X SMS Admin on Telegram (@super_x_support) to activate your API key.",
+      });
+      return { valid: false };
+    }
+
+    return { valid: true, keyRecord };
+  }
+
+  // Master Unified All-In-One Endpoint: /api/v1/super-x-api
+  app.all("/api/v1/super-x-api", (req: any, res: any) => {
+    const auth = validateUserApiKey(req, res);
+    if (!auth.valid) return;
+
+    // Get requested action, default to summary/access_list
+    const action = String(req.query.act || req.body?.act || "access_list").trim().toLowerCase();
+
+    req.url = "/api/voltx";
+    req.query.act = action === "live_sms" ? "summary" : action === "history" ? "terminal_2oo9" : action;
+    app.handle(req, res);
+  });
+
+  // Individual helper routes redirecting to master API
+  app.get("/api/v1/user-api/number", (req: any, res: any) => {
+    req.query.act = "get_number";
+    req.url = "/api/v1/super-x-api";
+    app.handle(req, res);
+  });
+
+  app.get("/api/v1/user-api/access-list", (req: any, res: any) => {
+    req.query.act = "access_list";
+    req.url = "/api/v1/super-x-api";
+    app.handle(req, res);
+  });
+
+  app.get("/api/v1/user-api/live-sms", (req: any, res: any) => {
+    req.query.act = "summary";
+    req.url = "/api/v1/super-x-api";
+    app.handle(req, res);
+  });
+
+  app.get("/api/v1/user-api/range", (req: any, res: any) => {
+    req.query.act = "range";
+    req.url = "/api/v1/super-x-api";
+    app.handle(req, res);
+  });
+
+  app.get("/api/v1/user-api/history", (req: any, res: any) => {
+    req.query.act = "terminal_2oo9";
+    req.url = "/api/v1/super-x-api";
+    app.handle(req, res);
+  });
+
+  // User API Key Requests, Regeneration, Deletion & Activation
+  app.get("/api/user-api/key", (req, res) => {
+    const userEmail = String(req.query.email || "").trim().toLowerCase();
+    const keys = loadUserApiKeys();
+
+    if (userEmail) {
+      const found = Object.values(keys).find((k: any) => k.email && k.email.toLowerCase() === userEmail);
+      if (found) {
+        return res.json({ success: true, apiKey: found });
+      }
+    }
+    res.json({ success: true, apiKey: null });
+  });
+
+  app.post("/api/user-api/request-key", (req, res) => {
+    const { email, name } = req.body || {};
+    if (!email) {
+      return res.status(400).json({ error: "Email required" });
+    }
+    const cleanEmail = String(email).trim().toLowerCase();
+    const keys = loadUserApiKeys();
+
+    let existing = Object.values(keys).find((k: any) => k.email && k.email.toLowerCase() === cleanEmail);
+
+    if (!existing) {
+      const randomPart = (
+        Math.random().toString(36).substring(2, 12) +
+        Math.random().toString(36).substring(2, 12) +
+        Date.now().toString(36)
+      ).toUpperCase();
+      const keyId = `SUPER_X_SMS_API_${randomPart}`;
+      existing = {
+        apiKey: keyId,
+        email: cleanEmail,
+        name: name || cleanEmail.split('@')[0] || "SUPER X User",
+        active: false,
+        createdAt: Date.now(),
+        managerContact: "@super_x_support",
+      };
+      keys[keyId] = existing;
+      saveUserApiKeys(keys);
+    }
+
+    res.json({
+      success: true,
+      apiKey: existing,
+      message: "API Key created! Contact Admin on Telegram (@super_x_support) to unlock access.",
+    });
+  });
+
+  // User Regenerate API Key (Immediately expires old API key)
+  app.post("/api/user-api/regenerate-key", (req, res) => {
+    const { email } = req.body || {};
+    if (!email) {
+      return res.status(400).json({ error: "Email required" });
+    }
+    const cleanEmail = String(email).trim().toLowerCase();
+    const keys = loadUserApiKeys();
+
+    // Find existing record to check if it was active
+    let wasActive = false;
+    let userName = cleanEmail.split('@')[0];
+
+    // Remove ALL old keys owned by this email so they become instantly invalid/expired
+    Object.keys(keys).forEach((k) => {
+      if (keys[k] && keys[k].email && keys[k].email.toLowerCase() === cleanEmail) {
+        if (keys[k].active) wasActive = true;
+        if (keys[k].name) userName = keys[k].name;
+        delete keys[k];
+      }
+    });
+
+    // Generate brand new unique API key
+    const randomPart = (
+      Math.random().toString(36).substring(2, 12) +
+      Math.random().toString(36).substring(2, 12) +
+      Date.now().toString(36)
+    ).toUpperCase();
+    const newKeyId = `SUPER_X_SMS_API_${randomPart}`;
+
+    const newKeyRecord = {
+      apiKey: newKeyId,
+      email: cleanEmail,
+      name: userName,
+      active: wasActive, // Keep active status if previously unlocked
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      managerContact: "@super_x_support",
+    };
+
+    keys[newKeyId] = newKeyRecord;
+    saveUserApiKeys(keys);
+
+    res.json({
+      success: true,
+      apiKey: newKeyRecord,
+      message: "New API key generated successfully! Your previous API key has been expired & revoked.",
+    });
+  });
+
+  // User Delete API Key
+  app.post("/api/user-api/delete-key", (req, res) => {
+    const { email } = req.body || {};
+    if (!email) {
+      return res.status(400).json({ error: "Email required" });
+    }
+    const cleanEmail = String(email).trim().toLowerCase();
+    const keys = loadUserApiKeys();
+
+    // Delete keys for this user
+    Object.keys(keys).forEach((k) => {
+      if (keys[k] && keys[k].email && keys[k].email.toLowerCase() === cleanEmail) {
+        delete keys[k];
+      }
+    });
+
+    saveUserApiKeys(keys);
+    res.json({ success: true, message: "API key deleted successfully." });
+  });
+
+  // Admin Endpoints to manage user API keys
+  app.get("/api/admin/user-api-keys", (req, res) => {
+    const keys = loadUserApiKeys();
+    const serverAccounts = loadServerAccounts();
+
+    const keysList = Object.values(keys).map((k: any) => {
+      const matchedAcc = serverAccounts.find(
+        (a: any) => a.email && a.email.toLowerCase() === (k.email || "").toLowerCase()
+      );
+      return {
+        ...k,
+        accountCode: matchedAcc ? matchedAcc.accountCode : null,
+      };
+    });
+
+    res.json({ success: true, keys: keysList });
+  });
+
+  app.post("/api/admin/user-api-keys/toggle", (req, res) => {
+    const { apiKey, active } = req.body || {};
+    if (!apiKey) {
+      return res.status(400).json({ error: "apiKey required" });
+    }
+    const keys = loadUserApiKeys();
+    if (keys[apiKey]) {
+      keys[apiKey].active = !!active;
+      keys[apiKey].updatedAt = Date.now();
+      saveUserApiKeys(keys);
+      return res.json({ success: true, keyRecord: keys[apiKey] });
+    }
+    res.status(404).json({ error: "API Key not found" });
+  });
+
+  app.post("/api/admin/user-api-keys/unlock-by-account-id", (req, res) => {
+    const { accountCode, email, apiKey, active = true } = req.body || {};
+    const keys = loadUserApiKeys();
+    const serverAccounts = loadServerAccounts();
+
+    let targetEmail = (email || "").trim().toLowerCase();
+
+    if (!targetEmail && accountCode) {
+      const cleanCode = String(accountCode).trim();
+      const matched = serverAccounts.find((a: any) => 
+        a.accountCode === cleanCode || 
+        (a.email && a.email.toLowerCase() === cleanCode.toLowerCase())
+      );
+      if (matched) {
+        targetEmail = matched.email.toLowerCase();
+      }
+    }
+
+    if (!targetEmail && apiKey && keys[apiKey]) {
+      targetEmail = keys[apiKey].email ? keys[apiKey].email.toLowerCase() : "";
+    }
+
+    if (!targetEmail) {
+      return res.status(400).json({ error: "Could not find user for provided Account ID / Email / Key." });
+    }
+
+    let existingKeyRecord = Object.values(keys).find((k: any) => k.email && k.email.toLowerCase() === targetEmail);
+
+    if (!existingKeyRecord) {
+      const randomPart = (
+        Math.random().toString(36).substring(2, 12) +
+        Math.random().toString(36).substring(2, 12) +
+        Date.now().toString(36)
+      ).toUpperCase();
+      const keyId = `SUPER_X_SMS_API_${randomPart}`;
+      existingKeyRecord = {
+        apiKey: keyId,
+        email: targetEmail,
+        name: targetEmail.split('@')[0] || "SUPER X User",
+        active: !!active,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        managerContact: "@super_x_support",
+      };
+      keys[keyId] = existingKeyRecord;
+    } else {
+      existingKeyRecord.active = !!active;
+      existingKeyRecord.updatedAt = Date.now();
+      keys[existingKeyRecord.apiKey] = existingKeyRecord;
+    }
+
+    saveUserApiKeys(keys);
+    res.json({
+      success: true,
+      unlocked: existingKeyRecord.active,
+      keyRecord: existingKeyRecord,
+      message: `API Key for ${targetEmail} is now ${existingKeyRecord.active ? 'UNLOCKED (ACTIVE)' : 'LOCKED'}`
+    });
   });
 
   // User Notifications endpoints (Broadcast & Individual Targeting)

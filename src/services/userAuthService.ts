@@ -141,6 +141,7 @@ export interface UserAccount {
   loginHistory?: LoginHistoryEntry[];
   isIpBlocked?: boolean;
   blockReason?: string;
+  avatarUrl?: string;
 }
 
 const STORAGE_KEY = 'super_x_all_user_accounts';
@@ -825,6 +826,7 @@ export function updateUserProfileAndPassword(params: {
   phoneOrTelegram?: string;
   password?: string;
   note?: string;
+  avatarUrl?: string;
 }): { success: boolean; message: string; account?: UserAccount } {
   const accounts = getAllAccounts();
   const cleanEmail = params.email.trim().toLowerCase();
@@ -845,10 +847,20 @@ export function updateUserProfileAndPassword(params: {
   if (params.note !== undefined) {
     target.note = params.note.trim();
   }
+  if (params.avatarUrl !== undefined) {
+    target.avatarUrl = params.avatarUrl.trim();
+  }
 
   target.updatedAt = Date.now();
   saveAllAccounts(accounts);
   saveAccountToFirebase(target);
+
+  // Instant sync to Express backend
+  fetch('/api/accounts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ account: target }),
+  }).catch(() => null);
 
   if (typeof window !== 'undefined') {
     try {
@@ -859,6 +871,8 @@ export function updateUserProfileAndPassword(params: {
           storedUser.name = target.name;
           storedUser.phoneOrTelegram = target.phoneOrTelegram;
           storedUser.password = target.password;
+          storedUser.note = target.note;
+          storedUser.avatarUrl = target.avatarUrl;
           localStorage.setItem('super_x_sms_logged_in_user', JSON.stringify(storedUser));
         }
       }

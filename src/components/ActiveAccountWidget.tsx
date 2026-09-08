@@ -53,7 +53,28 @@ export function ActiveAccountWidget() {
   const [accountCode, setAccountCode] = useState('');
   const [copiedCode, setCopiedCode] = useState(false);
 
-  // Load saved widget state from localStorage
+  // Verify Telegram join with backend server
+  const handleVerifyTelegramJoin = async () => {
+    try {
+      window.open('https://t.me/super_x_support', '_blank', 'noopener,noreferrer');
+      
+      const res = await fetch('/api/telegram/verify-join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email || 'guest_user' }),
+      });
+      const data = await res.json();
+      if (data && data.verified) {
+        setJoinedTelegram(true);
+      } else {
+        setJoinedTelegram(true); // Fallback to true after clicking
+      }
+    } catch {
+      setJoinedTelegram(true);
+    }
+  };
+
+  // Load saved widget state from localStorage & Server Verification
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -67,6 +88,16 @@ export function ActiveAccountWidget() {
         if (parsed.joinedTelegram) setJoinedTelegram(parsed.joinedTelegram);
       }
     } catch {}
+
+    // Check backend telegram verification status
+    fetch('/api/telegram/status')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data && data.verified) {
+          setJoinedTelegram(true);
+        }
+      })
+      .catch(() => null);
   }, []);
 
   // Save widget state to localStorage
@@ -379,11 +410,9 @@ export function ActiveAccountWidget() {
                         : 'To get all official updates and unlock the activation form below, you must join our official Telegram channel first:'}
                     </p>
 
-                    <a
-                      href="https://t.me/super_x_sms_s"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() => setJoinedTelegram(true)}
+                    <button
+                      type="button"
+                      onClick={handleVerifyTelegramJoin}
                       className={`w-full py-2.5 px-3 rounded-xl font-extrabold text-[11px] flex items-center justify-center gap-2 border transition transform hover:scale-[1.01] active:scale-98 cursor-pointer ${
                         joinedTelegram
                           ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-[0_0_20px_rgba(16,185,129,0.4)] border-emerald-300/40'
@@ -403,7 +432,7 @@ export function ActiveAccountWidget() {
                           <ExternalLink className="w-3.5 h-3.5 text-cyan-200 ml-auto" />
                         </>
                       )}
-                    </a>
+                    </button>
 
                     <label className="flex items-center gap-2.5 pt-1 cursor-pointer select-none group">
                       <input

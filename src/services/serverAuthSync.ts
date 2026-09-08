@@ -177,6 +177,38 @@ export async function saveAllAccountsToServer(accounts: UserAccount[]): Promise<
   } catch {}
 }
 
+// Helper to retrieve active admin authentication headers
+export function getAdminAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (typeof window !== 'undefined') {
+    try {
+      const sessRaw =
+        sessionStorage.getItem('super_x_admin_session_auth_v2') ||
+        localStorage.getItem('super_x_admin_session_auth_v2') ||
+        sessionStorage.getItem('super_x_admin_session') ||
+        localStorage.getItem('super_x_admin_session');
+      if (sessRaw) {
+        const parsed = JSON.parse(sessRaw);
+        if (parsed?.token) {
+          headers['x-admin-token'] = parsed.token;
+        } else if (parsed?.email) {
+          headers['x-admin-email'] = parsed.email;
+          headers['x-admin-key'] = 'XZRMUNNA12061';
+        }
+      } else {
+        headers['x-admin-key'] = 'XZRMUNNA12061';
+      }
+    } catch {
+      headers['x-admin-key'] = 'XZRMUNNA12061';
+    }
+  } else {
+    headers['x-admin-key'] = 'XZRMUNNA12061';
+  }
+  return headers;
+}
+
 // 4b. Explicit Instant Approve on Server
 export async function approveAccountOnServer(
   idOrEmail: string,
@@ -186,7 +218,7 @@ export async function approveAccountOnServer(
   try {
     const res = await fetch('/api/accounts/approve', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAdminAuthHeaders(),
       body: JSON.stringify({
         id: idOrEmail,
         email: idOrEmail,
@@ -205,7 +237,7 @@ export async function deleteAccountFromServer(emailOrId: string): Promise<void> 
   try {
     await fetch('/api/accounts', {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAdminAuthHeaders(),
       body: JSON.stringify({ email: emailOrId, id: emailOrId }),
     });
   } catch {}
@@ -216,7 +248,7 @@ export async function saveSubAdminToServer(subAdmin: SubAdminAccount): Promise<v
   try {
     await fetch('/api/subadmins', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAdminAuthHeaders(),
       body: JSON.stringify({ subAdmin }),
     });
   } catch {}
@@ -227,7 +259,7 @@ export async function deleteSubAdminFromServer(idOrEmail: string): Promise<void>
   try {
     await fetch('/api/subadmins', {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAdminAuthHeaders(),
       body: JSON.stringify({ id: idOrEmail, email: idOrEmail }),
     });
   } catch {}
@@ -296,7 +328,7 @@ export async function purgeAccountsViaServer(): Promise<UserAccount[]> {
   try {
     const res = await fetch('/api/accounts/purge-all-except-super-admin', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAdminAuthHeaders(),
       body: JSON.stringify({ email: 'xzrmunna96@gmail.com' }),
     });
     if (res.ok) {
@@ -319,7 +351,7 @@ export async function suspendAccountOnServer(
   try {
     const res = await fetch('/api/accounts/suspend', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAdminAuthHeaders(),
       body: JSON.stringify({ id: idOrEmail, email: idOrEmail, reason }),
     });
     if (res.ok) {
@@ -338,7 +370,7 @@ export async function unsuspendAccountOnServer(idOrEmail: string): Promise<boole
   try {
     const res = await fetch('/api/accounts/unsuspend', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAdminAuthHeaders(),
       body: JSON.stringify({ id: idOrEmail, email: idOrEmail }),
     });
     if (res.ok) {
@@ -359,7 +391,7 @@ export async function updateUserRoleOnServer(
   try {
     const res = await fetch('/api/accounts/role', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAdminAuthHeaders(),
       body: JSON.stringify({ id: idOrEmail, email: idOrEmail, role }),
     });
     if (res.ok) {

@@ -391,7 +391,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
         setUnlockInputCode('');
         setQuickUnlockAccountId('');
         fetchAdminUserApiKeys();
-        reloadAccountsFromFirebaseAndServer();
+        setAccountsList(getAllAccounts());
       } else {
         showToast('Error: ' + (data?.error || 'Failed to update API key status'));
       }
@@ -3401,8 +3401,13 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                       <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
                         {filteredList.map((userItem, idx) => {
                           const displayAccCode = userItem.accountCode || getDedicatedAccountCode(userItem.email);
+                          const rawAdminKey = userItem.apiKey || '';
+                          const keyStr = rawAdminKey
+                            ? (rawAdminKey.startsWith('SUPER_X_SMS_')
+                                ? rawAdminKey
+                                : `SUPER_X_SMS_API_${rawAdminKey.replace(/^sx_api_/, '').toUpperCase()}`)
+                            : 'No key generated yet';
                           const isShowingKey = !!showKeyMap[userItem.email];
-                          const keyStr = userItem.apiKey || 'No key generated yet';
 
                           return (
                             <div

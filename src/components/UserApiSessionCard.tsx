@@ -51,15 +51,6 @@ export function UserApiSessionCard({ userEmail, userName, accountCode }: UserApi
   const isActive = !!(apiKeyData && apiKeyData.active);
 
   const handleRegenerateClick = async () => {
-    if (!isActive) {
-      setSupportModalOpen(true);
-      return;
-    }
-
-    if (!window.confirm("Are you sure you want to generate a new API key? Your previous API key will be expired immediately.")) {
-      return;
-    }
-
     setRequesting(true);
     setRequestSuccessMsg('');
     try {
@@ -71,37 +62,13 @@ export function UserApiSessionCard({ userEmail, userName, accountCode }: UserApi
       const data = await res.json();
       if (data && data.apiKey) {
         setApiKeyData(data.apiKey);
-        setRequestSuccessMsg('New API key generated successfully!');
+        setShowKey(true);
+        setRequestSuccessMsg('নতুন এপিআই কি সফলভাবে জেনারেট হয়েছে!');
       } else {
         setRequestSuccessMsg('Failed to generate API key.');
       }
     } catch {
       setRequestSuccessMsg('Error regenerating key.');
-    } finally {
-      setRequesting(false);
-    }
-  };
-
-  const handleDeleteClick = async () => {
-    if (!window.confirm("Are you sure you want to delete your current API key?")) {
-      return;
-    }
-
-    setRequesting(true);
-    setRequestSuccessMsg('');
-    try {
-      const res = await fetch('/api/user-api/delete-key', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: userEmail }),
-      });
-      const data = await res.json();
-      if (data && data.success) {
-        setApiKeyData(null);
-        setRequestSuccessMsg('API key removed successfully.');
-      }
-    } catch {
-      setRequestSuccessMsg('Error deleting key.');
     } finally {
       setRequesting(false);
     }
@@ -118,8 +85,16 @@ export function UserApiSessionCard({ userEmail, userName, accountCode }: UserApi
     }
   };
 
-  const rawKeyString = apiKeyData?.apiKey || 'SUPER_X_SMS_KEY_LOCKED';
-  const displayKey = showKey && isActive ? rawKeyString : '••••••••••••••••••••••••••••••••••••••••';
+  const rawKey = apiKeyData?.apiKey || '';
+  const fullKey = rawKey
+    ? (rawKey.startsWith('superxsms_')
+        ? rawKey
+        : `superxsms_${rawKey.replace(/^(SUPER_X_SMS_API_|SUPER_X_SMS_|sx_api_)/i, '')}`)
+    : '';
+
+  // When hidden: show ONLY dots
+  // When shown: show the complete API key starting with superxsms_
+  const displayKey = showKey && isActive ? fullKey : '••••••••••••••••••••••••••••••••••••••••';
 
   return (
     <div className="bg-slate-900 border border-slate-800/80 rounded-3xl p-5 sm:p-6 text-white space-y-4 shadow-xl">
@@ -202,7 +177,7 @@ export function UserApiSessionCard({ userEmail, userName, accountCode }: UserApi
                 </button>
 
                 <button
-                  onClick={() => copyText(rawKeyString, 'key')}
+                  onClick={() => copyText(fullKey, 'key')}
                   className="px-3.5 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
                 >
                   {copiedKey ? (
@@ -220,8 +195,8 @@ export function UserApiSessionCard({ userEmail, userName, accountCode }: UserApi
               </div>
             </div>
 
-            {/* Action Buttons: New Key & Delete */}
-            <div className="flex items-center gap-2 pt-1">
+            {/* Action Buttons: New Key Only */}
+            <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-800/80">
               <button
                 type="button"
                 onClick={handleRegenerateClick}
@@ -232,15 +207,9 @@ export function UserApiSessionCard({ userEmail, userName, accountCode }: UserApi
                 <span>New Key</span>
               </button>
 
-              <button
-                type="button"
-                onClick={handleDeleteClick}
-                disabled={requesting}
-                className="px-4 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer disabled:opacity-50"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Delete</span>
-              </button>
+              <span className="text-[11px] text-slate-400 font-mono hidden sm:inline">
+                Real-Time Verified • Active
+              </span>
             </div>
           </>
         )}

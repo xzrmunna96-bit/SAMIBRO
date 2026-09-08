@@ -57,6 +57,10 @@ import {
   FileSpreadsheet,
   Plus,
   Send,
+  Camera,
+  Upload,
+  BadgeCheck,
+  Image as ImageIcon,
 } from "lucide-react";
 import { SmsCdrReportsView } from "./SmsCdrReportsView";
 import { LiveTestSmsView, SmsTestRecord } from "./LiveTestSmsView";
@@ -279,6 +283,7 @@ export interface LoggedInDashboardProps {
     role?: string;
     phoneOrTelegram?: string;
     note?: string;
+    avatarUrl?: string;
   };
   onLogout: () => void;
 }
@@ -1151,6 +1156,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const [profileConfirmPassword, setProfileConfirmPassword] = useState("");
   const [profileSaveSuccess, setProfileSaveSuccess] = useState<string | null>(null);
   const [profileSaveError, setProfileSaveError] = useState<string | null>(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const profileFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setProfileName(user.name || "");
@@ -1158,6 +1165,119 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     setProfileNote(user.note || "");
     setProfileAvatar(user.avatarUrl || "");
   }, [user]);
+
+  const handleOpenGalleryPicker = () => {
+    if (profileFileInputRef.current) {
+      profileFileInputRef.current.click();
+    }
+  };
+
+  const handleGalleryPhotoSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setProfileSaveError("Please select a valid image file from your device.");
+      return;
+    }
+
+    setIsUploadingPhoto(true);
+    setProfileSaveError(null);
+    setProfileSaveSuccess(null);
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      if (!result) {
+        setIsUploadingPhoto(false);
+        return;
+      }
+
+      // Optimize image size if needed via canvas
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const MAX_WIDTH = 600;
+        const MAX_HEIGHT = 600;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const optimizedDataUrl = canvas.toDataURL("image/jpeg", 0.85);
+
+          setProfileAvatar(optimizedDataUrl);
+          const res = updateUserProfileAndPassword({
+            email: user.email,
+            avatarUrl: optimizedDataUrl,
+          });
+
+          if (res.success) {
+            setProfileSaveSuccess("Profile photo updated successfully from gallery! 📸");
+            reloadUsers();
+            setTimeout(() => setProfileSaveSuccess(null), 4000);
+          }
+        } else {
+          setProfileAvatar(result);
+          updateUserProfileAndPassword({
+            email: user.email,
+            avatarUrl: result,
+          });
+          reloadUsers();
+        }
+        setIsUploadingPhoto(false);
+      };
+
+      img.onerror = () => {
+        setProfileAvatar(result);
+        updateUserProfileAndPassword({
+          email: user.email,
+          avatarUrl: result,
+        });
+        reloadUsers();
+        setIsUploadingPhoto(false);
+      };
+
+      img.src = result;
+    };
+
+    reader.onerror = () => {
+      setProfileSaveError("Failed to read image file from device.");
+      setIsUploadingPhoto(false);
+    };
+
+    reader.readAsDataURL(file);
+    // Reset file input so user can choose the same file again if desired
+    e.target.value = "";
+  };
+
+  const handleRemoveProfileAvatar = () => {
+    setProfileAvatar("");
+    const res = updateUserProfileAndPassword({
+      email: user.email,
+      avatarUrl: "",
+    });
+    if (res.success) {
+      setProfileSaveSuccess("Profile photo removed.");
+      reloadUsers();
+      setTimeout(() => setProfileSaveSuccess(null), 3000);
+    }
+  };
 
   const handleSaveProfileInfo = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1607,9 +1727,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     if (
       cleanEmail === 'xzrmunna33@gmail.com' ||
       cleanEmail === 'xzrmunna96@gmail.com' ||
+      cleanEmail.includes('xzrmunna33') ||
       cleanEmail === 'xzrmunna'
     ) {
-      return 'Super Admin';
+      return 'SUPER X MANAGER';
     }
     const subAdmins = getAllSubAdmins();
     if (subAdmins.some((sa) => sa.email.toLowerCase().trim() === cleanEmail && sa.status === 'active')) {
@@ -1619,10 +1740,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     const match = accounts.find((a) => a.email.toLowerCase().trim() === cleanEmail);
     if (match) {
       if (match.role === 'admin' || (match.role as string) === 'sub_admin') return 'Admin';
-      if (match.role === 'user') return 'Agent';
+      if (match.role === 'user') return 'Standard User';
     }
     if (isAdminUser) return 'Admin';
-    return 'Agent';
+    return 'Standard User';
   }, [user, isAdminUser, allUsersList]);
 
   // Real-time Account Status & Privilege Monitor (syncs role and manages account state)
@@ -2036,6 +2157,16 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     currentUserAccount?.status === "rejected";
   const userPerms: UserPermissions =
     currentUserAccount?.permissions || DEFAULT_USER_PERMISSIONS;
+
+  // Manager & Official Roles Detection
+  const cleanCurrentEmail = (user?.email || "").toLowerCase().trim();
+  const isManagerAccount =
+    cleanCurrentEmail === "xzrmunna33@gmail.com" ||
+    cleanCurrentEmail === "xzrmunna96@gmail.com" ||
+    cleanCurrentEmail.includes("xzrmunna33") ||
+    currentUserAccount?.role === "admin" ||
+    user?.role === "admin" ||
+    isAdminUser;
 
   // Live tick state for real-time relative time counting (Just now, 1 min ago, 2 min ago...)
   const [nowTick, setNowTick] = useState(() => Date.now());
@@ -3413,24 +3544,50 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
           {/* User Profile Card */}
           <div className="px-5 py-4 bg-slate-900/60 border-b border-slate-800/80 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 font-semibold text-sm shrink-0">
-              {user.name ? user.name.charAt(0).toUpperCase() : "U"}
+            <div
+              onClick={() => handleNavClick("profile")}
+              className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-emerald-500 via-teal-500 to-cyan-400 p-0.5 flex items-center justify-center shrink-0 cursor-pointer shadow-md overflow-hidden relative group"
+              title="Click to view profile"
+            >
+              <div className="w-full h-full bg-slate-900 rounded-[14px] flex items-center justify-center overflow-hidden">
+                {profileAvatar ? (
+                  <img src={profileAvatar} alt="Profile" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-white font-black text-sm">
+                    {user.name ? user.name.charAt(0).toUpperCase() : (isManagerAccount ? "M" : "U")}
+                  </span>
+                )}
+              </div>
+              {isManagerAccount && (
+                <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-emerald-500 rounded-full border-2 border-slate-900 flex items-center justify-center text-[9px] text-white font-bold shadow-xs">
+                  ✓
+                </span>
+              )}
             </div>
 
             <div className="flex-1 min-w-0">
-              <h3 className="text-sm font-semibold text-slate-100 uppercase tracking-wide truncate">
-                {user.name || "SAMI"}
-              </h3>
+              <div className="flex items-center gap-1.5">
+                <h3 className="text-sm font-bold text-slate-100 uppercase tracking-wide truncate">
+                  {profileName || user.name || (isManagerAccount ? "XZR MUNNA" : "USER")}
+                </h3>
+                {isManagerAccount && (
+                  <span className="text-emerald-400 shrink-0" title="Super X Verified Manager">
+                    <CheckCircle2 className="w-3.5 h-3.5 fill-emerald-500/20 text-emerald-400" />
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-slate-400 font-normal mt-0.5 flex items-center gap-1.5">
                 <span>Level:</span>
-                <span className={`font-medium px-1.5 py-0.2 rounded border text-[11px] ${
-                  currentUserDisplayRole === 'Admin'
+                <span className={`font-medium px-1.5 py-0.2 rounded border text-[10px] uppercase tracking-wider flex items-center gap-1 ${
+                  isManagerAccount
+                    ? 'text-amber-300 bg-amber-950/70 border-amber-500/50 font-black'
+                    : currentUserDisplayRole === 'Admin'
                     ? 'text-amber-300 bg-amber-950/60 border-amber-500/40 font-bold'
                     : currentUserDisplayRole === 'Sub-Admin'
                     ? 'text-indigo-300 bg-indigo-950/60 border-indigo-500/40 font-bold'
                     : 'text-emerald-400 bg-emerald-950/40 border-emerald-500/20'
                 }`}>
-                  {currentUserDisplayRole}
+                  {isManagerAccount ? '👑 SUPER X MANAGER' : currentUserDisplayRole}
                 </span>
               </p>
 
@@ -3764,6 +3921,22 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            {/* Manager Verified Badge in Header for Screenshots */}
+            {isManagerAccount && (
+              <div
+                onClick={() => handleNavClick("profile")}
+                className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 via-emerald-500/20 to-teal-500/20 border border-emerald-400/50 text-emerald-300 text-xs font-black tracking-wide shadow-sm cursor-pointer hover:border-emerald-300 transition select-none animate-fadeIn"
+                title="Super X Official Verified Manager"
+              >
+                <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-amber-300 text-xs">👑</span>
+                <span className="text-white font-extrabold tracking-wider uppercase text-[11px]">SUPER X MANAGER</span>
+                <span className="px-1.5 py-0.2 rounded bg-emerald-500/30 text-emerald-300 border border-emerald-400/50 text-[9px] font-mono font-bold">
+                  VERIFIED
+                </span>
+              </div>
+            )}
+
             {/* Live Date & Time Timer Display */}
             <HeaderClockBadge />
 
@@ -5636,37 +5809,89 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         {/* -------------------- 7. PROFILE VIEW -------------------- */}
         {currentView === "profile" && (
           <div className="space-y-6 animate-fadeIn max-w-4xl mx-auto">
+            {/* Hidden Gallery / Device File Input */}
+            <input
+              type="file"
+              ref={profileFileInputRef}
+              accept="image/*"
+              onChange={handleGalleryPhotoSelected}
+              className="hidden"
+            />
+
             {/* Cyber Hero Banner Header */}
-            <div className="bg-gradient-to-r from-slate-900 via-indigo-950/80 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-2xl border border-indigo-500/30 relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-6">
-              <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
-              <div className="absolute bottom-0 left-0 w-96 h-96 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 rounded-3xl p-6 sm:p-8 text-white shadow-2xl border-2 border-emerald-500/40 relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-6">
+              <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute bottom-0 left-0 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
 
               <div className="flex items-center gap-5 relative z-10">
-                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-tr from-emerald-500 via-teal-500 to-cyan-400 flex items-center justify-center text-slate-950 font-black text-2xl sm:text-3xl shadow-[0_0_30px_rgba(16,185,129,0.3)] shrink-0 border-2 border-white/20 overflow-hidden">
-                  {profileAvatar ? (
-                    <img src={profileAvatar} alt="Profile Avatar" className="w-full h-full object-cover" />
-                  ) : (
-                    (profileName || user.name || "U")[0].toUpperCase()
+                {/* Clickable Profile Avatar with Gallery Upload */}
+                <div
+                  onClick={handleOpenGalleryPicker}
+                  className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-gradient-to-tr from-emerald-500 via-teal-500 to-cyan-400 p-1 flex items-center justify-center shrink-0 shadow-[0_0_35px_rgba(16,185,129,0.35)] border border-white/30 cursor-pointer relative group transition-transform active:scale-95"
+                  title="Click to select / change photo from your device gallery"
+                >
+                  <div className="w-full h-full bg-slate-950 rounded-[20px] flex items-center justify-center overflow-hidden relative">
+                    {profileAvatar ? (
+                      <img src={profileAvatar} alt="Profile Avatar" className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
+                    ) : (
+                      <span className="text-3xl sm:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-tr from-emerald-400 to-cyan-300">
+                        {(profileName || user.name || (isManagerAccount ? "M" : "U"))[0].toUpperCase()}
+                      </span>
+                    )}
+
+                    {/* Camera Overlay on Hover/Tap */}
+                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white text-[10px] font-bold p-1 text-center">
+                      <Camera className="w-5 h-5 text-emerald-400 mb-0.5" />
+                      <span>{isUploadingPhoto ? "Uploading..." : "Change Photo"}</span>
+                    </div>
+                  </div>
+
+                  {/* Verified Tick Badge on Avatar */}
+                  {isManagerAccount && (
+                    <span className="absolute -bottom-1 -right-1 w-6 h-6 bg-emerald-500 rounded-full border-2 border-slate-950 flex items-center justify-center text-white text-xs font-black shadow-md">
+                      ✓
+                    </span>
                   )}
                 </div>
-                <div className="space-y-1">
+
+                <div className="space-y-1.5">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                      {profileName || user.name || "SUPER X User"}
+                    <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight flex items-center gap-2">
+                      <span>{profileName || user.name || (isManagerAccount ? "SUPER X MANAGER" : "SUPER X User")}</span>
+                      {isManagerAccount && (
+                        <span title="Super X Verified Manager" className="inline-flex items-center">
+                          <CheckCircle2 className="w-6 h-6 text-emerald-400 fill-emerald-500/20 shrink-0" />
+                        </span>
+                      )}
                     </h2>
-                    <span className={`px-3 py-0.5 rounded-full text-xs font-mono font-bold uppercase tracking-wider ${
-                      currentUserDisplayRole === 'Admin'
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={`px-3 py-1 rounded-full text-xs font-mono font-black uppercase tracking-wider flex items-center gap-1.5 shadow-sm ${
+                      isManagerAccount
+                        ? 'bg-gradient-to-r from-amber-500/25 via-emerald-500/25 to-cyan-500/25 text-amber-300 border border-amber-400/50'
+                        : currentUserDisplayRole === 'Admin'
                         ? 'bg-amber-500/20 text-amber-300 border border-amber-400/40'
                         : currentUserDisplayRole === 'Sub-Admin'
                         ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-400/40'
                         : 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40'
                     }`}>
-                      {currentUserDisplayRole}
+                      <span>👑</span>
+                      <span>{isManagerAccount ? 'SUPER X MANAGER' : currentUserDisplayRole}</span>
                     </span>
-                    <span className="px-3 py-0.5 rounded-full text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 uppercase">
-                      VERIFIED
+
+                    <span className="px-3 py-1 rounded-full text-xs font-mono font-black bg-emerald-500/20 text-emerald-300 border border-emerald-400/50 uppercase tracking-wider flex items-center gap-1">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>VERIFIED</span>
                     </span>
+
+                    {isManagerAccount && (
+                      <span className="px-2.5 py-1 rounded-full text-[11px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-400/40 uppercase">
+                        OFFICIAL
+                      </span>
+                    )}
                   </div>
+
                   <p className="text-xs sm:text-sm text-slate-300 font-mono flex items-center gap-2 flex-wrap pt-0.5">
                     <span>Identity: <strong className="text-teal-300">{user.email}</strong></span>
                     <span className="text-slate-600">•</span>
@@ -5675,28 +5900,50 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 </div>
               </div>
 
-              <div className="relative z-10 flex items-center gap-3 self-start md:self-auto">
+              {/* Action Buttons in Hero */}
+              <div className="relative z-10 flex flex-wrap items-center gap-2.5 self-start md:self-auto">
+                <button
+                  type="button"
+                  onClick={handleOpenGalleryPicker}
+                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs uppercase tracking-wider shadow-lg flex items-center gap-2 border border-emerald-300/40 transition hover:scale-105 active:scale-95 cursor-pointer"
+                  title="Choose a photo from your phone/computer gallery"
+                >
+                  <Camera className="w-4 h-4 text-emerald-100" />
+                  <span>{profileAvatar ? "Change Photo" : "Upload Photo"}</span>
+                </button>
+
+                {profileAvatar && (
+                  <button
+                    type="button"
+                    onClick={handleRemoveProfileAvatar}
+                    className="px-3 py-2.5 rounded-xl bg-slate-800 hover:bg-rose-950/80 text-slate-300 hover:text-rose-300 font-bold text-xs uppercase tracking-wider border border-slate-700 hover:border-rose-500/40 transition cursor-pointer"
+                    title="Remove custom profile photo"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+
                 <a
                   href="https://t.me/super_x_support"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white font-extrabold text-xs uppercase tracking-wider shadow-lg flex items-center gap-2 border border-teal-300/30 transition hover:scale-105 active:scale-95 cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 font-extrabold text-xs uppercase tracking-wider shadow-md flex items-center gap-2 border border-slate-700 transition hover:scale-105 active:scale-95 cursor-pointer"
                 >
-                  <Send className="w-4 h-4 text-teal-100" />
-                  <span>CONTACT MANAGER</span>
+                  <Send className="w-4 h-4 text-sky-400" />
+                  <span>MANAGER SUPPORT</span>
                 </a>
               </div>
             </div>
 
             {/* Toast Alerts for Profile Actions */}
             {profileSaveSuccess && (
-              <div className="p-4 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-sm font-semibold flex items-center gap-2">
+              <div className="p-4 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-sm font-semibold flex items-center gap-2 animate-fadeIn">
                 <CheckCircle className="w-5 h-5 text-emerald-400 shrink-0" />
                 <span>{profileSaveSuccess}</span>
               </div>
             )}
             {profileSaveError && (
-              <div className="p-4 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-sm font-semibold flex items-center gap-2">
+              <div className="p-4 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-sm font-semibold flex items-center gap-2 animate-fadeIn">
                 <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0" />
                 <span>{profileSaveError}</span>
               </div>
@@ -5706,11 +5953,65 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             <div className="space-y-6">
               {/* 1. Profile Details Form Card */}
               <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
-                <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
-                  <User className="w-5 h-5 text-teal-400" />
-                  <h3 className="text-lg font-bold text-white tracking-tight">
-                    Submitted Profile & Registration Info
-                  </h3>
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <User className="w-5 h-5 text-teal-400" />
+                    <h3 className="text-lg font-bold text-white tracking-tight">
+                      Submitted Profile & Registration Info
+                    </h3>
+                  </div>
+                  {isManagerAccount && (
+                    <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-400/40 text-[11px] font-bold font-mono">
+                      👑 MANAGER ACCOUNT
+                    </span>
+                  )}
+                </div>
+
+                {/* Profile Photo Quick Selector */}
+                <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div
+                      onClick={handleOpenGalleryPicker}
+                      className="w-14 h-14 rounded-2xl bg-slate-900 border border-slate-700 flex items-center justify-center overflow-hidden cursor-pointer shrink-0 shadow-inner group"
+                      title="Click to choose image from gallery"
+                    >
+                      {profileAvatar ? (
+                        <img src={profileAvatar} alt="Avatar Preview" className="w-full h-full object-cover group-hover:opacity-80 transition" />
+                      ) : (
+                        <ImageIcon className="w-6 h-6 text-slate-500 group-hover:text-emerald-400 transition" />
+                      )}
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-white flex items-center gap-1.5">
+                        <span>Profile Photo</span>
+                        {profileAvatar && <span className="text-emerald-400 text-xs font-normal">(Uploaded)</span>}
+                      </h4>
+                      <p className="text-xs text-slate-400">
+                        Click below to choose any photo from your phone or PC gallery.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <button
+                      type="button"
+                      onClick={handleOpenGalleryPicker}
+                      className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md cursor-pointer transition active:scale-95"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Choose From Gallery</span>
+                    </button>
+                    {profileAvatar && (
+                      <button
+                        type="button"
+                        onClick={handleRemoveProfileAvatar}
+                        className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-rose-950/80 text-slate-300 hover:text-rose-300 text-xs font-bold transition cursor-pointer border border-slate-700"
+                        title="Remove photo"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <form onSubmit={handleSaveProfileInfo} className="space-y-4 text-xs sm:text-sm">
@@ -5776,7 +6077,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                       type="text"
                       value={profileAvatar}
                       onChange={(e) => setProfileAvatar(e.target.value)}
-                      placeholder="https://example.com/my-avatar.png"
+                      placeholder="https://example.com/my-avatar.png (Or use gallery button above)"
                       className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-teal-400 transition text-xs font-mono"
                     />
                   </div>

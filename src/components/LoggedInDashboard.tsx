@@ -1633,7 +1633,20 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const [getNumTab, setGetNumTab] = useState<"RANGE" | "SEARCH" | "ACCESS">(
     "RANGE",
   );
-  const [rangeCustomInput, setRangeCustomInput] = useState("");
+  const [rangeCustomInput, setRangeCustomInput] = useState<string>(() => {
+    try {
+      const userKey = user?.email
+        ? `super_x_last_range_${user.email.toLowerCase().trim()}`
+        : "super_x_last_range_default";
+      const saved = localStorage.getItem(userKey);
+      if (saved !== null && typeof saved === "string") {
+        return saved;
+      }
+      const genericSaved = localStorage.getItem("super_x_last_range_default");
+      if (genericSaved) return genericSaved;
+    } catch {}
+    return "26138XXX";
+  });
   const [rangeInputError, setRangeInputError] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState("");
   const [searchServiceCategory, setSearchServiceCategory] =
@@ -2020,6 +2033,92 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         .catch(() => {});
     }
   }, [user.email]);
+
+  // Real-time SSE Live Event Stream for Shared Account Numbers (Multi-device collaborative synchronization)
+  useEffect(() => {
+    if (!user?.email) return;
+
+    let eventSource: EventSource | null = null;
+    let retryTimeout: any = null;
+
+    const connectSSE = () => {
+      try {
+        const url = `/api/account/numbers/events?email=${encodeURIComponent(user.email)}`;
+        eventSource = new EventSource(url);
+
+        eventSource.onmessage = (event) => {
+          try {
+            if (!event.data || event.data.startsWith(":")) return;
+            const data = JSON.parse(event.data);
+
+            if (data.type === "init" || data.type === "sync" || data.type === "reset_24h") {
+              if (Array.isArray(data.numbers)) {
+                setGetNumHistory(sanitizeAllocatedHistory(data.numbers));
+              }
+            } else if (data.type === "new_number" && data.entry) {
+              setGetNumHistory((prev) => {
+                const cleanNew = String(data.entry.number).replace(/\D/g, "");
+                const exists = prev.some(
+                  (item) => item.id === data.entry.id || item.number.replace(/\D/g, "") === cleanNew
+                );
+                if (exists) {
+                  return prev.map((item) =>
+                    item.id === data.entry.id || item.number.replace(/\D/g, "") === cleanNew
+                      ? { ...item, ...data.entry }
+                      : item
+                  );
+                }
+                showDashboardToast(`⚡ New Number allocated on this account: ${data.entry.number}`, "info");
+                return sanitizeAllocatedHistory([data.entry, ...prev]);
+              });
+            } else if (data.type === "otp_update" && data.entry) {
+              setGetNumHistory((prev) => {
+                let updated = false;
+                const next = prev.map((item) => {
+                  const cleanItem = item.number.replace(/\D/g, "");
+                  const cleanTarget = String(data.entry.number || "").replace(/\D/g, "");
+                  if (item.id === data.entry.id || (cleanTarget && cleanItem === cleanTarget)) {
+                    updated = true;
+                    return {
+                      ...item,
+                      status: "SUCCESS" as const,
+                      otp: data.entry.otp,
+                      service: data.entry.service || item.service || "Delivered SMS",
+                      activity: data.entry.activity || "Delivered just now",
+                    };
+                  }
+                  return item;
+                });
+                if (updated && data.entry.otp) {
+                  showDashboardToast(`🎉 Real-time OTP received: ${data.entry.otp} (${data.entry.number})`, "success");
+                }
+                return sanitizeAllocatedHistory(next);
+              });
+            } else if (data.type === "delete_number" && data.deletedId) {
+              setGetNumHistory((prev) => prev.filter((item) => item.id !== data.deletedId));
+            } else if (data.type === "clear") {
+              setGetNumHistory([]);
+            }
+          } catch {}
+        };
+
+        eventSource.onerror = () => {
+          if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+          }
+          retryTimeout = setTimeout(connectSSE, 3000);
+        };
+      } catch {}
+    };
+
+    connectSSE();
+
+    return () => {
+      if (eventSource) eventSource.close();
+      if (retryTimeout) clearTimeout(retryTimeout);
+    };
+  }, [user?.email]);
 
   // Support Chat State for User
   const [isUserChatOpen, setIsUserChatOpen] = useState(false);
@@ -2930,6 +3029,15 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       showDashboardToast("Please enter a number range", "warning");
       return;
     }
+
+    // Persist latest used range for this user/device
+    try {
+      const userKey = user?.email
+        ? `super_x_last_range_${user.email.toLowerCase().trim()}`
+        : "super_x_last_range_default";
+      localStorage.setItem(userKey, rangeToUse);
+      localStorage.setItem("super_x_last_range_default", rangeToUse);
+    } catch {}
 
     setRangeInputError(false);
     setIsAllocating(true);
@@ -4373,10 +4481,18 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                           type="text"
                           value={rangeCustomInput}
                           onChange={(e) => {
-                            setRangeCustomInput(e.target.value);
+                            const val = e.target.value;
+                            setRangeCustomInput(val);
                             if (rangeInputError) setRangeInputError(false);
+                            try {
+                              const userKey = user?.email
+                                ? `super_x_last_range_${user.email.toLowerCase().trim()}`
+                                : "super_x_last_range_default";
+                              localStorage.setItem(userKey, val);
+                              localStorage.setItem("super_x_last_range_default", val);
+                            } catch {}
                           }}
-                          placeholder="e.g., 88017XXX (type the trailing X's you want)"
+                          placeholder="e.g., 26138XXX"
                           className={`w-full pl-8 pr-4 py-3.5 bg-white border rounded-2xl text-gray-900 font-mono text-xs sm:text-sm focus:outline-none placeholder-gray-400 tracking-wide transition shadow-2xs ${
                             rangeInputError
                               ? "border-red-400 ring-2 ring-red-400/30 bg-red-50/20 animate-pulse"
@@ -4386,7 +4502,16 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         {rangeCustomInput && (
                           <button
                             type="button"
-                            onClick={() => setRangeCustomInput("")}
+                            onClick={() => {
+                              setRangeCustomInput("");
+                              try {
+                                const userKey = user?.email
+                                  ? `super_x_last_range_${user.email.toLowerCase().trim()}`
+                                  : "super_x_last_range_default";
+                                localStorage.setItem(userKey, "");
+                                localStorage.setItem("super_x_last_range_default", "");
+                              } catch {}
+                            }}
                             className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 rounded-md cursor-pointer"
                           >
                             <X className="w-4 h-4" />
@@ -4786,17 +4911,20 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
               {/* SECTION 2: ALLOCATED NUMBERS TABLE & REAL-TIME OTP DISPLAY */}
               <div>
-                {/* Table Header with Stats and Refresh */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-900 text-white">
-                  <div className="flex items-center gap-2">
+                {/* Table Header with Stats, 24h Cycle Reset Badge and Refresh */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-900 text-white gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <div className="text-xs font-mono font-medium text-slate-300">
                       {getNumHistory.length > 0
-                        ? `1-${getNumHistory.length} of ${getNumHistory.length}`
-                        : "0 of 0"}
+                        ? `1-${getNumHistory.length} of ${getNumHistory.length} (24h Active)`
+                        : "0 of 0 (24h Active)"}
                     </div>
-                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 font-mono font-bold border border-emerald-600/50 hidden sm:inline-flex items-center gap-1">
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 font-mono font-bold border border-emerald-600/50 inline-flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                      Real-time Carrier Active
+                      Live Shared Account Stream
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-950/80 text-blue-300 font-mono font-bold border border-blue-600/40 inline-flex items-center gap-1">
+                      <span>⏱️ 24h Auto-Reset</span>
                     </span>
                   </div>
 
@@ -4842,7 +4970,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                       <strong className="text-gray-700 font-mono">23275</strong>
                       ) above and click{" "}
                       <strong className="text-emerald-700">Get Number</strong>{" "}
-                      to allocate numbers automatically.
+                      to allocate numbers automatically. Teammates on this account will see allocated numbers live!
                     </p>
                   </div>
                 ) : (
@@ -4934,6 +5062,12 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                               <Radio className="w-3 h-3 text-gray-600 shrink-0" />
                               <span className="truncate">{item.operator}</span>
                             </div>
+                            {(item as any).allocatedBy && (
+                              <div className="text-[10px] text-indigo-600 font-semibold flex items-center gap-1 pt-0.5">
+                                <span className="w-1 h-1 rounded-full bg-indigo-500" />
+                                <span>Worker: {(item as any).allocatedBy}</span>
+                              </div>
+                            )}
                           </div>
 
                           {/* ACTIVITY */}
@@ -5967,7 +6101,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   )}
                 </div>
 
-                <div className="space-y-4 text-xs sm:text-sm">
+                <form onSubmit={handleSaveProfileInfo} className="space-y-4 text-xs sm:text-sm">
                   <div>
                     <label className="block text-slate-300 font-bold mb-1">
                       Full Name / Account Title:
@@ -5975,15 +6109,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                     <input
                       type="text"
                       value={profileName}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setProfileName(val);
-                        updateUserProfileAndPassword({
-                          email: user.email,
-                          name: val,
-                        });
-                        reloadUsers();
-                      }}
+                      onChange={(e) => setProfileName(e.target.value)}
                       placeholder="Enter full name"
                       className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-teal-400 transition"
                     />
@@ -6011,20 +6137,22 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                     <input
                       type="text"
                       value={profilePhone}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setProfilePhone(val);
-                        updateUserProfileAndPassword({
-                          email: user.email,
-                          phoneOrTelegram: val,
-                        });
-                        reloadUsers();
-                      }}
+                      onChange={(e) => setProfilePhone(e.target.value)}
                       placeholder="+8801700000000 or @telegram_handle"
                       className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-teal-400 transition font-mono"
                     />
                   </div>
-                </div>
+
+                  <div className="pt-2">
+                    <button
+                      type="submit"
+                      className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>Save Changes</span>
+                    </button>
+                  </div>
+                </form>
               </div>
 
               {/* 2. User Proxy API Session Section (সকল তথ্যের নিচে এপিআই) */}

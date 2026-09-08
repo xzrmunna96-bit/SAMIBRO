@@ -121,7 +121,7 @@ export function UserApiSessionCard({ userEmail, userName, accountCode }: UserApi
             ) : (
               <div className="space-y-1">
                 <p className="text-amber-300/90 font-medium">
-                  এখন এপিআই এভেলেবেল নেই। এপিআই এক্সেস এর জন্য ম্যানেজারের সাথে যোগাযোগ করুন।
+                  API is currently not available. Please contact the manager for API access.
                 </p>
                 <div className="flex items-center gap-2 text-xs flex-wrap">
                   <span className="text-slate-400">Your Account ID:</span>
@@ -230,9 +230,9 @@ export function UserApiSessionCard({ userEmail, userName, accountCode }: UserApi
             </div>
 
             <div className="space-y-2">
-              <h4 className="text-lg font-bold text-white">এপিআই এভেলেবেল নেই</h4>
+              <h4 className="text-lg font-bold text-white">API Key Locked</h4>
               <p className="text-xs text-slate-300 leading-relaxed">
-                আপনার অ্যাকাউন্টে এপিআই জেনারেট সুবিধা চালু করতে আপনার <strong className="text-indigo-300">Account ID</strong> টি ম্যানেজারের কাছে পাঠান। ম্যানেজার অ্যাপ্রুভ বা 'আনলক কি' (Unlock Key) বাটনে চাপ দিলেই এটি সক্রিয় হয়ে যাবে।
+                To enable API access on your account, please send your <strong className="text-indigo-300">Account ID</strong> to the manager. Once approved and unlocked, it will be activated immediately.
               </p>
             </div>
 

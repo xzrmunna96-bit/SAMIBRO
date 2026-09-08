@@ -47,6 +47,7 @@ async function startServer() {
   const APP_COUNTS_FILE = path.join(DATA_DIR, "app_message_counts.json");
   const SYSTEM_API_KEY_FILE = path.join(DATA_DIR, "system_api_key.json");
   const USER_API_KEYS_FILE = path.join(DATA_DIR, "user_api_keys.json");
+  const SHARED_ACCOUNT_NUMBERS_FILE = path.join(DATA_DIR, "shared_account_numbers.json");
   const TELEGRAM_JOINS_FILE = path.join(DATA_DIR, "telegram_joins.json");
 
   function loadTelegramJoins(): Record<string, any> {
@@ -2117,7 +2118,7 @@ async function startServer() {
     number: string;
     country: string;
     operator: string;
-    status: "PENDING" | "SUCCESS";
+    status: "PENDING" | "SUCCESS" | "FAILED";
     otp?: string;
     service?: string;
     activity: string;
@@ -2126,16 +2127,145 @@ async function startServer() {
     allocatedBy?: string;
   }
 
-  const sharedAccountNumbers = new Map<string, SharedAllocatedNumber[]>();
+  function loadSharedAccountNumbers(): Map<string, SharedAllocatedNumber[]> {
+    const map = new Map<string, SharedAllocatedNumber[]>();
+    const now = Date.now();
+    const oneDayAgo = now - 24 * 60 * 60 * 1000;
+    try {
+      if (fs.existsSync(SHARED_ACCOUNT_NUMBERS_FILE)) {
+        const raw = fs.readFileSync(SHARED_ACCOUNT_NUMBERS_FILE, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") {
+          Object.keys(parsed).forEach((emailKey) => {
+            const cleanKey = emailKey.toLowerCase().trim();
+            const list = parsed[emailKey];
+            if (Array.isArray(list)) {
+              // 24-Hour Cycle Filter: keep only within last 24 hours
+              const valid24h = list.filter((item: any) => {
+                if (!item || !item.number) return false;
+                const cTime = item.createdAt || now;
+                return cTime >= oneDayAgo;
+              });
+              map.set(cleanKey, valid24h);
+            }
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("Could not load shared_account_numbers.json:", e);
+    }
+    return map;
+  }
 
-  // Helper to purge items older than 24 hours
-  const purgeOldNumbers = (email: string) => {
-    const list = sharedAccountNumbers.get(email);
-    if (!list) return;
+  const sharedAccountNumbers = loadSharedAccountNumbers();
+
+  function saveSharedAccountNumbers() {
+    try {
+      const obj: Record<string, SharedAllocatedNumber[]> = {};
+      sharedAccountNumbers.forEach((val, key) => {
+        obj[key] = val;
+      });
+      fs.writeFileSync(SHARED_ACCOUNT_NUMBERS_FILE, JSON.stringify(obj, null, 2), "utf-8");
+    } catch (e) {
+      console.warn("Could not save shared_account_numbers.json:", e);
+    }
+  }
+
+  // Active SSE connections for collaborative shared accounts (email -> Set of SSE responses)
+  const accountSSEClients = new Map<string, Set<any>>();
+
+  function broadcastAccountEvent(email: string, payload: any) {
+    const cleanEmail = email.toLowerCase().trim();
+    const clients = accountSSEClients.get(cleanEmail);
+    if (!clients || clients.size === 0) return;
+    const message = `data: ${JSON.stringify(payload)}\n\n`;
+    clients.forEach((client) => {
+      try {
+        client.write(message);
+      } catch {
+        clients.delete(client);
+      }
+    });
+  }
+
+  // Helper to purge items older than 24 hours (strict 24-hour cycle)
+  const purgeOldNumbers = (email: string): boolean => {
+    const cleanEmail = email.toLowerCase().trim();
+    const list = sharedAccountNumbers.get(cleanEmail);
+    if (!list) return false;
     const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
-    const filtered = list.filter((item) => item.createdAt >= oneDayAgo);
-    sharedAccountNumbers.set(email, filtered);
+    const filtered = list.filter((item) => (item.createdAt || 0) >= oneDayAgo);
+    if (filtered.length !== list.length) {
+      sharedAccountNumbers.set(cleanEmail, filtered);
+      saveSharedAccountNumbers();
+      return true;
+    }
+    return false;
   };
+
+  // Background 24-Hour Purge / Reset Cycle Timer (runs every 30 seconds)
+  setInterval(() => {
+    const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+    let anyPurged = false;
+    sharedAccountNumbers.forEach((list, email) => {
+      const filtered = list.filter((item) => (item.createdAt || 0) >= oneDayAgo);
+      if (filtered.length !== list.length) {
+        sharedAccountNumbers.set(email, filtered);
+        anyPurged = true;
+        broadcastAccountEvent(email, {
+          type: "reset_24h",
+          reason: "24h cycle expiration",
+          numbers: filtered,
+          count: filtered.length,
+          serverTime: Date.now(),
+        });
+      }
+    });
+    if (anyPurged) {
+      saveSharedAccountNumbers();
+    }
+  }, 30000);
+
+  // SSE Stream Endpoint for Live Collaborative Multi-Session Account Numbers & OTPs
+  app.get("/api/account/numbers/events", (req, res) => {
+    const rawEmail = String(req.query.email || "").trim().toLowerCase();
+    if (!rawEmail) {
+      return res.status(400).json({ error: "Email query parameter required" });
+    }
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders?.();
+
+    if (!accountSSEClients.has(rawEmail)) {
+      accountSSEClients.set(rawEmail, new Set());
+    }
+    accountSSEClients.get(rawEmail)!.add(res);
+
+    purgeOldNumbers(rawEmail);
+    const numbers = sharedAccountNumbers.get(rawEmail) || [];
+    res.write(`data: ${JSON.stringify({ type: "init", numbers, count: numbers.length, serverTime: Date.now() })}\n\n`);
+
+    const keepAlive = setInterval(() => {
+      try {
+        res.write(": keepalive\n\n");
+      } catch {
+        clearInterval(keepAlive);
+      }
+    }, 15000);
+
+    req.on("close", () => {
+      clearInterval(keepAlive);
+      const clients = accountSSEClients.get(rawEmail);
+      if (clients) {
+        clients.delete(res);
+        if (clients.size === 0) {
+          accountSSEClients.delete(rawEmail);
+        }
+      }
+    });
+  });
 
   // Endpoint to get all shared allocated numbers & OTPs for an account email
   app.get("/api/account/numbers", (req, res) => {
@@ -2196,11 +2326,22 @@ async function startServer() {
       list.unshift(newEntry);
     }
 
-    // Keep max 200 numbers per account
+    // Keep max 200 numbers per account within the 24-hour cycle
     const cappedList = list.slice(0, 200);
     sharedAccountNumbers.set(rawEmail, cappedList);
+    saveSharedAccountNumbers();
 
     console.log(`[Shared Account Sync] Number ${entry.number} registered for account: ${rawEmail}`);
+
+    // Broadcast instant real-time SSE push to all active sessions on this email
+    broadcastAccountEvent(rawEmail, {
+      type: "new_number",
+      entry: newEntry,
+      numbers: cappedList,
+      count: cappedList.length,
+      serverTime: now,
+    });
+
     res.json({
       success: true,
       entry: newEntry,
@@ -2233,7 +2374,7 @@ async function startServer() {
         updated = true;
         targetEntry = {
           ...item,
-          status: status || "SUCCESS",
+          status: (status as any) || "SUCCESS",
           otp: String(otp).trim(),
           service: service || item.service || "Delivered SMS",
           activity: activity || "Delivered just now",
@@ -2246,7 +2387,17 @@ async function startServer() {
 
     if (updated) {
       sharedAccountNumbers.set(rawEmail, updatedList);
+      saveSharedAccountNumbers();
       console.log(`[Shared Account Sync] OTP ${otp} updated for number ${number || numberId} on account: ${rawEmail}`);
+
+      // Broadcast instant real-time OTP event to all sessions on this email
+      broadcastAccountEvent(rawEmail, {
+        type: "otp_update",
+        entry: targetEntry,
+        numbers: updatedList,
+        count: updatedList.length,
+        serverTime: now,
+      });
     }
 
     res.json({
@@ -2304,6 +2455,14 @@ async function startServer() {
       .slice(0, 200);
 
     sharedAccountNumbers.set(rawEmail, mergedList);
+    saveSharedAccountNumbers();
+
+    broadcastAccountEvent(rawEmail, {
+      type: "sync",
+      numbers: mergedList,
+      count: mergedList.length,
+      serverTime: now,
+    });
 
     res.json({
       success: true,
@@ -2320,12 +2479,31 @@ async function startServer() {
       return res.status(400).json({ error: "Email required" });
     }
 
+    let resultList: SharedAllocatedNumber[] = [];
     if (numberId) {
       const list = sharedAccountNumbers.get(rawEmail) || [];
-      const filtered = list.filter((n) => n.id !== numberId);
-      sharedAccountNumbers.set(rawEmail, filtered);
+      resultList = list.filter((n) => n.id !== numberId);
+      sharedAccountNumbers.set(rawEmail, resultList);
+      saveSharedAccountNumbers();
+
+      broadcastAccountEvent(rawEmail, {
+        type: "delete_number",
+        deletedId: numberId,
+        numbers: resultList,
+        count: resultList.length,
+        serverTime: Date.now(),
+      });
     } else if (req.query.clearAll === "true") {
+      resultList = [];
       sharedAccountNumbers.set(rawEmail, []);
+      saveSharedAccountNumbers();
+
+      broadcastAccountEvent(rawEmail, {
+        type: "clear",
+        numbers: [],
+        count: 0,
+        serverTime: Date.now(),
+      });
     }
 
     res.json({

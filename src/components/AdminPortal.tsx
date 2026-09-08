@@ -370,7 +370,10 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
   useEffect(() => {
     if (isAdminAuthenticated) {
       fetchAdminUserApiKeys();
-      const interval = setInterval(fetchAdminUserApiKeys, 3000);
+      const interval = setInterval(() => {
+        if (document.hidden) return;
+        fetchAdminUserApiKeys();
+      }, 20000);
       return () => clearInterval(interval);
     }
   }, [isAdminAuthenticated]);
@@ -1132,7 +1135,10 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     };
 
     pollLiveChat();
-    const interval = setInterval(pollLiveChat, 1500);
+    const interval = setInterval(() => {
+      if (document.hidden) return;
+      pollLiveChat();
+    }, 5000);
     return () => clearInterval(interval);
   }, [isAdminAuthenticated, activeTab, activeChatUserEmail]);
 
@@ -1216,12 +1222,13 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     }
   };
 
-  // 2s Auto Polling Interval for Live Incoming Messages
+  // 10s Auto Polling Interval for Live Incoming Messages (only when tab is visible)
   useEffect(() => {
     if (!isAdminAuthenticated || !isAutoStreamActive) return;
     const timer = setInterval(() => {
+      if (document.hidden) return;
       fetchIncomingSmsHits();
-    }, 2000);
+    }, 10000);
     return () => clearInterval(timer);
   }, [isAdminAuthenticated, isAutoStreamActive, apiKeyInput]);
 
@@ -1330,8 +1337,11 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
       };
     } catch {}
 
-    // Auto-poll accounts, sub-admins, notifications & configs every 2.5 seconds
-    const syncInterval = setInterval(syncAllAdminData, 2500);
+    // Auto-poll accounts, sub-admins, notifications & configs gently (every 12 seconds when visible)
+    const syncInterval = setInterval(() => {
+      if (document.hidden) return;
+      syncAllAdminData();
+    }, 12000);
 
     // Refresh instantly when user focuses or returns to the browser tab
     const handleWindowFocus = () => {
@@ -1470,9 +1480,10 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     window.addEventListener(API_CONFIGS_UPDATE_EVENT, handleApiConfigsUpdated);
     window.addEventListener('storage', handleAccountsUpdated);
     const syncInterval = setInterval(() => {
+      if (document.hidden) return;
       handleAccountsUpdated();
       handleSubAdminsUpdated();
-    }, 1500);
+    }, 15000);
 
     return () => {
       window.removeEventListener('super_x_accounts_updated', handleAccountsUpdated);

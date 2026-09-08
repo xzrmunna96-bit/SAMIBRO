@@ -927,7 +927,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     };
     window.addEventListener("super_x_accounts_updated", handleAccountsUpdated);
     window.addEventListener("storage", handleAccountsUpdated);
-    const interval = setInterval(reloadUsers, 1200);
+    const interval = setInterval(() => {
+      if (document.hidden) return;
+      reloadUsers();
+    }, 20000);
     return () => {
       window.removeEventListener(
         "super_x_accounts_updated",
@@ -1047,7 +1050,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     window.addEventListener("super_x_sub_admins_updated", checkAdminPermission);
     window.addEventListener("super_x_accounts_updated", checkAdminPermission);
     window.addEventListener("storage", checkAdminPermission);
-    const interval = setInterval(checkAdminPermission, 1200);
+    const interval = setInterval(() => {
+      if (document.hidden) return;
+      checkAdminPermission();
+    }, 20000);
 
     return () => {
       window.removeEventListener("super_x_sub_admins_updated", checkAdminPermission);
@@ -1465,7 +1471,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     };
 
     syncWithGlobalStream();
-    const pollTimer = setInterval(syncWithGlobalStream, 2500);
+    const pollTimer = setInterval(() => {
+      if (document.hidden) return;
+      syncWithGlobalStream();
+    }, 15000);
 
     let sse: EventSource | null = null;
     try {
@@ -1810,7 +1819,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     window.addEventListener('super_x_accounts_updated', monitorAccountState);
     window.addEventListener('super_x_sub_admins_updated', monitorAccountState);
     window.addEventListener('storage', monitorAccountState);
-    const interval = setInterval(monitorAccountState, 1200);
+    const interval = setInterval(() => {
+      if (document.hidden) return;
+      monitorAccountState();
+    }, 20000);
 
     return () => {
       window.removeEventListener('super_x_accounts_updated', monitorAccountState);
@@ -2255,7 +2267,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     };
 
     checkAdminTyping();
-    const typingInterval = setInterval(checkAdminTyping, 1500);
+    const typingInterval = setInterval(() => {
+      if (document.hidden) return;
+      checkAdminTyping();
+    }, 5000);
 
     return () => {
       clearInterval(typingInterval);
@@ -2990,8 +3005,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     fetchRealTimeData();
 
     const timer = setInterval(() => {
+      if (document.hidden) return;
       fetchRealTimeData();
-    }, 3000);
+    }, 15000);
     return () => clearInterval(timer);
   }, [apiKey]);
 

@@ -540,12 +540,13 @@ export function markChatAsReadByUser(userEmail: string) {
   }
 }
 
-// Automatic real-time background sync for live chat across sub-admins and users (every 3 seconds)
+// Automatic background sync for live chat across sub-admins and users (every 10 seconds when visible)
 if (typeof window !== 'undefined') {
   fetchLiveChatsFromServer();
   setInterval(() => {
+    if (document.hidden) return;
     fetchLiveChatsFromServer();
-  }, 3000);
+  }, 10000);
 }
 
 // Get total unread count for Admin across all users

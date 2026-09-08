@@ -445,18 +445,20 @@ export function initServerRealtimeSync() {
         } catch {}
         eventSource = null;
         clearTimeout(sseReconnectTimer);
-        sseReconnectTimer = setTimeout(connectSSE, 2000);
+        // Exponential/gentle reconnect backoff (10s)
+        sseReconnectTimer = setTimeout(connectSSE, 10000);
       };
     } catch {}
   };
 
   connectSSE();
 
-  // 9b. Fast-poll heartbeat every 1.5s as high-reliability redundancy
+  // Gentle fallback heartbeat (every 15s, and only when tab is visible)
   setInterval(() => {
+    if (document.hidden) return;
     fetchAccountsFromServer();
     fetchSubAdminsFromServer();
-  }, 1500);
+  }, 15000);
 
   // Sync immediately when user switches tabs or browser windows
   window.addEventListener('focus', () => {

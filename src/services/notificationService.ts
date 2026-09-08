@@ -181,10 +181,11 @@ export function getUnreadNotificationCountForUser(userEmail: string): number {
   return all.filter((n) => !readIds.includes(n.id)).length;
 }
 
-// Real-time server notification polling (every 4 seconds)
+// Real-time server notification polling (every 15 seconds when visible)
 if (typeof window !== 'undefined') {
   fetchNotificationsFromServer();
   setInterval(() => {
+    if (document.hidden) return;
     fetchNotificationsFromServer();
-  }, 4000);
+  }, 15000);
 }

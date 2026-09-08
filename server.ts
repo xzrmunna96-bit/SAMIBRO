@@ -1354,7 +1354,17 @@ async function startServer() {
     accountSseClients.add(res);
     res.write(`data: ${JSON.stringify({ type: "connected", timestamp: Date.now() })}\n\n`);
 
+    const pingTimer = setInterval(() => {
+      try {
+        res.write(": ping\n\n");
+      } catch {
+        clearInterval(pingTimer);
+        accountSseClients.delete(res);
+      }
+    }, 25000);
+
     req.on("close", () => {
+      clearInterval(pingTimer);
       accountSseClients.delete(res);
     });
   });

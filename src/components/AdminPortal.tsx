@@ -54,6 +54,7 @@ import {
   getAllNotifications,
   addNotification,
   deleteNotification,
+  fetchNotificationsFromServer,
   NotificationItem,
   NOTIFICATION_UPDATE_EVENT,
 } from '../services/notificationService';
@@ -93,6 +94,9 @@ import {
   blockUserChat,
   unblockUserChat,
   handoverToAgent,
+  sendTypingStatus,
+  fetchTypingStatus,
+  fetchLiveChatsFromServer,
   ChatMessage,
   CHAT_UPDATE_EVENT,
 } from '../services/supportChatService';
@@ -116,6 +120,7 @@ import {
 import {
   getAllApiConfigs,
   saveAllApiConfigs,
+  fetchApiConfigsFromServer,
   addApiConfig,
   updateApiConfig,
   setActiveApiConfig,
@@ -145,7 +150,7 @@ import {
 } from '../services/intsGatewayService';
 import { getCountryInfo } from '../services/countryHelper';
 import { registerUserInFirebaseAuth, fetchAccountsFromFirebaseDirectly, saveAccountToFirebase, purgeRemoteFirebaseAccountsExceptSuperAdmin, saveMarqueeNoticeToFirebase } from '../services/firebaseSyncService';
-import { fetchAccountsFromServer, approveAccountOnServer, saveAccountToServer, purgeAccountsViaServer } from '../services/serverAuthSync';
+import { fetchAccountsFromServer, fetchSubAdminsFromServer, approveAccountOnServer, saveAccountToServer, purgeAccountsViaServer } from '../services/serverAuthSync';
 import { getBrandLogoComponent } from './BrandLogos';
 
 const ADMIN_MASTER_PASSWORD = 'XZRMUNNA12061';
@@ -337,7 +342,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
   // Active Account Management Tab State
   const [activeAccSearch, setActiveAccSearch] = useState('');
   const [quickUnlockAccountId, setQuickUnlockAccountId] = useState('');
-  const [activeAccFilter, setActiveAccFilter] = useState<'ALL' | 'pending' | 'approved' | 'rejected'>('pending');
+  const [activeAccFilter, setActiveAccFilter] = useState<'ALL' | 'pending' | 'approved' | 'rejected'>('ALL');
   const [noticeModalUser, setNoticeModalUser] = useState<UserAccount | null>(null);
   const [noticeModalText, setNoticeModalText] = useState('');
   const [rejectModalUser, setRejectModalUser] = useState<UserAccount | null>(null);
@@ -1076,7 +1081,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
   };
 
   // =========================================================================
-  // SECTION 6: LIVE CHAT
+  // SECTION 6: LIVE CHAT (MESSENGER REAL-TIME SYSTEM)
   // =========================================================================
   const [activeChatUserEmail, setActiveChatUserEmail] = useState<string>('');
   const [adminChatInput, setAdminChatInput] = useState('');
@@ -1088,8 +1093,12 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
   });
   const [adminUnreadCount, setAdminUnreadCount] = useState<number>(() => getAdminUnreadChatCount());
   const [chatSearchQuery, setChatSearchQuery] = useState('');
+  const [chatTabFilter, setChatTabFilter] = useState<'ALL' | 'UNREAD' | 'CLAIMED'>('ALL');
+  const [isUserTyping, setIsUserTyping] = useState(false);
+  const [userTypingName, setUserTypingName] = useState('');
   const [chatRefreshKey, setChatRefreshKey] = useState(0);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
+  const adminTypingTimeoutRef = useRef<any>(null);
 
   const handleAgentNameChange = (val: string) => {
     setAdminAgentName(val);
@@ -1097,6 +1106,35 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
       localStorage.setItem('superx_admin_agent_name', val);
     }
   };
+
+  // Real-time Chat & Typing Polling Effect for Live Support Messenger
+  useEffect(() => {
+    if (!isAdminAuthenticated || activeTab !== 'live-chat') return;
+
+    const pollLiveChat = async () => {
+      try {
+        await fetchLiveChatsFromServer();
+        setAdminUnreadCount(getAdminUnreadChatCount());
+        setChatRefreshKey((k) => k + 1);
+
+        if (activeChatUserEmail) {
+          const st = await fetchTypingStatus(activeChatUserEmail);
+          if (st && st.isTyping && st.who === 'user') {
+            setIsUserTyping(true);
+            setUserTypingName(st.name || 'User');
+          } else {
+            setIsUserTyping(false);
+          }
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    pollLiveChat();
+    const interval = setInterval(pollLiveChat, 1500);
+    return () => clearInterval(interval);
+  }, [isAdminAuthenticated, activeTab, activeChatUserEmail]);
 
   // Toast Helper
   const showToast = (msg: string) => {
@@ -1128,16 +1166,48 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
   };
 
   // -------------------------------------------------------------------------
-  // Real-time Incoming SMS Fetcher
+  // Real-time Incoming SMS Fetcher with Multi-Browser Server Synchronization
   // -------------------------------------------------------------------------
   const fetchIncomingSmsHits = async (keyOverride?: string) => {
     const key = (keyOverride !== undefined ? keyOverride : apiKeyInput) || DEFAULT_API_KEY;
-    if (!key || !key.trim()) return;
     setIsStreamFetching(true);
     try {
-      const res = await fetchLiveConsoleDetailed(key.trim());
-      if (res.hits && Array.isArray(res.hits)) {
-        setLiveStreamHits(res.hits);
+      // 1. Immediately fetch from server's global live stream so all browsers and devices show identical real-time data
+      try {
+        const streamRes = await fetch('/api/global-live-stream');
+        if (streamRes.ok) {
+          const streamData = await streamRes.json();
+          if (streamData && streamData.success && Array.isArray(streamData.hits) && streamData.hits.length > 0) {
+            setLiveStreamHits((prev) => {
+              if (prev.length === 0 || streamData.hits.length >= prev.length) {
+                return streamData.hits;
+              }
+              const seen = new Set(streamData.hits.map((h: any) => `${(h.range || h.number || '').replace(/\D/g, '')}_${h.time}_${(h.sid || '').trim().toLowerCase()}_${(h.message || '').trim()}`));
+              const extra = prev.filter((h) => !seen.has(`${(h.range || h.number || '').replace(/\D/g, '')}_${h.time}_${(h.sid || '').trim().toLowerCase()}_${(h.message || '').trim()}`));
+              return [...streamData.hits, ...extra].slice(0, 1000);
+            });
+          }
+        }
+      } catch {}
+
+      // 2. If an API key is available, query upstream Voltx to fetch incoming hits and broadcast them globally
+      if (key && key.trim()) {
+        const res = await fetchLiveConsoleDetailed(key.trim());
+        if (res.hits && Array.isArray(res.hits) && res.hits.length > 0) {
+          // Push new hits to server global stream so ALL other browsers receive them immediately via SSE
+          fetch('/api/global-live-stream/push', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ hits: res.hits }),
+          }).catch(() => {});
+
+          setLiveStreamHits((prev) => {
+            const seen = new Set(prev.map((h) => `${(h.range || h.number || '').replace(/\D/g, '')}_${h.time}_${(h.sid || '').trim().toLowerCase()}_${(h.message || '').trim()}`));
+            const newHits = res.hits.filter((h) => !seen.has(`${(h.range || h.number || '').replace(/\D/g, '')}_${h.time}_${(h.sid || '').trim().toLowerCase()}_${(h.message || '').trim()}`));
+            if (newHits.length === 0) return prev;
+            return [...newHits, ...prev].slice(0, 1000);
+          });
+        }
       }
     } catch {
       // ignore
@@ -1155,7 +1225,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     return () => clearInterval(timer);
   }, [isAdminAuthenticated, isAutoStreamActive, apiKeyInput]);
 
-  // Initial Fetch & Periodic Auto-Sync for User Accounts and Pending Requests
+  // Initial Fetch & Complete Multi-Browser Real-Time Synchronization
   useEffect(() => {
     syncSystemApiKeyFromServer().then((remoteKey) => {
       if (remoteKey && remoteKey.trim()) {
@@ -1165,39 +1235,141 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
 
     if (!isAdminAuthenticated) return;
 
-    const syncAccounts = async () => {
+    const syncAllAdminData = async () => {
       try {
-        await Promise.allSettled([
-          fetchAccountsFromServer(),
-          fetchAccountsFromFirebaseDirectly(),
-        ]);
-        setAccountsList(getAllAccounts());
+        // 1. Sync accounts immediately from server
+        const serverAccs = await fetchAccountsFromServer();
+        if (Array.isArray(serverAccs) && serverAccs.length > 0) {
+          setAccountsList(serverAccs);
+        } else {
+          setAccountsList(getAllAccounts());
+        }
+
+        // 2. Sync sub-admins immediately from server
+        fetchSubAdminsFromServer().then((subs) => {
+          if (Array.isArray(subs) && subs.length > 0) {
+            setSubAdminsList(subs);
+          }
+        }).catch(() => {});
+
+        // 3. Sync notifications immediately from server
+        fetchNotificationsFromServer().then((notifs) => {
+          if (Array.isArray(notifs)) {
+            setNotificationsList(notifs);
+          }
+        }).catch(() => {});
+
+        // 4. Sync API configs immediately from server
+        fetchApiConfigsFromServer().then((configs) => {
+          if (Array.isArray(configs) && configs.length > 0) {
+            setApiConfigsList(configs);
+          }
+        }).catch(() => {});
+
+        // 5. Background Firebase sync
+        fetchAccountsFromFirebaseDirectly().then(() => {
+          setAccountsList(getAllAccounts());
+        }).catch(() => {});
+
+        // 6. Live Chat sync
+        fetchLiveChatsFromServer().then(() => {
+          setAdminUnreadCount(getAdminUnreadChatCount());
+          setChatRefreshKey((k) => k + 1);
+        }).catch(() => {});
       } catch {
         setAccountsList(getAllAccounts());
       }
     };
 
-    syncAccounts();
+    syncAllAdminData();
     fetchIncomingSmsHits();
+
     const convs = getAllChatConversations();
     if (convs.length > 0 && !activeChatUserEmail) {
       setActiveChatUserEmail(convs[0].userEmail);
     }
 
-    // Auto-poll accounts & pending requests every 2.5 seconds from Server & Firebase
-    const syncInterval = setInterval(syncAccounts, 2500);
-    return () => clearInterval(syncInterval);
+    // Connect to Server-Sent Events (SSE) for Real-Time Accounts Sync across all devices
+    let accEvents: EventSource | null = null;
+    try {
+      accEvents = new EventSource('/api/accounts/events');
+      accEvents.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload && (payload.type === 'accounts_updated' || payload.type === 'account_update' || payload.type === 'connected')) {
+            fetchAccountsFromServer().then((accs) => {
+              if (Array.isArray(accs) && accs.length > 0) {
+                setAccountsList(accs);
+              }
+            }).catch(() => {});
+          }
+        } catch {}
+      };
+    } catch {}
+
+    // Connect to Server-Sent Events (SSE) for Real-Time Global SMS Stream across all devices
+    let liveEvents: EventSource | null = null;
+    try {
+      liveEvents = new EventSource('/api/global-live-stream/events');
+      liveEvents.onmessage = (event) => {
+        try {
+          const packet = JSON.parse(event.data);
+          if (packet) {
+            if (packet.type === 'reset') {
+              setLiveStreamHits([]);
+            } else if (packet.hit && (packet.hit.range || packet.hit.number || packet.hit.sid || packet.hit.message)) {
+              setLiveStreamHits((prev) => {
+                const sig = `${(packet.hit.range || packet.hit.number || '').replace(/\D/g, '')}_${packet.hit.time}_${(packet.hit.sid || '').trim().toLowerCase()}_${(packet.hit.message || '').trim()}`;
+                const exists = prev.some((h) => `${(h.range || h.number || '').replace(/\D/g, '')}_${h.time}_${(h.sid || '').trim().toLowerCase()}_${(h.message || '').trim()}` === sig);
+                if (exists) return prev;
+                return [packet.hit, ...prev].slice(0, 1000);
+              });
+            }
+          }
+        } catch {}
+      };
+    } catch {}
+
+    // Auto-poll accounts, sub-admins, notifications & configs every 2.5 seconds
+    const syncInterval = setInterval(syncAllAdminData, 2500);
+
+    // Refresh instantly when user focuses or returns to the browser tab
+    const handleWindowFocus = () => {
+      syncAllAdminData();
+      fetchIncomingSmsHits();
+    };
+    window.addEventListener('focus', handleWindowFocus);
+    window.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        handleWindowFocus();
+      }
+    });
+
+    return () => {
+      clearInterval(syncInterval);
+      window.removeEventListener('focus', handleWindowFocus);
+      if (accEvents) accEvents.close();
+      if (liveEvents) liveEvents.close();
+    };
   }, [isAdminAuthenticated]);
 
   // Re-fetch accounts on tab change
   useEffect(() => {
     if (isAdminAuthenticated && (activeTab === 'active-account-management' || activeTab === 'user-management' || activeTab === 'manually-user')) {
-      Promise.allSettled([
-        fetchAccountsFromServer(),
-        fetchAccountsFromFirebaseDirectly(),
-      ]).then(() => {
+      fetchAccountsFromServer().then((accs) => {
+        if (Array.isArray(accs) && accs.length > 0) {
+          setAccountsList(accs);
+        } else {
+          setAccountsList(getAllAccounts());
+        }
+      }).catch(() => {
         setAccountsList(getAllAccounts());
       });
+      fetchSubAdminsFromServer().then((subs) => {
+        if (Array.isArray(subs) && subs.length > 0) {
+          setSubAdminsList(subs);
+        }
+      }).catch(() => {});
     }
   }, [activeTab, isAdminAuthenticated]);
 
@@ -1932,59 +2104,91 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
   };
 
   // -------------------------------------------------------------------------
-  // SECTION 5: Live Chat Handlers
+  // SECTION 5: Live Chat Handlers (Messenger Real-Time)
   // -------------------------------------------------------------------------
   const handleSelectChatUser = (email: string) => {
     setActiveChatUserEmail(email);
     markChatAsReadByAdmin(email);
     setAdminUnreadCount(getAdminUnreadChatCount());
+    setTimeout(() => {
+      chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
   };
 
-  const handleClaimChatSession = () => {
+  const handleAdminChatInputChange = (val: string) => {
+    setAdminChatInput(val);
     if (!activeChatUserEmail) return;
-    const currentAgent = adminAgentName.trim() || adminSession.name || 'Support Agent';
-    claimChatConversation(activeChatUserEmail, adminSession.email, currentAgent);
+
+    const currentAgent = adminAgentName.trim() || adminSession.name || 'Support Admin';
+    sendTypingStatus(activeChatUserEmail, true, 'admin', currentAgent);
+
+    if (adminTypingTimeoutRef.current) {
+      clearTimeout(adminTypingTimeoutRef.current);
+    }
+    adminTypingTimeoutRef.current = setTimeout(() => {
+      sendTypingStatus(activeChatUserEmail, false, 'admin', currentAgent);
+    }, 2000);
+  };
+
+  const handleClaimChatSession = (targetEmail?: string) => {
+    const emailToClaim = targetEmail || activeChatUserEmail;
+    if (!emailToClaim) return;
+    const currentAgent = adminAgentName.trim() || adminSession.name || 'Support Admin';
+    claimChatConversation(emailToClaim, adminSession.email, currentAgent);
     setChatRefreshKey((k) => k + 1);
-    showToast(`Chat session claimed as "${currentAgent}"!`);
+    showToast(`Chat session for ${emailToClaim} accepted & claimed as "${currentAgent}"!`);
   };
 
   const handleSendChatReply = (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeChatUserEmail || !adminChatInput.trim()) return;
 
-    const currentAgent = adminAgentName.trim() || adminSession.name || 'Support Agent';
+    const currentAgent = adminAgentName.trim() || adminSession.name || 'Support Admin';
     claimChatConversation(activeChatUserEmail, adminSession.email, currentAgent);
     sendAdminMessage(activeChatUserEmail, adminChatInput.trim(), currentAgent);
+    sendTypingStatus(activeChatUserEmail, false, 'admin', currentAgent);
+    if (adminTypingTimeoutRef.current) {
+      clearTimeout(adminTypingTimeoutRef.current);
+    }
     setAdminChatInput('');
     setChatRefreshKey((k) => k + 1);
+    setTimeout(() => {
+      chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 60);
   };
 
   const handleSendTemplateReply = (template: string) => {
     if (!activeChatUserEmail) return;
-    const currentAgent = adminAgentName.trim() || adminSession.name || 'Support Agent';
+    const currentAgent = adminAgentName.trim() || adminSession.name || 'Support Admin';
     claimChatConversation(activeChatUserEmail, adminSession.email, currentAgent);
     sendAdminMessage(activeChatUserEmail, template, currentAgent);
     setChatRefreshKey((k) => k + 1);
-    showToast('Template response sent!');
+    showToast('Quick response sent to user!');
+    setTimeout(() => {
+      chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 60);
   };
 
   const handleHandoverAgent = () => {
     if (!activeChatUserEmail) return;
-    const currentAgent = adminAgentName.trim() || adminSession.name || 'Support Agent';
+    const currentAgent = adminAgentName.trim() || adminSession.name || 'Support Admin';
     claimChatConversation(activeChatUserEmail, adminSession.email, currentAgent);
     handoverToAgent(activeChatUserEmail, currentAgent);
     setChatRefreshKey((k) => k + 1);
     showToast(`Agent handover greeting sent to user as "${currentAgent}"!`);
+    setTimeout(() => {
+      chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 60);
   };
 
   const handleToggleBlockChat = () => {
     if (!activeChatUserEmail) return;
     if (isUserChatBlocked(activeChatUserEmail)) {
       unblockUserChat(activeChatUserEmail);
-      showToast('User chat unblocked.');
+      showToast('User chat session unblocked.');
     } else {
       blockUserChat(activeChatUserEmail);
-      showToast('Chat closed & blocked for 24 hours.');
+      showToast('User chat paused & blocked for 24 hours.');
     }
     setChatRefreshKey((k) => k + 1);
   };
@@ -2033,6 +2237,8 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
   });
 
   const chatConversations = getAllChatConversations().filter((conv) => {
+    if (chatTabFilter === 'UNREAD' && conv.unreadCount === 0) return false;
+    if (chatTabFilter === 'CLAIMED' && !conv.claimedByName) return false;
     if (!chatSearchQuery.trim()) return true;
     const q = chatSearchQuery.toLowerCase();
     return (
@@ -5281,91 +5487,155 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
         )}
 
         {/* ================================================================= */}
-        {/* TAB 6: LIVE CHAT (REAL-TIME USER MESSAGES & ADMIN REPLY)          */}
+        {/* TAB 6: LIVE CHAT (MESSENGER REAL-TIME SYSTEM)                     */}
         {/* ================================================================= */}
         {activeTab === 'live-chat' && (
-          <section className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
-            {/* Header */}
-            <div className="p-4 sm:p-5 border-b border-slate-800/80 bg-slate-900/95 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <section className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl flex flex-col h-[780px] max-h-[85vh]">
+            {/* Top Messenger Header */}
+            <div className="px-5 py-3.5 border-b border-slate-800 bg-slate-950/95 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-emerald-500/15 border border-emerald-500/30 rounded-xl text-emerald-400 relative">
-                  <MessageSquare className="w-5 h-5" />
+                <div className="p-2.5 bg-gradient-to-tr from-emerald-600 to-teal-500 rounded-2xl text-white shadow-lg shadow-emerald-500/20 relative">
+                  <MessageSquare className="w-5 h-5 fill-current" />
                   <span className="absolute -top-1 -right-1 flex h-3 w-3">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 border-2 border-slate-950"></span>
                   </span>
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h2 className="text-base sm:text-lg font-black text-white">Live Support Chat</h2>
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold">
-                      Live Online
+                    <h2 className="text-base sm:text-lg font-black text-white tracking-tight">SUPER X Messenger</h2>
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-500/30 text-[10px] font-extrabold uppercase tracking-wider flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      Live Stream
                     </span>
                   </div>
-                  <p className="text-xs text-slate-400">
-                    Real-time communications hub for Main Admin &amp; Sub-Admins
+                  <p className="text-[11px] text-slate-400">
+                    Real-time bidirectional support desk for Main Admin &amp; Sub-Admins
                   </p>
                 </div>
               </div>
 
+              {/* Top Quick Status Counters */}
               <div className="flex items-center gap-2">
-                <div className="px-3 py-1 rounded-lg bg-slate-950 border border-slate-800 text-slate-300 text-xs font-mono">
-                  Conversations: <span className="font-bold text-white">{chatConversations.length}</span>
+                <div className="flex items-center bg-slate-900 border border-slate-800 rounded-xl p-1 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setChatTabFilter('ALL')}
+                    className={`px-3 py-1 rounded-lg font-bold transition cursor-pointer text-xs ${
+                      chatTabFilter === 'ALL'
+                        ? 'bg-emerald-600 text-white shadow'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    All ({getAllChatConversations().length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setChatTabFilter('UNREAD')}
+                    className={`px-3 py-1 rounded-lg font-bold transition cursor-pointer text-xs flex items-center gap-1.5 ${
+                      chatTabFilter === 'UNREAD'
+                        ? 'bg-rose-600 text-white shadow'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <span>Unread</span>
+                    {adminUnreadCount > 0 && (
+                      <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[10px] font-black animate-pulse">
+                        {adminUnreadCount}
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setChatTabFilter('CLAIMED')}
+                    className={`px-3 py-1 rounded-lg font-bold transition cursor-pointer text-xs ${
+                      chatTabFilter === 'CLAIMED'
+                        ? 'bg-indigo-600 text-white shadow'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Claimed
+                  </button>
                 </div>
-                {adminUnreadCount > 0 && (
-                  <div className="px-3 py-1 rounded-lg bg-rose-950 border border-rose-500/40 text-rose-300 text-xs font-bold animate-pulse">
-                    {adminUnreadCount} Unread
-                  </div>
-                )}
               </div>
             </div>
 
-            {/* Split Screen Layout */}
-            <div className="grid grid-cols-1 md:grid-cols-12 min-h-[560px] max-h-[720px]">
-              {/* Left Column: User Conversations List */}
-              <div className="md:col-span-4 border-r border-slate-800/80 bg-slate-950 flex flex-col">
-                <div className="p-3 border-b border-slate-800/80 bg-slate-950">
+            {/* Split Screen Messenger Body */}
+            <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
+              {/* Left Sidebar: User Conversations List (Messenger Style) */}
+              <div className="w-full md:w-80 lg:w-96 border-r border-slate-800 bg-slate-950 flex flex-col shrink-0 min-h-0">
+                {/* Search Bar */}
+                <div className="p-3 border-b border-slate-800/80 bg-slate-950 shrink-0">
                   <div className="relative">
                     <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                     <input
                       type="text"
                       value={chatSearchQuery}
                       onChange={(e) => setChatSearchQuery(e.target.value)}
-                      placeholder="Search by user or email..."
-                      className="w-full pl-8 pr-3 py-2 text-xs bg-slate-900 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      placeholder="Search users or messages..."
+                      className="w-full pl-8 pr-8 py-2 text-xs bg-slate-900 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                     />
+                    {chatSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setChatSearchQuery('')}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white p-0.5 cursor-pointer"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
                   </div>
                 </div>
 
+                {/* Conversations Scroll Area */}
                 <div className="flex-1 overflow-y-auto divide-y divide-slate-900">
                   {chatConversations.length === 0 ? (
-                    <div className="p-8 text-center text-slate-500 text-xs">
-                      No live support messages yet.
+                    <div className="p-8 text-center text-slate-500 text-xs space-y-2">
+                      <MessageSquare className="w-8 h-8 text-slate-700 mx-auto" />
+                      <p className="font-semibold">No conversations found</p>
+                      <p className="text-[11px] text-slate-600">
+                        {chatSearchQuery
+                          ? 'Try a different search query'
+                          : chatTabFilter === 'UNREAD'
+                          ? 'No unread user messages'
+                          : 'Users will appear here when they send a message.'}
+                      </p>
                     </div>
                   ) : (
                     chatConversations.map((conv, cIdx) => {
                       const isSelected =
                         conv.userEmail.toLowerCase() === activeChatUserEmail.toLowerCase();
+                      const hasUnread = conv.unreadCount > 0;
+                      const userObj = accountsList.find(
+                        (a) => a.email.toLowerCase() === conv.userEmail.toLowerCase()
+                      );
+                      const initial = (conv.userName?.charAt(0) || conv.userEmail?.charAt(0) || 'U').toUpperCase();
 
                       return (
-                        <button
+                        <div
                           key={conv.userEmail ? `${conv.userEmail}-${cIdx}` : `conv-${cIdx}`}
-                          type="button"
                           onClick={() => handleSelectChatUser(conv.userEmail)}
-                          className={`w-full text-left p-3.5 transition flex items-center gap-3 cursor-pointer ${
+                          className={`w-full p-3.5 transition flex items-start gap-3 cursor-pointer select-none relative group ${
                             isSelected
-                              ? 'bg-emerald-950/40 border-l-4 border-emerald-500'
-                              : 'hover:bg-slate-900/50'
+                              ? 'bg-slate-900/90 border-l-4 border-emerald-500 shadow-inner'
+                              : hasUnread
+                              ? 'bg-slate-900/40 hover:bg-slate-900/70 border-l-4 border-rose-500'
+                              : 'hover:bg-slate-900/50 border-l-4 border-transparent'
                           }`}
                         >
-                          <div className="w-9 h-9 rounded-full bg-slate-800 border border-slate-700 text-emerald-400 flex items-center justify-center font-bold text-xs shrink-0">
-                            {conv.userName?.charAt(0).toUpperCase() || conv.userEmail?.charAt(0).toUpperCase()}
+                          {/* Avatar Circle with Online Dot */}
+                          <div className="relative shrink-0">
+                            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-slate-800 to-slate-700 border border-slate-700 text-emerald-400 flex items-center justify-center font-black text-sm shadow-sm">
+                              {initial}
+                            </div>
+                            <span className="w-3 h-3 rounded-full bg-emerald-500 border-2 border-slate-950 absolute -bottom-0.5 -right-0.5 shadow-xs" />
                           </div>
 
+                          {/* Info Column */}
                           <div className="min-w-0 flex-1">
-                            <div className="flex items-center justify-between gap-1">
-                              <span className="font-bold text-white text-xs truncate">
-                                {conv.userName}
+                            <div className="flex items-center justify-between gap-1 mb-0.5">
+                              <span className={`text-xs truncate ${hasUnread ? 'font-black text-white' : 'font-bold text-slate-200'}`}>
+                                {conv.userName || conv.userEmail.split('@')[0]}
                               </span>
                               <span className="text-[10px] text-slate-500 shrink-0 font-mono">
                                 {conv.lastMessage?.timestamp
@@ -5376,121 +5646,145 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                                   : ''}
                               </span>
                             </div>
-                            <div className="text-[11px] text-slate-400 truncate flex items-center justify-between gap-1">
+
+                            <div className="text-[11px] text-slate-400 truncate flex items-center gap-1.5 mb-1">
                               <span className="truncate">{conv.userEmail}</span>
-                              {conv.claimedByName && (
-                                <span className="shrink-0 px-1.5 py-0.2 rounded bg-emerald-950/80 text-emerald-300 text-[9px] font-bold border border-emerald-800/60">
-                                  🔒 {conv.claimedByName}
+                              <span className="shrink-0 px-1 py-0.2 rounded bg-slate-800 text-slate-400 font-mono text-[9px]">
+                                #{userObj?.accountCode || getDedicatedAccountCode(conv.userEmail)}
+                              </span>
+                            </div>
+
+                            {/* Message Preview */}
+                            <div className={`text-xs truncate ${hasUnread ? 'text-white font-semibold' : 'text-slate-400'}`}>
+                              {conv.lastMessage?.sender === 'admin' ? (
+                                <span className="text-emerald-400 font-medium">You: </span>
+                              ) : null}
+                              {conv.lastMessage ? conv.lastMessage.text : 'No messages'}
+                            </div>
+
+                            {/* Status badges below message */}
+                            <div className="flex items-center justify-between gap-2 mt-1.5">
+                              {conv.claimedByName ? (
+                                <span className="px-1.5 py-0.5 rounded bg-indigo-950/80 text-indigo-300 text-[9px] font-bold border border-indigo-800/60 flex items-center gap-1">
+                                  <span>🔒</span>
+                                  <span>{conv.claimedByName}</span>
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-slate-500 italic">
+                                  Click to Accept &amp; Chat
+                                </span>
+                              )}
+
+                              {hasUnread && (
+                                <span className="px-2 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-black shadow-md shadow-rose-600/30 animate-pulse">
+                                  {conv.unreadCount} new
                                 </span>
                               )}
                             </div>
-                            <div className="text-xs text-slate-300 truncate mt-0.5">
-                              {conv.lastMessage ? conv.lastMessage.text : 'No messages'}
-                            </div>
                           </div>
-
-                          {conv.unreadCount > 0 && (
-                            <span className="shrink-0 px-2 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-bold">
-                              {conv.unreadCount}
-                            </span>
-                          )}
-                        </button>
+                        </div>
                       );
                     })
                   )}
                 </div>
               </div>
 
-              {/* Right Column: Active Thread & Input */}
-              <div className="md:col-span-8 flex flex-col bg-slate-900">
+              {/* Right Main Column: Messenger Chat Thread & Input */}
+              <div className="flex-1 flex flex-col bg-slate-900 min-h-0 min-w-0">
                 {activeChatUserEmail ? (
                   <>
-                    {/* Chat Header */}
-                    <div className="p-3 border-b border-slate-800 bg-slate-950/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-emerald-950 border border-emerald-500/30 text-emerald-400 flex items-center justify-center font-bold text-sm shrink-0">
-                          {activeChatUserObj?.name?.charAt(0) || activeChatUserEmail.charAt(0).toUpperCase()}
+                    {/* Chat Header Bar */}
+                    <div className="p-3.5 sm:p-4 border-b border-slate-800 bg-slate-950/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="relative shrink-0">
+                          <div className="w-10 h-10 rounded-2xl bg-emerald-950 border border-emerald-500/40 text-emerald-400 flex items-center justify-center font-black text-sm shadow-inner">
+                            {(activeChatUserObj?.name?.charAt(0) || activeChatUserEmail.charAt(0) || 'U').toUpperCase()}
+                          </div>
+                          <span className="w-3 h-3 rounded-full bg-emerald-500 border-2 border-slate-950 absolute -bottom-0.5 -right-0.5 shadow-xs" />
                         </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-white text-xs sm:text-sm">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-extrabold text-white text-sm truncate">
                               {activeChatUserObj?.name || activeChatUserEmail.split('@')[0]}
                             </span>
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 font-mono text-emerald-300 border border-slate-700">
+                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-800 font-mono text-emerald-300 border border-slate-700 font-bold">
                               ID: {activeChatUserObj?.accountCode || getDedicatedAccountCode(activeChatUserEmail)}
                             </span>
                             {isUserChatBlocked(activeChatUserEmail) && (
-                              <span className="text-[10px] px-2 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-800 font-bold">
-                                🚫 Blocked (24h)
+                              <span className="text-[10px] px-2 py-0.5 rounded-md bg-rose-950 text-rose-300 border border-rose-800 font-extrabold">
+                                🚫 24h Muted
                               </span>
                             )}
                           </div>
-                          <div className="text-[11px] text-slate-400 font-mono">{activeChatUserEmail}</div>
+                          <div className="text-[11px] text-slate-400 font-mono truncate">{activeChatUserEmail}</div>
                         </div>
                       </div>
 
-                      {/* Agent Controls */}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {/* Agent Name Box */}
-                        <div className="flex items-center bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-slate-300 gap-1.5">
-                          <span className="text-[10px] text-slate-400 font-bold uppercase">Agent:</span>
+                      {/* Top Agent Session Controls */}
+                      <div className="flex items-center gap-2 flex-wrap shrink-0">
+                        {/* Agent Name Tag Input */}
+                        <div className="flex items-center bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 gap-1.5">
+                          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Agent:</span>
                           <input
                             type="text"
                             value={adminAgentName}
                             onChange={(e) => handleAgentNameChange(e.target.value)}
-                            placeholder="Enter Agent Name..."
-                            className="bg-transparent text-white font-bold text-xs focus:outline-none w-28 sm:w-32 placeholder-slate-600"
-                            title="Your agent name shown to user in chat"
+                            placeholder="Your Name..."
+                            className="bg-transparent text-white font-bold text-xs focus:outline-none w-24 sm:w-28 placeholder-slate-600"
+                            title="Your display name shown to user"
                           />
                         </div>
 
-                        {/* Claim Session Button */}
+                        {/* Claim / Accept Session Button */}
                         <button
                           type="button"
-                          onClick={handleClaimChatSession}
-                          className="px-2.5 py-1.5 rounded-lg bg-indigo-950 hover:bg-indigo-900 text-indigo-200 border border-indigo-500/40 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
-                          title="Claim this chat session so other sub-admins know you are responding"
+                          onClick={() => handleClaimChatSession(activeChatUserEmail)}
+                          className="px-3 py-1.5 rounded-xl bg-indigo-950 hover:bg-indigo-900 active:bg-indigo-800 text-indigo-200 border border-indigo-500/40 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-sm"
+                          title="Claim this conversation so other sub-admins see you are handling it"
                         >
-                          <span>🔒 Claim Session</span>
+                          <span>🔒</span>
+                          <span>Claim</span>
                         </button>
 
                         {/* Handover Button */}
                         <button
                           type="button"
                           onClick={handleHandoverAgent}
-                          className="px-2.5 py-1.5 rounded-lg bg-emerald-950 hover:bg-emerald-900 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
-                          title="Handover session and send dynamic time greeting"
+                          className="px-3 py-1.5 rounded-xl bg-emerald-950 hover:bg-emerald-900 active:bg-emerald-800 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-sm"
+                          title="Send dynamic greeting taking over the chat"
                         >
-                          <span>👋 Handover</span>
+                          <span>👋</span>
+                          <span>Greet</span>
                         </button>
 
                         {/* Block/Stop Chat Button */}
                         <button
                           type="button"
                           onClick={handleToggleBlockChat}
-                          className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer border ${
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border shadow-sm ${
                             isUserChatBlocked(activeChatUserEmail)
                               ? 'bg-blue-950 hover:bg-blue-900 text-blue-300 border-blue-500/40'
                               : 'bg-rose-950 hover:bg-rose-900 text-rose-300 border-rose-500/40'
                           }`}
-                          title="Stop chat for 24 hours"
+                          title="Mute user chat session for 24 hours"
                         >
-                          <span>
-                            {isUserChatBlocked(activeChatUserEmail) ? '✅ Unblock' : '🚫 Stop Chat'}
-                          </span>
+                          <span>{isUserChatBlocked(activeChatUserEmail) ? '✅ Unblock' : '🚫 Pause 24h'}</span>
                         </button>
                       </div>
                     </div>
 
-                    {/* Messages Thread */}
-                    <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-950/60">
+                    {/* Messages Thread Feed */}
+                    <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-3 bg-slate-950/70 min-h-0">
                       {currentChatMessages.length === 0 ? (
-                        <div className="h-full flex items-center justify-center text-slate-500 text-xs">
-                          No messages in this conversation.
+                        <div className="h-full flex flex-col items-center justify-center p-8 text-center text-slate-500 text-xs space-y-2">
+                          <MessageSquare className="w-10 h-10 text-slate-700" />
+                          <p className="font-bold text-slate-400">No messages in this conversation yet.</p>
+                          <p className="text-[11px] text-slate-600">Send a greeting or notice below to start the conversation.</p>
                         </div>
                       ) : (
                         currentChatMessages.map((msg, msgIdx) => {
                           const isAdmin = msg.sender === 'admin';
+                          const isBot = msg.senderName === 'SUPER X BOT';
 
                           return (
                             <div
@@ -5498,75 +5792,108 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                               className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'}`}
                             >
                               <div
-                                className={`max-w-md rounded-2xl px-4 py-2.5 text-xs shadow-sm ${
+                                className={`max-w-[85%] sm:max-w-md rounded-2xl px-4 py-2.5 text-xs shadow-md ${
                                   isAdmin
                                     ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-tr-xs font-medium'
-                                    : 'bg-slate-800 text-slate-100 rounded-tl-xs border border-slate-700/80'
+                                    : isBot
+                                    ? 'bg-slate-800 text-slate-100 rounded-tl-xs border border-slate-700'
+                                    : 'bg-slate-800/95 text-slate-100 rounded-tl-xs border border-slate-700/80'
                                 }`}
                               >
-                                <div className="text-[10px] font-bold opacity-75 mb-0.5">
-                                  {isAdmin
-                                    ? (msg.senderName === 'SUPER X BOT' ? '🤖 SUPER X BOT (AI Reply)' : (msg.senderName || 'Super X Admin Support'))
-                                    : msg.senderName}
+                                <div className="text-[10px] font-extrabold opacity-85 mb-1 flex items-center justify-between gap-3 border-b border-white/10 pb-0.5">
+                                  <span>
+                                    {isAdmin
+                                      ? (isBot ? '🤖 SUPER X BOT (AI Reply)' : `👨‍💼 ${msg.senderName || 'Support Admin'}`)
+                                      : `👤 ${msg.senderName || activeChatUserEmail.split('@')[0]}`}
+                                  </span>
                                 </div>
                                 <div className="whitespace-pre-wrap leading-relaxed">{msg.text}</div>
+                                <div className="text-[9px] text-slate-300/80 text-right mt-1 font-mono flex items-center justify-end gap-1">
+                                  <span>
+                                    {new Date(msg.timestamp).toLocaleTimeString([], {
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                    })}
+                                  </span>
+                                  {isAdmin && <CheckCheck className="w-3 h-3 text-emerald-200" />}
+                                </div>
                               </div>
-                              <span className="text-[10px] text-slate-500 mt-1 px-1 font-mono">
-                                {new Date(msg.timestamp).toLocaleTimeString([], {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}
-                              </span>
                             </div>
                           );
                         })
                       )}
+
+                      {/* Real-time User Typing Indicator */}
+                      {isUserTyping && (
+                        <div className="flex items-center gap-2 py-1.5 px-3 rounded-2xl bg-slate-800/90 border border-slate-700 text-slate-300 text-xs w-max animate-pulse">
+                          <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-[10px]">
+                            💬
+                          </span>
+                          <span className="text-[11px] font-semibold text-slate-200">
+                            {userTypingName || activeChatUserEmail.split('@')[0]} is typing
+                          </span>
+                          <div className="flex items-center gap-1 ml-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                          </div>
+                        </div>
+                      )}
+
                       <div ref={chatBottomRef} />
                     </div>
 
                     {/* Quick Response Templates */}
-                    <div className="px-4 py-2 bg-slate-950 border-t border-slate-800/80 flex items-center gap-2 overflow-x-auto scrollbar-none">
+                    <div className="px-4 py-2 bg-slate-950 border-t border-slate-800/80 flex items-center gap-2 overflow-x-auto scrollbar-none shrink-0">
                       <span className="text-[10px] font-bold text-slate-500 shrink-0 uppercase tracking-wider">Quick Reply:</span>
                       {[
                         'Your account has been approved and activated.',
                         'We have reset your password. Please sign in.',
                         'Please check your real-time SMS console.',
+                        'Our support executive is reviewing your request.',
                         'Thank you for contacting Super X SMS support.',
                       ].map((tmpl, idx) => (
                         <button
                           key={`quick-tmpl-${idx}`}
                           type="button"
                           onClick={() => handleSendTemplateReply(tmpl)}
-                          className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-emerald-950 hover:text-emerald-300 text-slate-300 text-[11px] whitespace-nowrap transition cursor-pointer border border-slate-800"
+                          className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-emerald-950 hover:text-emerald-300 text-slate-300 text-[11px] whitespace-nowrap transition cursor-pointer border border-slate-800 active:scale-95"
                         >
                           {tmpl}
                         </button>
                       ))}
                     </div>
 
-                    {/* Reply Input Box */}
-                    <form onSubmit={handleSendChatReply} className="p-3 border-t border-slate-800 bg-slate-950 flex items-center gap-2">
+                    {/* Composer Input Box */}
+                    <form onSubmit={handleSendChatReply} className="p-3 sm:p-4 border-t border-slate-800 bg-slate-950 flex items-center gap-2 shrink-0">
                       <input
                         type="text"
                         value={adminChatInput}
-                        onChange={(e) => setAdminChatInput(e.target.value)}
-                        placeholder="Type reply to user (delivers instantly to user dashboard)..."
+                        onChange={(e) => handleAdminChatInputChange(e.target.value)}
+                        placeholder={`Type message to ${activeChatUserObj?.name || activeChatUserEmail.split('@')[0]}... (Press Enter to send)`}
                         className="flex-1 px-4 py-2.5 text-xs bg-slate-900 border border-slate-800 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 placeholder-slate-500"
                       />
                       <button
                         type="submit"
                         disabled={!adminChatInput.trim()}
-                        className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-lg cursor-pointer shrink-0"
+                        className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-lg shadow-emerald-500/20 cursor-pointer shrink-0 active:scale-95"
                       >
                         <Send className="w-3.5 h-3.5" />
-                        <span>Send Reply</span>
+                        <span>Send</span>
                       </button>
                     </form>
                   </>
                 ) : (
-                  <div className="h-full flex flex-col items-center justify-center p-8 text-center text-slate-500 text-xs gap-2">
-                    <MessageSquare className="w-8 h-8 text-slate-700 animate-pulse" />
-                    <span>Select a conversation from the left to read messages &amp; reply.</span>
+                  <div className="h-full flex flex-col items-center justify-center p-8 text-center text-slate-500 text-xs gap-3">
+                    <div className="w-14 h-14 rounded-3xl bg-slate-800/60 border border-slate-700/60 flex items-center justify-center text-emerald-400">
+                      <MessageSquare className="w-7 h-7 animate-pulse" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-white text-sm">Select a Conversation</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Choose any user conversation from the left to start live bidirectional chat.
+                      </p>
+                    </div>
                   </div>
                 )}
               </div>

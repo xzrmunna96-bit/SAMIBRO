@@ -49,6 +49,7 @@ async function startServer() {
   const USER_API_KEYS_FILE = path.join(DATA_DIR, "user_api_keys.json");
   const SHARED_ACCOUNT_NUMBERS_FILE = path.join(DATA_DIR, "shared_account_numbers.json");
   const TELEGRAM_JOINS_FILE = path.join(DATA_DIR, "telegram_joins.json");
+  const API_CONFIGS_FILE = path.join(DATA_DIR, "api_configs.json");
 
   function loadTelegramJoins(): Record<string, any> {
     try {
@@ -142,6 +143,40 @@ async function startServer() {
       fs.writeFileSync(SYSTEM_API_KEY_FILE, JSON.stringify({ apiKey: key, updatedAt: Date.now() }, null, 2), "utf-8");
     } catch {}
   }
+
+  function loadServerApiConfigs(): any[] {
+    try {
+      if (fs.existsSync(API_CONFIGS_FILE)) {
+        const raw = fs.readFileSync(API_CONFIGS_FILE, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch {}
+    return [
+      {
+        id: "primary-voltx-api",
+        name: "Primary Voltx / 2oo9 Gateway",
+        apiKey: "MK1CB2Y3GI9",
+        serviceType: "ALL (Global Auto-Detect)",
+        endpoint: "https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api",
+        isActive: true,
+        notes: "Active System Primary Gateway",
+        createdAt: Date.now(),
+      }
+    ];
+  }
+
+  function saveServerApiConfigs(configs: any[]) {
+    try {
+      fs.writeFileSync(API_CONFIGS_FILE, JSON.stringify(configs, null, 2), "utf-8");
+    } catch (e) {
+      console.warn("Could not save api_configs.json:", e);
+    }
+  }
+
+  let serverApiConfigs = loadServerApiConfigs();
 
   const DEFAULT_NOTICE_TEXT = "SMS Portal - Premium Carrier Rates 📲 Instant Verification Codes & Physical Carrier Routes Active";
 
@@ -3718,9 +3753,58 @@ async function startServer() {
             if (msg && msg.text && msg.chat && msg.chat.id) {
               const senderId = String(msg.from?.id || msg.chat.id);
               const senderName = msg.from?.first_name || msg.from?.username || "Telegram User";
-              const text = msg.text;
+              const text = msg.text.trim();
 
               console.log(`[Telegram Bot Engine] Incoming message from ${senderName} (${senderId}): "${text}"`);
+
+              // Check if this is a quote-reply to a Live Support Chat notification
+              if (msg.reply_to_message && msg.reply_to_message.text) {
+                const quotedText = msg.reply_to_message.text;
+                // Look for email in quoted text
+                const emailMatch = quotedText.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i);
+                
+                // If it's replying to a live support message and not an internal slash command
+                if (emailMatch && emailMatch[1] && (quotedText.includes("LIVE SUPPORT") || quotedText.includes("User Email") || quotedText.includes("SUPER X SMS"))) {
+                  const targetEmail = emailMatch[1].toLowerCase().trim();
+                  
+                  if (text && !text.startsWith("/start") && !text.startsWith("/menu")) {
+                    const liveChats = loadServerLiveChats();
+                    const adminSenderName = `Manager ${msg.from?.first_name || "Admin"}`;
+                    const adminReply = {
+                      id: `msg_tg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                      sender: "admin",
+                      senderName: adminSenderName,
+                      userEmail: targetEmail,
+                      text: text,
+                      timestamp: Date.now(),
+                      isAdmin: true,
+                      readByAdmin: true,
+                      readByUser: false,
+                      claimedByName: msg.from?.first_name || "Telegram Admin",
+                    };
+                    liveChats.push(adminReply);
+                    saveServerLiveChats(liveChats);
+
+                    const confirmMsg = `<b>✅ REPLY DELIVERED TO USER REAL-TIME!</b>\n\n` +
+                      `👤 <b>To User:</b> <code>${targetEmail}</code>\n` +
+                      `💬 <b>Your Reply:</b>\n<i>"${text}"</i>\n\n` +
+                      `⚡ <i>Delivered live to user dashboard chat window!</i>`;
+
+                    await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/sendMessage`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        chat_id: msg.chat.id,
+                        reply_to_message_id: msg.message_id,
+                        text: confirmMsg,
+                        parse_mode: "HTML",
+                      }),
+                    }).catch(() => {});
+
+                    continue;
+                  }
+                }
+              }
 
               const { responseText, replyMarkup } = await processTelegramControlCommand(text, senderId, senderName);
 
@@ -3954,6 +4038,31 @@ async function startServer() {
       success: true,
       apiKey: activeSystemApiKey,
     });
+  });
+
+  // Endpoints to get and update API configurations across all browsers and devices
+  app.get("/api/api-configs", (req, res) => {
+    serverApiConfigs = loadServerApiConfigs();
+    res.json({
+      success: true,
+      configs: serverApiConfigs,
+      lastUpdated: Date.now(),
+    });
+  });
+
+  app.post("/api/api-configs", (req, res) => {
+    const { configs } = req.body || {};
+    if (Array.isArray(configs)) {
+      serverApiConfigs = configs;
+      saveServerApiConfigs(serverApiConfigs);
+      const activeItem = configs.find((c: any) => c && c.isActive && c.apiKey && String(c.apiKey).trim());
+      if (activeItem) {
+        activeSystemApiKey = String(activeItem.apiKey).trim();
+        saveSystemApiKey(activeSystemApiKey);
+      }
+      return res.json({ success: true, count: serverApiConfigs.length });
+    }
+    res.status(400).json({ success: false, message: "Invalid configs array" });
   });
 
   app.post("/api/system/api-key", async (req, res) => {
@@ -4794,6 +4903,40 @@ async function startServer() {
     }
 
     res.json({ success: true, count: updated.length, messages: updated });
+  });
+
+  // Real-time Live Chat Typing State Sync
+  const liveChatTypingMap = new Map<string, { isTyping: boolean; who: string; name: string; timestamp: number }>();
+
+  app.post("/api/live-chat/typing", (req, res) => {
+    const { userEmail, isTyping, who, name } = req.body || {};
+    const rawEmail = String(userEmail || "").trim().toLowerCase();
+    if (rawEmail) {
+      if (isTyping) {
+        liveChatTypingMap.set(rawEmail, {
+          isTyping: true,
+          who: who || "user",
+          name: name || "User",
+          timestamp: Date.now(),
+        });
+      } else {
+        liveChatTypingMap.delete(rawEmail);
+      }
+    }
+    res.json({ success: true });
+  });
+
+  app.get("/api/live-chat/typing", (req, res) => {
+    const rawEmail = String(req.query.userEmail || "").trim().toLowerCase();
+    const state = liveChatTypingMap.get(rawEmail);
+    if (state) {
+      if (Date.now() - state.timestamp > 6000) {
+        liveChatTypingMap.delete(rawEmail);
+        return res.json({ isTyping: false });
+      }
+      return res.json(state);
+    }
+    res.json({ isTyping: false });
   });
 
   // =========================================================================

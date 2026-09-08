@@ -140,6 +140,8 @@ import {
   getUserUnreadChatCount,
   ensureBotWelcomeMessage,
   isUserChatBlocked,
+  sendTypingStatus,
+  fetchTypingStatus,
   CHAT_UPDATE_EVENT,
   ChatMessage,
 } from "../services/supportChatService";
@@ -2130,6 +2132,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     return 'BN';
   });
   const [isBotTyping, setIsBotTyping] = useState(false);
+  const [isAdminTyping, setIsAdminTyping] = useState(false);
+  const [adminTypingName, setAdminTypingName] = useState("");
+  const userTypingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [showFloatingChatLabel, setShowFloatingChatLabel] = useState(false);
 
   const [userChatMessages, setUserChatMessages] = useState<ChatMessage[]>(() =>
@@ -2228,10 +2233,63 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     }
   }, [isUserChatOpen, userChatMessages.length, user.email, user.name, userChatLang]);
 
+  // Real-time polling for admin typing status when chat modal is open
+  useEffect(() => {
+    if (!isUserChatOpen) {
+      setIsAdminTyping(false);
+      return;
+    }
+
+    const checkAdminTyping = async () => {
+      try {
+        const status = await fetchTypingStatus(user.email);
+        if (status.isTyping && status.who === 'admin') {
+          setIsAdminTyping(true);
+          if (status.name) {
+            setAdminTypingName(status.name);
+          }
+        } else {
+          setIsAdminTyping(false);
+        }
+      } catch {}
+    };
+
+    checkAdminTyping();
+    const typingInterval = setInterval(checkAdminTyping, 1500);
+
+    return () => {
+      clearInterval(typingInterval);
+      if (userTypingTimeoutRef.current) {
+        clearTimeout(userTypingTimeoutRef.current);
+      }
+      sendTypingStatus(user.email, false, 'user', user.name);
+    };
+  }, [isUserChatOpen, user.email, user.name]);
+
+  const handleUserChatInputChange = (val: string) => {
+    setUserChatInput(val);
+    if (!isUserChatBlocked(user.email)) {
+      sendTypingStatus(user.email, true, 'user', user.name);
+      if (userTypingTimeoutRef.current) {
+        clearTimeout(userTypingTimeoutRef.current);
+      }
+      userTypingTimeoutRef.current = setTimeout(() => {
+        sendTypingStatus(user.email, false, 'user', user.name);
+      }, 2000);
+    }
+  };
+
   const handleSendUserMessageSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!userChatInput.trim() || isUserChatBlocked(user.email)) return;
     const textToSend = userChatInput.trim();
+
+    // Clear typing indicator
+    if (userTypingTimeoutRef.current) {
+      clearTimeout(userTypingTimeoutRef.current);
+    }
+    sendTypingStatus(user.email, false, 'user', user.name);
+
     sendUserMessage(user.email, user.name, textToSend);
     setUserChatInput("");
     setUserChatMessages(getChatMessagesForUser(user.email));
@@ -3371,19 +3429,25 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               })
             )}
 
-            {/* WhatsApp/Messenger Style Typing Indicator */}
-            {isBotTyping && (
-              <div className="flex items-center gap-2 py-2 px-3 rounded-2xl bg-slate-800/80 border border-slate-700/80 text-slate-300 text-xs w-max animate-pulse">
-                <span className="w-5 h-5 rounded-full bg-orange-500/20 text-orange-400 flex items-center justify-center font-bold text-[10px]">
-                  🤖
+            {/* Real-Time Live Support / Admin / Bot Typing Indicator */}
+            {(isBotTyping || isAdminTyping) && (
+              <div className="flex items-center gap-2 py-2 px-3 rounded-2xl bg-slate-800/90 border border-slate-700/80 text-slate-300 text-xs w-max animate-fadeIn shadow-md">
+                <span className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] ${
+                  isAdminTyping ? 'bg-emerald-500/20 text-emerald-400' : 'bg-orange-500/20 text-orange-400'
+                }`}>
+                  {isAdminTyping ? '👨‍💼' : '🤖'}
                 </span>
                 <span className="text-[11px] font-semibold text-slate-200">
-                  {userChatLang === 'EN' ? 'SUPER X Support is typing' : 'সুপার এক্স সাপোর্ট উত্তর লিখছে'}
+                  {isAdminTyping
+                    ? `${adminTypingName || 'Support Agent'} is typing...`
+                    : userChatLang === 'EN'
+                    ? 'SUPER X Support is typing...'
+                    : 'সুপার এক্স সাপোর্ট উত্তর লিখছে...'}
                 </span>
                 <div className="flex items-center gap-1 ml-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                  <span className={`w-1.5 h-1.5 rounded-full animate-bounce ${isAdminTyping ? 'bg-emerald-400' : 'bg-orange-400'}`} style={{ animationDelay: '0ms' }} />
+                  <span className={`w-1.5 h-1.5 rounded-full animate-bounce ${isAdminTyping ? 'bg-emerald-400' : 'bg-orange-400'}`} style={{ animationDelay: '150ms' }} />
+                  <span className={`w-1.5 h-1.5 rounded-full animate-bounce ${isAdminTyping ? 'bg-emerald-400' : 'bg-orange-400'}`} style={{ animationDelay: '300ms' }} />
                 </div>
               </div>
             )}
@@ -3400,7 +3464,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               type="text"
               value={userChatInput}
               disabled={isBlocked}
-              onChange={(e) => setUserChatInput(e.target.value)}
+              onChange={(e) => handleUserChatInputChange(e.target.value)}
               placeholder={
                 isBlocked
                   ? userChatLang === 'EN'
@@ -6141,11 +6205,15 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                       placeholder="+8801700000000 or @telegram_handle"
                       className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-teal-400 transition font-mono"
                     />
+                    <span className="text-[11px] text-slate-400 mt-1 block">
+                      * You can change your name or phone number anytime. Click "Save Changes" below to save immediately.
+                    </span>
                   </div>
 
                   <div className="pt-2">
                     <button
                       type="submit"
+                      id="save-profile-btn"
                       className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                     >
                       <Check className="w-4 h-4" />
@@ -6303,7 +6371,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             className="px-3.5 py-1.5 rounded-full bg-[#f97316] hover:bg-[#ea580c] text-white text-xs font-extrabold shadow-lg border border-orange-400/50 flex items-center gap-2 cursor-pointer transition-all duration-500 animate-fadeIn"
           >
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
-            <span>{userChatLang === 'EN' ? 'Live Support Chat' : 'লাইভ সাপোর্ট চ্যাট'}</span>
+            <span>Live Chat</span>
           </button>
         )}
         <button
@@ -6568,7 +6636,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 className="px-3 py-1.5 rounded-full bg-[#f97316] hover:bg-orange-600 text-white text-xs font-bold shadow-md flex items-center gap-1.5 cursor-pointer transition-transform hover:scale-105 active:scale-95"
               >
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
-                <span>লাইভ চ্যাট</span>
+                <span>Live Chat</span>
               </button>
               <button
                 type="button"

@@ -129,6 +129,36 @@ export function getAllApiConfigs(): ApiConfigItem[] {
   return [...DEFAULT_API_CONFIGS];
 }
 
+export async function saveApiConfigsToServer(configs: ApiConfigItem[]): Promise<boolean> {
+  try {
+    const res = await fetch('/api/api-configs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ configs }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function fetchApiConfigsFromServer(): Promise<ApiConfigItem[]> {
+  try {
+    const res = await fetch('/api/api-configs');
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.configs) && data.configs.length > 0) {
+        try {
+          localStorage.setItem(API_CONFIGS_STORAGE_KEY, JSON.stringify(data.configs));
+          window.dispatchEvent(new Event(API_CONFIGS_UPDATE_EVENT));
+        } catch {}
+        return data.configs;
+      }
+    }
+  } catch {}
+  return getAllApiConfigs();
+}
+
 export function saveAllApiConfigs(configs: ApiConfigItem[]) {
   try {
     localStorage.setItem(API_CONFIGS_STORAGE_KEY, JSON.stringify(configs));
@@ -136,6 +166,8 @@ export function saveAllApiConfigs(configs: ApiConfigItem[]) {
   } catch (err) {
     console.error('Failed to save local API configs:', err);
   }
+  // Immediately persist to server so all other browsers and devices reflect the change in real time
+  saveApiConfigsToServer(configs).catch(() => {});
 }
 
 /**

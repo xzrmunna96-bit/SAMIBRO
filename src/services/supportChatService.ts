@@ -616,4 +616,35 @@ export function getAllChatConversations(): ChatConversationSummary[] {
   return list;
 }
 
+// Send typing status to server
+export async function sendTypingStatus(userEmail: string, isTyping: boolean, who: 'user' | 'admin', name: string) {
+  const clean = (userEmail || '').trim().toLowerCase();
+  if (!clean) return;
+  try {
+    await fetch('/api/live-chat/typing', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userEmail: clean, isTyping, who, name }),
+    });
+  } catch {
+    // ignore
+  }
+}
+
+// Fetch current typing status for a user conversation
+export async function fetchTypingStatus(userEmail: string): Promise<{ isTyping: boolean; who?: string; name?: string }> {
+  const clean = (userEmail || '').trim().toLowerCase();
+  if (!clean) return { isTyping: false };
+  try {
+    const res = await fetch(`/api/live-chat/typing?userEmail=${encodeURIComponent(clean)}`);
+    if (res.ok) {
+      const data = await res.json();
+      return data || { isTyping: false };
+    }
+  } catch {
+    // ignore
+  }
+  return { isTyping: false };
+}
+
 export { CHAT_UPDATE_EVENT };

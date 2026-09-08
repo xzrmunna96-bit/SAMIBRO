@@ -77,35 +77,31 @@ export async function deleteNotificationFromServer(id: string) {
 export async function fetchNotificationsFromServer(): Promise<NotificationItem[]> {
   try {
     const res = await fetch('/api/notifications');
-    if (!res.ok) return [];
+    if (!res.ok) return getAllNotifications();
     const data = await res.json();
     if (data && data.success && Array.isArray(data.notifications)) {
       const serverNotifs: NotificationItem[] = data.notifications;
       const current = getAllNotifications();
       const notifMap = new Map<string, NotificationItem>();
 
-      current.forEach((n) => {
+      // Server is source of truth for notifications
+      serverNotifs.forEach((n) => {
         if (n && n.id) notifMap.set(n.id, n);
       });
 
-      let hasNew = false;
-      serverNotifs.forEach((n) => {
-        if (n && n.id && !notifMap.has(n.id)) {
-          hasNew = true;
-          notifMap.set(n.id, n);
-        }
+      // Keep un-synced local items if any
+      current.forEach((n) => {
+        if (n && n.id && !notifMap.has(n.id)) notifMap.set(n.id, n);
       });
 
-      if (hasNew) {
-        const merged = Array.from(notifMap.values()).sort((a, b) => b.timestamp - a.timestamp);
-        saveAllNotifications(merged);
-        return merged;
-      }
+      const merged = Array.from(notifMap.values()).sort((a, b) => b.timestamp - a.timestamp);
+      saveAllNotifications(merged);
+      return merged;
     }
   } catch (err) {
     // ignore
   }
-  return [];
+  return getAllNotifications();
 }
 
 export function addNotification(

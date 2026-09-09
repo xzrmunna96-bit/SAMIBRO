@@ -115,7 +115,7 @@ export interface UserAccount {
   email: string;
   username?: string;
   password?: string;
-  accountCode: string;
+  accountCode?: string;
   status: 'pending' | 'approved' | 'rejected' | 'suspended';
   role: 'admin' | 'user';
   createdAt: number;
@@ -146,6 +146,7 @@ export interface UserAccount {
   avatarUrl?: string;
   apiUnlocked?: boolean;
   apiKey?: string;
+  lastSyncedAt?: number;
 }
 
 const STORAGE_KEY = 'super_x_all_user_accounts';

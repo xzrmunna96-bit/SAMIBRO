@@ -99,6 +99,12 @@ export function extractOtpCode(message: string): string {
   if (!message) return '';
   const text = String(message).trim();
 
+  // Match hyphenated codes (e.g. WhatsApp 123-456, 1234-5678, or 123 - 456) first to prevent partial 3-digit truncation
+  const hyphenMatch = text.match(/\b(\d{3,4}\s*-\s*\d{3,4})\b/);
+  if (hyphenMatch) {
+    return hyphenMatch[1].replace(/\s+/g, '');
+  }
+
   const otpPatterns = [
     /code[:\s]+(\d{3,8})/i,
     /otp[:\s]+(\d{3,8})/i,

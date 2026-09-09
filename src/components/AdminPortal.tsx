@@ -2061,7 +2061,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
       setRecentlyCreatedUser({
         email: cleanEmail,
         password: cleanPassword,
-        accountCode: res.account.accountCode,
+        accountCode: res.account.accountCode || '',
         name: res.account.name,
       });
 

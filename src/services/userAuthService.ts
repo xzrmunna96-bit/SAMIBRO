@@ -107,6 +107,8 @@ export interface LoginHistoryEntry {
   location?: string;
 }
 
+import { SEED_ACCOUNTS } from '../data/seedAccounts';
+
 export interface UserAccount {
   id: string;
   name: string;
@@ -142,6 +144,8 @@ export interface UserAccount {
   isIpBlocked?: boolean;
   blockReason?: string;
   avatarUrl?: string;
+  apiUnlocked?: boolean;
+  apiKey?: string;
 }
 
 const STORAGE_KEY = 'super_x_all_user_accounts';

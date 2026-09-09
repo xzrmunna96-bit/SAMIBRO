@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { LiveConsoleHit, stripFlagFromCountryName } from "../services/voltxApi";
 import { getCountryInfo } from "../services/countryHelper";
-import { getCountryFlagEmoji } from "./LoggedInDashboard";
+import { getCountryFlagEmoji, speakOtpAnnouncement } from "./LoggedInDashboard";
 import { CountryFlag } from "./CountryFlags";
 import { sendOtpToTelegram } from "../services/telegramService";
 
@@ -388,6 +388,9 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
       message: rawMsg,
       time: testNow,
     }).catch(() => {});
+
+    // Speak OTP announcement in localized voice
+    speakOtpAnnouncement(generatedOtp, resolvedCountry);
 
     const newCardItem: TestSmsCardItem = {
       id: `live_tst_${testNow}`,

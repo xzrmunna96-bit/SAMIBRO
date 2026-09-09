@@ -65,38 +65,132 @@ import {
   VolumeX,
 } from "lucide-react";
 
+// Global references to prevent Garbage Collection in Chromium/Safari & handle unlock
+const globalSpeechUtterances: any[] = [];
+let globalAudioCtx: AudioContext | null = null;
+let isAudioUnlocked = false;
+
+// Unlock audio and SpeechSynthesis context upon first user interaction gesture
+export function unlockAudioAndSpeechContext() {
+  if (isAudioUnlocked) return;
+  try {
+    const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (AudioCtx) {
+      if (!globalAudioCtx || globalAudioCtx.state === "closed") {
+        globalAudioCtx = new AudioCtx();
+      }
+      const ctx = globalAudioCtx;
+      if (ctx && ctx.state === "suspended") {
+        ctx.resume().catch(() => {});
+      }
+    }
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.resume();
+    }
+    isAudioUnlocked = true;
+  } catch {}
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("pointerdown", unlockAudioAndSpeechContext, { passive: true });
+  window.addEventListener("click", unlockAudioAndSpeechContext, { passive: true });
+  window.addEventListener("touchstart", unlockAudioAndSpeechContext, { passive: true });
+}
+
+// Crisp notification chime bell using Web Audio Oscillator (100% works across all browsers)
+export function playOtpChime() {
+  try {
+    const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+    if (!globalAudioCtx || globalAudioCtx.state === "closed") {
+      globalAudioCtx = new AudioCtx();
+    }
+    const ctx = globalAudioCtx;
+    if (!ctx) return;
+
+    if (ctx.state === "suspended") {
+      ctx.resume().catch(() => {});
+    }
+
+    const now = ctx.currentTime;
+
+    // Tone 1 (High bell 659.25Hz E5)
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = "sine";
+    osc1.frequency.setValueAtTime(659.25, now);
+    gain1.gain.setValueAtTime(0, now);
+    gain1.gain.linearRampToValueAtTime(0.3, now + 0.03);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.22);
+
+    // Tone 2 (Higher crystal chime 880Hz A5)
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = "sine";
+    osc2.frequency.setValueAtTime(880, now + 0.1);
+    gain2.gain.setValueAtTime(0, now + 0.1);
+    gain2.gain.linearRampToValueAtTime(0.35, now + 0.13);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(now + 0.1);
+    osc2.stop(now + 0.45);
+  } catch {}
+}
+
+// Convert English digits to spaced Bengali digits for natural Bengali speech
+function formatBengaliDigitsSpaced(digits: string): string {
+  const bnDigits: Record<string, string> = {
+    "0": "০", "1": "১", "2": "২", "3": "৩", "4": "৪",
+    "5": "৫", "6": "৬", "7": "৭", "8": "৮", "9": "৯"
+  };
+  return digits.split("").map((d) => bnDigits[d] || d).join(" ");
+}
+
 // Web SpeechSynthesis Voice Announcer for OTP codes across browsers
 export function speakOtpAnnouncement(otpCode: string, countryOrLanguage?: string) {
   try {
+    // 1. Play crystal notification chime immediately
+    playOtpChime();
+
     if (!('speechSynthesis' in window)) return;
 
     // Extract digits only
-    const digitsOnly = otpCode.replace(/\D/g, "");
+    const digitsOnly = String(otpCode || "").replace(/\D/g, "");
     if (!digitsOnly) return;
 
     // Spaced out digits for crisp pronunciation (e.g., "5 8 2 9 1 4")
-    const codeSpoken = digitsOnly.split("").join(" ");
+    const codeSpokenEn = digitsOnly.split("").join(" ");
+    const codeSpokenBn = formatBengaliDigitsSpaced(digitsOnly);
 
-    let lang = "en-US";
-    let textIntro = `Your code is ${codeSpoken}. Repeat, your code is ${codeSpoken}.`;
+    let lang = "bn-BD";
+    // Exact requested phrase: "ওটিপি কোড রিসিভ হয়েছে। আপনার ওটিপি কোড হলো ...। আবার বলছি, আপনার ওটিপি কোড হলো ...।"
+    let textIntro = `ওটিপি কোড রিসিভ হয়েছে। আপনার ওটিপি কোড হলো ${codeSpokenBn}। আবার বলছি, আপনার ওটিপি কোড হলো ${codeSpokenBn}।`;
 
     const countryLower = (countryOrLanguage || "").toLowerCase().trim();
 
-    if (
+    const isBengali =
+      !countryOrLanguage ||
       countryLower.includes("bangladesh") ||
       countryLower.includes("bengali") ||
       countryLower.includes("bd") ||
-      countryLower.includes("880")
-    ) {
+      countryLower.includes("880") ||
+      countryLower === "bangla";
+
+    if (isBengali) {
       lang = "bn-BD";
-      textIntro = `আপনার কোড হলো ${codeSpoken}। আবার বলছি, আপনার কোড হলো ${codeSpoken}।`;
+      textIntro = `ওটিপি কোড রিসিভ হয়েছে। আপনার ওটিপি কোড হলো ${codeSpokenBn}। আবার বলছি, আপনার ওটিপি কোড হলো ${codeSpokenBn}।`;
     } else if (
       countryLower.includes("india") ||
       countryLower.includes("hindi") ||
       countryLower.includes("91")
     ) {
       lang = "hi-IN";
-      textIntro = `आपका कोड है ${codeSpoken}। फिर से बोल रहे हैं, आपका कोड है ${codeSpoken}।`;
+      textIntro = `ओटीपी कोड प्राप्त हुआ है। आपका ओटीपी कोड है ${codeSpokenEn}। फिर से बोल रहे हैं, आपका कोड है ${codeSpokenEn}।`;
     } else if (
       countryLower.includes("arab") ||
       countryLower.includes("saudi") ||
@@ -104,7 +198,7 @@ export function speakOtpAnnouncement(otpCode: string, countryOrLanguage?: string
       countryLower.includes("egypt")
     ) {
       lang = "ar-SA";
-      textIntro = `رمزك هو ${codeSpoken}. أكرر، رمزك هو ${codeSpoken}.`;
+      textIntro = `تم استلام رمز التحقق. رمزك هو ${codeSpokenEn}. أكرر، رمزك هو ${codeSpokenEn}.`;
     } else if (
       countryLower.includes("france") ||
       countryLower.includes("french") ||
@@ -115,39 +209,68 @@ export function speakOtpAnnouncement(otpCode: string, countryOrLanguage?: string
       countryLower.includes("ivory")
     ) {
       lang = "fr-FR";
-      textIntro = `Votre code est ${codeSpoken}. Je répète, votre code est ${codeSpoken}.`;
+      textIntro = `Code OTP reçu. Votre code de vérification est ${codeSpokenEn}. Je répète, votre code est ${codeSpokenEn}.`;
     } else if (
       countryLower.includes("spain") ||
       countryLower.includes("spanish") ||
       countryLower.includes("mexico")
     ) {
       lang = "es-ES";
-      textIntro = `Su código es ${codeSpoken}. Repito, su código es ${codeSpoken}.`;
+      textIntro = `Código OTP recibido. Su código de verificación es ${codeSpokenEn}. Repito, su código es ${codeSpokenEn}.`;
     } else if (
       countryLower.includes("russia") ||
       countryLower.includes("russian")
     ) {
       lang = "ru-RU";
-      textIntro = `Ваш код ${codeSpoken}. Повторяю, ваш код ${codeSpoken}.`;
+      textIntro = `Код получен. Ваш код ${codeSpokenEn}. Повторяю, ваш код ${codeSpokenEn}.`;
+    } else {
+      lang = "en-US";
+      textIntro = `OTP code received. Your verification code is ${codeSpokenEn}. Repeating, your code is ${codeSpokenEn}.`;
     }
 
-    // Cancel active speech
-    window.speechSynthesis.cancel();
+    window.speechSynthesis.resume();
+
+    const voices = window.speechSynthesis.getVoices() || [];
+    let matchedVoice: SpeechSynthesisVoice | null = null;
+    if (voices.length > 0) {
+      matchedVoice =
+        voices.find((v) =>
+          v.lang.toLowerCase().replace("_", "-").startsWith(lang.toLowerCase().slice(0, 2))
+        ) || null;
+
+      // If system has no Bengali voice installed, speak in clear English
+      if (lang === "bn-BD" && !matchedVoice) {
+        lang = "en-US";
+        textIntro = `OTP code received. Your verification code is ${codeSpokenEn}. Repeating, your code is ${codeSpokenEn}.`;
+        matchedVoice = voices.find((v) => v.lang.toLowerCase().startsWith("en")) || null;
+      }
+    }
 
     const utterance = new SpeechSynthesisUtterance(textIntro);
     utterance.lang = lang;
-    utterance.rate = 0.85; // Natural clear cadence for OTP digits
+    utterance.rate = 0.88; // Natural clear cadence
     utterance.pitch = 1.0;
-
-    const voices = window.speechSynthesis.getVoices();
-    if (voices && voices.length > 0) {
-      const match = voices.find((v) =>
-        v.lang.toLowerCase().startsWith(lang.toLowerCase().slice(0, 2))
-      );
-      if (match) utterance.voice = match;
+    utterance.volume = 1.0;
+    if (matchedVoice) {
+      utterance.voice = matchedVoice;
     }
 
-    window.speechSynthesis.speak(utterance);
+    // Retain reference in global array to prevent Chromium Garbage Collection mid-speech
+    globalSpeechUtterances.push(utterance);
+    utterance.onend = () => {
+      const idx = globalSpeechUtterances.indexOf(utterance);
+      if (idx !== -1) globalSpeechUtterances.splice(idx, 1);
+    };
+    utterance.onerror = () => {
+      const idx = globalSpeechUtterances.indexOf(utterance);
+      if (idx !== -1) globalSpeechUtterances.splice(idx, 1);
+    };
+
+    setTimeout(() => {
+      try {
+        window.speechSynthesis.speak(utterance);
+      } catch {}
+    }, 120);
   } catch (e) {
     // Ignore speech restriction errors
   }
@@ -2111,20 +2234,32 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   });
 
   const toggleGetNumVoice = () => {
+    unlockAudioAndSpeechContext();
     const next = !isGetNumVoiceOn;
     setIsGetNumVoiceOn(next);
     try {
       localStorage.setItem("super_x_get_num_voice_enabled", String(next));
     } catch {}
     if (next) {
-      speakOtpAnnouncement("1 2 3 4 5 6", selectedCountryOperator?.country || "English");
+      speakOtpAnnouncement("582914", selectedCountryOperator?.country || "Bangladesh");
     }
   };
 
   const prevNumOtpsRef = useRef<Record<string, string>>({});
+  const isHistoryInitializedRef = useRef<boolean>(false);
 
   // Auto-announce OTP in spoken voice when a new OTP code is delivered
   useEffect(() => {
+    if (!isHistoryInitializedRef.current) {
+      getNumHistory.forEach((item) => {
+        if (item.otp) {
+          prevNumOtpsRef.current[item.id] = item.otp;
+        }
+      });
+      isHistoryInitializedRef.current = true;
+      return;
+    }
+
     getNumHistory.forEach((item) => {
       if (item.otp && prevNumOtpsRef.current[item.id] !== item.otp) {
         if (isGetNumVoiceOn) {
@@ -2209,6 +2344,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 return sanitizeAllocatedHistory([data.entry, ...prev]);
               });
             } else if (data.type === "otp_update" && data.entry) {
+              if (data.entry.otp && isGetNumVoiceOn) {
+                speakOtpAnnouncement(data.entry.otp, data.entry.country || "Bangladesh");
+              }
               setGetNumHistory((prev) => {
                 let updated = false;
                 const next = prev.map((item) => {
@@ -3095,6 +3233,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
         const sanitized = sanitizeAllocatedHistory(nextHistory);
         if (hasChange && newlyDeliveredOtp) {
+          if (isGetNumVoiceOn) {
+            speakOtpAnnouncement(newlyDeliveredOtp, newlyDeliveredNum ? getCountryInfo(newlyDeliveredNum).name : "Bangladesh");
+          }
           showDashboardToast(
             `🎉 New OTP received for your number: ${newlyDeliveredOtp}${newlyDeliveredNum ? ` (${newlyDeliveredNum})` : ""}`,
             "success",
@@ -4677,36 +4818,53 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   {/* Controls: Voice Announcer & Sync Mode Toggle */}
                   <div className="flex items-center gap-2.5 flex-wrap">
                     {/* Voice OTP Announcer Toggle Button */}
-                    <button
-                      type="button"
-                      onClick={toggleGetNumVoice}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition cursor-pointer select-none ${
-                        isGetNumVoiceOn
-                          ? "bg-emerald-50 text-emerald-700 border-emerald-300/80 hover:bg-emerald-100 shadow-2xs"
-                          : "bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200"
-                      }`}
-                      title={
-                        isGetNumVoiceOn
-                          ? "Voice OTP Announcer ON (Click to Mute)"
-                          : "Voice OTP Announcer MUTED (Click to Enable)"
-                      }
-                    >
-                      {isGetNumVoiceOn ? (
-                        <>
-                          <Volume2 className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
-                          <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-800">
-                            VOICE ON
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          <VolumeX className="w-3.5 h-3.5 text-gray-400" />
-                          <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
-                            VOICE OFF
-                          </span>
-                        </>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={toggleGetNumVoice}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition cursor-pointer select-none ${
+                          isGetNumVoiceOn
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-300/80 hover:bg-emerald-100 shadow-2xs"
+                            : "bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200"
+                        }`}
+                        title={
+                          isGetNumVoiceOn
+                            ? "Voice OTP Announcer ON (Click to Mute)"
+                            : "Voice OTP Announcer MUTED (Click to Enable)"
+                        }
+                      >
+                        {isGetNumVoiceOn ? (
+                          <>
+                            <Volume2 className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
+                            <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-800">
+                              VOICE ON
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <VolumeX className="w-3.5 h-3.5 text-gray-400" />
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                              VOICE OFF
+                            </span>
+                          </>
+                        )}
+                      </button>
+
+                      {isGetNumVoiceOn && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            unlockAudioAndSpeechContext();
+                            speakOtpAnnouncement("582914", "Bangladesh");
+                          }}
+                          className="px-2.5 py-1.5 rounded-full text-[10px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs transition cursor-pointer flex items-center gap-1"
+                          title="ভয়েজ টেস্ট করুন (Test OTP Voice Announcement)"
+                        >
+                          <Volume2 className="w-3 h-3" />
+                          <span>টেস্ট ভয়েজ</span>
+                        </button>
                       )}
-                    </button>
+                    </div>
 
                     {/* Sync Mode Toggle */}
                     <div

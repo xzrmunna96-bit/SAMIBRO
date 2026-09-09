@@ -112,8 +112,28 @@ export function App() {
         if (match) {
           setCurrentUser((prev) => {
             if (!prev) return null;
-            if (prev.role !== match.role || prev.status !== match.status || prev.name !== match.name) {
-              const updated = { ...prev, role: match.role, status: match.status, name: match.name };
+            const hasChanged =
+              prev.role !== match.role ||
+              prev.status !== match.status ||
+              prev.name !== match.name ||
+              prev.avatarUrl !== match.avatarUrl ||
+              prev.phoneOrTelegram !== match.phoneOrTelegram ||
+              prev.note !== match.note ||
+              prev.apiUnlocked !== match.apiUnlocked ||
+              prev.apiKey !== match.apiKey;
+
+            if (hasChanged) {
+              const updated = {
+                ...prev,
+                role: match.role,
+                status: match.status,
+                name: match.name,
+                avatarUrl: match.avatarUrl,
+                phoneOrTelegram: match.phoneOrTelegram,
+                note: match.note,
+                apiUnlocked: match.apiUnlocked,
+                apiKey: match.apiKey,
+              };
               try {
                 localStorage.setItem('super_x_sms_logged_in_user', JSON.stringify(updated));
               } catch {}

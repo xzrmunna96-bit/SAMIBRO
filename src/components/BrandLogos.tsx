@@ -91,10 +91,60 @@ export function TikTokLogo({ className = "w-10 h-10" }: { className?: string }) 
 export function MicrosoftLogo({ className = "w-10 h-10" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect x="8" y="8" width="22" height="22" rx="2" fill="#002050" />
-      <rect x="34" y="8" width="22" height="22" rx="2" fill="#002050" />
-      <rect x="8" y="34" width="22" height="22" rx="2" fill="#002050" />
-      <rect x="34" y="34" width="22" height="22" rx="2" fill="#002050" />
+      <rect x="8" y="8" width="22" height="22" rx="2" fill="#F25022" />
+      <rect x="34" y="8" width="22" height="22" rx="2" fill="#7FBA00" />
+      <rect x="8" y="34" width="22" height="22" rx="2" fill="#00A4EF" />
+      <rect x="34" y="34" width="22" height="22" rx="2" fill="#FFB900" />
+    </svg>
+  );
+}
+
+// 6b. Skype Logo
+export function SkypeLogo({ className = "w-10 h-10" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="skypeGrad" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#00AFF0" />
+          <stop offset="100%" stopColor="#0078D4" />
+        </linearGradient>
+      </defs>
+      <circle cx="32" cy="32" r="28" fill="url(#skypeGrad)" />
+      <circle cx="22" cy="22" r="12" fill="#00AFF0" />
+      <circle cx="42" cy="42" r="12" fill="#0078D4" />
+      <path
+        d="M32 12C20.9543 12 12 20.9543 12 32C12 35.6 12.95 38.9 14.6 41.8C14.2 43.1 14 44.5 14 46C14 51.5228 18.4772 56 24 56C25.5 56 26.9 55.8 28.2 55.4C31.1 57.05 34.4 58 38 58C49.0457 58 58 49.0457 58 38C58 34.4 57.05 31.1 55.4 28.2C55.8 26.9 56 25.5 56 24C56 18.4772 51.5228 14 46 14C44.5 14 43.1 14.2 41.8 14.6C38.9 12.95 35.6 12 32 12Z"
+        fill="url(#skypeGrad)"
+      />
+      <path
+        d="M32 43C27.2 43 24.5 40.5 24.5 37.8C24.5 36.5 25.5 35.5 27 35.5C29.2 35.5 28.8 38.8 32 38.8C33.8 38.8 35 38 35 36.8C35 35.5 33.8 35 31.5 34.3C28.2 33.3 25.2 32 25.2 28.2C25.2 24.8 28.5 22 32.8 22C37.2 22 39.5 24.8 39.5 27.2C39.5 28.5 38.5 29.5 37.2 29.5C35 29.5 35.3 26.2 32.5 26.2C31 26.2 29.8 27 29.8 28.1C29.8 29.2 31 29.8 33.2 30.4C36.8 31.3 39.8 32.5 39.8 36.5C39.8 40.2 36.5 43 32 43Z"
+        fill="white"
+      />
+    </svg>
+  );
+}
+
+// 6c. Microsoft Teams Logo
+export function MicrosoftTeamsLogo({ className = "w-10 h-10" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="6" y="6" width="52" height="52" rx="14" fill="#464775" />
+      <path
+        d="M45 22C47.2091 22 49 20.2091 49 18C49 15.7909 47.2091 14 45 14C42.7909 14 41 15.7909 41 18C41 20.2091 42.7909 22 45 22Z"
+        fill="#6264A7"
+      />
+      <path
+        d="M52 25H38C36.8954 25 36 25.8954 36 27V38C36 39.1046 36.8954 40 38 40H52C53.1046 40 54 39.1046 54 38V27C53 25.8954 52.1046 25 52 25Z"
+        fill="#6264A7"
+      />
+      <rect x="10" y="16" width="28" height="32" rx="6" fill="#7B83EB" />
+      <path
+        d="M24 24V40M18 24H30"
+        stroke="white"
+        strokeWidth="4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
@@ -497,6 +547,8 @@ export function getBrandLogoComponent(appId: string, className = "w-9 h-9 sm:w-1
   if (norm.includes('melbet')) return <MelbetLogo className={className} />;
   if (norm.includes('bolt')) return <BoltLogo className={className} />;
   if (norm.includes('uber')) return <UberLogo className={className} />;
+  if (norm.includes('skype')) return <SkypeLogo className={className} />;
+  if (norm.includes('teams')) return <MicrosoftTeamsLogo className={className} />;
   if (norm.includes('microsoft')) return <MicrosoftLogo className={className} />;
   if (norm.includes('tiktok')) return <TikTokLogo className={className} />;
   if (norm.includes('apple')) return <AppleLogo className={className} />;

@@ -13,7 +13,7 @@ import {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
   app.use(express.json({ limit: "10mb" }));
 
@@ -4660,15 +4660,16 @@ async function startServer() {
     const serverAccounts = loadServerAccounts();
 
     let targetEmail = (email || "").trim().toLowerCase();
+    const cleanCode = String(accountCode || "").trim();
 
-    if (!targetEmail && accountCode) {
-      const cleanCode = String(accountCode).trim();
+    if (cleanCode) {
       const matched = serverAccounts.find((a: any) => 
-        a.accountCode === cleanCode || 
-        (a.email && a.email.toLowerCase() === cleanCode.toLowerCase())
+        (a.accountCode && String(a.accountCode).trim() === cleanCode) || 
+        (a.email && a.email.toLowerCase() === cleanCode.toLowerCase()) ||
+        (a.id && a.id.toLowerCase() === cleanCode.toLowerCase())
       );
-      if (matched) {
-        targetEmail = matched.email.toLowerCase();
+      if (matched && matched.email) {
+        targetEmail = matched.email.toLowerCase().trim();
       }
     }
 
@@ -4677,16 +4678,21 @@ async function startServer() {
     }
 
     if (!targetEmail) {
-      return res.status(400).json({ error: "Could not find user for provided Account ID / Email / Key." });
+      if (cleanCode) {
+        targetEmail = cleanCode.includes("@") ? cleanCode.toLowerCase() : `user_${cleanCode}@user.portal`;
+      } else {
+        return res.status(400).json({ error: "Could not find user for provided Account ID / Email / Key." });
+      }
     }
 
     let existingKeyRecord = Object.values(keys).find((k: any) => k.email && k.email.toLowerCase() === targetEmail);
 
     if (!existingKeyRecord) {
-      const keyId = generateSuperXsmsApiKey();
+      const keyId = apiKey || generateSuperXsmsApiKey();
       existingKeyRecord = {
         apiKey: keyId,
         email: targetEmail,
+        accountCode: cleanCode || "",
         name: targetEmail.split('@')[0] || "SUPER X User",
         active: !!active,
         createdAt: Date.now(),
@@ -4696,8 +4702,24 @@ async function startServer() {
       keys[keyId] = existingKeyRecord;
     } else {
       existingKeyRecord.active = !!active;
+      if (cleanCode) existingKeyRecord.accountCode = cleanCode;
       existingKeyRecord.updatedAt = Date.now();
       keys[existingKeyRecord.apiKey] = existingKeyRecord;
+    }
+
+    // Update matching server account
+    const matchedAcc = serverAccounts.find((a: any) => 
+      (a.email && a.email.toLowerCase() === targetEmail) ||
+      (cleanCode && a.accountCode && String(a.accountCode).trim() === cleanCode) ||
+      (cleanCode && a.id && a.id.toLowerCase() === cleanCode.toLowerCase())
+    );
+    if (matchedAcc) {
+      matchedAcc.apiUnlocked = !!active;
+      if (existingKeyRecord.apiKey) {
+        matchedAcc.apiKey = existingKeyRecord.apiKey;
+      }
+      matchedAcc.updatedAt = Date.now();
+      saveServerAccounts(serverAccounts);
     }
 
     saveUserApiKeys(keys);
@@ -5108,6 +5130,19 @@ async function startServer() {
   // Periodic check every 5 minutes to auto-reset counters after 24 hours and prune old hits
   setInterval(check24HourReset, 5 * 60 * 1000);
 
+  function normalizeHitTimeServer(rawTime: any): number {
+    if (typeof rawTime === "number") {
+      return rawTime < 10000000000 ? rawTime * 1000 : rawTime;
+    }
+    if (!rawTime) return Date.now();
+    const num = Number(rawTime);
+    if (!isNaN(num) && num > 0) {
+      return num < 10000000000 ? num * 1000 : num;
+    }
+    const parsed = new Date(rawTime).getTime();
+    return isNaN(parsed) ? Date.now() : parsed;
+  }
+
   function processAndBroadcastIncomingHits(rawHits: any[]): { added: any[]; stats: ServerGlobalStats } {
     check24HourReset();
     if (!Array.isArray(rawHits) || rawHits.length === 0) {
@@ -5119,14 +5154,14 @@ async function startServer() {
 
     // Track against ALL existing signatures in memory to strictly prevent duplicate counting
     const existingSignatures = new Set(
-      serverGlobalLiveHits.map((h) => `${(h.range || h.number || "").replace(/\D/g, "")}_${h.time}_${(h.sid || "").trim().toLowerCase()}_${(h.message || "").trim()}`)
+      serverGlobalLiveHits.map((h) => `${(h.range || h.number || "").replace(/\D/g, "")}_${normalizeHitTimeServer(h.time)}_${(h.sid || "").trim().toLowerCase()}_${(h.message || "").trim()}`)
     );
 
     const validNew: any[] = [];
     for (const h of rawHits) {
       if (!h || (!h.range && !h.number && !h.sid && !h.message)) continue;
 
-      let hitTime = typeof h.time === "number" ? h.time : (h.timestamp || new Date(h.time).getTime());
+      let hitTime = normalizeHitTimeServer(h.time ?? h.timestamp);
       if (isNaN(hitTime) || hitTime <= 0) hitTime = now;
       if (hitTime < oneDayAgo) continue; // Skip hits older than 24 hours
       const sig = `${(h.range || h.number || "").replace(/\D/g, "")}_${hitTime}_${(h.sid || "").trim().toLowerCase()}_${(h.message || "").trim()}`;
@@ -5304,18 +5339,37 @@ async function startServer() {
 
   // Vite middleware for dev / static files for production
   if (process.env.NODE_ENV !== "production") {
-    const { createServer: createViteServer } = await import("vite");
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
+    try {
+      const { createServer: createViteServer } = await import("vite");
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+    } catch (err) {
+      console.warn("Vite dev server could not be loaded, serving static files fallback:", err);
+      const distPath = path.join(process.cwd(), "dist");
+      if (fs.existsSync(distPath)) {
+        app.use(express.static(distPath));
+        app.use((req, res, next) => {
+          if (req.method === "GET" && !req.path.startsWith("/api/")) {
+            return res.sendFile(path.join(distPath, "index.html"));
+          }
+          next();
+        });
+      }
+    }
   } else {
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+    }
     app.use((req, res, next) => {
       if (req.method === "GET" && !req.path.startsWith("/api/")) {
-        return res.sendFile(path.join(distPath, "index.html"));
+        const indexPath = path.join(distPath, "index.html");
+        if (fs.existsSync(indexPath)) {
+          return res.sendFile(indexPath);
+        }
       }
       next();
     });
@@ -5326,4 +5380,6 @@ async function startServer() {
   });
 }
 
-startServer();
+startServer().catch((err) => {
+  console.error("Critical error starting server:", err);
+});

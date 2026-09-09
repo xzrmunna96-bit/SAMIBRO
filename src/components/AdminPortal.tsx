@@ -150,7 +150,8 @@ import {
 } from '../services/intsGatewayService';
 import { getCountryInfo } from '../services/countryHelper';
 import { registerUserInFirebaseAuth, fetchAccountsFromFirebaseDirectly, saveAccountToFirebase, purgeRemoteFirebaseAccountsExceptSuperAdmin, saveMarqueeNoticeToFirebase } from '../services/firebaseSyncService';
-import { fetchAccountsFromServer, fetchSubAdminsFromServer, approveAccountOnServer, saveAccountToServer, purgeAccountsViaServer } from '../services/serverAuthSync';
+import { fetchAccountsFromServer, fetchSubAdminsFromServer, approveAccountOnServer, saveAccountToServer, purgeAccountsViaServer, getAdminAuthHeaders } from '../services/serverAuthSync';
+import { unlockUserApiKey, getAllUserApiKeys } from '../services/userApiKeyService';
 import { getBrandLogoComponent } from './BrandLogos';
 
 const ADMIN_MASTER_PASSWORD = 'XZRMUNNA12061';
@@ -357,13 +358,19 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
 
   const fetchAdminUserApiKeys = async () => {
     try {
-      const res = await fetch('/api/admin/user-api-keys');
+      const res = await fetch('/api/admin/user-api-keys', {
+        headers: getAdminAuthHeaders(),
+      });
       const data = await res.json();
       if (data && data.success && Array.isArray(data.keys)) {
         setUserApiKeysList(data.keys);
+      } else {
+        const localKeys = getAllUserApiKeys();
+        setUserApiKeysList(Object.values(localKeys));
       }
     } catch (e) {
-      console.error('Error fetching admin user API keys:', e);
+      const localKeys = getAllUserApiKeys();
+      setUserApiKeysList(Object.values(localKeys));
     }
   };
 
@@ -384,24 +391,15 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
       return;
     }
     try {
-      const res = await fetch('/api/admin/user-api-keys/unlock-by-account-id', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          accountCode: accountCodeOrEmail.trim(),
-          email: accountCodeOrEmail.trim(),
-          active: activeStatus,
-        }),
-      });
-      const data = await res.json();
-      if (data && data.success) {
-        showToast(data.message || `API Key ${activeStatus ? 'Unlocked' : 'Locked'} Successfully!`);
+      const result = await unlockUserApiKey(accountCodeOrEmail.trim(), activeStatus);
+      if (result && result.success) {
+        showToast(result.message || `API Key ${activeStatus ? 'Unlocked' : 'Locked'} Successfully!`);
         setUnlockInputCode('');
         setQuickUnlockAccountId('');
         fetchAdminUserApiKeys();
         setAccountsList(getAllAccounts());
       } else {
-        showToast('Error: ' + (data?.error || 'Failed to update API key status'));
+        showToast('Error: ' + (result?.message || 'Failed to update API key status'));
       }
     } catch (err: any) {
       showToast('Failed to update API key: ' + err.message);

@@ -178,12 +178,14 @@ export async function unlockUserApiKey(
   }
 
   // 4. Multi-backend synchronization (Express Server & Firestore)
+  let serverMessage = '';
   try {
     const res = await fetch('/api/admin/user-api-keys/unlock-by-account-id', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-admin-token': 'XZRMUNNA12061',
+        'x-admin-key': 'XZRMUNNA12061',
         'x-admin-email': 'xzrmunna96@gmail.com',
       },
       body: JSON.stringify({
@@ -191,23 +193,34 @@ export async function unlockUserApiKey(
         email: targetEmail,
         apiKey: resolvedKey,
         active: activeStatus,
+        adminKey: 'XZRMUNNA12061',
       }),
     });
 
     if (res.ok) {
       const serverData = await res.json().catch(() => null);
-      if (serverData && serverData.keyRecord) {
-        allKeys[serverData.keyRecord.apiKey] = {
-          ...updatedRec,
-          ...serverData.keyRecord,
-          active: activeStatus,
-        };
-        saveAllUserApiKeys(allKeys);
+      if (serverData) {
+        if (serverData.message) serverMessage = serverData.message;
+        if (serverData.keyRecord) {
+          allKeys[serverData.keyRecord.apiKey] = {
+            ...updatedRec,
+            ...serverData.keyRecord,
+            active: activeStatus,
+          };
+          saveAllUserApiKeys(allKeys);
+        }
       }
     }
   } catch {
     // If offline or on Vercel static, local persistence is already established
   }
+
+  return {
+    success: true,
+    message: serverMessage || `API Key for ${targetEmail} is now ${activeStatus ? 'UNLOCKED (ACTIVE)' : 'LOCKED'}`,
+    apiKey: resolvedKey,
+    user: targetUser,
+  };
 
   // Also sync user account to server /api/accounts
   if (targetUser) {

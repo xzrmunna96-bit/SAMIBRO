@@ -1,25 +1,77 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
-  FileText,
-  Home,
+  Search,
+  RotateCw,
   Copy,
   Check,
   Send,
   X,
-  MessageSquare,
-  Sparkles,
-  Search,
-  RotateCw,
-  Clock,
+  Volume2,
+  VolumeX,
   Layers,
+  Mail,
+  Trash2,
+  Download,
+  Plus,
+  ChevronLeft,
   ChevronRight,
-  ExternalLink,
+  Radio,
 } from "lucide-react";
 import { LiveConsoleHit, stripFlagFromCountryName } from "../services/voltxApi";
 import { getCountryInfo } from "../services/countryHelper";
-import { CountryFlag } from "./CountryFlags";
 import { getCountryFlagEmoji } from "./LoggedInDashboard";
-import { sendOtpToTelegram, extractOtpCode } from "../services/telegramService";
+import { CountryFlag } from "./CountryFlags";
+import { sendOtpToTelegram } from "../services/telegramService";
+
+// Web Audio API "Tung-Tung" ascending chime notification generator
+export function playTungTungSound() {
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    if (ctx.state === "suspended") {
+      ctx.resume().catch(() => {});
+    }
+
+    // Tone 1: ~784 Hz (G5) for 0.12s
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = "sine";
+    osc1.frequency.setValueAtTime(784, ctx.currentTime);
+    gain1.gain.setValueAtTime(0.25, ctx.currentTime);
+    gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.14);
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.start(ctx.currentTime);
+    osc1.stop(ctx.currentTime + 0.14);
+
+    // Tone 2: ~1046.5 Hz (C6) starting at +0.10s
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = "sine";
+    osc2.frequency.setValueAtTime(1046.5, ctx.currentTime + 0.10);
+    gain2.gain.setValueAtTime(0.3, ctx.currentTime + 0.10);
+    gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.30);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(ctx.currentTime + 0.10);
+    osc2.stop(ctx.currentTime + 0.30);
+  } catch (e) {
+    // Ignore audio context restriction errors
+  }
+}
+import {
+  SkypeLogo,
+  WhatsAppLogo,
+  TelegramLogo,
+  FacebookLogo,
+  ImoLogo,
+  TikTokLogo,
+  GoogleLogo,
+  AppleLogo,
+  UberLogo,
+  InstagramLogo,
+} from "./BrandLogos";
 
 export interface SmsTestRecord {
   id: string;
@@ -40,29 +92,119 @@ interface LiveTestSmsViewProps {
   onAddTestHistory?: (record: SmsTestRecord) => void;
   onAddLiveHit?: (hit: LiveConsoleHit) => void;
   onRefreshHits?: () => void;
-  onSelectService?: (service: string, range?: string) => void;
+  onSelectService?: (service: string, range?: string, phoneNum?: string) => void;
 }
 
-interface TestSmsItem {
+export interface TestSmsCardItem {
   id: string;
   country: string;
+  operator: string;
   range: string;
   number: string;
   sid: string;
   message: string;
-  time: string;
+  payout: string;
+  elapsed: string;
+  timeStr: string;
+  timestamp: number;
 }
 
-const TOP_RANGES_DATA = [
-  { range: "MONTENEGRO 382662", country: "MONTENEGRO", payout: "€0.048", traffic: "High", success: "99.8%" },
-  { range: "CAMEROON 23762", country: "CAMEROON", payout: "€0.045", traffic: "Very High", success: "99.4%" },
-  { range: "SIERRA LEONE 23276", country: "SIERRA LEONE", payout: "€0.052", traffic: "High", success: "99.1%" },
-  { range: "IVORY COAST 22507", country: "IVORY COAST", payout: "€0.049", traffic: "High", success: "98.9%" },
-  { range: "BANGLADESH 88017", country: "BANGLADESH", payout: "€0.035", traffic: "Moderate", success: "99.7%" },
-  { range: "SAUDI ARABIA 96655", country: "SAUDI ARABIA", payout: "€0.042", traffic: "High", success: "99.2%" },
+// Function to automatically mask OTP codes with XXXX in message text
+export function maskOtpInMessage(msg: string): string {
+  if (!msg) return "";
+  if (msg.includes("XXXX")) return msg;
+
+  let masked = msg;
+  // Mask 4 to 8 digit numbers with XXXX
+  masked = masked.replace(/\b\d{4,8}\b/g, "XXXX");
+  // Mask 3+3 spaced numbers like 123 456 with XXX XXX
+  masked = masked.replace(/\b\d{3}\s\d{3}\b/g, "XXX XXX");
+  // Mask G-123456 with G-XXXXXX
+  masked = masked.replace(/G-\d{6}/gi, "G-XXXXXX");
+  return masked;
+}
+
+const INITIAL_SAMPLE_HITS: TestSmsCardItem[] = [
+  {
+    id: "hit_01",
+    country: "CAMBODIA",
+    operator: "Metfone 12",
+    range: "85567464345",
+    number: "85567464345",
+    sid: "AUTHMSG",
+    message: "Your foodpanda verification code is: XXXX",
+    payout: "0.0102 USD",
+    elapsed: "1m",
+    timeStr: "15:29:26",
+    timestamp: Date.now() - 60000,
+  },
+  {
+    id: "hit_02",
+    country: "UZBEKISTAN",
+    operator: "Daewoo Unitel 32",
+    range: "998918617252",
+    number: "998918617252",
+    sid: "Facebook",
+    message: "<#> XXX XXX— ваш код Instagram. Никому не показывайте его. GdDGCwrWHVm",
+    payout: "-",
+    elapsed: "48s",
+    timeStr: "15:30:07",
+    timestamp: Date.now() - 48000,
+  },
+  {
+    id: "hit_03",
+    country: "TOGO",
+    operator: "Moov 34",
+    range: "22897437931",
+    number: "22897437931",
+    sid: "Facebook",
+    message: "Tap to reset your Instagram password: https://ig.me/XXyXuSQUXosAXTG",
+    payout: "-",
+    elapsed: "49s",
+    timeStr: "15:30:06",
+    timestamp: Date.now() - 49000,
+  },
+  {
+    id: "hit_04",
+    country: "IVORY COAST",
+    operator: "Orange 111",
+    range: "2250767490303",
+    number: "2250767490303",
+    sid: "Apple",
+    message: "REG-RESP?v=X;r=XXXXXXXXX;n=+XXXXXXXXXXXXX;s=XXXAAXXBXXFFFFFFFFXXX",
+    payout: "0.0102 USD",
+    elapsed: "50s",
+    timeStr: "15:30:05",
+    timestamp: Date.now() - 50000,
+  },
+  {
+    id: "hit_05",
+    country: "SIERRA LEONE",
+    operator: "Lintel 8",
+    range: "23277595046",
+    number: "23277595046",
+    sid: "Uber",
+    message: "HAKAN KHAGAN is arriving now in a Silver MG ZS EV HKXXCVM. Need help? Contact Support: XXXX XXX XXXX",
+    payout: "0.0102 USD",
+    elapsed: "51s",
+    timeStr: "15:30:04",
+    timestamp: Date.now() - 51000,
+  },
+  {
+    id: "hit_06",
+    country: "IVORY COAST",
+    operator: "Moov 136",
+    range: "2250140426646",
+    number: "2250140426646",
+    sid: "WhatsApp",
+    message: "Your WhatsApp code is: XXXX. Do not share this code with anyone.",
+    payout: "0.0102 USD",
+    elapsed: "53s",
+    timeStr: "15:30:02",
+    timestamp: Date.now() - 53000,
+  },
 ];
 
-// Real-time Live Test SMS Table without demo/fake items
 export const LiveTestSmsView = React.memo(function LiveTestSmsView({
   userEmail,
   liveHits,
@@ -77,80 +219,151 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
   const [testServiceInput, setTestServiceInput] = useState("WhatsApp");
   const [testCustomOtp, setTestCustomOtp] = useState("");
   const [isSendingTest, setIsSendingTest] = useState(false);
+  
+  // Filter & Search states matching Screenshot 1
   const [searchQuery, setSearchQuery] = useState("");
+  const [perPage, setPerPage] = useState(50);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [isLiveConnected, setIsLiveConnected] = useState(true);
+  const [isSoundOn, setIsSoundOn] = useState(true);
+  const [itemsList, setItemsList] = useState<TestSmsCardItem[]>([]);
 
-  const copyToClipboard = (text: string, id: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
-  };
-
-  const formatCountryAndRange = (countryStr: string, rangeStr: string, numberStr?: string) => {
-    const cleanCountryRaw = stripFlagFromCountryName(countryStr || "");
-    let countryName = cleanCountryRaw.replace(/[\d\sX]+$/i, "").trim();
-    if (!countryName) countryName = "INTERNATIONAL";
-
-    const rangeCode = (rangeStr || "").trim();
-
-    let fullTitle = countryName;
-    if (rangeCode && !countryName.includes(rangeCode)) {
-      fullTitle = `${countryName} ${rangeCode}`;
-    }
-
-    let subNumber = "";
-    if (numberStr) {
-      const cleanNum = numberStr.trim();
-      if (
-        cleanNum &&
-        cleanNum !== rangeCode &&
-        cleanNum !== fullTitle &&
-        !fullTitle.endsWith(cleanNum)
-      ) {
-        subNumber = cleanNum;
-      }
-    }
-
-    return { fullTitle, subNumber };
-  };
-
-  // Map real live hits directly - no fake demo data
-  const displayItems: TestSmsItem[] = React.useMemo(() => {
-    if (liveHits && liveHits.length > 0) {
-      return liveHits.map((h, i) => {
+  // Sync real liveHits when prop changes
+  useEffect(() => {
+    if (liveHits) {
+      const converted: TestSmsCardItem[] = liveHits.map((h, i) => {
         const rawRange = (h.range || (h as any).rangeCode || "").trim();
         const rawPhone = ((h as any).number || (h as any).testNumber || rawRange).trim();
         const info = getCountryInfo(rawRange || rawPhone);
 
         let countryName = (h.country || (h as any).countryName || "").trim();
-        if (!countryName || countryName.toUpperCase() === "INTERNATIONAL" || countryName.toUpperCase() === "BANGLADESH" && !rawRange.startsWith("880") && !rawPhone.startsWith("880")) {
+        if (!countryName || countryName.toUpperCase() === "INTERNATIONAL") {
           countryName = info.name;
         }
 
+        const now = Date.now();
+        const tVal = typeof h.time === "number" ? (h.time < 1e10 ? h.time * 1000 : h.time) : now;
+        const elapsedSec = Math.max(1, Math.floor((now - tVal) / 1000));
+        const elapsedStr = elapsedSec < 60 ? `${elapsedSec}s` : `${Math.floor(elapsedSec / 60)}m`;
+
         return {
-          id: (h as any).id || `hit_${i}_${Date.now()}`,
+          id: (h as any).id || `prop_hit_${rawPhone}_${tVal}_${h.sid || ""}_${i}`,
           country: countryName.toUpperCase(),
+          operator: h.operator || "Gateway Route",
           range: rawRange || info.dialCode.replace("+", ""),
           number: rawPhone,
           sid: h.sid || (h as any).service || "WhatsApp",
-          message: h.message || "Incoming SMS Packet",
-          time: typeof h.time === "number" ? new Date(h.time * (h.time < 1e10 ? 1000 : 1)).toLocaleTimeString() : (h.time || "Just now"),
+          message: maskOtpInMessage(h.message || "Incoming SMS Packet"),
+          payout: "-",
+          elapsed: elapsedStr,
+          timeStr: new Date(tVal).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }),
+          timestamp: tVal,
         };
       });
+
+      setItemsList(converted);
     }
-    return [];
   }, [liveHits]);
 
-  const filteredItems = displayItems.filter((item) => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
+  const prevItemsCountRef = useRef<number | null>(null);
+
+  // Sound notification trigger when user is inside Live Test SMS view
+  useEffect(() => {
+    if (itemsList.length === 0) return;
+
+    if (prevItemsCountRef.current === null) {
+      // User just entered/opened Live Test SMS view - play chime to announce initial SMS feed
+      if (isSoundOn) {
+        playTungTungSound();
+      }
+    } else if (itemsList.length > prevItemsCountRef.current) {
+      // A new SMS arrived while the user is inside Live Test SMS view
+      if (isSoundOn) {
+        playTungTungSound();
+      }
+    }
+
+    prevItemsCountRef.current = itemsList.length;
+  }, [itemsList, isSoundOn]);
+
+  const copyToClipboard = (text: string, id: string) => {
+    try {
+      navigator.clipboard.writeText(text);
+    } catch (e) {}
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  // Filter items based on search query
+  const filteredItems = useMemo(() => {
+    return itemsList.filter((item) => {
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase();
+      return (
+        item.country.toLowerCase().includes(q) ||
+        item.operator.toLowerCase().includes(q) ||
+        item.range.toLowerCase().includes(q) ||
+        item.number.toLowerCase().includes(q) ||
+        item.sid.toLowerCase().includes(q) ||
+        item.message.toLowerCase().includes(q)
+      );
+    });
+  }, [itemsList, searchQuery]);
+
+  // Pagination calculation
+  const totalItems = filteredItems.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / perPage));
+  const paginatedItems = useMemo(() => {
+    const start = (currentPage - 1) * perPage;
+    return filteredItems.slice(start, start + perPage);
+  }, [filteredItems, currentPage, perPage]);
+
+  // Handle Plus Button click: copy number, set range, and navigate to Get Number
+  const handlePlusClick = (item: TestSmsCardItem, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onSelectService) {
+      onSelectService(item.sid, item.range, item.number);
+    }
+  };
+
+  // Render Service Brand Badge matching user request
+  const renderBrandBadge = (sid: string) => {
+    const sLower = sid.toLowerCase();
+    let logoElem = null;
+
+    if (sLower.includes("whatsapp")) {
+      logoElem = <WhatsAppLogo className="w-4 h-4 text-[#25D366]" />;
+    } else if (sLower.includes("facebook") || sLower.includes("fb")) {
+      logoElem = <FacebookLogo className="w-4 h-4 text-[#1877F2]" />;
+    } else if (sLower.includes("instagram") || sLower.includes("ig")) {
+      logoElem = <InstagramLogo className="w-4 h-4" />;
+    } else if (sLower.includes("apple")) {
+      logoElem = <AppleLogo className="w-4 h-4 text-slate-900" />;
+    } else if (sLower.includes("uber")) {
+      logoElem = <UberLogo className="w-4 h-4 text-slate-900" />;
+    } else if (sLower.includes("tiktok")) {
+      logoElem = <TikTokLogo className="w-4 h-4" />;
+    } else if (sLower.includes("google")) {
+      logoElem = <GoogleLogo className="w-4 h-4" />;
+    } else if (sLower.includes("telegram")) {
+      logoElem = <TelegramLogo className="w-4 h-4 text-[#0088cc]" />;
+    } else if (sLower.includes("imo")) {
+      logoElem = <ImoLogo className="w-4 h-4 text-[#00aaff]" />;
+    } else {
+      logoElem = (
+        <span className="w-4 h-4 rounded bg-slate-200 text-slate-700 font-bold text-[10px] flex items-center justify-center shrink-0">
+          A
+        </span>
+      );
+    }
+
     return (
-      item.country.toLowerCase().includes(q) ||
-      item.range.toLowerCase().includes(q) ||
-      item.number.toLowerCase().includes(q) ||
-      item.sid.toLowerCase().includes(q) ||
-      item.message.toLowerCase().includes(q)
+      <div className="inline-flex items-center gap-1.5 bg-slate-100/80 px-2.5 py-1 rounded-md text-xs font-semibold text-slate-800 border border-slate-200/60">
+        {logoElem}
+        <span>{sid}</span>
+      </div>
     );
-  });
+  };
 
   const handleSendTestSms = (e: React.FormEvent) => {
     e.preventDefault();
@@ -158,320 +371,372 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
 
     setIsSendingTest(true);
     const generatedOtp = testCustomOtp.trim() || String(Math.floor(100000 + Math.random() * 900000));
-    let messageBody = "";
+    let rawMsg = `${testServiceInput} verification code: ${generatedOtp}`;
 
     if (testServiceInput === "WhatsApp") {
-      messageBody = `<#> Your WhatsApp code is ${generatedOtp}. Do not share this code with anyone.`;
-    } else if (testServiceInput === "Google") {
-      messageBody = `G-${generatedOtp} هو رمز التحقق من Google لحسابك`;
-    } else if (testServiceInput === "TikTok") {
-      messageBody = `[#] [TikTok] ${generatedOtp} is your verification code`;
-    } else if (testServiceInput === "Apple") {
-      messageBody = `ùéèΩy@@REG-RESP?v=X;r=${generatedOtp};r...`;
-    } else if (testServiceInput === "Telegram") {
-      messageBody = `Telegram code: ${generatedOtp}. You can also tap on this link to log in.`;
+      rawMsg = `<#> Your WhatsApp code is ${generatedOtp}. Do not share this code with anyone.`;
     } else if (testServiceInput === "Facebook") {
-      messageBody = `${generatedOtp} is your Facebook security code`;
-    } else if (testServiceInput === "IMO") {
-      messageBody = `imo verification code: ${generatedOtp}. Never share this code.`;
-    } else {
-      messageBody = `${testServiceInput} verification code: ${generatedOtp}`;
+      rawMsg = `${generatedOtp} is your Facebook security code`;
     }
 
     const testNow = Date.now();
-    const resolvedCountry = testNumberInput.startsWith("880") ? "BANGLADESH" : testNumberInput.startsWith("966") ? "SAUDI ARABIA" : "INTERNATIONAL";
+    const resolvedCountry = testNumberInput.startsWith("880") ? "BANGLADESH" : testNumberInput.startsWith("966") ? "SAUDI ARABIA" : "CAMBODIA";
 
-    // 1. Dispatch real-time Telegram notification
     sendOtpToTelegram({
       number: testNumberInput.trim(),
       service: testServiceInput,
-      message: messageBody,
+      message: rawMsg,
       time: testNow,
     }).catch(() => {});
 
-    // 2. Add as live hit for instant reflection in live test feed and social app stream
+    const newCardItem: TestSmsCardItem = {
+      id: `live_tst_${testNow}`,
+      country: resolvedCountry,
+      operator: "Direct Test Gateway",
+      range: testNumberInput.slice(0, 6) || "880171",
+      number: testNumberInput.trim(),
+      sid: testServiceInput,
+      message: maskOtpInMessage(rawMsg),
+      payout: "0.0102 USD",
+      elapsed: "1s",
+      timeStr: new Date(testNow).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }),
+      timestamp: testNow,
+    };
+
+    setItemsList((prev) => [newCardItem, ...prev]);
+
     if (onAddLiveHit) {
       onAddLiveHit({
         id: `tst_live_${testNow}`,
         country: resolvedCountry,
-        range: testNumberInput.slice(0, 5) || "37342",
+        range: testNumberInput.slice(0, 6) || "880171",
         number: testNumberInput.trim(),
         sid: testServiceInput,
-        message: messageBody,
+        message: rawMsg,
         time: testNow,
         operator: "Live Test Direct",
       } as any);
     }
 
     setTimeout(() => {
-      const newRecord: SmsTestRecord = {
-        id: `TST-${Math.floor(100000 + Math.random() * 900000)}`,
-        testNumber: testNumberInput.trim(),
-        country: resolvedCountry,
-        carrier: "Direct Gateway Route",
-        service: testServiceInput,
-        otpCode: generatedOtp,
-        message: messageBody,
-        timestamp: testNow,
-        status: "DELIVERED",
-        speedSec: +(0.8 + Math.random() * 0.5).toFixed(1),
-      };
-
       if (onAddTestHistory) {
-        onAddTestHistory(newRecord);
+        onAddTestHistory({
+          id: `TST-${Math.floor(100000 + Math.random() * 900000)}`,
+          testNumber: testNumberInput.trim(),
+          country: resolvedCountry,
+          carrier: "Direct Route",
+          service: testServiceInput,
+          otpCode: generatedOtp,
+          message: rawMsg,
+          timestamp: testNow,
+          status: "DELIVERED",
+          speedSec: 0.9,
+        });
       }
-
       setIsSendingTest(false);
       setIsTestModalOpen(false);
-    }, 400);
+    }, 300);
   };
 
   return (
-    <div className="space-y-4 pb-12 animate-in fade-in duration-150">
-      {/* Main Table Card (Yellow header: Live test SMS) */}
-      <div className="bg-white rounded-lg border border-slate-200 shadow-xs overflow-hidden">
-        {/* Yellow Header Banner */}
-        <div className="bg-[#fbb03b] px-4 py-3 flex items-center justify-between">
-          <h2 className="font-bold text-slate-950 text-sm tracking-wide">
-            Live test SMS
-          </h2>
+    <div className="space-y-4 pb-12 animate-in fade-in duration-150 font-sans text-slate-800">
+      {/* 1. Breadcrumb Navigation Bar matching Screenshot 1 */}
+      <div className="flex items-center justify-between bg-white px-4 py-2.5 rounded-lg border border-slate-200/80 shadow-2xs text-xs">
+        <div className="flex items-center gap-1.5 text-slate-500 font-medium">
+          <span className="hover:text-slate-800 transition cursor-pointer">Dashboard</span>
+          <span className="text-slate-300">›</span>
+          <span className="hover:text-slate-800 transition cursor-pointer">Test System</span>
+          <span className="text-slate-300">›</span>
+          <span className="text-slate-900 font-bold">Live Test SMS</span>
+        </div>
+
+        {/* Header Right Actions */}
+        <div className="flex items-center gap-3">
+          <a
+            href="skype:live:.cid.ff20440e63a32f17?chat"
+            className="flex flex-col items-center justify-center group shrink-0 cursor-pointer text-center"
+            title="Contact Manager on Skype (live:.cid.ff20440e63a32f17)"
+          >
+            <div className="w-8 h-8 rounded-full bg-[#00AFF0] hover:bg-[#0098d4] active:scale-95 text-white flex items-center justify-center shadow-2xs border border-sky-300/50 transition-all group-hover:scale-105">
+              <SkypeLogo className="w-5 h-5 text-white" />
+            </div>
+            <span className="text-[10px] font-extrabold text-slate-900 group-hover:text-black tracking-tight leading-none mt-0.5">
+              Skype
+            </span>
+          </a>
+        </div>
+      </div>
+
+      {/* 2. Top Metric Cards (TOTAL MESSAGES) matching user screenshot */}
+      <div className="grid grid-cols-1 gap-4">
+        {/* TOTAL MESSAGES Card */}
+        <div className="bg-white rounded-xl border border-slate-200/90 p-5 shadow-2xs relative overflow-hidden flex items-center justify-between">
+          <div className="space-y-1">
+            <span className="text-[11px] font-bold text-slate-400 tracking-wider uppercase block">
+              TOTAL MESSAGES
+            </span>
+            <div className="text-3xl font-extrabold text-slate-900 tracking-tight">
+              {itemsList.length}
+            </div>
+            <div className="text-xs text-slate-500 font-medium">Live Stream</div>
+          </div>
+          <div className="w-11 h-11 rounded-lg bg-[#e8f5e9] text-[#2e7d32] flex items-center justify-center shrink-0 border border-[#c8e6c9]/60">
+            <Mail className="w-5 h-5 stroke-[2.2]" />
+          </div>
+          {/* Top accent border */}
+          <div className="absolute top-0 left-0 right-0 h-0.5 bg-emerald-500/30" />
+        </div>
+      </div>
+
+      {/* 3. Main Message Stream Card matching Screenshot 1 & 2 */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+        {/* Card Header: Message stream + Connected status */}
+        <div className="px-4 py-3.5 border-b border-slate-100 flex items-center justify-between">
           <div className="flex items-center gap-2">
+            <h2 className="text-base font-bold text-slate-900 tracking-tight">
+              Message stream
+            </h2>
+          </div>
+
+          <div className="flex items-center gap-2.5">
             <button
               type="button"
               onClick={() => {
-                if (onRefreshHits) onRefreshHits();
+                const next = !isSoundOn;
+                setIsSoundOn(next);
+                if (next) playTungTungSound();
               }}
-              className="text-slate-900 hover:text-black p-1 rounded transition cursor-pointer"
-              title="Refresh Stream"
+              className={`p-1.5 rounded-lg border transition-all flex items-center gap-1.5 ${
+                isSoundOn
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200/80 hover:bg-emerald-100"
+                  : "bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100"
+              }`}
+              title={isSoundOn ? "Sound Enabled (Click to Mute)" : "Sound Muted (Click to Enable)"}
             >
-              <RotateCw className="w-4 h-4" />
+              {isSoundOn ? (
+                <Volume2 className="w-4 h-4 text-emerald-600" />
+              ) : (
+                <VolumeX className="w-4 h-4 text-slate-400" />
+              )}
+            </button>
+
+            <span className="inline-flex items-center gap-1.5 bg-[#e8f5e9] text-[#2e7d32] px-3 py-1 rounded-full text-xs font-bold border border-[#c8e6c9]">
+              <span className="w-2 h-2 rounded-full bg-[#2e7d32] animate-pulse" />
+              <span>Connected</span>
+            </span>
+          </div>
+        </div>
+
+        {/* Toolbar Row: LIVE pill, Clear, Export */}
+        <div className="p-3 bg-slate-50/50 border-b border-slate-100 flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setIsLiveConnected(!isLiveConnected)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-2xs transition cursor-pointer ${
+              isLiveConnected
+                ? "bg-[#2e7d32] text-white hover:bg-[#1b5e20]"
+                : "bg-slate-200 text-slate-600 hover:bg-slate-300"
+            }`}
+          >
+            <Radio className="w-3.5 h-3.5 animate-pulse" />
+            <span>LIVE ●</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setItemsList([])}
+            className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg text-xs font-medium flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-slate-500" />
+            <span>Clear</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(itemsList, null, 2));
+              const downloadAnchor = document.createElement("a");
+              downloadAnchor.setAttribute("href", dataStr);
+              downloadAnchor.setAttribute("download", `live_sms_stream_${Date.now()}.json`);
+              document.body.appendChild(downloadAnchor);
+              downloadAnchor.click();
+              downloadAnchor.remove();
+            }}
+            className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg text-xs font-medium flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+          >
+            <Download className="w-3.5 h-3.5 text-slate-500" />
+            <span>Export</span>
+          </button>
+        </div>
+
+        {/* Filter Controls Row: Search Input */}
+        <div className="p-3 border-b border-slate-100">
+          {/* Search Input */}
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
+              placeholder="Search messages, phone numbers, countries..."
+              className="w-full pl-9 pr-3.5 py-2 text-xs bg-white border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 font-sans"
+            />
+          </div>
+        </div>
+
+        {/* Pagination Controls Row matching Screenshot 1 */}
+        <div className="px-4 py-2.5 bg-slate-50/70 border-b border-slate-100 flex items-center justify-between text-xs text-slate-600 flex-wrap gap-2">
+          <div className="flex items-center gap-1.5">
+            <span>Per page</span>
+            <select
+              value={perPage}
+              onChange={(e) => {
+                setPerPage(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              className="bg-white border border-slate-200 rounded px-2 py-1 text-xs font-bold focus:outline-none cursor-pointer"
+            >
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2 font-medium">
+            <button
+              type="button"
+              disabled={currentPage <= 1}
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              className="px-2.5 py-1 bg-white border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-40 transition cursor-pointer flex items-center gap-1"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+              <span>Prev</span>
+            </button>
+            <span>
+              Page {currentPage} of {totalPages}
+            </span>
+            <button
+              type="button"
+              disabled={currentPage >= totalPages}
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              className="px-2.5 py-1 bg-white border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-40 transition cursor-pointer flex items-center gap-1"
+            >
+              <span>Next</span>
+              <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
+
+          <div className="text-slate-500 text-[11px] font-medium">
+            {paginatedItems.length} / {totalItems} messages
+          </div>
         </div>
 
-        {/* Content Container (Mobile Compact List + Desktop Table) */}
-        <div>
-          {/* Mobile View (< sm): Compact full-width cards eliminating narrow column squeezes and huge vertical gaps */}
-          <div className="block sm:hidden divide-y divide-slate-100">
-            {filteredItems.length === 0 ? (
-              <div className="py-8 text-center text-slate-400 text-xs">
-                No live test messages found
-              </div>
-            ) : (
-              filteredItems.map((item, idx) => {
-                const { fullTitle, subNumber } = formatCountryAndRange(item.country, item.range, item.number);
-                return (
-                  <div
-                    key={item.id || `mob_item_${idx}`}
-                    onClick={() => {
-                      if (onSelectService) {
-                        onSelectService(item.sid, item.range);
-                      }
-                    }}
-                    className="p-3 hover:bg-amber-50/60 transition-colors cursor-pointer space-y-1.5"
-                  >
-                    {/* Top Bar: Flag + Title + SID + Copy */}
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span
-                          className="text-base leading-none shrink-0 select-none"
-                          role="img"
-                          aria-label={item.country}
-                        >
-                          {getCountryFlagEmoji(item.country || item.range)}
-                        </span>
-                        <div className="min-w-0 flex items-center gap-1.5 flex-wrap">
-                          <span className="font-bold text-slate-900 text-xs tracking-tight uppercase truncate">
-                            {fullTitle}
-                          </span>
-                          {subNumber && (
-                            <span className="text-[11px] font-medium text-slate-600 font-mono">
-                              ({subNumber})
-                            </span>
-                          )}
+        {/* 4. SMS Feed Cards List matching Screenshots 1 & 2 */}
+        <div className="divide-y divide-slate-100">
+          {paginatedItems.length === 0 ? (
+            <div className="py-12 text-center text-slate-400 text-xs font-medium">
+              No live test messages received yet.
+            </div>
+          ) : (
+            paginatedItems.map((item, idx) => {
+              const cleanCountry = stripFlagFromCountryName(item.country);
+              const isGenericGateway = !item.operator || item.operator === "Gateway Route" || item.operator === "Direct Test Gateway";
+              const isNewest = currentPage === 1 && idx === 0;
+
+              return (
+                <div
+                  key={item.id || `hit_card_${idx}`}
+                  className={`p-4 transition-colors relative space-y-2 border-b border-slate-100/90 ${
+                    isNewest ? "bg-[#f4fbf7]" : "bg-white"
+                  }`}
+                >
+                  {/* Top Line: Flag + Country Name (Operator if applicable) + Time Elapsed + Timestamp */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start gap-2.5 min-w-0">
+                      {/* Flag Image */}
+                      <CountryFlag
+                        countryCode={item.country || item.range}
+                        size="lg"
+                        className="mt-0.5 shrink-0"
+                      />
+
+                      <div className="min-w-0">
+                        {/* Title: Country Name */}
+                        <div className="font-bold text-slate-900 text-sm tracking-tight leading-tight">
+                          {cleanCountry}{!isGenericGateway ? ` - ${item.operator}` : ""}
+                        </div>
+                        {/* Subtitle: Phone Number */}
+                        <div className="text-xs font-mono text-slate-500 font-medium mt-0.5">
+                          {item.number}
                         </div>
                       </div>
+                    </div>
 
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <span className="inline-flex items-center gap-1 font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 text-[11px]">
-                          {item.sid}
-                          <ExternalLink className="w-2.5 h-2.5 opacity-70" />
-                        </span>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            copyToClipboard(item.message, `msg_mob_${idx}`);
-                          }}
-                          className="text-slate-400 hover:text-slate-800 p-1 transition cursor-pointer shrink-0"
-                          title="Copy Message"
-                        >
-                          {copiedId === `msg_mob_${idx}` ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-600" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5" />
-                          )}
-                        </button>
+                    {/* Right side: Time elapsed + Timestamp */}
+                    <div className="text-right shrink-0 space-y-0.5">
+                      <div className="text-xs font-bold text-slate-800">
+                        {item.elapsed}
+                      </div>
+                      <div className="text-[11px] font-mono text-slate-400">
+                        {item.timeStr}
                       </div>
                     </div>
-
-                    {/* Bottom Bar: Full-Width Message Content */}
-                    <div className="text-xs text-slate-900 font-normal leading-relaxed break-words bg-slate-50/90 p-2 rounded-md border border-slate-200/60 font-sans">
-                      {item.message}
-                    </div>
                   </div>
-                );
-              })
-            )}
-          </div>
 
-          {/* Desktop View (>= sm): Standard 3-Column Table */}
-          <div className="hidden sm:block overflow-x-auto">
-            <table className="w-full text-left text-xs sm:text-sm border-collapse">
-              <thead>
-                <tr className="border-b border-slate-200 text-slate-800 text-xs font-bold bg-white">
-                  <th className="py-2.5 px-4 w-[30%]">Live test SMS</th>
-                  <th className="py-2.5 px-4 w-[18%]">SID</th>
-                  <th className="py-2.5 px-4 w-[52%]">Message content</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-slate-800 bg-white">
-                {filteredItems.length === 0 ? (
-                  <tr>
-                    <td colSpan={3} className="py-12 text-center text-slate-400 text-xs">
-                      No live test messages found
-                    </td>
-                  </tr>
-                ) : (
-                  filteredItems.map((item, idx) => {
-                    const { fullTitle, subNumber } = formatCountryAndRange(item.country, item.range, item.number);
-                    return (
-                      <tr
-                        key={item.id || `item_${idx}`}
-                        onClick={() => {
-                          if (onSelectService) {
-                            onSelectService(item.sid, item.range);
-                          }
-                        }}
-                        className="hover:bg-amber-50/60 transition-colors group cursor-pointer"
-                      >
-                        {/* Column 1: Flag + Clean Range Title */}
-                        <td className="py-2.5 px-4 align-top">
-                          <div className="flex items-start gap-2.5">
-                            <span
-                              className="text-lg sm:text-xl leading-none shrink-0 mt-0.5 select-none"
-                              role="img"
-                              aria-label={item.country}
-                            >
-                              {getCountryFlagEmoji(item.country || item.range)}
-                            </span>
-                            <div className="space-y-0.5 min-w-0">
-                              <div className="font-bold text-slate-900 text-xs sm:text-[13px] tracking-wide uppercase truncate">
-                                {fullTitle}
-                              </div>
-                              {subNumber && (
-                                <div className="font-medium text-slate-700 text-xs tracking-tight font-mono">
-                                  {subNumber}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </td>
+                  {/* Second Line: Social Brand Logo + Name */}
+                  <div className="flex items-center justify-between gap-2 pt-0.5">
+                    {renderBrandBadge(item.sid)}
 
-                        {/* Column 2: SID */}
-                        <td className="py-2.5 px-4 font-normal text-slate-800 text-xs sm:text-sm align-top">
-                          <span className="inline-flex items-center gap-1 font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                            {item.sid}
-                            <ExternalLink className="w-3 h-3 opacity-70" />
-                          </span>
-                        </td>
+                    {/* Copy Button */}
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(item.message, `item_copy_${idx}`)}
+                      className="text-slate-400 hover:text-slate-800 p-1 transition cursor-pointer"
+                      title="Copy message content"
+                    >
+                      {copiedId === `item_copy_${idx}` ? (
+                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  </div>
 
-                        {/* Column 3: Message Content */}
-                        <td className="py-2.5 px-4 text-xs sm:text-[13px] leading-relaxed text-slate-900 font-normal align-top break-words">
-                          <div className="flex items-start justify-between gap-2">
-                            <span className="break-words whitespace-pre-wrap">{item.message}</span>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                copyToClipboard(item.message, `msg_${idx}`);
-                              }}
-                              className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-slate-800 p-1 transition cursor-pointer shrink-0"
-                              title="Copy Message"
-                            >
-                              {copiedId === `msg_${idx}` ? (
-                                <Check className="w-3.5 h-3.5 text-emerald-600" />
-                              ) : (
-                                <Copy className="w-3.5 h-3.5" />
-                              )}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                  {/* Third Line: Message Body with XXXX Masked OTP (No border or background box as requested) */}
+                  <div className="text-xs text-slate-700 leading-relaxed font-sans break-words pt-1 font-medium">
+                    {item.message}
+                  </div>
+
+                  {/* Bottom Right: Green Plus Action Button matching Screenshot */}
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="button"
+                      onClick={(e) => handlePlusClick(item, e)}
+                      className="w-8 h-8 rounded-lg bg-[#e8f5e9] hover:bg-[#c8e6c9] active:scale-95 text-[#2e7d32] border border-[#a5d6a7]/60 flex items-center justify-center transition-all shadow-2xs cursor-pointer group"
+                      title="Get number from this range"
+                    >
+                      <Plus className="w-4 h-4 stroke-[2.8] transition-transform group-hover:scale-110" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
 
-      {/* Top Ranges Card (Yellow header: Top Ranges, shown at the bottom of screenshot) */}
-      <div className="bg-white rounded-lg border border-slate-200 shadow-xs overflow-hidden">
-        <div className="bg-[#fbb03b] px-4 py-3 flex items-center justify-between">
-          <h2 className="font-bold text-slate-950 text-sm tracking-wide">
-            Top Ranges
-          </h2>
-          <span className="text-[11px] font-bold text-slate-900 bg-amber-300/60 px-2 py-0.5 rounded">
-            Live Rates
-          </span>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs sm:text-sm border-collapse">
-            <thead>
-              <tr className="border-b border-slate-200 text-slate-700 text-xs font-semibold bg-slate-50/60">
-                <th className="py-2.5 px-4">Range</th>
-                <th className="py-2.5 px-4">Country</th>
-                <th className="py-2.5 px-4">Payout / SMS</th>
-                <th className="py-2.5 px-4">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-slate-800 bg-white">
-              {TOP_RANGES_DATA.map((tr, idx) => (
-                <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                  <td className="py-2.5 px-4 font-bold text-slate-900">{tr.range}</td>
-                  <td className="py-2.5 px-4">
-                    <div className="flex items-center gap-2">
-                      <span className="text-base sm:text-lg leading-none shrink-0 select-none">
-                        {getCountryFlagEmoji(tr.country)}
-                      </span>
-                      <span>{stripFlagFromCountryName(tr.country)}</span>
-                    </div>
-                  </td>
-                  <td className="py-2.5 px-4 font-bold text-emerald-700 font-mono">{tr.payout}</td>
-                  <td className="py-2.5 px-4">
-                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                      Active ({tr.success})
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Floating Action Button at Bottom Right (Orange circular button as shown in screenshot) */}
+      {/* Floating Action Button at Bottom Right for Simulating Test SMS */}
       <button
         type="button"
         onClick={() => setIsTestModalOpen(true)}
-        className="fixed bottom-6 right-6 z-40 w-13 h-13 rounded-full bg-[#f77f00] hover:bg-[#e06d00] text-white shadow-xl flex items-center justify-center transition-all hover:scale-105 active:scale-95 cursor-pointer"
+        className="fixed bottom-6 right-6 z-40 w-12 h-12 rounded-full bg-[#2e7d32] hover:bg-[#1b5e20] text-white shadow-xl flex items-center justify-center transition-all hover:scale-105 active:scale-95 cursor-pointer"
         title="Simulate / Send Test SMS"
       >
-        <MessageSquare className="w-6 h-6 stroke-[2.2]" />
+        <Plus className="w-6 h-6 stroke-[2.5]" />
       </button>
 
       {/* Simulate Test SMS Modal */}
@@ -480,7 +745,7 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
           <div className="bg-white border border-slate-200 rounded-xl w-full max-w-md p-6 shadow-2xl space-y-4 animate-in zoom-in-95">
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <div className="flex items-center gap-2">
-                <Send className="w-5 h-5 text-[#fbb03b]" />
+                <Send className="w-5 h-5 text-[#2e7d32]" />
                 <h3 className="text-lg font-bold text-slate-800">Simulate Live Test SMS</h3>
               </div>
               <button
@@ -500,7 +765,7 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
                   value={testNumberInput}
                   onChange={(e) => setTestNumberInput(e.target.value)}
                   placeholder="8801712345678"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3.5 py-2 text-slate-900 font-mono font-medium focus:outline-none focus:border-amber-500"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3.5 py-2 text-slate-900 font-mono font-medium focus:outline-none focus:border-emerald-500"
                   required
                 />
               </div>
@@ -510,15 +775,15 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
                 <select
                   value={testServiceInput}
                   onChange={(e) => setTestServiceInput(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3.5 py-2 text-slate-900 font-medium focus:outline-none focus:border-amber-500"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3.5 py-2 text-slate-900 font-medium focus:outline-none focus:border-emerald-500"
                 >
                   <option value="WhatsApp">WhatsApp</option>
+                  <option value="Facebook">Facebook</option>
                   <option value="TikTok">TikTok</option>
                   <option value="Google">Google</option>
                   <option value="Apple">Apple</option>
                   <option value="Telegram">Telegram</option>
-                  <option value="Facebook">Facebook</option>
-                  <option value="ULLAWEi">ULLAWEi</option>
+                  <option value="AUTHMSG">AUTHMSG</option>
                 </select>
               </div>
 
@@ -529,7 +794,7 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
                   value={testCustomOtp}
                   onChange={(e) => setTestCustomOtp(e.target.value)}
                   placeholder="Auto-generated if empty (e.g. 492810)"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3.5 py-2 text-slate-900 font-mono focus:outline-none focus:border-amber-500"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3.5 py-2 text-slate-900 font-mono focus:outline-none focus:border-emerald-500"
                 />
               </div>
 
@@ -544,7 +809,7 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
                 <button
                   type="submit"
                   disabled={isSendingTest}
-                  className="px-5 py-2 rounded-lg bg-[#fbb03b] hover:bg-[#f59e0b] text-slate-950 font-bold transition flex items-center gap-2 cursor-pointer shadow-sm"
+                  className="px-5 py-2 rounded-lg bg-[#2e7d32] hover:bg-[#1b5e20] text-white font-bold transition flex items-center gap-2 cursor-pointer shadow-sm"
                 >
                   {isSendingTest ? "Sending..." : "Send Test Packet"}
                 </button>

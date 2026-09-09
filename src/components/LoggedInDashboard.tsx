@@ -61,7 +61,97 @@ import {
   Upload,
   BadgeCheck,
   Image as ImageIcon,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
+
+// Web SpeechSynthesis Voice Announcer for OTP codes across browsers
+export function speakOtpAnnouncement(otpCode: string, countryOrLanguage?: string) {
+  try {
+    if (!('speechSynthesis' in window)) return;
+
+    // Extract digits only
+    const digitsOnly = otpCode.replace(/\D/g, "");
+    if (!digitsOnly) return;
+
+    // Spaced out digits for crisp pronunciation (e.g., "5 8 2 9 1 4")
+    const codeSpoken = digitsOnly.split("").join(" ");
+
+    let lang = "en-US";
+    let textIntro = `Your code is ${codeSpoken}. Repeat, your code is ${codeSpoken}.`;
+
+    const countryLower = (countryOrLanguage || "").toLowerCase().trim();
+
+    if (
+      countryLower.includes("bangladesh") ||
+      countryLower.includes("bengali") ||
+      countryLower.includes("bd") ||
+      countryLower.includes("880")
+    ) {
+      lang = "bn-BD";
+      textIntro = `আপনার কোড হলো ${codeSpoken}। আবার বলছি, আপনার কোড হলো ${codeSpoken}।`;
+    } else if (
+      countryLower.includes("india") ||
+      countryLower.includes("hindi") ||
+      countryLower.includes("91")
+    ) {
+      lang = "hi-IN";
+      textIntro = `आपका कोड है ${codeSpoken}। फिर से बोल रहे हैं, आपका कोड है ${codeSpoken}।`;
+    } else if (
+      countryLower.includes("arab") ||
+      countryLower.includes("saudi") ||
+      countryLower.includes("uae") ||
+      countryLower.includes("egypt")
+    ) {
+      lang = "ar-SA";
+      textIntro = `رمزك هو ${codeSpoken}. أكرر، رمزك هو ${codeSpoken}.`;
+    } else if (
+      countryLower.includes("france") ||
+      countryLower.includes("french") ||
+      countryLower.includes("madagascar") ||
+      countryLower.includes("togo") ||
+      countryLower.includes("cameroon") ||
+      countryLower.includes("benin") ||
+      countryLower.includes("ivory")
+    ) {
+      lang = "fr-FR";
+      textIntro = `Votre code est ${codeSpoken}. Je répète, votre code est ${codeSpoken}.`;
+    } else if (
+      countryLower.includes("spain") ||
+      countryLower.includes("spanish") ||
+      countryLower.includes("mexico")
+    ) {
+      lang = "es-ES";
+      textIntro = `Su código es ${codeSpoken}. Repito, su código es ${codeSpoken}.`;
+    } else if (
+      countryLower.includes("russia") ||
+      countryLower.includes("russian")
+    ) {
+      lang = "ru-RU";
+      textIntro = `Ваш код ${codeSpoken}. Повторяю, ваш код ${codeSpoken}.`;
+    }
+
+    // Cancel active speech
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(textIntro);
+    utterance.lang = lang;
+    utterance.rate = 0.85; // Natural clear cadence for OTP digits
+    utterance.pitch = 1.0;
+
+    const voices = window.speechSynthesis.getVoices();
+    if (voices && voices.length > 0) {
+      const match = voices.find((v) =>
+        v.lang.toLowerCase().startsWith(lang.toLowerCase().slice(0, 2))
+      );
+      if (match) utterance.voice = match;
+    }
+
+    window.speechSynthesis.speak(utterance);
+  } catch (e) {
+    // Ignore speech restriction errors
+  }
+}
 import { SmsCdrReportsView } from "./SmsCdrReportsView";
 import { LiveTestSmsView, SmsTestRecord } from "./LiveTestSmsView";
 import { SmsTestHistoryView } from "./SmsTestHistoryView";
@@ -157,7 +247,7 @@ import {
   parseHitTimestamp,
   detectCanonicalService,
 } from "../services/topAppsService";
-import { getBrandLogoComponent } from "./BrandLogos";
+import { getBrandLogoComponent, SkypeLogo, MicrosoftTeamsLogo } from "./BrandLogos";
 import { CountryFlag } from "./CountryFlags";
 
 export { getDedicatedAccountCode };
@@ -1395,54 +1485,54 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     };
   }, []);
 
+  // Monotonic hit accumulator: only appends/merges new hits, NEVER drops or deletes existing messages
+  const mergeIncomingHits = useCallback((incoming: LiveConsoleHit[]) => {
+    if (!Array.isArray(incoming) || incoming.length === 0) return;
+    setLiveHits((prev) => {
+      const map = new Map<string, LiveConsoleHit>();
+      // 1. Preserve all existing hits in memory
+      prev.forEach((h) => {
+        if (!h) return;
+        const timeVal = parseHitTimestamp(h.time ?? (h as any).timestamp);
+        const sig = `${(h.range || h.number || "").replace(/\D/g, "")}_${timeVal}_${(h.sid || "").toLowerCase().trim()}_${(h.message || "").trim()}`;
+        if (sig) map.set(sig, h);
+      });
+
+      let hasNew = false;
+      // 2. Add incoming hits monotonically
+      incoming.forEach((h) => {
+        if (!h) return;
+        const timeVal = parseHitTimestamp(h.time ?? (h as any).timestamp);
+        const sig = `${(h.range || h.number || "").replace(/\D/g, "")}_${timeVal}_${(h.sid || "").toLowerCase().trim()}_${(h.message || "").trim()}`;
+        if (sig && !map.has(sig)) {
+          map.set(sig, h);
+          hasNew = true;
+        }
+      });
+
+      // If no new hits arrived and map size equals prev, return previous reference
+      if (!hasNew && map.size === prev.length) {
+        return prev;
+      }
+
+      // 3. Sort strictly newest on top
+      const sorted = Array.from(map.values()).sort((a, b) => {
+        const tA = parseHitTimestamp(a.time ?? (a as any).timestamp);
+        const tB = parseHitTimestamp(b.time ?? (b as any).timestamp);
+        return tB - tA;
+      });
+
+      const sliced = sorted.slice(0, 3000);
+      try {
+        localStorage.setItem("super_x_live_console_hits_24h", JSON.stringify(sliced.slice(0, 1000)));
+      } catch {}
+      return sliced;
+    });
+  }, []);
+
   // Synchronize global live stream and monotonic stats across all users and admins in real-time
   useEffect(() => {
     let isMounted = true;
-
-    // Monotonic hit accumulator: only appends/merges new hits, NEVER drops or deletes existing messages
-    const mergeIncomingHits = (incoming: LiveConsoleHit[]) => {
-      if (!Array.isArray(incoming) || incoming.length === 0 || !isMounted) return;
-      setLiveHits((prev) => {
-        const map = new Map<string, LiveConsoleHit>();
-        // 1. Preserve all existing hits in memory
-        prev.forEach((h) => {
-          if (!h) return;
-          const timeVal = typeof h.time === "number" ? h.time : (new Date(h.time).getTime() || 0);
-          const sig = `${(h.range || h.number || "").replace(/\D/g, "")}_${timeVal}_${(h.sid || "").toLowerCase().trim()}_${(h.message || "").trim()}`;
-          if (sig) map.set(sig, h);
-        });
-
-        let hasNew = false;
-        // 2. Add incoming hits monotonically
-        incoming.forEach((h) => {
-          if (!h) return;
-          const timeVal = typeof h.time === "number" ? h.time : (new Date(h.time).getTime() || 0);
-          const sig = `${(h.range || h.number || "").replace(/\D/g, "")}_${timeVal}_${(h.sid || "").toLowerCase().trim()}_${(h.message || "").trim()}`;
-          if (sig && !map.has(sig)) {
-            map.set(sig, h);
-            hasNew = true;
-          }
-        });
-
-        // If no new hits arrived and map size equals prev, return previous reference
-        if (!hasNew && map.size === prev.length) {
-          return prev;
-        }
-
-        // 3. Sort strictly newest on top
-        const sorted = Array.from(map.values()).sort((a, b) => {
-          const tA = typeof a.time === "number" ? a.time : (new Date(a.time).getTime() || 0);
-          const tB = typeof b.time === "number" ? b.time : (new Date(b.time).getTime() || 0);
-          return tB - tA;
-        });
-
-        const sliced = sorted.slice(0, 3000);
-        try {
-          localStorage.setItem("super_x_live_console_hits_24h", JSON.stringify(sliced.slice(0, 500)));
-        } catch {}
-        return sliced;
-      });
-    };
 
     const syncWithGlobalStream = async () => {
       try {
@@ -2011,6 +2101,39 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       );
     } catch {}
   }, [getNumHistory, user.email]);
+
+  const [isGetNumVoiceOn, setIsGetNumVoiceOn] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("super_x_get_num_voice_enabled") !== "false";
+    } catch {
+      return true;
+    }
+  });
+
+  const toggleGetNumVoice = () => {
+    const next = !isGetNumVoiceOn;
+    setIsGetNumVoiceOn(next);
+    try {
+      localStorage.setItem("super_x_get_num_voice_enabled", String(next));
+    } catch {}
+    if (next) {
+      speakOtpAnnouncement("1 2 3 4 5 6", selectedCountryOperator?.country || "English");
+    }
+  };
+
+  const prevNumOtpsRef = useRef<Record<string, string>>({});
+
+  // Auto-announce OTP in spoken voice when a new OTP code is delivered
+  useEffect(() => {
+    getNumHistory.forEach((item) => {
+      if (item.otp && prevNumOtpsRef.current[item.id] !== item.otp) {
+        if (isGetNumVoiceOn) {
+          speakOtpAnnouncement(item.otp, item.country);
+        }
+        prevNumOtpsRef.current[item.id] = item.otp;
+      }
+    });
+  }, [getNumHistory, isGetNumVoiceOn]);
 
   // Reload and initial batch-sync history when active user account changes
   useEffect(() => {
@@ -2755,19 +2878,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           }
         });
 
-        setLiveHits((prev) => {
-          if (prev.length === 0) return combinedHits.slice(0, 100);
-          const existingKeys = new Set(
-            prev.map((h) => `${h.range}_${h.time}_${h.sid}_${h.message}`),
-          );
-          const newEntries = combinedHits.filter(
-            (h) =>
-              !existingKeys.has(`${h.range}_${h.time}_${h.sid}_${h.message}`),
-          );
-          if (newEntries.length === 0) return prev;
-          const merged = [...newEntries, ...prev];
-          return merged.slice(0, 100);
-        });
+        mergeIncomingHits(combinedHits);
 
         // Broadcast to global server pool so all other connected users & admins receive them
         fetch("/api/global-live-stream/push", {
@@ -3664,10 +3775,28 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             </button>
 
             <a
+              href="https://teams.microsoft.com/l/chat/0/0?users=charlesjames997@outlook.com"
+              target="_blank"
+              rel="noreferrer"
+              className="w-full py-3 px-4 bg-gradient-to-r from-indigo-800 to-purple-800 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-2xl transition cursor-pointer flex items-center justify-center gap-2 text-xs border border-indigo-500/40 shadow-sm"
+            >
+              <MicrosoftTeamsLogo className="w-4 h-4 shrink-0 text-white" />
+              <span>Teams Manager: charlesjames997@outlook.com</span>
+            </a>
+
+            <a
+              href="skype:live:.cid.ff20440e63a32f17?chat"
+              className="w-full py-2.5 px-4 bg-sky-700/80 hover:bg-sky-600 text-white font-bold rounded-2xl transition cursor-pointer flex items-center justify-center gap-2 text-xs border border-sky-500/30 shadow-xs"
+            >
+              <SkypeLogo className="w-4 h-4 shrink-0 text-white" />
+              <span>Skype Manager: live:.cid.ff20440e63a32f17</span>
+            </a>
+
+            <a
               href="https://t.me/xzrmunna"
               target="_blank"
               rel="noreferrer"
-              className="w-full py-3 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-bold rounded-2xl transition cursor-pointer flex items-center justify-center gap-2 text-xs border border-slate-700"
+              className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-bold rounded-2xl transition cursor-pointer flex items-center justify-center gap-2 text-xs border border-slate-700"
             >
               <ExternalLink className="w-4 h-4 text-sky-400" />
               <span>Telegram Support: @xzrmunna</span>
@@ -4327,13 +4456,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                       >
                         {/* Left: Flag + Country Name & Range */}
                         <div className="flex items-center gap-2.5 min-w-0">
-                          <span
-                            className="text-lg sm:text-xl leading-none shrink-0 select-none"
-                            role="img"
-                            aria-label={item.country}
-                          >
-                            {getCountryFlagEmoji(item.country || item.countryCode || item.range)}
-                          </span>
+                          <CountryFlag
+                            countryCode={item.country || item.countryCode || item.range}
+                            size="md"
+                          />
                           <div className="min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-bold text-slate-800 text-xs sm:text-sm uppercase tracking-wide group-hover:text-blue-600 transition-colors truncate">
@@ -4424,19 +4550,33 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           <div className="space-y-4">
             {/* Title & Header Section */}
             <div className="space-y-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-lg border border-emerald-500/30 bg-emerald-50 flex items-center justify-center text-emerald-600 shadow-2xs">
-                    <Smartphone className="w-4 h-4" />
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-lg border border-emerald-500/30 bg-emerald-50 flex items-center justify-center text-emerald-600 shadow-2xs">
+                      <Smartphone className="w-4 h-4" />
+                    </div>
+                    <h2 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight">
+                      Get Number
+                    </h2>
                   </div>
-                  <h2 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight">
-                    Get Number
-                  </h2>
+                  <p className="text-xs sm:text-sm text-gray-500 mt-1">
+                    Allocate carrier numbers, search worked jobs in real-time, and
+                    receive live OTPs.
+                  </p>
                 </div>
-                <p className="text-xs sm:text-sm text-gray-500 mt-1">
-                  Allocate carrier numbers, search worked jobs in real-time, and
-                  receive live OTPs.
-                </p>
+
+                {/* Skype Manager Contact Button with uploaded Skype Logo and Skype text below */}
+                <a
+                  href="skype:live:.cid.ff20440e63a32f17?chat"
+                  className="flex flex-col items-center justify-center group shrink-0 cursor-pointer text-center"
+                  title="Contact Manager on Skype (live:.cid.ff20440e63a32f17)"
+                >
+                  <div className="w-10 h-10 rounded-full bg-[#00AFF0] hover:bg-[#0098d4] active:scale-95 text-white flex items-center justify-center shadow-md border border-sky-300/50 transition-all group-hover:scale-105">
+                    <SkypeLogo className="w-7 h-7 text-white" />
+                  </div>
+                  <span className="text-[11px] font-extrabold text-sky-600 group-hover:text-sky-700 tracking-tight leading-none mt-1">Skype</span>
+                </a>
               </div>
 
               {/* Show/Hide filters & stats button */}
@@ -4507,7 +4647,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   ENTER NUMBER RANGE
                 </div>
 
-                {/* Segmented Buttons & Sync Mode switch */}
+                {/* Segmented Buttons & Controls */}
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div className="inline-flex p-1 bg-gray-100/80 rounded-full border border-gray-200 text-xs shadow-inner">
                     {(["RANGE", "SEARCH", "ACCESS"] as const).map((tab) => (
@@ -4529,22 +4669,57 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                     ))}
                   </div>
 
-                  {/* Sync Mode Toggle */}
-                  <div
-                    onClick={() => setIsSyncMode(!isSyncMode)}
-                    className="flex items-center gap-2 cursor-pointer select-none text-xs font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-full transition"
-                    title="Toggle Real-Time Sync"
-                  >
+                  {/* Controls: Voice Announcer & Sync Mode Toggle */}
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    {/* Voice OTP Announcer Toggle Button */}
+                    <button
+                      type="button"
+                      onClick={toggleGetNumVoice}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition cursor-pointer select-none ${
+                        isGetNumVoiceOn
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-300/80 hover:bg-emerald-100 shadow-2xs"
+                          : "bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200"
+                      }`}
+                      title={
+                        isGetNumVoiceOn
+                          ? "Voice OTP Announcer ON (Click to Mute)"
+                          : "Voice OTP Announcer MUTED (Click to Enable)"
+                      }
+                    >
+                      {isGetNumVoiceOn ? (
+                        <>
+                          <Volume2 className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
+                          <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-800">
+                            VOICE ON
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <VolumeX className="w-3.5 h-3.5 text-gray-400" />
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                            VOICE OFF
+                          </span>
+                        </>
+                      )}
+                    </button>
+
+                    {/* Sync Mode Toggle */}
                     <div
-                      className={`w-7 h-4 rounded-full p-0.5 transition ${isSyncMode ? "bg-emerald-500" : "bg-gray-300"}`}
+                      onClick={() => setIsSyncMode(!isSyncMode)}
+                      className="flex items-center gap-2 cursor-pointer select-none text-xs font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-full transition"
+                      title="Toggle Real-Time Sync"
                     >
                       <div
-                        className={`w-3 h-3 rounded-full bg-white shadow-xs transition-transform ${isSyncMode ? "translate-x-3" : "translate-x-0"}`}
-                      />
+                        className={`w-7 h-4 rounded-full p-0.5 transition ${isSyncMode ? "bg-emerald-500" : "bg-gray-300"}`}
+                      >
+                        <div
+                          className={`w-3 h-3 rounded-full bg-white shadow-xs transition-transform ${isSyncMode ? "translate-x-3" : "translate-x-0"}`}
+                        />
+                      </div>
+                      <span className="flex items-center gap-1 text-[11px] text-gray-700 tracking-wider uppercase font-bold">
+                        <RotateCw className="w-3 h-3 text-gray-500" /> SYNC MODE
+                      </span>
                     </div>
-                    <span className="flex items-center gap-1 text-[11px] text-gray-700 tracking-wider uppercase font-bold">
-                      <RotateCw className="w-3 h-3 text-gray-500" /> SYNC MODE
-                    </span>
                   </div>
                 </div>
 
@@ -4991,38 +5166,6 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
               {/* SECTION 2: ALLOCATED NUMBERS TABLE & REAL-TIME OTP DISPLAY */}
               <div>
-                {/* Table Header with Stats, 24h Cycle Reset Badge and Refresh */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-900 text-white gap-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <div className="text-xs font-mono font-medium text-slate-300">
-                      {getNumHistory.length > 0
-                        ? `1-${getNumHistory.length} of ${getNumHistory.length} (24h Active)`
-                        : "0 of 0 (24h Active)"}
-                    </div>
-                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 font-mono font-bold border border-emerald-600/50 inline-flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                      Live Shared Account Stream
-                    </span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-950/80 text-blue-300 font-mono font-bold border border-blue-600/40 inline-flex items-center gap-1">
-                      <span>⏱️ 24h Auto-Reset</span>
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleManualRefreshConsole()}
-                      disabled={isConsoleRefreshing}
-                      className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs transition active:scale-95 disabled:opacity-50"
-                    >
-                      <RotateCw
-                        className={`w-3.5 h-3.5 text-slate-300 ${isConsoleRefreshing ? "animate-spin text-emerald-400" : ""}`}
-                      />
-                      <span>Refresh</span>
-                    </button>
-                  </div>
-                </div>
-
                 {/* Table Column Labels */}
                 <div className="grid grid-cols-12 px-4 py-3 text-[11px] font-extrabold text-slate-200 uppercase tracking-wider bg-slate-800 border-b-2 border-slate-700">
                   <div className="col-span-5 sm:col-span-4 border-r border-slate-700 pr-2">NUMBER INFO</div>
@@ -5114,6 +5257,17 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                       <Copy className="w-3.5 h-3.5" />
                                     )}
                                   </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      speakOtpAnnouncement(item.otp!, item.country)
+                                    }
+                                    className="p-1 rounded-md bg-[#e8f5e9] hover:bg-emerald-200 border border-emerald-300 text-emerald-700 hover:text-emerald-900 transition cursor-pointer flex items-center justify-center"
+                                    title="Speak OTP Code in Country Voice"
+                                  >
+                                    <Volume2 className="w-3.5 h-3.5 text-emerald-600" />
+                                  </button>
                                 </div>
                               </div>
                             ) : item.status === "FAILED" ? (
@@ -5135,8 +5289,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
                           {/* COUNTRY / OPERATOR */}
                           <div className="col-span-4 sm:col-span-5 space-y-0.5 border-r border-slate-300 px-2 h-full flex flex-col justify-center">
-                            <div className="text-gray-900 font-bold text-xs sm:text-sm">
-                              {stripFlagFromCountryName(item.country)}
+                            <div className="text-gray-900 font-bold text-xs sm:text-sm flex items-center gap-1.5">
+                              <CountryFlag countryCode={item.country} size="sm" />
+                              <span>{stripFlagFromCountryName(item.country)}</span>
                             </div>
                             <div className="text-gray-600 text-[11px] sm:text-xs flex items-center gap-1">
                               <Radio className="w-3 h-3 text-gray-600 shrink-0" />
@@ -5158,7 +5313,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                           </div>
                         </motion.div>
                       );
-                      })}
+                    })}
                     </AnimatePresence>
                   </div>
                 )}
@@ -5186,6 +5341,16 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                   <span>LIVE STREAM CONNECTED</span>
                 </span>
+                <a
+                  href="skype:live:.cid.ff20440e63a32f17?chat"
+                  className="flex flex-col items-center justify-center group shrink-0 cursor-pointer text-center"
+                  title="Contact Manager on Skype (live:.cid.ff20440e63a32f17)"
+                >
+                  <div className="w-9 h-9 rounded-full bg-[#00AFF0] hover:bg-[#0098d4] active:scale-95 text-white flex items-center justify-center shadow-md border border-sky-300/50 transition-all group-hover:scale-105">
+                    <SkypeLogo className="w-6 h-6 text-white" />
+                  </div>
+                  <span className="text-[10px] font-extrabold text-sky-600 group-hover:text-sky-700 tracking-tight leading-none mt-0.5">Skype</span>
+                </a>
               </div>
             </div>
 
@@ -6138,13 +6303,33 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 )}
 
                 <a
+                  href="https://teams.microsoft.com/l/chat/0/0?users=charlesjames997@outlook.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-700 to-purple-700 hover:from-indigo-600 hover:to-purple-600 text-white font-extrabold text-xs uppercase tracking-wider shadow-md flex items-center gap-2 border border-indigo-400/40 transition hover:scale-105 active:scale-95 cursor-pointer"
+                  title="Direct contact with Manager on Microsoft Teams (charlesjames997@outlook.com)"
+                >
+                  <MicrosoftTeamsLogo className="w-5 h-5 text-white shrink-0" />
+                  <span>TEAMS MANAGER CONTACT</span>
+                </a>
+
+                <a
+                  href="skype:live:.cid.ff20440e63a32f17?chat"
+                  className="px-3.5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-extrabold text-xs uppercase tracking-wider shadow-md flex items-center gap-2 border border-sky-400/40 transition hover:scale-105 active:scale-95 cursor-pointer"
+                  title="Skype Contact: live:.cid.ff20440e63a32f17"
+                >
+                  <SkypeLogo className="w-5 h-5 text-white shrink-0" />
+                  <span>SKYPE</span>
+                </a>
+
+                <a
                   href="https://t.me/super_x_support"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="px-4 py-2.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 font-extrabold text-xs uppercase tracking-wider shadow-md flex items-center gap-2 border border-slate-700 transition hover:scale-105 active:scale-95 cursor-pointer"
                 >
                   <Send className="w-4 h-4 text-sky-400" />
-                  <span>MANAGER SUPPORT</span>
+                  <span>TELEGRAM</span>
                 </a>
               </div>
             </div>
@@ -6179,6 +6364,47 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                       👑 MANAGER ACCOUNT
                     </span>
                   )}
+                </div>
+
+                {/* Manager Direct Teams / Skype Contact Card */}
+                <div className="p-4 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-extrabold uppercase tracking-wider text-indigo-300 flex items-center gap-2">
+                      <MicrosoftTeamsLogo className="w-4 h-4" />
+                      Manager Direct Teams & Skype Support
+                    </span>
+                    <span className="text-[10px] bg-indigo-500/20 text-indigo-200 border border-indigo-400/30 px-2.5 py-0.5 rounded-full font-mono font-bold">
+                      VERIFIED MANAGER
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <a
+                      href="https://teams.microsoft.com/l/chat/0/0?users=charlesjames997@outlook.com"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="bg-slate-950/80 hover:bg-indigo-950/60 p-3 rounded-xl border border-indigo-500/20 hover:border-indigo-400/50 transition flex flex-col gap-1 cursor-pointer group"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400 text-[11px] font-bold flex items-center gap-1">
+                          <MicrosoftTeamsLogo className="w-3.5 h-3.5" /> Teams Email:
+                        </span>
+                        <span className="text-[10px] text-indigo-400 group-hover:underline">Click to chat →</span>
+                      </div>
+                      <strong className="text-indigo-200 font-mono text-xs select-all">charlesjames997@outlook.com</strong>
+                    </a>
+                    <a
+                      href="skype:live:.cid.ff20440e63a32f17?chat"
+                      className="bg-slate-950/80 hover:bg-sky-950/60 p-3 rounded-xl border border-sky-500/20 hover:border-sky-400/50 transition flex flex-col gap-1 cursor-pointer group"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400 text-[11px] font-bold flex items-center gap-1">
+                          <SkypeLogo className="w-3.5 h-3.5" /> Skype ID:
+                        </span>
+                        <span className="text-[10px] text-sky-400 group-hover:underline">Click to chat →</span>
+                      </div>
+                      <strong className="text-sky-200 font-mono text-xs select-all">live:.cid.ff20440e63a32f17</strong>
+                    </a>
+                  </div>
                 </div>
 
                 <form onSubmit={handleSaveProfileInfo} className="space-y-4 text-xs sm:text-sm">
@@ -6323,12 +6549,21 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               setLiveHits((prev) => [hit, ...prev]);
             }}
             onRefreshHits={fetchRealTimeData}
-            onSelectService={(service, range) => {
-              setActiveAppConsoleService(service);
-              setSelectedService(service);
+            onSelectService={(service, range, phoneNum) => {
+              if (service) {
+                setActiveAppConsoleService(service);
+                setSelectedService(service);
+              }
               if (range) {
                 setSelectedRange(range);
+                setRangeCustomInput(range);
               }
+              if (phoneNum) {
+                try {
+                  navigator.clipboard.writeText(phoneNum);
+                } catch (e) {}
+              }
+              setCurrentView("getNumber");
             }}
           />
         )}
@@ -6521,11 +6756,23 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             {/* Main Scrollable Area with Smooth, Fluid Scrolling */}
             <div className="flex-1 overflow-y-auto min-h-0 p-4 sm:p-6 w-full">
               <div className="max-w-7xl w-full mx-auto space-y-4">
-                {/* Clean Header Title */}
-                <div className="pb-1 border-b border-slate-200">
+                {/* Clean Header Title with Single Circular Teams Account Icon in top right corner */}
+                <div className="pb-1.5 border-b border-slate-200 flex items-center justify-between gap-3">
                   <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2.5">
                     <span>{activeAppConsoleService === "ALL" ? "All SMS Streams" : `${activeAppConsoleService} SMS`}</span>
                   </h1>
+
+                  {/* Skype Manager Contact Button with uploaded Skype Logo and Skype text below */}
+                  <a
+                    href="skype:live:.cid.ff20440e63a32f17?chat"
+                    className="flex flex-col items-center justify-center group shrink-0 cursor-pointer text-center"
+                    title="Contact Manager on Skype (live:.cid.ff20440e63a32f17)"
+                  >
+                    <div className="w-10 h-10 rounded-full bg-[#00AFF0] hover:bg-[#0098d4] active:scale-95 text-white flex items-center justify-center shadow-md border border-sky-300/50 transition-all group-hover:scale-105">
+                      <SkypeLogo className="w-7 h-7 text-white" />
+                    </div>
+                    <span className="text-[11px] font-extrabold text-sky-600 group-hover:text-sky-700 tracking-tight leading-none mt-1">Skype</span>
+                  </a>
                 </div>
 
                 {/* Action Buttons Toolbar & Search Box */}

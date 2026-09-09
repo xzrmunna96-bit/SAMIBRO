@@ -5,6 +5,7 @@ import { getCountryFlagEmoji } from './LoggedInDashboard';
 interface FlagProps {
   countryCode: string;
   className?: string;
+  size?: 'sm' | 'md' | 'lg' | 'xl';
 }
 
 const COUNTRY_NAME_TO_ISO: Record<string, string> = {
@@ -84,6 +85,10 @@ const COUNTRY_NAME_TO_ISO: Record<string, string> = {
   'BELIZE': 'bz',
   'BOSNIA': 'ba',
   'BOSNIA HERZEGOVINA': 'ba',
+  'BOLIVIA': 'bo',
+  'CAMBODIA': 'kh',
+  'ECUADOR': 'ec',
+  'CHILE': 'cl',
   'CHINA': 'cn',
   'COLOMBIA': 'co',
   'COSTA RICA': 'cr',
@@ -93,7 +98,6 @@ const COUNTRY_NAME_TO_ISO: Record<string, string> = {
   'CZECH REPUBLIC': 'cz',
   'DENMARK': 'dk',
   'DOMINICAN REPUBLIC': 'do',
-  'ECUADOR': 'ec',
   'EL SALVADOR': 'sv',
   'ESTONIA': 'ee',
   'ETHIOPIA': 'et',
@@ -230,12 +234,39 @@ export function getIsoFromCountryInput(rawInput: string): string | null {
 export function CountryFlag({
   countryCode,
   className = "",
+  size = "md",
 }: FlagProps) {
+  const [hasError, setHasError] = useState(false);
+  const iso = getIsoFromCountryInput(countryCode);
+  const flagUrl = iso ? `https://flagcdn.com/w80/${iso.toLowerCase()}.png` : null;
   const emoji = getCountryFlagEmoji(countryCode);
+
+  // Default sizes matching user screenshot (rounded rectangle with subtle border)
+  const sizeClasses: Record<string, string> = {
+    sm: "w-6 h-4 rounded-xs border border-slate-300/80 shadow-2xs",
+    md: "w-8 h-5.5 rounded-sm border border-slate-300/80 shadow-2xs",
+    lg: "w-10 h-7 rounded-md border border-slate-300/90 shadow-2xs",
+    xl: "w-12 h-8.5 rounded-md border border-slate-300/90 shadow-2xs",
+  };
+
+  const hasCustomSize = className.includes('w-') || className.includes('h-');
+  const sizeClass = hasCustomSize ? "" : sizeClasses[size || 'md'];
+
+  if (flagUrl && !hasError) {
+    return (
+      <img
+        src={flagUrl}
+        alt={countryCode || 'Country Flag'}
+        onError={() => setHasError(true)}
+        className={`object-cover shrink-0 select-none ${sizeClass} ${className}`}
+        loading="lazy"
+      />
+    );
+  }
 
   return (
     <span
-      className={`inline-flex items-center justify-center shrink-0 leading-none text-base sm:text-lg select-none ${className}`}
+      className={`inline-flex items-center justify-center shrink-0 leading-none select-none text-xl ${className}`}
       role="img"
       aria-label={countryCode || 'Country Flag'}
     >
@@ -243,3 +274,4 @@ export function CountryFlag({
     </span>
   );
 }
+

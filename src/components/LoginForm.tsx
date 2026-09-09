@@ -32,6 +32,7 @@ import {
 } from '../services/serverAuthSync';
 import { recordUserLoginEvent } from '../services/onlineTrackingService';
 import { triggerAdminRoute } from '../App';
+import { SkypeLogo, MicrosoftTeamsLogo } from './BrandLogos';
 
 export interface UserData {
   email: string;
@@ -41,6 +42,9 @@ export interface UserData {
   status?: string;
   phoneOrTelegram?: string;
   note?: string;
+  avatarUrl?: string;
+  apiUnlocked?: boolean;
+  apiKey?: string;
 }
 
 interface LoginFormProps {
@@ -408,22 +412,37 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
                 <p className="font-medium text-slate-800 text-sm">
                   নতুন একাউন্ট খোলা বা লগিন সমস্যায় সহায়তার জন্য এডমিনের সাথে সরাসরি যোগাযোগ করুন:
                 </p>
-                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
-                  <p className="font-bold text-slate-900">👑 Main System Admin: XZR Munna</p>
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+                  <p className="font-bold text-slate-900">👑 Main System Admin / Manager: Poler Super x Support</p>
+                  <p className="text-slate-700 font-medium flex items-center gap-1.5">
+                    <MicrosoftTeamsLogo className="w-4 h-4 text-indigo-600 inline-block shrink-0" />
+                    <span>Teams Mail: <strong className="text-indigo-700 font-mono">charlesjames997@outlook.com</strong></span>
+                  </p>
+                  <p className="text-slate-700 font-medium flex items-center gap-1.5">
+                    <SkypeLogo className="w-4 h-4 text-sky-500 inline-block shrink-0" />
+                    <span>Skype Name: <strong className="text-sky-700 font-mono">live:.cid.ff20440e63a32f17</strong></span>
+                  </p>
                   <p className="text-slate-600">Telegram: <strong className="text-teal-700 font-mono">@xzrmunna</strong></p>
-                  <p className="text-slate-600">Email: <strong className="text-teal-700 font-mono">xzrmunna96@gmail.com</strong></p>
                 </div>
               </div>
 
               <div className="pt-1 flex flex-col gap-2">
                 <a
-                  href="https://t.me/xzrmunna"
+                  href="https://teams.microsoft.com/l/chat/0/0?users=charlesjames997@outlook.com"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full py-3 px-4 rounded-full bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition cursor-pointer shadow-md"
+                  className="w-full py-3 px-4 rounded-full bg-gradient-to-r from-indigo-600 via-purple-600 to-sky-600 hover:from-indigo-700 hover:to-sky-700 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition cursor-pointer shadow-md"
                 >
-                  <Send className="w-4 h-4" />
-                  <span>Open Telegram Chat (@xzrmunna)</span>
+                  <MicrosoftTeamsLogo className="w-4 h-4 text-white" />
+                  <span>Open Microsoft Teams Chat</span>
+                </a>
+
+                <a
+                  href="skype:live:.cid.ff20440e63a32f17?chat"
+                  className="w-full py-2.5 px-4 rounded-full bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition cursor-pointer shadow-xs"
+                >
+                  <SkypeLogo className="w-4 h-4 text-white" />
+                  <span>Open Skype Chat</span>
                 </a>
 
                 <button
@@ -489,13 +508,20 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
 
               <div className="pt-2 flex flex-col gap-2">
                 <a
-                  href="https://t.me/super_x_support"
+                  href="https://teams.microsoft.com/l/chat/0/0?users=charlesjames997@outlook.com"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full py-3 px-4 rounded-full bg-gradient-to-r from-sky-600 to-blue-600 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition cursor-pointer shadow-md"
+                  className="w-full py-3 px-4 rounded-full bg-gradient-to-r from-indigo-600 via-purple-600 to-sky-600 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition cursor-pointer shadow-md"
                 >
-                  <Send className="w-4 h-4" />
-                  <span>Contact Manager on Telegram</span>
+                  <MicrosoftTeamsLogo className="w-4 h-4 text-white" />
+                  <span>Contact Manager on Teams (charlesjames997@outlook.com)</span>
+                </a>
+                <a
+                  href="skype:live:.cid.ff20440e63a32f17?chat"
+                  className="w-full py-2.5 px-4 rounded-full bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition cursor-pointer shadow-xs"
+                >
+                  <SkypeLogo className="w-4 h-4 text-white" />
+                  <span>Contact Manager on Skype</span>
                 </a>
                 <button
                   type="button"

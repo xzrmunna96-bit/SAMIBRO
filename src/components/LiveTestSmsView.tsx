@@ -453,9 +453,11 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
         {/* Header Right Actions */}
         <div className="flex items-center gap-3">
           <a
-            href="skype:live:.cid.ff20440e63a32f17?chat"
+            href="https://teams.microsoft.com/l/chat/0/0?users=charlesjames997@outlook.com"
+            target="_blank"
+            rel="noopener noreferrer"
             className="flex flex-col items-center justify-center group shrink-0 cursor-pointer text-center"
-            title="Contact Manager on Skype (live:.cid.ff20440e63a32f17)"
+            title="Contact Manager (charlesjames997@outlook.com)"
           >
             <div className="w-8 h-8 rounded-full bg-[#00AFF0] hover:bg-[#0098d4] active:scale-95 text-white flex items-center justify-center shadow-2xs border border-sky-300/50 transition-all group-hover:scale-105">
               <SkypeLogo className="w-5 h-5 text-white" />

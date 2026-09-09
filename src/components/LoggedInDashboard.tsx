@@ -3785,11 +3785,14 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             </a>
 
             <a
-              href="skype:live:.cid.ff20440e63a32f17?chat"
+              href="https://teams.microsoft.com/l/chat/0/0?users=charlesjames997@outlook.com"
+              target="_blank"
+              rel="noreferrer"
               className="w-full py-2.5 px-4 bg-sky-700/80 hover:bg-sky-600 text-white font-bold rounded-2xl transition cursor-pointer flex items-center justify-center gap-2 text-xs border border-sky-500/30 shadow-xs"
+              title="Contact Manager: charlesjames997@outlook.com"
             >
               <SkypeLogo className="w-4 h-4 shrink-0 text-white" />
-              <span>Skype Manager: live:.cid.ff20440e63a32f17</span>
+              <span>Skype Manager: charlesjames997@outlook.com</span>
             </a>
 
             <a
@@ -4566,11 +4569,13 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   </p>
                 </div>
 
-                {/* Skype Manager Contact Button with uploaded Skype Logo and Skype text below */}
+                {/* Skype Manager Contact Button linking to Teams charlesjames997@outlook.com */}
                 <a
-                  href="skype:live:.cid.ff20440e63a32f17?chat"
+                  href="https://teams.microsoft.com/l/chat/0/0?users=charlesjames997@outlook.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="flex flex-col items-center justify-center group shrink-0 cursor-pointer text-center"
-                  title="Contact Manager on Skype (live:.cid.ff20440e63a32f17)"
+                  title="Contact Manager (charlesjames997@outlook.com)"
                 >
                   <div className="w-10 h-10 rounded-full bg-[#00AFF0] hover:bg-[#0098d4] active:scale-95 text-white flex items-center justify-center shadow-md border border-sky-300/50 transition-all group-hover:scale-105">
                     <SkypeLogo className="w-7 h-7 text-white" />
@@ -5342,9 +5347,11 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   <span>LIVE STREAM CONNECTED</span>
                 </span>
                 <a
-                  href="skype:live:.cid.ff20440e63a32f17?chat"
+                  href="https://teams.microsoft.com/l/chat/0/0?users=charlesjames997@outlook.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="flex flex-col items-center justify-center group shrink-0 cursor-pointer text-center"
-                  title="Contact Manager on Skype (live:.cid.ff20440e63a32f17)"
+                  title="Contact Manager (charlesjames997@outlook.com)"
                 >
                   <div className="w-9 h-9 rounded-full bg-[#00AFF0] hover:bg-[#0098d4] active:scale-95 text-white flex items-center justify-center shadow-md border border-sky-300/50 transition-all group-hover:scale-105">
                     <SkypeLogo className="w-6 h-6 text-white" />
@@ -6303,33 +6310,14 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 )}
 
                 <a
-                  href="https://teams.microsoft.com/l/chat/0/0?users=charlesjames997@outlook.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-700 to-purple-700 hover:from-indigo-600 hover:to-purple-600 text-white font-extrabold text-xs uppercase tracking-wider shadow-md flex items-center gap-2 border border-indigo-400/40 transition hover:scale-105 active:scale-95 cursor-pointer"
-                  title="Direct contact with Manager on Microsoft Teams (charlesjames997@outlook.com)"
-                >
-                  <MicrosoftTeamsLogo className="w-5 h-5 text-white shrink-0" />
-                  <span>TEAMS MANAGER CONTACT</span>
-                </a>
-
-                <a
-                  href="skype:live:.cid.ff20440e63a32f17?chat"
-                  className="px-3.5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-extrabold text-xs uppercase tracking-wider shadow-md flex items-center gap-2 border border-sky-400/40 transition hover:scale-105 active:scale-95 cursor-pointer"
-                  title="Skype Contact: live:.cid.ff20440e63a32f17"
-                >
-                  <SkypeLogo className="w-5 h-5 text-white shrink-0" />
-                  <span>SKYPE</span>
-                </a>
-
-                <a
                   href="https://t.me/super_x_support"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-4 py-2.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 font-extrabold text-xs uppercase tracking-wider shadow-md flex items-center gap-2 border border-slate-700 transition hover:scale-105 active:scale-95 cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-sky-600 to-teal-600 hover:from-sky-500 hover:to-teal-500 text-white font-extrabold text-xs uppercase tracking-wider shadow-md flex items-center gap-2 border border-sky-400/40 transition hover:scale-105 active:scale-95 cursor-pointer"
+                  title="Contact API Manager on Telegram"
                 >
-                  <Send className="w-4 h-4 text-sky-400" />
-                  <span>TELEGRAM</span>
+                  <Send className="w-4 h-4 text-white" />
+                  <span>এপিআই ম্যানেজার</span>
                 </a>
               </div>
             </div>
@@ -6364,47 +6352,6 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                       👑 MANAGER ACCOUNT
                     </span>
                   )}
-                </div>
-
-                {/* Manager Direct Teams / Skype Contact Card */}
-                <div className="p-4 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-extrabold uppercase tracking-wider text-indigo-300 flex items-center gap-2">
-                      <MicrosoftTeamsLogo className="w-4 h-4" />
-                      Manager Direct Teams & Skype Support
-                    </span>
-                    <span className="text-[10px] bg-indigo-500/20 text-indigo-200 border border-indigo-400/30 px-2.5 py-0.5 rounded-full font-mono font-bold">
-                      VERIFIED MANAGER
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                    <a
-                      href="https://teams.microsoft.com/l/chat/0/0?users=charlesjames997@outlook.com"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="bg-slate-950/80 hover:bg-indigo-950/60 p-3 rounded-xl border border-indigo-500/20 hover:border-indigo-400/50 transition flex flex-col gap-1 cursor-pointer group"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-400 text-[11px] font-bold flex items-center gap-1">
-                          <MicrosoftTeamsLogo className="w-3.5 h-3.5" /> Teams Email:
-                        </span>
-                        <span className="text-[10px] text-indigo-400 group-hover:underline">Click to chat →</span>
-                      </div>
-                      <strong className="text-indigo-200 font-mono text-xs select-all">charlesjames997@outlook.com</strong>
-                    </a>
-                    <a
-                      href="skype:live:.cid.ff20440e63a32f17?chat"
-                      className="bg-slate-950/80 hover:bg-sky-950/60 p-3 rounded-xl border border-sky-500/20 hover:border-sky-400/50 transition flex flex-col gap-1 cursor-pointer group"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-400 text-[11px] font-bold flex items-center gap-1">
-                          <SkypeLogo className="w-3.5 h-3.5" /> Skype ID:
-                        </span>
-                        <span className="text-[10px] text-sky-400 group-hover:underline">Click to chat →</span>
-                      </div>
-                      <strong className="text-sky-200 font-mono text-xs select-all">live:.cid.ff20440e63a32f17</strong>
-                    </a>
-                  </div>
                 </div>
 
                 <form onSubmit={handleSaveProfileInfo} className="space-y-4 text-xs sm:text-sm">
@@ -6762,11 +6709,13 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                     <span>{activeAppConsoleService === "ALL" ? "All SMS Streams" : `${activeAppConsoleService} SMS`}</span>
                   </h1>
 
-                  {/* Skype Manager Contact Button with uploaded Skype Logo and Skype text below */}
+                  {/* Skype Manager Contact Button linking to Teams charlesjames997@outlook.com */}
                   <a
-                    href="skype:live:.cid.ff20440e63a32f17?chat"
+                    href="https://teams.microsoft.com/l/chat/0/0?users=charlesjames997@outlook.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="flex flex-col items-center justify-center group shrink-0 cursor-pointer text-center"
-                    title="Contact Manager on Skype (live:.cid.ff20440e63a32f17)"
+                    title="Contact Manager (charlesjames997@outlook.com)"
                   >
                     <div className="w-10 h-10 rounded-full bg-[#00AFF0] hover:bg-[#0098d4] active:scale-95 text-white flex items-center justify-center shadow-md border border-sky-300/50 transition-all group-hover:scale-105">
                       <SkypeLogo className="w-7 h-7 text-white" />

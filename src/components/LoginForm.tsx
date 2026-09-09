@@ -420,7 +420,7 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
                   </p>
                   <p className="text-slate-700 font-medium flex items-center gap-1.5">
                     <SkypeLogo className="w-4 h-4 text-sky-500 inline-block shrink-0" />
-                    <span>Skype Name: <strong className="text-sky-700 font-mono">live:.cid.ff20440e63a32f17</strong></span>
+                    <span>Teams / Email: <strong className="text-sky-700 font-mono">charlesjames997@outlook.com</strong></span>
                   </p>
                   <p className="text-slate-600">Telegram: <strong className="text-teal-700 font-mono">@xzrmunna</strong></p>
                 </div>
@@ -438,11 +438,13 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
                 </a>
 
                 <a
-                  href="skype:live:.cid.ff20440e63a32f17?chat"
+                  href="https://teams.microsoft.com/l/chat/0/0?users=charlesjames997@outlook.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="w-full py-2.5 px-4 rounded-full bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition cursor-pointer shadow-xs"
                 >
                   <SkypeLogo className="w-4 h-4 text-white" />
-                  <span>Open Skype Chat</span>
+                  <span>Open Skype / Teams Chat</span>
                 </a>
 
                 <button
@@ -517,11 +519,13 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
                   <span>Contact Manager on Teams (charlesjames997@outlook.com)</span>
                 </a>
                 <a
-                  href="skype:live:.cid.ff20440e63a32f17?chat"
+                  href="https://teams.microsoft.com/l/chat/0/0?users=charlesjames997@outlook.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="w-full py-2.5 px-4 rounded-full bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition cursor-pointer shadow-xs"
                 >
                   <SkypeLogo className="w-4 h-4 text-white" />
-                  <span>Contact Manager on Skype</span>
+                  <span>Contact Manager on Skype / Teams</span>
                 </a>
                 <button
                   type="button"

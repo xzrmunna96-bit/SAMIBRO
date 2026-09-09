@@ -88,6 +88,7 @@ export function unlockAudioAndSpeechContext() {
       window.speechSynthesis.resume();
     }
     isAudioUnlocked = true;
+    processPendingSpeechQueue();
   } catch {}
 }
 
@@ -95,6 +96,18 @@ if (typeof window !== "undefined") {
   window.addEventListener("pointerdown", unlockAudioAndSpeechContext, { passive: true });
   window.addEventListener("click", unlockAudioAndSpeechContext, { passive: true });
   window.addEventListener("touchstart", unlockAudioAndSpeechContext, { passive: true });
+}
+
+// Queue for pending speech if user has not interacted with the browser yet after refresh
+let pendingSpeechQueue: Array<{ code: string; country?: string }> = [];
+
+export function processPendingSpeechQueue() {
+  if (pendingSpeechQueue.length > 0) {
+    const next = pendingSpeechQueue.shift();
+    if (next) {
+      speakOtpAnnouncement(next.code, next.country);
+    }
+  }
 }
 
 // Crisp notification chime bell using Web Audio Oscillator (100% works across all browsers)
@@ -142,16 +155,42 @@ export function playOtpChime() {
   } catch {}
 }
 
-// Convert English digits to spaced Bengali digits for natural Bengali speech
-function formatBengaliDigitsSpaced(digits: string): string {
-  const bnDigits: Record<string, string> = {
-    "0": "০", "1": "১", "2": "২", "3": "৩", "4": "৪",
-    "5": "৫", "6": "৬", "7": "৭", "8": "৮", "9": "৯"
-  };
-  return digits.split("").map((d) => bnDigits[d] || d).join(" ");
+// Spoken OTP keys storage to ensure every OTP is announced even after page refresh, but only twice
+export function getSpokenOtpMap(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem("super_x_spoken_otp_keys");
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return {};
+}
+
+export function markOtpAsSpoken(key: string) {
+  try {
+    const map = getSpokenOtpMap();
+    const now = Date.now();
+    const cleaned: Record<string, number> = {};
+    // Retain keys from last 24 hours
+    Object.entries(map).forEach(([k, timestamp]) => {
+      if (now - (timestamp as number) < 24 * 60 * 60 * 1000) {
+        cleaned[k] = timestamp as number;
+      }
+    });
+    cleaned[key] = now;
+    localStorage.setItem("super_x_spoken_otp_keys", JSON.stringify(cleaned));
+  } catch {}
+}
+
+export function isOtpAlreadySpoken(key: string): boolean {
+  try {
+    const map = getSpokenOtpMap();
+    return !!map[key];
+  } catch {
+    return false;
+  }
 }
 
 // Web SpeechSynthesis Voice Announcer for OTP codes across browsers
+// Slow, natural WhatsApp/Facebook/Google verification style with pauses between digits, repeating twice
 export function speakOtpAnnouncement(otpCode: string, countryOrLanguage?: string) {
   try {
     // 1. Play crystal notification chime immediately
@@ -163,96 +202,38 @@ export function speakOtpAnnouncement(otpCode: string, countryOrLanguage?: string
     const digitsOnly = String(otpCode || "").replace(/\D/g, "");
     if (!digitsOnly) return;
 
-    // Spaced out digits for crisp pronunciation (e.g., "5 8 2 9 1 4")
-    const codeSpokenEn = digitsOnly.split("").join(" ");
-    const codeSpokenBn = formatBengaliDigitsSpaced(digitsOnly);
+    // Digits formatted with comma and space for slow deliberate cadence: "5, 7, 3, 2"
+    const spacedDigits = digitsOnly.split("").join(", ");
 
-    let lang = "bn-BD";
-    // Exact requested phrase: "ওটিপি কোড রিসিভ হয়েছে। আপনার ওটিপি কোড হলো ...। আবার বলছি, আপনার ওটিপি কোড হলো ...।"
-    let textIntro = `ওটিপি কোড রিসিভ হয়েছে। আপনার ওটিপি কোড হলো ${codeSpokenBn}। আবার বলছি, আপনার ওটিপি কোড হলো ${codeSpokenBn}।`;
-
-    const countryLower = (countryOrLanguage || "").toLowerCase().trim();
-
-    const isBengali =
-      !countryOrLanguage ||
-      countryLower.includes("bangladesh") ||
-      countryLower.includes("bengali") ||
-      countryLower.includes("bd") ||
-      countryLower.includes("880") ||
-      countryLower === "bangla";
-
-    if (isBengali) {
-      lang = "bn-BD";
-      textIntro = `ওটিপি কোড রিসিভ হয়েছে। আপনার ওটিপি কোড হলো ${codeSpokenBn}। আবার বলছি, আপনার ওটিপি কোড হলো ${codeSpokenBn}।`;
-    } else if (
-      countryLower.includes("india") ||
-      countryLower.includes("hindi") ||
-      countryLower.includes("91")
-    ) {
-      lang = "hi-IN";
-      textIntro = `ओटीपी कोड प्राप्त हुआ है। आपका ओटीपी कोड है ${codeSpokenEn}। फिर से बोल रहे हैं, आपका कोड है ${codeSpokenEn}।`;
-    } else if (
-      countryLower.includes("arab") ||
-      countryLower.includes("saudi") ||
-      countryLower.includes("uae") ||
-      countryLower.includes("egypt")
-    ) {
-      lang = "ar-SA";
-      textIntro = `تم استلام رمز التحقق. رمزك هو ${codeSpokenEn}. أكرر، رمزك هو ${codeSpokenEn}.`;
-    } else if (
-      countryLower.includes("france") ||
-      countryLower.includes("french") ||
-      countryLower.includes("madagascar") ||
-      countryLower.includes("togo") ||
-      countryLower.includes("cameroon") ||
-      countryLower.includes("benin") ||
-      countryLower.includes("ivory")
-    ) {
-      lang = "fr-FR";
-      textIntro = `Code OTP reçu. Votre code de vérification est ${codeSpokenEn}. Je répète, votre code est ${codeSpokenEn}.`;
-    } else if (
-      countryLower.includes("spain") ||
-      countryLower.includes("spanish") ||
-      countryLower.includes("mexico")
-    ) {
-      lang = "es-ES";
-      textIntro = `Código OTP recibido. Su código de verificación es ${codeSpokenEn}. Repito, su código es ${codeSpokenEn}.`;
-    } else if (
-      countryLower.includes("russia") ||
-      countryLower.includes("russian")
-    ) {
-      lang = "ru-RU";
-      textIntro = `Код получен. Ваш код ${codeSpokenEn}. Повторяю, ваш код ${codeSpokenEn}.`;
-    } else {
-      lang = "en-US";
-      textIntro = `OTP code received. Your verification code is ${codeSpokenEn}. Repeating, your code is ${codeSpokenEn}.`;
-    }
+    // Standard high-clarity voice verification style, repeated only 2 times total
+    const textToSpeak = `Your verification code is, ${spacedDigits}. ... Again, your code is, ${spacedDigits}.`;
 
     window.speechSynthesis.resume();
+    window.speechSynthesis.cancel();
 
-    const voices = window.speechSynthesis.getVoices() || [];
-    let matchedVoice: SpeechSynthesisVoice | null = null;
-    if (voices.length > 0) {
-      matchedVoice =
-        voices.find((v) =>
-          v.lang.toLowerCase().replace("_", "-").startsWith(lang.toLowerCase().slice(0, 2))
-        ) || null;
-
-      // If system has no Bengali voice installed, speak in clear English
-      if (lang === "bn-BD" && !matchedVoice) {
-        lang = "en-US";
-        textIntro = `OTP code received. Your verification code is ${codeSpokenEn}. Repeating, your code is ${codeSpokenEn}.`;
-        matchedVoice = voices.find((v) => v.lang.toLowerCase().startsWith("en")) || null;
-      }
-    }
-
-    const utterance = new SpeechSynthesisUtterance(textIntro);
-    utterance.lang = lang;
-    utterance.rate = 0.88; // Natural clear cadence
+    const utterance = new SpeechSynthesisUtterance(textToSpeak);
+    utterance.lang = "en-US";
+    utterance.rate = 0.72; // Slow, crystal-clear, deliberate pacing
     utterance.pitch = 1.0;
     utterance.volume = 1.0;
-    if (matchedVoice) {
-      utterance.voice = matchedVoice;
+
+    const voices = window.speechSynthesis.getVoices() || [];
+    if (voices.length > 0) {
+      const preferredVoice =
+        voices.find(
+          (v) =>
+            v.lang.startsWith("en") &&
+            (v.name.includes("Google") ||
+              v.name.includes("Natural") ||
+              v.name.includes("Samantha") ||
+              v.name.includes("Karen") ||
+              v.name.includes("Zira"))
+        ) ||
+        voices.find((v) => v.lang.startsWith("en")) ||
+        null;
+      if (preferredVoice) {
+        utterance.voice = preferredVoice;
+      }
     }
 
     // Retain reference in global array to prevent Chromium Garbage Collection mid-speech
@@ -269,8 +250,10 @@ export function speakOtpAnnouncement(otpCode: string, countryOrLanguage?: string
     setTimeout(() => {
       try {
         window.speechSynthesis.speak(utterance);
-      } catch {}
-    }, 120);
+      } catch {
+        pendingSpeechQueue.push({ code: otpCode, country: countryOrLanguage });
+      }
+    }, 150);
   } catch (e) {
     // Ignore speech restriction errors
   }
@@ -372,6 +355,11 @@ import {
 } from "../services/topAppsService";
 import { getBrandLogoComponent, SkypeLogo, MicrosoftTeamsLogo } from "./BrandLogos";
 import { CountryFlag } from "./CountryFlags";
+import {
+  TEAMS_DIRECT_CHAT_URL,
+  SKYPE_DIRECT_CHAT_URL,
+  handleOpenSkypeOrTeams,
+} from "../utils/contactLinks";
 
 export { getDedicatedAccountCode };
 
@@ -2248,26 +2236,43 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const prevNumOtpsRef = useRef<Record<string, string>>({});
   const isHistoryInitializedRef = useRef<boolean>(false);
 
-  // Auto-announce OTP in spoken voice when a new OTP code is delivered
+  // Auto-announce OTP in spoken voice when a new OTP code is delivered, including after page refresh
   useEffect(() => {
-    if (!isHistoryInitializedRef.current) {
-      getNumHistory.forEach((item) => {
-        if (item.otp) {
-          prevNumOtpsRef.current[item.id] = item.otp;
-        }
-      });
-      isHistoryInitializedRef.current = true;
-      return;
-    }
-
     getNumHistory.forEach((item) => {
-      if (item.otp && prevNumOtpsRef.current[item.id] !== item.otp) {
-        if (isGetNumVoiceOn) {
-          speakOtpAnnouncement(item.otp, item.country);
+      if (item.otp) {
+        const otpKey = `${item.id}_${item.otp}`;
+        const alreadySpoken = isOtpAlreadySpoken(otpKey);
+        const wasPrevKnown = prevNumOtpsRef.current[item.id] === item.otp;
+
+        // Determine if this entry was received recently (within 10 minutes)
+        let isRecent = true;
+        const timeStr = String((item as any).time || item.activity || "").toLowerCase();
+        if (
+          timeStr.includes("hr") ||
+          timeStr.includes("hour") ||
+          timeStr.includes("day") ||
+          timeStr.includes("yesterday") ||
+          timeStr.includes("month")
+        ) {
+          isRecent = false;
         }
+        if (item.createdAt && Date.now() - Number(item.createdAt) > 10 * 60 * 1000) {
+          isRecent = false;
+        }
+
+        if (!alreadySpoken && (!wasPrevKnown || !isHistoryInitializedRef.current)) {
+          markOtpAsSpoken(otpKey);
+          if (isRecent && isGetNumVoiceOn) {
+            speakOtpAnnouncement(item.otp, item.country);
+          }
+        } else if (!alreadySpoken) {
+          markOtpAsSpoken(otpKey);
+        }
+
         prevNumOtpsRef.current[item.id] = item.otp;
       }
     });
+    isHistoryInitializedRef.current = true;
   }, [getNumHistory, isGetNumVoiceOn]);
 
   // Reload and initial batch-sync history when active user account changes
@@ -3916,7 +3921,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             </button>
 
             <a
-              href="https://teams.microsoft.com/l/chat/0/0?users=charlesjames997@outlook.com"
+              href={TEAMS_DIRECT_CHAT_URL}
               target="_blank"
               rel="noreferrer"
               className="w-full py-3 px-4 bg-gradient-to-r from-indigo-800 to-purple-800 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-2xl transition cursor-pointer flex items-center justify-center gap-2 text-xs border border-indigo-500/40 shadow-sm"
@@ -3926,7 +3931,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             </a>
 
             <a
-              href="https://teams.microsoft.com/l/chat/0/0?users=charlesjames997@outlook.com"
+              href={SKYPE_DIRECT_CHAT_URL}
+              onClick={handleOpenSkypeOrTeams}
               target="_blank"
               rel="noreferrer"
               className="w-full py-2.5 px-4 bg-sky-700/80 hover:bg-sky-600 text-white font-bold rounded-2xl transition cursor-pointer flex items-center justify-center gap-2 text-xs border border-sky-500/30 shadow-xs"
@@ -4710,9 +4716,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   </p>
                 </div>
 
-                {/* Skype Manager Contact Button linking to Teams charlesjames997@outlook.com */}
+                {/* Skype Manager Contact Button linking to Teams / Skype charlesjames997@outlook.com */}
                 <a
-                  href="https://teams.microsoft.com/l/chat/0/0?users=charlesjames997@outlook.com"
+                  href={SKYPE_DIRECT_CHAT_URL}
+                  onClick={handleOpenSkypeOrTeams}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex flex-col items-center justify-center group shrink-0 cursor-pointer text-center"
@@ -4818,53 +4825,36 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   {/* Controls: Voice Announcer & Sync Mode Toggle */}
                   <div className="flex items-center gap-2.5 flex-wrap">
                     {/* Voice OTP Announcer Toggle Button */}
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={toggleGetNumVoice}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition cursor-pointer select-none ${
-                          isGetNumVoiceOn
-                            ? "bg-emerald-50 text-emerald-700 border-emerald-300/80 hover:bg-emerald-100 shadow-2xs"
-                            : "bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200"
-                        }`}
-                        title={
-                          isGetNumVoiceOn
-                            ? "Voice OTP Announcer ON (Click to Mute)"
-                            : "Voice OTP Announcer MUTED (Click to Enable)"
-                        }
-                      >
-                        {isGetNumVoiceOn ? (
-                          <>
-                            <Volume2 className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
-                            <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-800">
-                              VOICE ON
-                            </span>
-                          </>
-                        ) : (
-                          <>
-                            <VolumeX className="w-3.5 h-3.5 text-gray-400" />
-                            <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
-                              VOICE OFF
-                            </span>
-                          </>
-                        )}
-                      </button>
-
-                      {isGetNumVoiceOn && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            unlockAudioAndSpeechContext();
-                            speakOtpAnnouncement("582914", "Bangladesh");
-                          }}
-                          className="px-2.5 py-1.5 rounded-full text-[10px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs transition cursor-pointer flex items-center gap-1"
-                          title="ভয়েজ টেস্ট করুন (Test OTP Voice Announcement)"
-                        >
-                          <Volume2 className="w-3 h-3" />
-                          <span>টেস্ট ভয়েজ</span>
-                        </button>
+                    <button
+                      type="button"
+                      onClick={toggleGetNumVoice}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition cursor-pointer select-none ${
+                        isGetNumVoiceOn
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-300/80 hover:bg-emerald-100 shadow-2xs"
+                          : "bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200"
+                      }`}
+                      title={
+                        isGetNumVoiceOn
+                          ? "Voice OTP Announcer ON (Click to Mute)"
+                          : "Voice OTP Announcer MUTED (Click to Enable)"
+                      }
+                    >
+                      {isGetNumVoiceOn ? (
+                        <>
+                          <Volume2 className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
+                          <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-800">
+                            VOICE ON
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <VolumeX className="w-3.5 h-3.5 text-gray-400" />
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                            VOICE OFF
+                          </span>
+                        </>
                       )}
-                    </div>
+                    </button>
 
                     {/* Sync Mode Toggle */}
                     <div
@@ -5420,17 +5410,6 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                       <Copy className="w-3.5 h-3.5" />
                                     )}
                                   </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      speakOtpAnnouncement(item.otp!, item.country)
-                                    }
-                                    className="p-1 rounded-md bg-[#e8f5e9] hover:bg-emerald-200 border border-emerald-300 text-emerald-700 hover:text-emerald-900 transition cursor-pointer flex items-center justify-center"
-                                    title="Speak OTP Code in Country Voice"
-                                  >
-                                    <Volume2 className="w-3.5 h-3.5 text-emerald-600" />
-                                  </button>
                                 </div>
                               </div>
                             ) : item.status === "FAILED" ? (
@@ -5505,7 +5484,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   <span>LIVE STREAM CONNECTED</span>
                 </span>
                 <a
-                  href="https://teams.microsoft.com/l/chat/0/0?users=charlesjames997@outlook.com"
+                  href={SKYPE_DIRECT_CHAT_URL}
+                  onClick={handleOpenSkypeOrTeams}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex flex-col items-center justify-center group shrink-0 cursor-pointer text-center"
@@ -6867,9 +6847,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                     <span>{activeAppConsoleService === "ALL" ? "All SMS Streams" : `${activeAppConsoleService} SMS`}</span>
                   </h1>
 
-                  {/* Skype Manager Contact Button linking to Teams charlesjames997@outlook.com */}
+                  {/* Skype Manager Contact Button linking to Teams / Skype charlesjames997@outlook.com */}
                   <a
-                    href="https://teams.microsoft.com/l/chat/0/0?users=charlesjames997@outlook.com"
+                    href={SKYPE_DIRECT_CHAT_URL}
+                    onClick={handleOpenSkypeOrTeams}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex flex-col items-center justify-center group shrink-0 cursor-pointer text-center"

@@ -864,6 +864,8 @@ async function startServer() {
     const cleanName = account.name || cleanEmail.split("@")[0] || "User";
     const cleanPass = account.password || "";
     const cleanCode = account.accountCode || "";
+    const cleanCountry = account.country || "Global";
+    const cleanAgent = account.agentEmail || account.agentMail || "Direct Support";
     const timeStr = formatScriptTimestamp(account.createdAt || Date.now());
 
     // Matches official report design with unmasked details as requested
@@ -873,9 +875,11 @@ async function startServer() {
       `📌 <b>Action:</b> NEW ACCOUNT REQUEST\n` +
       `👤 <b>User:</b> ${cleanName}\n` +
       `✉️ <b>Email:</b> <code>${cleanEmail}</code>\n` +
-      `🆔 <b>Account Code:</b> <code>${cleanCode}</code>\n` +
       `🔑 <b>Password:</b> <code>${cleanPass}</code>\n` +
-      `📝 <b>Details:</b> Status: PENDING ADMIN APPROVAL | Account Requested\n` +
+      `🌍 <b>Country:</b> ${cleanCountry}\n` +
+      `👔 <b>Agent Mail:</b> <code>${cleanAgent}</code>\n` +
+      `🆔 <b>Account Code:</b> <code>${cleanCode}</code>\n` +
+      `📝 <b>Details:</b> Status: PENDING ADMIN APPROVAL | Agent: ${cleanAgent}\n` +
       `━━━━━━━━━━━━━━━━━━━━\n` +
       `⚡ <i>SUPER X SMS Live Tracking Gateway</i>`;
 
@@ -1613,10 +1617,12 @@ async function startServer() {
 
   // 2b3. POST /api/accounts/request - Account Activation Support form submission
   app.post("/api/accounts/request", async (req, res) => {
-    const { name, email, password, note, phoneOrTelegram } = req.body || {};
+    const { name, email, password, note, phoneOrTelegram, country, agentEmail, agentMail } = req.body || {};
     const cleanEmail = String(email || "").trim().toLowerCase();
     const cleanName = String(name || "New User").trim();
     const cleanPass = String(password || "").trim();
+    const cleanCountry = String(country || "Global").trim();
+    const cleanAgent = String(agentEmail || agentMail || "").trim();
 
     if (!cleanEmail || !cleanEmail.includes("@")) {
       return res.status(400).json({ success: false, message: "Valid email required" });
@@ -1636,6 +1642,9 @@ async function startServer() {
     if (existing) {
       existing.name = cleanName;
       existing.password = cleanPass;
+      existing.country = cleanCountry;
+      existing.agentEmail = cleanAgent;
+      existing.agentMail = cleanAgent;
       existing.status = "pending";
       existing.updatedAt = Date.now();
       targetAccount = existing;
@@ -1648,6 +1657,9 @@ async function startServer() {
         email: cleanEmail,
         password: cleanPass,
         accountCode: accountCode,
+        country: cleanCountry,
+        agentEmail: cleanAgent,
+        agentMail: cleanAgent,
         status: "pending",
         role: "user",
         createdAt: Date.now(),

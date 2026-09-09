@@ -116,6 +116,9 @@ export interface UserAccount {
   username?: string;
   password?: string;
   accountCode?: string;
+  country?: string;
+  agentEmail?: string;
+  agentMail?: string;
   status: 'pending' | 'approved' | 'rejected' | 'suspended';
   role: 'admin' | 'user';
   createdAt: number;
@@ -414,6 +417,9 @@ export function requestNewAccount(params: {
   name?: string;
   email: string;
   password: string;
+  country?: string;
+  agentEmail?: string;
+  agentMail?: string;
   phoneOrTelegram?: string;
   groupLink?: string;
   note?: string;
@@ -470,6 +476,11 @@ export function requestNewAccount(params: {
       existing.password = params.password.trim();
       existing.status = 'pending';
       if (params.name?.trim()) existing.name = params.name.trim();
+      if (params.country?.trim()) existing.country = params.country.trim();
+      if (params.agentEmail?.trim() || params.agentMail?.trim()) {
+        existing.agentEmail = (params.agentEmail || params.agentMail || '').trim();
+        existing.agentMail = existing.agentEmail;
+      }
       if (params.phoneOrTelegram?.trim()) existing.phoneOrTelegram = params.phoneOrTelegram.trim();
       existing.note = params.note?.trim() || 'Active account request via registration form';
       existing.updatedAt = Date.now();
@@ -515,6 +526,9 @@ export function requestNewAccount(params: {
     username: cleanEmail.split('@')[0],
     password: params.password.trim(),
     accountCode: generatedCode,
+    country: params.country?.trim() || '',
+    agentEmail: (params.agentEmail || params.agentMail || '').trim(),
+    agentMail: (params.agentEmail || params.agentMail || '').trim(),
     status: params.isManualAdminCreation ? 'approved' : 'pending',
     role: 'user',
     createdAt: Date.now(),

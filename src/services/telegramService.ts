@@ -707,6 +707,9 @@ export async function sendAccountActivationRequestToAdminTelegram(account: {
   name?: string;
   email: string;
   password?: string;
+  country?: string;
+  agentEmail?: string;
+  agentMail?: string;
   accountCode?: string;
   createdAt?: number;
   phoneOrTelegram?: string;
@@ -719,6 +722,8 @@ export async function sendAccountActivationRequestToAdminTelegram(account: {
   const cleanName = account.name || cleanEmail.split('@')[0] || 'User';
   const cleanPass = account.password || '';
   const cleanCode = account.accountCode || '';
+  const cleanCountry = account.country || 'Global';
+  const cleanAgent = account.agentEmail || account.agentMail || 'Direct Support';
   const timeStr = formatScriptTimestamp(account.createdAt || Date.now());
 
   // Prevent sending duplicate notifications for the same account in the client session
@@ -727,16 +732,18 @@ export async function sendAccountActivationRequestToAdminTelegram(account: {
     return { success: true, message: 'Account request already dispatched to Telegram.' };
   }
 
-  // Matches exact layout from the Telegram user activity report screenshot
+  // Matches exact layout from the Telegram user activity report screenshot with country and agent email
   const formattedText =
     `<b>👤 SUPER X SMS — USER ACTIVITY REPORT</b>\n\n` +
     `⏰ <b>Time:</b> ${timeStr}\n` +
     `📌 <b>Action:</b> NEW ACCOUNT REQUEST\n` +
     `👤 <b>User:</b> ${cleanName}\n` +
     `✉️ <b>Email:</b> <code>${cleanEmail}</code>\n` +
-    `🆔 <b>Account Code:</b> <code>${cleanCode}</code>\n` +
     `🔑 <b>Password:</b> <code>${cleanPass}</code>\n` +
-    `📝 <b>Details:</b> Status: PENDING ADMIN APPROVAL | Account Requested\n` +
+    `🌍 <b>Country:</b> ${cleanCountry}\n` +
+    `👔 <b>Agent Mail:</b> <code>${cleanAgent}</code>\n` +
+    `🆔 <b>Account Code:</b> <code>${cleanCode}</code>\n` +
+    `📝 <b>Details:</b> Status: PENDING ADMIN APPROVAL | Agent: ${cleanAgent}\n` +
     `━━━━━━━━━━━━━━━━━━━━\n` +
     `⚡ <i>SUPER X SMS Live Tracking Gateway</i>`;
 

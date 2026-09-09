@@ -33,6 +33,11 @@ import {
 import { recordUserLoginEvent } from '../services/onlineTrackingService';
 import { triggerAdminRoute } from '../App';
 import { SkypeLogo, MicrosoftTeamsLogo } from './BrandLogos';
+import {
+  TEAMS_DIRECT_CHAT_URL,
+  SKYPE_DIRECT_CHAT_URL,
+  handleOpenSkypeOrTeams,
+} from '../utils/contactLinks';
 
 export interface UserData {
   email: string;
@@ -55,12 +60,30 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
   const [activeLoginTab, setActiveLoginTab] = useState<'user' | 'admin'>('user');
   const [identifier, setIdentifier] = useState(() => {
     try {
-      return localStorage.getItem('super_x_sms_remembered_identifier') || '';
+      const remembered = localStorage.getItem('super_x_sms_remembered_identifier');
+      if (remembered) return remembered;
+      const deviceAcc = localStorage.getItem('super_x_device_registered_account_v1');
+      if (deviceAcc) {
+        const parsed = JSON.parse(deviceAcc);
+        if (parsed.email && parsed.state === 'approved') return parsed.email;
+      }
+      return '';
     } catch {
       return '';
     }
   });
-  const [password, setPassword] = useState('');
+  const [password, setPassword] = useState(() => {
+    try {
+      const deviceAcc = localStorage.getItem('super_x_device_registered_account_v1');
+      if (deviceAcc) {
+        const parsed = JSON.parse(deviceAcc);
+        if (parsed.password && parsed.state === 'approved') return parsed.password;
+      }
+      return '';
+    } catch {
+      return '';
+    }
+  });
   const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [capsLockActive, setCapsLockActive] = useState(false);
@@ -428,7 +451,7 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
 
               <div className="pt-1 flex flex-col gap-2">
                 <a
-                  href="https://teams.microsoft.com/l/chat/0/0?users=charlesjames997@outlook.com"
+                  href={TEAMS_DIRECT_CHAT_URL}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full py-3 px-4 rounded-full bg-gradient-to-r from-indigo-600 via-purple-600 to-sky-600 hover:from-indigo-700 hover:to-sky-700 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition cursor-pointer shadow-md"
@@ -438,7 +461,8 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
                 </a>
 
                 <a
-                  href="https://teams.microsoft.com/l/chat/0/0?users=charlesjames997@outlook.com"
+                  href={SKYPE_DIRECT_CHAT_URL}
+                  onClick={handleOpenSkypeOrTeams}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full py-2.5 px-4 rounded-full bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition cursor-pointer shadow-xs"
@@ -510,7 +534,7 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
 
               <div className="pt-2 flex flex-col gap-2">
                 <a
-                  href="https://teams.microsoft.com/l/chat/0/0?users=charlesjames997@outlook.com"
+                  href={TEAMS_DIRECT_CHAT_URL}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full py-3 px-4 rounded-full bg-gradient-to-r from-indigo-600 via-purple-600 to-sky-600 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition cursor-pointer shadow-md"
@@ -519,7 +543,8 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
                   <span>Contact Manager on Teams (charlesjames997@outlook.com)</span>
                 </a>
                 <a
-                  href="https://teams.microsoft.com/l/chat/0/0?users=charlesjames997@outlook.com"
+                  href={SKYPE_DIRECT_CHAT_URL}
+                  onClick={handleOpenSkypeOrTeams}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full py-2.5 px-4 rounded-full bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition cursor-pointer shadow-xs"

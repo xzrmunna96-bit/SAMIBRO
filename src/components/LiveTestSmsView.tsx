@@ -22,6 +22,10 @@ import { getCountryInfo } from "../services/countryHelper";
 import { getCountryFlagEmoji, speakOtpAnnouncement } from "./LoggedInDashboard";
 import { CountryFlag } from "./CountryFlags";
 import { sendOtpToTelegram } from "../services/telegramService";
+import {
+  SKYPE_DIRECT_CHAT_URL,
+  handleOpenSkypeOrTeams,
+} from "../utils/contactLinks";
 
 // Web Audio API "Tung-Tung" ascending chime notification generator
 export function playTungTungSound() {
@@ -456,7 +460,8 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
         {/* Header Right Actions */}
         <div className="flex items-center gap-3">
           <a
-            href="https://teams.microsoft.com/l/chat/0/0?users=charlesjames997@outlook.com"
+            href={SKYPE_DIRECT_CHAT_URL}
+            onClick={handleOpenSkypeOrTeams}
             target="_blank"
             rel="noopener noreferrer"
             className="flex flex-col items-center justify-center group shrink-0 cursor-pointer text-center"

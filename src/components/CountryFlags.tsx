@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { GLOBAL_COUNTRIES_LIST } from '../services/countryHelper';
 import { getCountryFlagEmoji } from './LoggedInDashboard';
 
@@ -151,6 +151,111 @@ const COUNTRY_NAME_TO_ISO: Record<string, string> = {
   'ZIMBABWE': 'zw',
 };
 
+// Dial code to 2-letter ISO map
+const DIAL_TO_ISO: Record<string, string> = {
+  '880': 'bd',
+  '91': 'in',
+  '92': 'pk',
+  '977': 'np',
+  '975': 'bt',
+  '960': 'mv',
+  '95': 'mm',
+  '855': 'kh',
+  '856': 'la',
+  '84': 'vn',
+  '66': 'th',
+  '60': 'my',
+  '65': 'sg',
+  '62': 'id',
+  '63': 'ph',
+  '86': 'cn',
+  '852': 'hk',
+  '853': 'mo',
+  '886': 'tw',
+  '81': 'jp',
+  '82': 'kr',
+  '976': 'mn',
+  '7': 'ru',
+  '90': 'tr',
+  '93': 'af',
+  '98': 'ir',
+  '964': 'iq',
+  '963': 'sy',
+  '961': 'lb',
+  '962': 'jo',
+  '970': 'ps',
+  '972': 'il',
+  '966': 'sa',
+  '971': 'ae',
+  '965': 'kw',
+  '974': 'qa',
+  '968': 'om',
+  '973': 'bh',
+  '967': 'ye',
+  '20': 'eg',
+  '212': 'ma',
+  '213': 'dz',
+  '216': 'tn',
+  '218': 'ly',
+  '249': 'sd',
+  '251': 'et',
+  '252': 'so',
+  '254': 'ke',
+  '255': 'tz',
+  '256': 'ug',
+  '250': 'rw',
+  '234': 'ng',
+  '233': 'gh',
+  '221': 'sn',
+  '225': 'ci',
+  '237': 'cm',
+  '261': 'mg',
+  '232': 'sl',
+  '228': 'tg',
+  '229': 'bj',
+  '236': 'cf',
+  '241': 'ga',
+  '242': 'cg',
+  '243': 'cd',
+  '244': 'ao',
+  '258': 'mz',
+  '260': 'zm',
+  '263': 'zw',
+  '27': 'za',
+  '44': 'gb',
+  '49': 'de',
+  '33': 'fr',
+  '39': 'it',
+  '34': 'es',
+  '351': 'pt',
+  '31': 'nl',
+  '32': 'be',
+  '41': 'ch',
+  '43': 'at',
+  '48': 'pl',
+  '420': 'cz',
+  '36': 'hu',
+  '40': 'ro',
+  '359': 'bg',
+  '30': 'gr',
+  '46': 'se',
+  '47': 'no',
+  '45': 'dk',
+  '358': 'fi',
+  '380': 'ua',
+  '375': 'by',
+  '1': 'us',
+  '52': 'mx',
+  '55': 'br',
+  '54': 'ar',
+  '56': 'cl',
+  '57': 'co',
+  '51': 'pe',
+  '58': 've',
+  '61': 'au',
+  '64': 'nz',
+};
+
 /**
  * Universal ISO Code Resolver
  * Supports: Regional Indicator Emojis (🇲🇬), Full Names, Dial Codes, Ranges, etc.
@@ -219,6 +324,9 @@ export function getIsoFromCountryInput(rawInput: string): string | null {
   if (digits.length >= 1) {
     for (const len of [4, 3, 2, 1]) {
       const prefix = digits.slice(0, len);
+      if (DIAL_TO_ISO[prefix]) {
+        return DIAL_TO_ISO[prefix];
+      }
       const matchDial = GLOBAL_COUNTRIES_LIST.find(
         (c) => c.dialCode.replace(/\D/g, '') === prefix
       );
@@ -236,9 +344,18 @@ export function CountryFlag({
   className = "",
   size = "md",
 }: FlagProps) {
-  const [hasError, setHasError] = useState(false);
+  const [hasPrimaryError, setHasPrimaryError] = useState(false);
+  const [hasSecondaryError, setHasSecondaryError] = useState(false);
+
+  // Reset error states when countryCode changes so re-used list items don't stay broken
+  useEffect(() => {
+    setHasPrimaryError(false);
+    setHasSecondaryError(false);
+  }, [countryCode]);
+
   const iso = getIsoFromCountryInput(countryCode);
-  const flagUrl = iso ? `https://flagcdn.com/w80/${iso.toLowerCase()}.png` : null;
+  const primaryUrl = iso ? `https://flagcdn.com/w160/${iso.toLowerCase()}.png` : null;
+  const secondaryUrl = iso ? `https://purecatamphetamine.github.io/country-flag-icons/3x2/${iso.toUpperCase()}.svg` : null;
   const emoji = getCountryFlagEmoji(countryCode);
 
   // Default sizes matching user screenshot (rounded rectangle with subtle border)
@@ -252,26 +369,55 @@ export function CountryFlag({
   const hasCustomSize = className.includes('w-') || className.includes('h-');
   const sizeClass = hasCustomSize ? "" : sizeClasses[size || 'md'];
 
-  if (flagUrl && !hasError) {
+  // Try Primary CDN (FlagCDN High Res)
+  if (primaryUrl && !hasPrimaryError) {
     return (
       <img
-        src={flagUrl}
+        src={primaryUrl}
         alt={countryCode || 'Country Flag'}
-        onError={() => setHasError(true)}
+        onError={() => setHasPrimaryError(true)}
         className={`object-cover shrink-0 select-none ${sizeClass} ${className}`}
         loading="lazy"
       />
     );
   }
 
+  // Try Secondary CDN (PureCatAmphetamine SVG Flags)
+  if (secondaryUrl && !hasSecondaryError) {
+    return (
+      <img
+        src={secondaryUrl}
+        alt={countryCode || 'Country Flag'}
+        onError={() => setHasSecondaryError(true)}
+        className={`object-cover shrink-0 select-none ${sizeClass} ${className}`}
+        loading="lazy"
+      />
+    );
+  }
+
+  // Fallback 1: Emoji
+  if (emoji && emoji !== "🌐") {
+    return (
+      <span
+        className={`inline-flex items-center justify-center shrink-0 leading-none select-none text-lg sm:text-xl ${className}`}
+        role="img"
+        aria-label={countryCode || 'Country Flag'}
+      >
+        {emoji}
+      </span>
+    );
+  }
+
+  // Fallback 2: Clean styled ISO badge if emoji is missing
+  const badgeIso = (iso || countryCode || "GL").toUpperCase().slice(0, 3);
   return (
     <span
-      className={`inline-flex items-center justify-center shrink-0 leading-none select-none text-xl ${className}`}
-      role="img"
-      aria-label={countryCode || 'Country Flag'}
+      className={`inline-flex items-center justify-center shrink-0 px-1 py-0.5 rounded bg-slate-800 text-white font-mono text-[9px] font-black border border-slate-700 shadow-2xs ${sizeClass} ${className}`}
+      title={countryCode || 'Country'}
     >
-      {emoji}
+      {badgeIso}
     </span>
   );
 }
+
 

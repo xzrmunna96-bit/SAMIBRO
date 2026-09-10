@@ -24,6 +24,7 @@ import {
 import { getCountryInfo } from "../services/countryHelper";
 import { LiveConsoleHit } from "../services/voltxApi";
 import { extractOtpCode } from "../services/telegramService";
+import { CountryFlag } from "./CountryFlags";
 
 export interface SmsCdrRecord {
   id: string;
@@ -545,10 +546,11 @@ export const SmsCdrReportsView = React.memo(function SmsCdrReportsView({
                                   onSelectCountryRange(rec.number.slice(0, 5), rec.cli, rec.country);
                                 }
                               }}
-                              className="hover:text-blue-600 cursor-pointer"
+                              className="hover:text-blue-600 cursor-pointer inline-flex items-center gap-1.5"
                               title="Click to allocate"
                             >
-                              {rec.range}
+                              <CountryFlag countryCode={rec.country || rec.range} size="sm" />
+                              <span>{rec.range}</span>
                             </span>
                           </td>
                         )}

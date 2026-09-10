@@ -12,6 +12,7 @@ import {
   Clock
 } from "lucide-react";
 import { SmsTestRecord } from "./LiveTestSmsView";
+import { CountryFlag } from "./CountryFlags";
 
 interface SmsTestHistoryViewProps {
   userEmail: string;
@@ -491,8 +492,9 @@ export const SmsTestHistoryView = React.memo(function SmsTestHistoryView({
 
                       {/* 4. COUNTRY / ROUTE */}
                       <td className="py-3 px-3.5 whitespace-nowrap align-top border-r border-slate-300">
-                        <div className="font-bold text-slate-900 text-xs sm:text-[13px]">
-                          {item.rangeName}
+                        <div className="font-bold text-slate-900 text-xs sm:text-[13px] flex items-center gap-1.5">
+                          <CountryFlag countryCode={item.country || item.rangeName} size="sm" />
+                          <span>{item.rangeName}</span>
                         </div>
                         <div className="text-[11px] text-slate-500 font-mono mt-0.5">
                           {item.destination}

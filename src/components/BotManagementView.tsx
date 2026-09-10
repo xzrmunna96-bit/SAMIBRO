@@ -39,6 +39,7 @@ import {
   DEFAULT_BOT_CONFIG,
 } from '../services/manualNumberService';
 import { GLOBAL_COUNTRIES_LIST } from '../services/countryHelper';
+import { CountryFlag } from './CountryFlags';
 
 interface BotManagementViewProps {
   onToast: (msg: string) => void;
@@ -571,8 +572,8 @@ export const BotManagementView: React.FC<BotManagementViewProps> = ({ onToast })
                 <span>Select Country (দেশ ও জাতীয় পতাকা)</span>
               </label>
               <div className="flex items-center gap-2">
-                <span className="text-2xl p-1.5 bg-slate-950 border border-slate-700 rounded-xl shrink-0">
-                  {selectedCountryFlag}
+                <span className="p-1.5 bg-slate-950 border border-slate-700 rounded-xl shrink-0 flex items-center justify-center">
+                  <CountryFlag countryCode={selectedCountryName} size="lg" />
                 </span>
                 <select
                   value={selectedCountryName}

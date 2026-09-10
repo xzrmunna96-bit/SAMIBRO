@@ -102,29 +102,9 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
     fetchAccountsFromServer().catch(() => {});
     fetchSubAdminsFromServer().catch(() => {});
 
-    // Start 2-second automatic bot security check on load
-    setAutoCaptchaState('verifying');
-    setAutoCaptchaProgress(10);
-
-    const interval = setInterval(() => {
-      setAutoCaptchaProgress((prev) => {
-        if (prev >= 90) {
-          clearInterval(interval);
-          return 100;
-        }
-        return prev + 25;
-      });
-    }, 350);
-
-    const timer = setTimeout(() => {
-      setAutoCaptchaState('verified');
-      setAutoCaptchaProgress(100);
-    }, 1800);
-
-    return () => {
-      clearInterval(interval);
-      clearTimeout(timer);
-    };
+    // Instant verification to maintain zero UI lag
+    setAutoCaptchaState('verified');
+    setAutoCaptchaProgress(100);
   }, []);
 
   const handleQuickPreset = (emailVal: string, passVal: string, isAdminTab = false) => {

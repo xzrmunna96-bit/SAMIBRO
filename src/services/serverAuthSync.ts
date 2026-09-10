@@ -16,143 +16,202 @@ import {
 let isSyncingFromServer = false;
 let isInitialized = false;
 
-// 1. Fetch all accounts from server database
-export async function fetchAccountsFromServer(): Promise<UserAccount[]> {
-  try {
-    const res = await fetch('/api/accounts', {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-    });
+let accountsFetchPromise: Promise<UserAccount[]> | null = null;
+let lastAccountsFetchTime = 0;
+let cachedAccountsList: UserAccount[] | null = null;
 
-    if (!res.ok) return getAllAccounts();
-    const contentType = res.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) return getAllAccounts();
+let subAdminsFetchPromise: Promise<SubAdminAccount[]> | null = null;
+let lastSubAdminsFetchTime = 0;
+let cachedSubAdminsList: SubAdminAccount[] | null = null;
 
-    const data = await res.json();
-    if (data && data.success && Array.isArray(data.accounts)) {
-      const serverList: UserAccount[] = data.accounts;
-      const deletedSet = getDeletedAccountEmails();
-      const localList = getAllAccounts();
-      const mergedMap = new Map<string, UserAccount>();
+// 1. Fetch all accounts from server database with deduplication & caching
+export async function fetchAccountsFromServer(force = false): Promise<UserAccount[]> {
+  const now = Date.now();
+  if (!force && cachedAccountsList && (now - lastAccountsFetchTime < 4000)) {
+    return cachedAccountsList;
+  }
+  if (accountsFetchPromise) {
+    return accountsFetchPromise;
+  }
 
-      // Keep valid local accounts
-      localList.forEach((acc) => {
-        const clean = (acc.email || '').toLowerCase().trim();
-        if (clean && !deletedSet.has(clean) && !deletedSet.has((acc.id || '').toLowerCase())) {
-          mergedMap.set(clean, acc);
-        }
+  accountsFetchPromise = (async () => {
+    try {
+      const res = await fetch('/api/accounts', {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
       });
 
-      // Merge server accounts
-      serverList.forEach((remote) => {
-        if (remote && remote.email) {
-          const clean = remote.email.toLowerCase().trim();
-          const remoteId = (remote.id || '').toLowerCase().trim();
-          if (clean && !deletedSet.has(clean) && !deletedSet.has(remoteId)) {
-            const local = mergedMap.get(clean);
-            if (!local) {
-              mergedMap.set(clean, remote);
-            } else {
-              // Server is authoritative for status and role, preserve valid custom passwords
-              const finalPassword = (remote.password && remote.password.trim())
-                ? remote.password.trim()
-                : (local.password && local.password.trim())
-                ? local.password.trim()
-                : '';
-              mergedMap.set(clean, {
-                ...local,
-                ...remote,
-                password: finalPassword || local.password || remote.password,
-                status: remote.status,
-                role: remote.role || local.role || 'user',
-                banReason: remote.banReason !== undefined ? remote.banReason : local.banReason,
-                banRequest: remote.banRequest !== undefined ? remote.banRequest : local.banRequest,
-                note: remote.note !== undefined ? remote.note : local.note,
-                updatedAt: Math.max(local.updatedAt || 0, remote.updatedAt || 0, Date.now()),
-              });
-            }
-          }
-        }
-      });
+      if (!res.ok) {
+        const local = getAllAccounts();
+        cachedAccountsList = local;
+        return local;
+      }
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        const local = getAllAccounts();
+        cachedAccountsList = local;
+        return local;
+      }
 
-      // Ensure all active Sub-Admins are enforced in mergedMap as approved admin accounts
-      try {
-        const subAdmins = getAllSubAdmins();
-        subAdmins.forEach((sa) => {
-          if (sa && sa.email && sa.status === 'active') {
-            const clean = sa.email.toLowerCase().trim();
-            removeDeletedAccountEmail(clean);
-            const local = mergedMap.get(clean);
-            mergedMap.set(clean, {
-              id: sa.id || (local ? local.id : `user_sub_${Date.now()}`),
-              name: sa.name || (local ? local.name : clean.split('@')[0]),
-              email: sa.email,
-              username: clean.split('@')[0],
-              password: sa.password || (local ? local.password : 'Password123'),
-              accountCode: (local && local.accountCode) ? local.accountCode : getDedicatedAccountCode(clean),
-              status: 'approved',
-              role: 'admin',
-              createdAt: sa.createdAt || (local ? local.createdAt : Date.now()),
-              approvedAt: (local && local.approvedAt) ? local.approvedAt : Date.now(),
-              phoneOrTelegram: '@sub_admin',
-              note: 'Sub-Admin Staff Account (Dual Access)',
-            });
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.accounts)) {
+        const serverList: UserAccount[] = data.accounts;
+        const deletedSet = getDeletedAccountEmails();
+        const localList = getAllAccounts();
+        const mergedMap = new Map<string, UserAccount>();
+
+        // Keep valid local accounts
+        localList.forEach((acc) => {
+          const clean = (acc.email || '').toLowerCase().trim();
+          if (clean && !deletedSet.has(clean) && !deletedSet.has((acc.id || '').toLowerCase())) {
+            mergedMap.set(clean, acc);
           }
         });
-      } catch {}
 
-      const merged = Array.from(mergedMap.values());
-      try {
-        localStorage.setItem('super_x_all_user_accounts', JSON.stringify(merged));
-        localStorage.setItem('super_x_sms_backup_accounts', JSON.stringify(merged));
-        window.dispatchEvent(new Event('super_x_accounts_updated'));
-        window.dispatchEvent(new Event('storage'));
-      } catch {}
-      return merged;
+        // Merge server accounts
+        serverList.forEach((remote) => {
+          if (remote && remote.email) {
+            const clean = remote.email.toLowerCase().trim();
+            const remoteId = (remote.id || '').toLowerCase().trim();
+            if (clean && !deletedSet.has(clean) && !deletedSet.has(remoteId)) {
+              const local = mergedMap.get(clean);
+              if (!local) {
+                mergedMap.set(clean, remote);
+              } else {
+                // Server is authoritative for status and role, preserve valid custom passwords
+                const finalPassword = (remote.password && remote.password.trim())
+                  ? remote.password.trim()
+                  : (local.password && local.password.trim())
+                  ? local.password.trim()
+                  : '';
+                mergedMap.set(clean, {
+                  ...local,
+                  ...remote,
+                  password: finalPassword || local.password || remote.password,
+                  status: remote.status,
+                  role: remote.role || local.role || 'user',
+                  banReason: remote.banReason !== undefined ? remote.banReason : local.banReason,
+                  banRequest: remote.banRequest !== undefined ? remote.banRequest : local.banRequest,
+                  note: remote.note !== undefined ? remote.note : local.note,
+                  updatedAt: Math.max(local.updatedAt || 0, remote.updatedAt || 0, Date.now()),
+                });
+              }
+            }
+          }
+        });
+
+        // Ensure all active Sub-Admins are enforced in mergedMap as approved admin accounts
+        try {
+          const subAdmins = getAllSubAdmins();
+          subAdmins.forEach((sa) => {
+            if (sa && sa.email && sa.status === 'active') {
+              const clean = sa.email.toLowerCase().trim();
+              removeDeletedAccountEmail(clean);
+              const local = mergedMap.get(clean);
+              mergedMap.set(clean, {
+                id: sa.id || (local ? local.id : `user_sub_${Date.now()}`),
+                name: sa.name || (local ? local.name : clean.split('@')[0]),
+                email: sa.email,
+                username: clean.split('@')[0],
+                password: sa.password || (local ? local.password : 'Password123'),
+                accountCode: (local && local.accountCode) ? local.accountCode : getDedicatedAccountCode(clean),
+                status: 'approved',
+                role: 'admin',
+                createdAt: sa.createdAt || (local ? local.createdAt : Date.now()),
+                approvedAt: (local && local.approvedAt) ? local.approvedAt : Date.now(),
+                phoneOrTelegram: '@sub_admin',
+                note: 'Sub-Admin Staff Account (Dual Access)',
+              });
+            }
+          });
+        } catch {}
+
+        const merged = Array.from(mergedMap.values());
+        cachedAccountsList = merged;
+        lastAccountsFetchTime = Date.now();
+        try {
+          localStorage.setItem('super_x_all_user_accounts', JSON.stringify(merged));
+          localStorage.setItem('super_x_sms_backup_accounts', JSON.stringify(merged));
+          window.dispatchEvent(new Event('super_x_accounts_updated'));
+        } catch {}
+        return merged;
+      }
+    } catch (err) {
+      // offline / quiet fallback
+    } finally {
+      accountsFetchPromise = null;
     }
-  } catch (err) {
-    // offline / quiet fallback
-  }
-  return getAllAccounts();
+    const fallback = getAllAccounts();
+    cachedAccountsList = fallback;
+    return fallback;
+  })();
+
+  return accountsFetchPromise;
 }
 
 // 2. Fetch all sub-admins from server
-export async function fetchSubAdminsFromServer(): Promise<SubAdminAccount[]> {
-  try {
-    const res = await fetch('/api/subadmins', {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-    });
+export async function fetchSubAdminsFromServer(force = false): Promise<SubAdminAccount[]> {
+  const now = Date.now();
+  if (!force && cachedSubAdminsList && (now - lastSubAdminsFetchTime < 4000)) {
+    return cachedSubAdminsList;
+  }
+  if (subAdminsFetchPromise) {
+    return subAdminsFetchPromise;
+  }
 
-    if (!res.ok) return getAllSubAdmins();
-    const contentType = res.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) return getAllSubAdmins();
-
-    const data = await res.json();
-    if (data && data.success && Array.isArray(data.subAdmins)) {
-      const serverSubs: SubAdminAccount[] = data.subAdmins;
-      const localSubs = getAllSubAdmins();
-      const subMap = new Map<string, SubAdminAccount>();
-
-      localSubs.forEach((s) => subMap.set(s.id || s.email.toLowerCase(), s));
-      serverSubs.forEach((s) => {
-        if (s && s.email) {
-          subMap.set(s.id || s.email.toLowerCase(), s);
-          syncSubAdminToUserAccount(s);
-        }
+  subAdminsFetchPromise = (async () => {
+    try {
+      const res = await fetch('/api/subadmins', {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
       });
 
-      const merged = Array.from(subMap.values());
-      try {
-        localStorage.setItem('super_x_sub_admin_accounts', JSON.stringify(merged));
-        localStorage.setItem('super_x_all_sub_admins', JSON.stringify(merged));
-        localStorage.setItem('super_x_all_sub_admins_backup', JSON.stringify(merged));
-        window.dispatchEvent(new Event('super_x_sub_admins_updated'));
-      } catch {}
-      return merged;
+      if (!res.ok) {
+        const local = getAllSubAdmins();
+        cachedSubAdminsList = local;
+        return local;
+      }
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        const local = getAllSubAdmins();
+        cachedSubAdminsList = local;
+        return local;
+      }
+
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.subAdmins)) {
+        const serverSubs: SubAdminAccount[] = data.subAdmins;
+        const localSubs = getAllSubAdmins();
+        const subMap = new Map<string, SubAdminAccount>();
+
+        localSubs.forEach((s) => subMap.set(s.id || s.email.toLowerCase(), s));
+        serverSubs.forEach((s) => {
+          if (s && s.email) {
+            subMap.set(s.id || s.email.toLowerCase(), s);
+            syncSubAdminToUserAccount(s);
+          }
+        });
+
+        const merged = Array.from(subMap.values());
+        cachedSubAdminsList = merged;
+        lastSubAdminsFetchTime = Date.now();
+        try {
+          localStorage.setItem('super_x_sub_admin_accounts', JSON.stringify(merged));
+          localStorage.setItem('super_x_all_sub_admins', JSON.stringify(merged));
+          localStorage.setItem('super_x_all_sub_admins_backup', JSON.stringify(merged));
+          window.dispatchEvent(new Event('super_x_sub_admins_updated'));
+        } catch {}
+        return merged;
+      }
+    } catch {} finally {
+      subAdminsFetchPromise = null;
     }
-  } catch {}
-  return getAllSubAdmins();
+    const fallback = getAllSubAdmins();
+    cachedSubAdminsList = fallback;
+    return fallback;
+  })();
+
+  return subAdminsFetchPromise;
 }
 
 // 3. Save single account to server database

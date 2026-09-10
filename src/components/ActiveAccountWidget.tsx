@@ -209,34 +209,40 @@ export function ActiveAccountWidget() {
   }, []);
 
   // 2. Continuous Real-time Approval Detection (Server polling, window events, SSE)
+  const isCheckingRef = useRef(false);
+
   useEffect(() => {
-    if (!email) return;
+    if (!email || state === 'approved') return;
     const cleanEmail = email.trim().toLowerCase();
 
     const checkApprovalStatus = async () => {
-      // 1. Check local accounts
-      const localMatch = findApprovedAccount(cleanEmail);
-      if (localMatch) {
-        if (state !== 'approved') {
-          handleAccountBecameApproved(localMatch, true);
-        }
-        return;
-      }
-
-      // 2. Fetch freshly from server database
+      if (isCheckingRef.current) return;
+      isCheckingRef.current = true;
       try {
+        // 1. Check local accounts
+        const localMatch = findApprovedAccount(cleanEmail);
+        if (localMatch) {
+          if ((state as string) !== 'approved') {
+            handleAccountBecameApproved(localMatch, true);
+          }
+          return;
+        }
+
+        // 2. Fetch freshly from server database
         const serverAccounts = await fetchAccountsFromServer();
         const serverMatch = serverAccounts.find(
           (a) => a.email && a.email.trim().toLowerCase() === cleanEmail && a.status === 'approved'
         );
-        if (serverMatch && state !== 'approved') {
+        if (serverMatch && (state as string) !== 'approved') {
           handleAccountBecameApproved(serverMatch, true);
         }
-      } catch {}
+      } catch {} finally {
+        isCheckingRef.current = false;
+      }
     };
 
-    // Fast interval polling for instant detection
-    const interval = setInterval(checkApprovalStatus, 2000);
+    // Polling interval for approval detection when pending
+    const interval = setInterval(checkApprovalStatus, state === 'submitted_pending' ? 6000 : 15000);
 
     // Instant check on window focus
     const onFocus = () => checkApprovalStatus();
@@ -277,7 +283,7 @@ export function ActiveAccountWidget() {
       window.removeEventListener('super_x_account_update', onAccountUpdate);
       window.removeEventListener('super_x_account_approved', onAccountUpdate);
     };
-  }, [email, state, fullName, password, country, agentEmail]);
+  }, [email, state]);
 
   // Form Validation: All 5 fields are strictly required
   const isEmailValid = (em: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em.trim());
@@ -367,25 +373,23 @@ export function ActiveAccountWidget() {
         note: `Submitted via Support Bot Form | Agent: ${cleanAgent}`,
       }).catch(() => {});
 
-      // 3. Submit to Server Backend (/api/accounts/request)
-      try {
-        await fetch('/api/accounts/request', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: cleanName,
-            email: cleanEmail,
-            password: cleanPass,
-            country: cleanCountry,
-            agentEmail: cleanAgent,
-            agentMail: cleanAgent,
-            accountCode: generatedCode,
-            note: `Submitted via Support Bot Form | Agent: ${cleanAgent}`,
-          }),
-        });
-      } catch (err) {
+      // 3. Submit to Server Backend (/api/accounts/request) in background
+      fetch('/api/accounts/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: cleanName,
+          email: cleanEmail,
+          password: cleanPass,
+          country: cleanCountry,
+          agentEmail: cleanAgent,
+          agentMail: cleanAgent,
+          accountCode: generatedCode,
+          note: `Submitted via Support Bot Form | Agent: ${cleanAgent}`,
+        }),
+      }).catch((err) => {
         console.warn('Server account request error:', err);
-      }
+      });
 
       // Lock device to this submission permanently
       try {
@@ -403,10 +407,8 @@ export function ActiveAccountWidget() {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(lockData));
       } catch {}
 
-      setTimeout(() => {
-        setIsSubmitting(false);
-        setState('submitted_pending');
-      }, 600);
+      setIsSubmitting(false);
+      setState('submitted_pending');
     } catch (err: any) {
       setIsSubmitting(false);
       setState('form');

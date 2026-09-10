@@ -388,11 +388,7 @@ export function saveAllAccounts(accounts: UserAccount[]) {
     localStorage.setItem(STORAGE_KEY, serialized);
     localStorage.setItem(BACKUP_STORAGE_KEY, serialized);
     window.dispatchEvent(new Event('super_x_accounts_updated'));
-    // Sync each account to Firebase in real-time
-    accounts.forEach((acc) => {
-      saveAccountToFirebase(acc, true);
-    });
-    // Sync to Server backend for cross-browser permanence
+    // Sync to Server backend for cross-browser permanence (single bulk network call)
     saveAllAccountsToServer(accounts);
   } catch {
     // ignore

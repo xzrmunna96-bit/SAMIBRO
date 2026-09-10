@@ -3525,6 +3525,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   };
 
   const handleNavClick = (view: typeof currentView) => {
+    // Immediately close sidebar drawer on any navigation selection
+    setIsSidebarOpen(false);
+
     if ((view === "telegramBot" || view === "userApiSession" || view === "supportChatAdmin") && !isAdminUnlocked) {
       setIsDevUnlockModalOpen(true);
       return;
@@ -3551,11 +3554,6 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         window.location.hash = targetHash;
       } catch {}
     }
-
-    // Smoothly close mobile sidebar drawer on next micro-tick
-    setTimeout(() => {
-      setIsSidebarOpen(false);
-    }, 40);
   };
 
   const handleReloadAccount = () => {
@@ -4375,7 +4373,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             <button
               type="button"
               id="sidebar-reload-code-btn"
-              onClick={handleReloadAccount}
+              onClick={() => {
+                setIsSidebarOpen(false);
+                handleReloadAccount();
+              }}
               className="flex items-center gap-1 text-slate-400 hover:text-slate-200 bg-slate-800/60 hover:bg-slate-800 px-2 py-1 rounded border border-slate-700/50 text-[11px] transition cursor-pointer active:scale-95"
               title="Reload Account Code"
             >
@@ -4393,6 +4394,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               <button
                 type="button"
                 onClick={() => {
+                  setIsSidebarOpen(false);
                   setIsAdminUnlocked(false);
                   try {
                     localStorage.removeItem("superx_dev_unlocked");
@@ -4409,7 +4411,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             ) : (
               <button
                 type="button"
-                onClick={() => setIsDevUnlockModalOpen(true)}
+                onClick={() => {
+                  setIsSidebarOpen(false);
+                  setIsDevUnlockModalOpen(true);
+                }}
                 className="flex items-center gap-1.5 px-2 py-1 rounded bg-amber-950/70 text-amber-400 border border-amber-500/30 text-[10px] font-black cursor-pointer hover:bg-amber-900 transition-colors"
                 title="Click to unlock Developer Mode"
               >

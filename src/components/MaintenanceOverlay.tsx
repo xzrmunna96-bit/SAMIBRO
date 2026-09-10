@@ -10,7 +10,7 @@ export function MaintenanceOverlay() {
       setMaintenance(state);
     });
 
-    // Also poll /api/system/maintenance every 3 seconds for instant response
+    // Poll /api/system/maintenance every 15 seconds for smooth performance
     const interval = setInterval(() => {
       fetch('/api/system/maintenance')
         .then((r) => r.json())

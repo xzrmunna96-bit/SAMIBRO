@@ -487,6 +487,8 @@ export interface LoggedInDashboardProps {
     phoneOrTelegram?: string;
     note?: string;
     avatarUrl?: string;
+    apiUnlocked?: boolean;
+    apiKey?: string;
   };
   onLogout: () => void;
 }
@@ -6551,7 +6553,13 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               </div>
 
               {/* 2. User Proxy API Session Section (সকল তথ্যের নিচে এপিআই) */}
-              <UserApiSessionCard userEmail={user.email} userName={user.name} accountCode={accountCode} />
+              <UserApiSessionCard 
+                userEmail={user.email} 
+                userName={user.name} 
+                accountCode={accountCode} 
+                apiUnlocked={user.apiUnlocked}
+                apiKey={user.apiKey}
+              />
 
               {/* 3. Security & Change Password Card (তার নিচে নতুন ইউজার পাসওয়ার্ড চেঞ্জ) */}
               <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
@@ -6620,7 +6628,13 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         {/* User API Session Standalone View */}
         {currentView === "userApiSession" && (
           <div className="animate-fadeIn">
-            <UserApiSessionCard userEmail={user.email} userName={user.name} />
+            <UserApiSessionCard 
+              userEmail={user.email} 
+              userName={user.name} 
+              accountCode={accountCode}
+              apiUnlocked={user.apiUnlocked}
+              apiKey={user.apiKey}
+            />
           </div>
         )}
 

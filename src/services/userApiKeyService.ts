@@ -1,6 +1,8 @@
 // Unified User API Key & Unlock Management Service for SUPER X SMS
 // Works seamlessly on Vercel, Chrome, Via Browser, Android, iOS, and local environments
 import { getAllAccounts, saveAllAccounts, UserAccount } from './userAuthService';
+import { saveAccountToFirebase } from './firebaseSyncService';
+import { saveAccountToServer } from './serverAuthSync';
 
 export interface UserApiKeyRecord {
   apiKey: string;
@@ -168,6 +170,8 @@ export async function unlockUserApiKey(
     targetUser.apiKey = resolvedKey;
     targetUser.updatedAt = Date.now();
     saveAllAccounts(accounts);
+    saveAccountToFirebase(targetUser);
+    saveAccountToServer(targetUser);
   }
 
   // 3. Dispatch global events
@@ -215,28 +219,10 @@ export async function unlockUserApiKey(
     // If offline or on Vercel static, local persistence is already established
   }
 
+  const statusLabel = activeStatus ? 'UNLOCKED (ACTIVE)' : 'LOCKED';
   return {
     success: true,
-    message: serverMessage || `API Key for ${targetEmail} is now ${activeStatus ? 'UNLOCKED (ACTIVE)' : 'LOCKED'}`,
-    apiKey: resolvedKey,
-    user: targetUser,
-  };
-
-  // Also sync user account to server /api/accounts
-  if (targetUser) {
-    try {
-      fetch('/api/accounts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ account: targetUser }),
-      }).catch(() => null);
-    } catch {}
-  }
-
-  const statusLabel = activeStatus ? 'UNLOCKED (আনলক করা হয়েছে)' : 'LOCKED (লক করা হয়েছে)';
-  return {
-    success: true,
-    message: `Account ${targetAccountCode} API is now ${statusLabel}!`,
+    message: serverMessage || `API Key for ${targetEmail} is now ${statusLabel}!`,
     apiKey: resolvedKey,
     user: targetUser,
   };

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Key,
+  Bot,
   Users,
   UserPlus,
   Bell,
@@ -161,9 +162,11 @@ const DEFAULT_API_KEY = '';
 import { TelegramBotController } from './TelegramBotController';
 import { MaintenanceControlCard } from './MaintenanceControlCard';
 import { UserOnlineManagementCard } from './UserOnlineManagementCard';
+import { BotManagementView } from './BotManagementView';
 
 type AdminTab =
   | 'api-management'
+  | 'bot-management'
   | 'unlock-api-session'
   | 'console-api'
   | 'active-account-management'
@@ -2526,6 +2529,24 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                   </span>
                 </button>
 
+                {/* 1.2 Dedicated Bot Management (বট ম্যানেজমেন্ট) Right next to API Management */}
+                <button
+                  type="button"
+                  id="admin-tab-bot-management"
+                  onClick={() => setActiveTab('bot-management')}
+                  className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-2 ${
+                    activeTab === 'bot-management'
+                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                      : 'text-indigo-400 hover:text-indigo-200 hover:bg-indigo-950/40 border border-indigo-500/20'
+                  }`}
+                >
+                  <Bot className="w-4 h-4 text-indigo-300 animate-pulse" />
+                  <span>বট ম্যানেজমেন্ট</span>
+                  <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-indigo-950/80 font-mono text-indigo-300 border border-indigo-500/30">
+                    Auto-Host
+                  </span>
+                </button>
+
                 {/* 1.5 Dedicated Unlock API Management Session */}
                 <button
                   type="button"
@@ -3377,6 +3398,13 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
               </div>
             </section>
           </div>
+        )}
+
+        {/* ================================================================= */}
+        {/* TAB: BOT MANAGEMENT (বট ম্যানেজমেন্ট)                              */}
+        {/* ================================================================= */}
+        {activeTab === 'bot-management' && (
+          <BotManagementView onToast={(msg) => showToast(msg)} />
         )}
 
         {/* ================================================================= */}

@@ -10,6 +10,7 @@ import {
   verifyWithFirebaseAuth,
   registerInFirebaseAuth,
 } from "./src/server/firebaseAdminSync";
+import { GLOBAL_COUNTRIES_LIST } from "./src/services/countryHelper";
 
 async function startServer() {
   const app = express();
@@ -50,6 +51,348 @@ async function startServer() {
   const SHARED_ACCOUNT_NUMBERS_FILE = path.join(DATA_DIR, "shared_account_numbers.json");
   const TELEGRAM_JOINS_FILE = path.join(DATA_DIR, "telegram_joins.json");
   const API_CONFIGS_FILE = path.join(DATA_DIR, "api_configs.json");
+  const BOT_MANAGEMENT_CONFIG_FILE = path.join(DATA_DIR, "bot_management_config.json");
+  const MANUAL_NUMBERS_POOL_FILE = path.join(DATA_DIR, "manual_numbers_pool.json");
+  const AUTHORIZED_TELEGRAM_ADMINS_FILE = path.join(DATA_DIR, "authorized_telegram_admins.json");
+  const BOT_CUSTOM_BUTTONS_FILE = path.join(DATA_DIR, "bot_custom_buttons.json");
+
+  // Secret admin access key
+  const ADMIN_SECRET_KEY = "MUNNA12061";
+
+  interface BotHostingConfig {
+    botToken: string;
+    adminId: string;
+    chatId: string;
+    otpGroupUrl: string;
+    activePolling: boolean;
+    botUsername?: string;
+    lastUpdated?: number;
+  }
+
+  interface ManualNumberRecord {
+    id: string;
+    number: string;
+    cleanDigits: string;
+    rangePrefix: string;
+    maskedRange: string;
+    country: string;
+    flag: string;
+    dialCode: string;
+    platform?: string;
+    socialMedia?: string;
+    allocated: boolean;
+    allocatedTo?: string;
+    allocatedAt?: number;
+    uploadedAt: number;
+  }
+
+  interface BotCustomButtons {
+    getNumber?: string;
+    rangeFiles?: string;
+    liveSupport?: string;
+    adminPanel?: string;
+    customize?: string;
+    stats?: string;
+    notice?: string;
+    userManagement?: string;
+  }
+
+  const DEFAULT_BOT_CUSTOM_BUTTONS: BotCustomButtons = {
+    getNumber: "📱 Get Number",
+    rangeFiles: "📁 Range / Files",
+    liveSupport: "💬 Live Support",
+    adminPanel: "🛡️ Admin Panel (2F)",
+    customize: "✨ Customize Buttons",
+    stats: "📊 Stats",
+    notice: "📢 Notice & Broadcast",
+    userManagement: "👥 User Management",
+  };
+
+  function loadAuthorizedAdmins(): Set<string> {
+    const adminSet = new Set<string>(["7084317713"]);
+    try {
+      if (fs.existsSync(AUTHORIZED_TELEGRAM_ADMINS_FILE)) {
+        const raw = fs.readFileSync(AUTHORIZED_TELEGRAM_ADMINS_FILE, "utf-8");
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) {
+          list.forEach((id) => id && adminSet.add(String(id).trim()));
+        }
+      }
+    } catch (e) {
+      console.warn("Could not load authorized_telegram_admins.json:", e);
+    }
+    return adminSet;
+  }
+
+  function saveAuthorizedAdmins(adminSet: Set<string>) {
+    try {
+      fs.writeFileSync(
+        AUTHORIZED_TELEGRAM_ADMINS_FILE,
+        JSON.stringify(Array.from(adminSet), null, 2),
+        "utf-8"
+      );
+    } catch (e) {
+      console.warn("Could not save authorized_telegram_admins.json:", e);
+    }
+  }
+
+  function loadBotCustomButtons(): BotCustomButtons {
+    try {
+      if (fs.existsSync(BOT_CUSTOM_BUTTONS_FILE)) {
+        const raw = fs.readFileSync(BOT_CUSTOM_BUTTONS_FILE, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") {
+          return { ...DEFAULT_BOT_CUSTOM_BUTTONS, ...parsed };
+        }
+      }
+    } catch (e) {
+      console.warn("Could not load bot_custom_buttons.json:", e);
+    }
+    return { ...DEFAULT_BOT_CUSTOM_BUTTONS };
+  }
+
+  function saveBotCustomButtons(btnConfig: BotCustomButtons) {
+    try {
+      fs.writeFileSync(
+        BOT_CUSTOM_BUTTONS_FILE,
+        JSON.stringify(btnConfig, null, 2),
+        "utf-8"
+      );
+    } catch (e) {
+      console.warn("Could not save bot_custom_buttons.json:", e);
+    }
+  }
+
+  const DEFAULT_BOT_HOSTING_CONFIG: BotHostingConfig = {
+    botToken: "8831851994:AAEjiZhHWDl97RABfkzOuk3NbI8291dS1b8",
+    adminId: "7084317713",
+    chatId: "-1003877961573",
+    otpGroupUrl: "https://t.me/trstyyop",
+    activePolling: true,
+    lastUpdated: Date.now(),
+  };
+
+  function loadBotHostingConfig(): BotHostingConfig {
+    try {
+      if (fs.existsSync(BOT_MANAGEMENT_CONFIG_FILE)) {
+        const raw = fs.readFileSync(BOT_MANAGEMENT_CONFIG_FILE, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") {
+          return {
+            botToken: parsed.botToken || DEFAULT_BOT_HOSTING_CONFIG.botToken,
+            adminId: parsed.adminId || DEFAULT_BOT_HOSTING_CONFIG.adminId,
+            chatId: parsed.chatId || DEFAULT_BOT_HOSTING_CONFIG.chatId,
+            otpGroupUrl: parsed.otpGroupUrl || DEFAULT_BOT_HOSTING_CONFIG.otpGroupUrl,
+            activePolling: parsed.activePolling ?? true,
+            botUsername: parsed.botUsername || "",
+            lastUpdated: parsed.lastUpdated || Date.now(),
+          };
+        }
+      }
+    } catch (e) {
+      console.warn("Could not load bot_management_config.json:", e);
+    }
+    return { ...DEFAULT_BOT_HOSTING_CONFIG };
+  }
+
+  function saveBotHostingConfig(cfg: BotHostingConfig) {
+    try {
+      fs.writeFileSync(BOT_MANAGEMENT_CONFIG_FILE, JSON.stringify(cfg, null, 2), "utf-8");
+    } catch (e) {
+      console.warn("Could not save bot_management_config.json:", e);
+    }
+  }
+
+  function loadManualNumbersPool(): ManualNumberRecord[] {
+    try {
+      if (fs.existsSync(MANUAL_NUMBERS_POOL_FILE)) {
+        const raw = fs.readFileSync(MANUAL_NUMBERS_POOL_FILE, "utf-8");
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) return list;
+      }
+    } catch (e) {
+      console.warn("Could not load manual_numbers_pool.json:", e);
+    }
+
+    // Seed sample initial numbers pool if empty
+    const samplePool: ManualNumberRecord[] = [];
+    const seedPrefixes = [
+      { prefix: "88017", country: "Bangladesh", flag: "🇧🇩", dial: "+880", count: 25 },
+      { prefix: "88018", country: "Bangladesh", flag: "🇧🇩", dial: "+880", count: 20 },
+      { prefix: "22501", country: "Ivory Coast", flag: "🇨🇮", dial: "+225", count: 15 },
+      { prefix: "91987", country: "India", flag: "🇮🇳", dial: "+91", count: 20 },
+      { prefix: "13125", country: "United States", flag: "🇺🇸", dial: "+1", count: 15 },
+    ];
+    for (const s of seedPrefixes) {
+      for (let i = 1; i <= s.count; i++) {
+        const suffix = String(100000 + i).slice(1);
+        const clean = `${s.prefix}${suffix}`;
+        samplePool.push({
+          id: `seed_${s.prefix}_${i}`,
+          number: `+${clean}`,
+          cleanDigits: clean,
+          rangePrefix: s.prefix,
+          maskedRange: `${s.prefix}${"X".repeat(Math.max(0, clean.length - 5))}`,
+          country: s.country,
+          flag: s.flag,
+          dialCode: s.dial,
+          allocated: false,
+          uploadedAt: Date.now() - 3600000,
+        });
+      }
+    }
+    saveManualNumbersPool(samplePool);
+    return samplePool;
+  }
+
+  function saveManualNumbersPool(list: ManualNumberRecord[]) {
+    try {
+      fs.writeFileSync(MANUAL_NUMBERS_POOL_FILE, JSON.stringify(list, null, 2), "utf-8");
+    } catch (e) {
+      console.warn("Could not save manual_numbers_pool.json:", e);
+    }
+  }
+
+  function findCountryByNameOrCode(rawInput: string): { name: string; flag: string; dialCode: string } {
+    const clean = (rawInput || "").trim().toLowerCase();
+    if (!clean) return { name: "Global", flag: "🌐", dialCode: "" };
+
+    // 1. Direct or ISO match
+    const direct = GLOBAL_COUNTRIES_LIST.find(
+      (c) => c.name.toLowerCase() === clean || c.iso.toLowerCase() === clean
+    );
+    if (direct) return { name: direct.name, flag: direct.flag, dialCode: direct.dialCode };
+
+    // 2. Contains match
+    const partial = GLOBAL_COUNTRIES_LIST.find(
+      (c) => clean.includes(c.name.toLowerCase()) || c.name.toLowerCase().includes(clean)
+    );
+    if (partial) return { name: partial.name, flag: partial.flag, dialCode: partial.dialCode };
+
+    // 3. Dial code match
+    const cleanDigits = clean.replace(/\D/g, "");
+    if (cleanDigits) {
+      const byDial = GLOBAL_COUNTRIES_LIST.find(
+        (c) => c.dialCode.replace(/\D/g, "") === cleanDigits
+      );
+      if (byDial) return { name: byDial.name, flag: byDial.flag, dialCode: byDial.dialCode };
+    }
+
+    return { name: rawInput.trim(), flag: "🌐", dialCode: "" };
+  }
+
+  function parseManualNumbers(
+    rawText: string,
+    defaultCountry: string,
+    defaultFlag: string,
+    defaultDialCode: string,
+    platform: string = "All Social (WhatsApp/TG)"
+  ): ManualNumberRecord[] {
+    const lines = (rawText || "").split(/[\r\n,;]+/);
+    const addedRecords: ManualNumberRecord[] = [];
+    const pool = loadManualNumbersPool();
+    const existingDigits = new Set(pool.map((n) => n.cleanDigits));
+    const now = Date.now();
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      let digits = trimmed.replace(/\D/g, "");
+      if (digits.length >= 7 && digits.length <= 16) {
+        if (!existingDigits.has(digits)) {
+          existingDigits.add(digits);
+          const fullNum = trimmed.startsWith("+") ? trimmed : `+${digits}`;
+          const prefix = digits.slice(0, 5);
+          const mask = `${prefix}${"X".repeat(Math.max(0, digits.length - 5))}`;
+
+          addedRecords.push({
+            id: `num_${now}_${Math.random().toString(36).slice(2, 7)}`,
+            number: fullNum,
+            cleanDigits: digits,
+            rangePrefix: prefix,
+            maskedRange: mask,
+            country: defaultCountry || "Global",
+            flag: defaultFlag || "🌐",
+            dialCode: defaultDialCode || "",
+            platform: platform || "All Social (WhatsApp/TG)",
+            socialMedia: platform || "All Social (WhatsApp/TG)",
+            allocated: false,
+            uploadedAt: now,
+          });
+        }
+      }
+    }
+    return addedRecords;
+  }
+
+  function getManualRangesSummary(pool: ManualNumberRecord[]) {
+    const map = new Map<
+      string,
+      {
+        rangePrefix: string;
+        maskedRange: string;
+        country: string;
+        flag: string;
+        dialCode: string;
+        platform: string;
+        socialMedia: string;
+        totalCount: number;
+        availableCount: number;
+        allocatedCount: number;
+      }
+    >();
+
+    for (const item of pool) {
+      const key = `${item.rangePrefix}_${item.country}_${item.platform || "All"}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          rangePrefix: item.rangePrefix,
+          maskedRange: item.maskedRange,
+          country: item.country,
+          flag: item.flag,
+          dialCode: item.dialCode,
+          platform: item.platform || item.socialMedia || "All Social (WhatsApp/TG)",
+          socialMedia: item.socialMedia || item.platform || "All Social (WhatsApp/TG)",
+          totalCount: 0,
+          availableCount: 0,
+          allocatedCount: 0,
+        });
+      }
+      const entry = map.get(key)!;
+      entry.totalCount += 1;
+      if (item.allocated) {
+        entry.allocatedCount += 1;
+      } else {
+        entry.availableCount += 1;
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) => b.totalCount - a.totalCount);
+  }
+
+  function allocateOneManualNumber(
+    rangeInput: string,
+    allocatedTo?: string
+  ): ManualNumberRecord | null {
+    const cleanPrefix = (rangeInput || "").replace(/\D/g, "").slice(0, 5);
+    const pool = loadManualNumbersPool();
+
+    const targetIndex = pool.findIndex(
+      (n) =>
+        !n.allocated &&
+        (n.rangePrefix === cleanPrefix ||
+          (cleanPrefix.length >= 3 && n.cleanDigits.startsWith(cleanPrefix)))
+    );
+
+    if (targetIndex >= 0) {
+      pool[targetIndex].allocated = true;
+      pool[targetIndex].allocatedTo = allocatedTo || "website_user";
+      pool[targetIndex].allocatedAt = Date.now();
+      saveManualNumbersPool(pool);
+      return pool[targetIndex];
+    }
+    return null;
+  }
 
   function loadTelegramJoins(): Record<string, any> {
     try {
@@ -135,7 +478,7 @@ async function startServer() {
         }
       }
     } catch {}
-    return "MK1CB2Y3GI9";
+    return "MJTFKF97CI2";
   }
 
   function saveSystemApiKey(key: string) {
@@ -150,7 +493,12 @@ async function startServer() {
         const raw = fs.readFileSync(API_CONFIGS_FILE, "utf-8");
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          return parsed.map((item) => {
+            if (item && item.apiKey === "MK1CB2Y3GI9") {
+              return { ...item, apiKey: "MJTFKF97CI2" };
+            }
+            return item;
+          });
         }
       }
     } catch {}
@@ -158,7 +506,7 @@ async function startServer() {
       {
         id: "primary-voltx-api",
         name: "Primary Voltx / 2oo9 Gateway",
-        apiKey: "MK1CB2Y3GI9",
+        apiKey: "MJTFKF97CI2",
         serviceType: "ALL (Global Auto-Detect)",
         endpoint: "https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api",
         isActive: true,
@@ -511,35 +859,56 @@ async function startServer() {
       });
     };
 
-    // 1. Primary File
+    // 1. Primary File (Authoritative Single Source of Truth)
+    let hasLoaded = false;
     try {
       if (fs.existsSync(ACCOUNTS_FILE)) {
-        mergeAccountList(JSON.parse(fs.readFileSync(ACCOUNTS_FILE, "utf-8")));
+        const raw = fs.readFileSync(ACCOUNTS_FILE, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          mergeAccountList(parsed);
+          hasLoaded = true;
+        }
       }
     } catch (e) {
       console.warn("Error reading accounts.json:", e);
     }
 
-    // 2. Backup File
-    try {
-      if (fs.existsSync(ACCOUNTS_BACKUP_FILE)) {
-        mergeAccountList(JSON.parse(fs.readFileSync(ACCOUNTS_BACKUP_FILE, "utf-8")));
-      }
-    } catch {}
+    // Fallback ONLY if primary file is missing or empty
+    if (!hasLoaded) {
+      try {
+        if (fs.existsSync(ACCOUNTS_BACKUP_FILE)) {
+          const parsed = JSON.parse(fs.readFileSync(ACCOUNTS_BACKUP_FILE, "utf-8"));
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            mergeAccountList(parsed);
+            hasLoaded = true;
+          }
+        }
+      } catch {}
+    }
 
-    // 3. Snapshot File
-    try {
-      if (fs.existsSync(ACCOUNTS_SNAPSHOT_FILE)) {
-        mergeAccountList(JSON.parse(fs.readFileSync(ACCOUNTS_SNAPSHOT_FILE, "utf-8")));
-      }
-    } catch {}
+    if (!hasLoaded) {
+      try {
+        if (fs.existsSync(ACCOUNTS_SNAPSHOT_FILE)) {
+          const parsed = JSON.parse(fs.readFileSync(ACCOUNTS_SNAPSHOT_FILE, "utf-8"));
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            mergeAccountList(parsed);
+            hasLoaded = true;
+          }
+        }
+      } catch {}
+    }
 
-    // 4. Public Backup File
-    try {
-      if (fs.existsSync(PUBLIC_ACCOUNTS_BACKUP_FILE)) {
-        mergeAccountList(JSON.parse(fs.readFileSync(PUBLIC_ACCOUNTS_BACKUP_FILE, "utf-8")));
-      }
-    } catch {}
+    if (!hasLoaded) {
+      try {
+        if (fs.existsSync(PUBLIC_ACCOUNTS_BACKUP_FILE)) {
+          const parsed = JSON.parse(fs.readFileSync(PUBLIC_ACCOUNTS_BACKUP_FILE, "utf-8"));
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            mergeAccountList(parsed);
+          }
+        }
+      } catch {}
+    }
 
     // Always merge active Sub-Admins as approved admin accounts
     try {
@@ -2690,24 +3059,51 @@ async function startServer() {
   });
 
   // =========================================================================
-  // TELEGRAM BOT CONTROL ENGINE (Admin ID: 7084317713, Bot: 8631714331:AAEd33AVl...)
+  // TELEGRAM BOT CONTROL ENGINE & AUTO-HOSTING (Admin ID: 7084317713)
   // =========================================================================
+  const botHostingConfig = loadBotHostingConfig();
+
   const controlBotState = {
-    botToken: "8631714331:AAEd33AVl9oqI-HdGW7jtxE37y4N4nH4ox4",
-    adminId: "7084317713",
-    userId: "8631714331",
-    activePolling: true,
+    botToken: botHostingConfig.botToken || "8831851994:AAEjiZhHWDl97RABfkzOuk3NbI8291dS1b8",
+    adminId: botHostingConfig.adminId || "7084317713",
+    userId: botHostingConfig.adminId || "7084317713",
+    activePolling: botHostingConfig.activePolling ?? true,
     lastUpdateId: 0,
     active2faCodes: new Map<string, { code: string; expiresAt: number; role: string }>(),
     botLogs: [] as Array<{ time: string; text: string; sender: string; status: string }>,
   };
 
+  // Sync telegramConfig with loaded botHostingConfig
+  telegramConfig.botToken = botHostingConfig.botToken;
+  telegramConfig.chatId = botHostingConfig.chatId;
+
+  // In-memory upload session map for Telegram Admin (Country -> Numbers)
+  const adminUploadSessions = new Map<
+    string,
+    {
+      state: "waiting_for_country" | "waiting_for_numbers";
+      country?: string;
+      flag?: string;
+      dialCode?: string;
+      startedAt: number;
+    }
+  >();
+
+  const BOT_MAIN_KEYBOARD = {
+    keyboard: [
+      [{ text: "📱 Get Number" }, { text: "📁 File" }],
+      [{ text: "📊 Stats" }, { text: "ℹ️ Bot Info" }],
+    ],
+    resize_keyboard: true,
+    persistent: true,
+  };
+
   const CUSTOM_KEYBOARD = {
     keyboard: [
+      [{ text: "📱 Get Number" }, { text: "📁 File" }],
       [{ text: "⚙️ API Configs" }, { text: "👥 User Management" }],
-      [{ text: "🛡️ Sub-Admin Roles" }, { text: "💬 Live Support Chat" }],
-      [{ text: "📢 Notice & Broadcast" }, { text: "📊 Real-Time Stats" }],
-      [{ text: "🔑 Admin 2FA Code" }],
+      [{ text: "📢 Notice & Broadcast" }, { text: "📊 Stats" }],
+      [{ text: "🔑 Admin 2FA Code" }, { text: "ℹ️ Bot Info" }],
     ],
     resize_keyboard: true,
     persistent: true,
@@ -2732,6 +3128,221 @@ async function startServer() {
 
     // Load server accounts & chats for real-time actions
     const currentAccounts = loadServerAccounts();
+
+    // -----------------------------------------------------------------------
+    // ACTIVE ADMIN UPLOAD SESSION (Step 1: Country -> Step 2: Numbers)
+    // -----------------------------------------------------------------------
+    if (adminUploadSessions.has(String(senderId))) {
+      const session = adminUploadSessions.get(String(senderId))!;
+
+      if (cleanText === "/cancel" || cleanText.toLowerCase() === "cancel") {
+        adminUploadSessions.delete(String(senderId));
+        return {
+          responseText: `❌ <b>অপারেশন বাতিল করা হয়েছে।</b>\nমেনু থেকে যেকোনো অপশন বেছে নিন।`,
+          replyMarkup: BOT_MAIN_KEYBOARD,
+        };
+      }
+
+      if (session.state === "waiting_for_country") {
+        const countryInfo = findCountryByNameOrCode(cleanText);
+        session.country = countryInfo.name;
+        session.flag = countryInfo.flag;
+        session.dialCode = countryInfo.dialCode;
+        session.state = "waiting_for_numbers";
+
+        responseText = `✅ <b>দেশ নির্ধারিত হয়েছে:</b> ${countryInfo.flag} <b>${countryInfo.name}</b> (${countryInfo.dialCode})\n\n` +
+          `📥 <b>এখন নাম্বার আপলোড করুন:</b>\n` +
+          `১. সরাসরি মেসেজে নাম্বারগুলো পেস্ট করে দিন\n` +
+          `২. অথবা ৫,০০০ বা ১০,০০০ নাম্বারের একটি <b>.txt</b> ফাইল ডকুমেন্ট হিসেবে পাঠিয়ে দিন!\n\n` +
+          `🔒 <i>নাম্বারের প্রথম ৫টি সংখ্যা রেঞ্জ (যেমন: <code>${countryInfo.dialCode.replace(/\D/g, "") || "8801"}...XXXXXX</code>) হিসেবে দৃশ্যমান হবে। এটি স্বয়ংক্রিয়ভাবে আমাদের ওয়েবসাইট ও বটে রিয়েল-টাইমে লাইভ হয়ে যাবে।</i>\n\n` +
+          `<i>(বাতিল করতে চাইলে /cancel লিখুন)</i>`;
+
+        addBotLog(senderName, cleanText, "waiting_for_numbers");
+        return { responseText, replyMarkup: BOT_MAIN_KEYBOARD };
+      }
+
+      if (session.state === "waiting_for_numbers") {
+        const parsed = parseManualNumbers(
+          cleanText,
+          session.country || "Global",
+          session.flag || "🌐",
+          session.dialCode || ""
+        );
+
+        if (parsed.length > 0) {
+          const pool = loadManualNumbersPool();
+          pool.push(...parsed);
+          saveManualNumbersPool(pool);
+          adminUploadSessions.delete(String(senderId));
+
+          const summary = getManualRangesSummary(pool);
+          const rangeLines = summary
+            .slice(0, 5)
+            .map((r) => `• ${r.flag} <code>${r.maskedRange}</code> (${r.availableCount} টি উপলব্ধ)`)
+            .join("\n");
+
+          responseText = `🎉 <b>সফলভাবে ${parsed.length} টি নাম্বার ডাটাবেজে যুক্ত হয়েছে!</b>\n\n` +
+            `🌍 <b>দেশ:</b> ${session.flag} <b>${session.country}</b> (${session.dialCode})\n` +
+            `💾 <b>ডাটাবেজে মোট সক্রিয় নাম্বার:</b> <code>${pool.length}</code> টি\n\n` +
+            `🏷️ <b>উপলব্ধ রেঞ্জসমূহ:</b>\n${rangeLines}\n\n` +
+            `⚡ <i>এই নাম্বারগুলো এখন স্বয়ংক্রিয়ভাবে ওয়েবসাইট ও টেলিগ্রাম বটে লাইভ হয়ে গেছে!</i>`;
+
+          addBotLog(senderName, `Uploaded ${parsed.length} numbers`, "success");
+          return { responseText, replyMarkup: BOT_MAIN_KEYBOARD };
+        } else {
+          responseText = `⚠️ <b>কোনো বৈধ নাম্বার শনাক্ত হয়নি!</b>\nপ্রতি লাইনে একটি করে আন্তর্জাতিক মোবাইল নাম্বার লিখে পাঠান অথবা .txt ফাইল আপলোড করুন।`;
+          return { responseText, replyMarkup: BOT_MAIN_KEYBOARD };
+        }
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // 📁 FILE UPLOAD (ADMIN ONLY)
+    // -----------------------------------------------------------------------
+    if (
+      cleanText === "📁 File" ||
+      cleanText.toLowerCase() === "file" ||
+      cleanText.toLowerCase() === "/file" ||
+      cleanText.includes("ফাইল আপলোড") ||
+      cleanText.includes("নাম্বার আপলোড")
+    ) {
+      if (!isAdmin) {
+        responseText = `⛔ <b>Access Denied!</b>\nশুধুমাত্র অনুমোদিত অ্যাডমিন (Admin ID: <code>${botHostingConfig.adminId}</code>) নাম্বার ও রেঞ্জ আপলোড করতে পারবেন।`;
+        return { responseText, replyMarkup: BOT_MAIN_KEYBOARD };
+      }
+
+      adminUploadSessions.set(String(senderId), {
+        state: "waiting_for_country",
+        startedAt: nowMs,
+      });
+
+      responseText = `📁 <b>SUPER X SMS — ফাইল ও রেঞ্জ আপলোড ম্যানেজার</b>\n\n` +
+        `🌍 <b>অনুগ্রহ করে দেশের নাম লিখুন (Country Name):</b>\n` +
+        `<i>যেমন: Bangladesh, USA, India, Ivory Coast, Nigeria, Canada ইত্যাদি।</i>\n\n` +
+        `✨ <i>দেশের নাম পাঠালেই জাতীয় পতাকা ও ডায়ালিং কোড স্বয়ংক্রিয়ভাবে সিলেক্ট হয়ে যাবে!</i>\n\n` +
+        `<i>(বাতিল করতে চাইলে /cancel লিখুন)</i>`;
+
+      addBotLog(senderName, cleanText, "waiting_for_country");
+      return { responseText, replyMarkup: BOT_MAIN_KEYBOARD };
+    }
+
+    // -----------------------------------------------------------------------
+    // 📱 GET NUMBER (ব্যবহারকারী ও অ্যাডমিনদের জন্য নম্বর বরাদ্দ)
+    // -----------------------------------------------------------------------
+    if (
+      cleanText === "📱 Get Number" ||
+      cleanText === "📞 Get Number" ||
+      cleanText.toLowerCase() === "get number" ||
+      cleanText.toLowerCase() === "/getnumber" ||
+      cleanText.toLowerCase() === "/number" ||
+      cleanText.includes("নম্বর নিন") ||
+      cleanText.includes("নাম্বার নিন")
+    ) {
+      const pool = loadManualNumbersPool();
+      const ranges = getManualRangesSummary(pool).filter((r) => r.availableCount > 0);
+
+      if (ranges.length === 0) {
+        responseText = `📱 <b>SUPER X SMS — গেট নাম্বার পোর্টাল</b>\n\n` +
+          `⚠️ বর্তমানে সিস্টেমে কোনো রেঞ্জ উপলব্ধ নেই।\n` +
+          `অ্যাডমিন প্যানেলের <b>বট ম্যানেজমেন্ট</b> বা এই বটে <b>📁 File</b> অপশন থেকে নতুন নাম্বার ফাইল আপলোড করুন।`;
+        return { responseText, replyMarkup: BOT_MAIN_KEYBOARD };
+      }
+
+      const listText = ranges
+        .slice(0, 10)
+        .map(
+          (r, idx) =>
+            `${idx + 1}. ${r.flag} <b>${r.country}</b>\n   🏷️ রেঞ্জ: <code>${r.maskedRange}</code>\n   ⚡ খালি আছে: <b>${r.availableCount}</b> টি (কোড: <code>${r.rangePrefix}</code>)`
+        )
+        .join("\n\n");
+
+      const inlineButtons = ranges.slice(0, 8).map((r) => [
+        {
+          text: `${r.flag} ${r.maskedRange} (${r.availableCount} Available)`,
+          callback_data: `alloc_num:${r.rangePrefix}`,
+        },
+      ]);
+
+      responseText = `📱 <b>SUPER X SMS — গেট নাম্বার পোর্টাল</b>\n\n` +
+        `উপলব্ধ রেঞ্জসমূহ থেকে একটি নির্বাচন করুন:\n\n` +
+        listText +
+        `\n\n<i>💡 নিচের বাটনে চাপ দিন অথবা রেঞ্জের ৫ ডিজিট কোড লিখে পাঠান (যেমন: <code>${ranges[0].rangePrefix}</code>):</i>`;
+
+      addBotLog(senderName, cleanText, "list_ranges");
+      return { responseText, replyMarkup: { inline_keyboard: inlineButtons } };
+    }
+
+    // -----------------------------------------------------------------------
+    // DIRECT 3-6 DIGIT PREFIX NUMBER ALLOCATION (e.g. "88017", "22501", etc.)
+    // -----------------------------------------------------------------------
+    if (/^\d{3,6}$/.test(cleanText)) {
+      const allocated = allocateOneManualNumber(cleanText, String(senderId));
+      if (allocated) {
+        responseText = `📱 <b>SUPER X SMS — নাম্বার বরাদ্দ সম্পন্ন!</b>\n\n` +
+          `🌍 <b>দেশ:</b> ${allocated.flag} <b>${allocated.country}</b>\n` +
+          `🏷️ <b>রেঞ্জ:</b> <code>${allocated.maskedRange}</code>\n` +
+          `📞 <b>আপনার নাম্বার:</b> <code>${allocated.number}</code>\n\n` +
+          `⏳ <b>ওটিপির জন্য অপেক্ষা করা হচ্ছে (Waiting for OTP)...</b>\n` +
+          `<i>এই নাম্বারে ওটিপি আসা মাত্রই সরাসরি এখানে এবং আমাদের ওটিপি গ্রুপেও নোটিফিকেশন যাবে: ${botHostingConfig.otpGroupUrl}</i>`;
+
+        addBotLog(senderName, `Allocated ${allocated.number}`, "allocated");
+        return { responseText, replyMarkup: BOT_MAIN_KEYBOARD };
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // 📊 REAL-TIME STATS
+    // -----------------------------------------------------------------------
+    if (
+      cleanText === "📊 Stats" ||
+      cleanText.toLowerCase() === "stats" ||
+      cleanText.toLowerCase() === "/stats" ||
+      cleanText === "📊 Real-Time Stats"
+    ) {
+      const pool = loadManualNumbersPool();
+      const ranges = getManualRangesSummary(pool);
+      const totalCount = pool.length;
+      const allocatedCount = pool.filter((n) => n.allocated).length;
+      const availableCount = totalCount - allocatedCount;
+
+      const topRanges = ranges
+        .slice(0, 6)
+        .map(
+          (r) =>
+            `• ${r.flag} <code>${r.maskedRange}</code> — মোট: ${r.totalCount} | খালি: <b>${r.availableCount}</b>`
+        )
+        .join("\n");
+
+      responseText = `📊 <b>SUPER X SMS — ডাটাবেজ ও রেঞ্জ স্ট্যাটাস</b>\n\n` +
+        `💾 <b>মোট নাম্বার সংখ্যা:</b> <code>${totalCount}</code> টি\n` +
+        `✅ <b>উপলব্ধ (Available):</b> <code>${availableCount}</code> টি\n` +
+        `📱 <b>বরাদ্দকৃত (Allocated):</b> <code>${allocatedCount}</code> টি\n` +
+        `🏷️ <b>মোট সক্রিয় রেঞ্জ:</b> <code>${ranges.length}</code> টি\n\n` +
+        `<b>শীর্ষ রেঞ্জসমূহ:</b>\n${topRanges || "কোনো রেঞ্জ নেই"}\n\n` +
+        `⚡ <i>ওয়েবসাইট ও টেলিগ্রাম ওটিপি গ্রুপ সরাসরি সিঙ্কড!</i>`;
+
+      return { responseText, replyMarkup: BOT_MAIN_KEYBOARD };
+    }
+
+    // -----------------------------------------------------------------------
+    // ℹ️ BOT INFO & CONFIG
+    // -----------------------------------------------------------------------
+    if (
+      cleanText === "ℹ️ Bot Info" ||
+      cleanText.toLowerCase() === "bot info" ||
+      cleanText.toLowerCase() === "/info"
+    ) {
+      const pool = loadManualNumbersPool();
+      responseText = `🤖 <b>SUPER X SMS — বট ইনফরমেশন</b>\n\n` +
+        `👑 <b>অ্যাডমিন আইডি:</b> <code>${botHostingConfig.adminId}</code>\n` +
+        `📢 <b>চ্যাট/গ্রুপ আইডি:</b> <code>${botHostingConfig.chatId}</code>\n` +
+        `🔗 <b>OTP গ্রুপ:</b> ${botHostingConfig.otpGroupUrl}\n` +
+        `⚡ <b>হোস্টিং স্ট্যাটাস:</b> 🟢 সক্রিয় (Auto-Hosted 24/7)\n` +
+        `💾 <b>সিস্টেম পুল:</b> ${pool.length} টি নাম্বার\n\n` +
+        `<i>অ্যাডমিন প্যানেল থেকে বট টোকেন ও গ্রুপ আইডি যেকোনো সময় পরিবর্তন করা যাবে।</i>`;
+
+      return { responseText, replyMarkup: BOT_MAIN_KEYBOARD };
+    }
 
     // -----------------------------------------------------------------------
     // 1. ⚙️ API CONFIGS / API MANAGEMENT
@@ -3394,6 +4005,51 @@ async function startServer() {
 
               console.log(`[Telegram Bot Callback] from ${cbSender}: "${cbData}"`);
 
+              if (cbData.startsWith("alloc_num:")) {
+                const prefix = cbData.replace("alloc_num:", "").trim();
+                const allocated = allocateOneManualNumber(prefix, String(cb.from?.id || cbChatId));
+                if (allocated) {
+                  await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      callback_query_id: cbId,
+                      text: `✅ নাম্বার বরাদ্দ: ${allocated.number}`,
+                      show_alert: false,
+                    }),
+                  }).catch(() => {});
+
+                  const numMsg = `📱 <b>SUPER X SMS — নাম্বার বরাদ্দ সম্পন্ন!</b>\n\n` +
+                    `🌍 <b>দেশ:</b> ${allocated.flag} <b>${allocated.country}</b>\n` +
+                    `🏷️ <b>রেঞ্জ:</b> <code>${allocated.maskedRange}</code>\n` +
+                    `📞 <b>আপনার নাম্বার:</b> <code>${allocated.number}</code>\n\n` +
+                    `⏳ <b>ওটিপির জন্য অপেক্ষা করা হচ্ছে (Waiting for OTP)...</b>\n` +
+                    `<i>এই নাম্বারে ওটিপি আসা মাত্রই সরাসরি এখানে এবং আমাদের ওটিপি গ্রুপেও নোটিফিকেশন যাবে: ${botHostingConfig.otpGroupUrl}</i>`;
+
+                  await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/sendMessage`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      chat_id: cbChatId,
+                      text: numMsg,
+                      parse_mode: "HTML",
+                      reply_markup: BOT_MAIN_KEYBOARD,
+                    }),
+                  }).catch(() => {});
+                } else {
+                  await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      callback_query_id: cbId,
+                      text: `⚠️ এই রেঞ্জে কোনো নাম্বার খালি নেই!`,
+                      show_alert: true,
+                    }),
+                  }).catch(() => {});
+                }
+                continue;
+              }
+
               if (cbData.startsWith("approve_acc:")) {
                 const accId = cbData.replace("approve_acc:", "").trim();
                 const currentAccounts = loadServerAccounts();
@@ -3770,8 +4426,98 @@ async function startServer() {
               continue;
             }
 
-            // 2. Handle Text Messages
+            // 1.5 Handle Document / File Uploads (for Admin manual numbers file)
             const msg = update.message || update.edited_message;
+            if (msg && msg.document && msg.chat && msg.chat.id) {
+              const senderId = String(msg.from?.id || msg.chat.id);
+              const isAdmin =
+                String(senderId) === String(botHostingConfig.adminId) ||
+                String(senderId) === controlBotState.adminId;
+
+              if (!isAdmin) {
+                await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/sendMessage`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    chat_id: msg.chat.id,
+                    text: `⛔ <b>Access Denied!</b>\nশুধুমাত্র অনুমোদিত অ্যাডমিন (Admin ID: <code>${botHostingConfig.adminId}</code>) ফাইল আপলোড করতে পারবেন।`,
+                    parse_mode: "HTML",
+                  }),
+                }).catch(() => {});
+                continue;
+              }
+
+              try {
+                const fileId = msg.document.file_id;
+                const fileName = msg.document.file_name || "numbers.txt";
+
+                const getFileRes = await fetch(
+                  `https://api.telegram.org/bot${controlBotState.botToken}/getFile?file_id=${fileId}`
+                );
+                const getFileJson = await getFileRes.json();
+
+                if (getFileJson.ok && getFileJson.result?.file_path) {
+                  const filePath = getFileJson.result.file_path;
+                  const downloadUrl = `https://api.telegram.org/file/bot${controlBotState.botToken}/${filePath}`;
+                  const fileContentRes = await fetch(downloadUrl);
+                  const fileText = await fileContentRes.text();
+
+                  const session = adminUploadSessions.get(senderId);
+                  const caption = (msg.caption || "").trim();
+                  const countryRaw = session?.country || caption || fileName.replace(/\.[^/.]+$/, "") || "Global";
+                  const countryInfo = findCountryByNameOrCode(countryRaw);
+
+                  const parsed = parseManualNumbers(fileText, countryInfo.name, countryInfo.flag, countryInfo.dialCode);
+                  if (parsed.length > 0) {
+                    const pool = loadManualNumbersPool();
+                    pool.push(...parsed);
+                    saveManualNumbersPool(pool);
+                    adminUploadSessions.delete(senderId);
+
+                    const summary = getManualRangesSummary(pool);
+                    const rangeLines = summary
+                      .slice(0, 5)
+                      .map((r) => `• ${r.flag} <code>${r.maskedRange}</code> (${r.availableCount} টি উপলব্ধ)`)
+                      .join("\n");
+
+                    const replyText = `🎉 <b>সফলভাবে ফাইল আপলোড ও নাম্বার সংরক্ষিত হয়েছে!</b>\n\n` +
+                      `📁 <b>ফাইলের নাম:</b> <code>${fileName}</code>\n` +
+                      `🌍 <b>দেশ:</b> ${countryInfo.flag} <b>${countryInfo.name}</b> (${countryInfo.dialCode})\n` +
+                      `📊 <b>যুক্ত হওয়া নাম্বার:</b> <code>${parsed.length}</code> টি\n` +
+                      `💾 <b>ডাটাবেজে মোট সক্রিয় নাম্বার:</b> <code>${pool.length}</code> টি\n\n` +
+                      `🏷️ <b>উপলব্ধ রেঞ্জসমূহ:</b>\n${rangeLines}\n\n` +
+                      `⚡ <i>এই নাম্বারগুলো এখন স্বয়ংক্রিয়ভাবে ওয়েবসাইট ও টেলিগ্রাম বটে রিয়েল-টাইমে লাইভ!</i>`;
+
+                    await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/sendMessage`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        chat_id: msg.chat.id,
+                        text: replyText,
+                        parse_mode: "HTML",
+                        reply_markup: BOT_MAIN_KEYBOARD,
+                      }),
+                    }).catch(() => {});
+                  } else {
+                    await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/sendMessage`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        chat_id: msg.chat.id,
+                        text: `⚠️ <b>কোনো বৈধ নাম্বার পাওয়া যায়নি!</b>\nফাইলের ভিতরে প্রতিটি লাইনে একটি করে মোবাইল নাম্বার থাকতে হবে।`,
+                        parse_mode: "HTML",
+                        reply_markup: BOT_MAIN_KEYBOARD,
+                      }),
+                    }).catch(() => {});
+                  }
+                }
+              } catch (err) {
+                console.error("[Telegram Bot File Upload Error]", err);
+              }
+              continue;
+            }
+
+            // 2. Handle Text Messages
             if (msg && msg.text && msg.chat && msg.chat.id) {
               const senderId = String(msg.from?.id || msg.chat.id);
               const senderName = msg.from?.first_name || msg.from?.username || "Telegram User";
@@ -3867,6 +4613,288 @@ async function startServer() {
       }
     });
   } catch {}
+
+  // =========================================================================
+  // BOT MANAGEMENT & MANUAL NUMBERS HOSTING API ENDPOINTS
+  // =========================================================================
+
+  // 1. Get Bot Hosting Config
+  app.get("/api/bot-management/config", (req, res) => {
+    const config = loadBotHostingConfig();
+    res.json({
+      success: true,
+      config: {
+        ...config,
+        activePolling: controlBotState.activePolling,
+      },
+    });
+  });
+
+  // 2. Update Bot Hosting Config
+  app.post("/api/bot-management/config", (req, res) => {
+    const { botToken, adminId, chatId, otpGroupUrl, activePolling } = req.body || {};
+    const config = loadBotHostingConfig();
+
+    if (botToken) {
+      config.botToken = String(botToken).trim();
+      controlBotState.botToken = config.botToken;
+      telegramConfig.botToken = config.botToken;
+    }
+    if (adminId) {
+      config.adminId = String(adminId).trim();
+      controlBotState.adminId = config.adminId;
+    }
+    if (chatId) {
+      config.chatId = String(chatId).trim();
+      telegramConfig.chatId = config.chatId;
+    }
+    if (otpGroupUrl) {
+      config.otpGroupUrl = String(otpGroupUrl).trim();
+    }
+    if (typeof activePolling === "boolean") {
+      config.activePolling = activePolling;
+      controlBotState.activePolling = activePolling;
+    }
+    config.lastUpdated = Date.now();
+
+    saveBotHostingConfig(config);
+
+    res.json({
+      success: true,
+      message: "Bot configuration successfully updated and hosted real-time!",
+      config,
+    });
+  });
+
+  // 3. Ping / Test Connection
+  app.get("/api/bot-management/ping", async (req, res) => {
+    try {
+      const token = req.query.token ? String(req.query.token).trim() : controlBotState.botToken;
+      if (!token) {
+        return res.json({ success: false, error: "Bot token is missing" });
+      }
+      const response = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+      const data = await response.json();
+      if (data.ok) {
+        return res.json({
+          success: true,
+          bot: data.result,
+          botUser: data.result,
+          message: `Connected to Telegram Bot: @${data.result.username} (ID: ${data.result.id})`,
+        });
+      } else {
+        return res.json({ success: false, error: data.description || "Invalid Bot Token" });
+      }
+    } catch (err: any) {
+      res.json({ success: false, error: err.message || "Network error pinging Telegram API" });
+    }
+  });
+
+  // 4. Get Manual Ranges Summary (with masked ranges e.g. 88017XXXXX)
+  app.get("/api/manual-numbers/ranges", (req, res) => {
+    const pool = loadManualNumbersPool();
+    const ranges = getManualRangesSummary(pool);
+    const totalCount = pool.length;
+    const allocatedCount = pool.filter((n) => n.allocated).length;
+    const availableCount = totalCount - allocatedCount;
+
+    res.json({
+      success: true,
+      ranges,
+      totalCount,
+      allocatedCount,
+      availableCount,
+    });
+  });
+
+  // 5. Get All Manual Numbers (up to last 1000)
+  app.get("/api/manual-numbers/all", (req, res) => {
+    const pool = loadManualNumbersPool();
+    const limit = Math.min(Number(req.query.limit) || 100, 1000);
+    const offset = Number(req.query.offset) || 0;
+    const reversed = [...pool].reverse();
+    const paginated = reversed.slice(offset, offset + limit);
+
+    res.json({
+      success: true,
+      numbers: paginated,
+      total: pool.length,
+    });
+  });
+
+  // 6. Upload Manual Numbers
+  app.post("/api/manual-numbers/upload", (req, res) => {
+    const { numbersText, numbersList, country, flag, dialCode } = req.body || {};
+    let rawText = "";
+    if (typeof numbersText === "string") {
+      rawText = numbersText;
+    } else if (Array.isArray(numbersList)) {
+      rawText = numbersList.join("\n");
+    }
+
+    if (!rawText.trim()) {
+      return res.status(400).json({ success: false, error: "numbersText or numbersList is required" });
+    }
+
+    const cInfo = findCountryByNameOrCode(country || "Global");
+    const resolvedCountry = country || cInfo.name;
+    const resolvedFlag = flag || cInfo.flag;
+    const resolvedDial = dialCode || cInfo.dialCode;
+
+    const parsed = parseManualNumbers(rawText, resolvedCountry, resolvedFlag, resolvedDial);
+    if (parsed.length === 0) {
+      return res.json({ success: false, error: "No valid 7-16 digit phone numbers found in input" });
+    }
+
+    const pool = loadManualNumbersPool();
+    pool.push(...parsed);
+    saveManualNumbersPool(pool);
+
+    const ranges = getManualRangesSummary(pool);
+    res.json({
+      success: true,
+      message: `Successfully uploaded ${parsed.length} numbers for ${resolvedCountry}!`,
+      count: parsed.length,
+      addedCount: parsed.length,
+      totalPoolCount: pool.length,
+      ranges,
+    });
+  });
+
+  // 7. Allocate Manual Number
+  app.post("/api/manual-numbers/allocate", (req, res) => {
+    const { rangePrefix, range, allocatedTo, userEmail } = req.body || {};
+    const prefix = rangePrefix || range;
+    const assignee = allocatedTo || userEmail || "Website User";
+
+    if (!prefix) {
+      return res.status(400).json({ success: false, error: "rangePrefix or range is required" });
+    }
+
+    const record = allocateOneManualNumber(String(prefix), assignee);
+    if (record) {
+      res.json({
+        success: true,
+        record: record,
+        numberRecord: record,
+        message: `Allocated ${record.number} for range ${record.maskedRange}`,
+      });
+    } else {
+      res.json({
+        success: false,
+        error: "No available numbers found in pool for this range",
+        message: "No available numbers found in pool for this range",
+      });
+    }
+  });
+
+  // 8. Test Dispatch OTP for Manual Number
+  app.post("/api/manual-numbers/test-otp", async (req, res) => {
+    const { number, service, otp, otpCode, message, sender } = req.body || {};
+    const cleanNum = (number || "").trim();
+    const code = otp || otpCode || String(Math.floor(100000 + Math.random() * 900000));
+    const srv = service || sender || "WhatsApp";
+    const msgText = message || `Your ${srv} verification code is: ${code}`;
+
+    const pool = loadManualNumbersPool();
+    const cleanDigits = cleanNum.replace(/\D/g, "");
+    const target = pool.find(
+      (n) => n.cleanDigits === cleanDigits || (cleanDigits.length >= 7 && n.cleanDigits.endsWith(cleanDigits))
+    );
+
+    const now = Date.now();
+    const newHit = {
+      id: `hit_manual_${now}_${Math.random().toString(36).substring(2, 6)}`,
+      sid: srv,
+      service: srv,
+      range: target?.maskedRange || cleanNum,
+      number: cleanNum,
+      code: code,
+      otp: code,
+      message: msgText,
+      sms: msgText,
+      text: msgText,
+      time: new Date().toLocaleTimeString(),
+      receivedAt: new Date().toISOString(),
+      country: target?.country || "International",
+      flag: target?.flag || "🌐",
+      source: "Manual Pool Test Gateway",
+    };
+
+    // 1. Add to website global live hits & broadcast SSE
+    serverGlobalLiveHits.unshift(newHit);
+    if (serverGlobalLiveHits.length > 500) serverGlobalLiveHits.pop();
+    broadcastHit(newHit);
+
+    // 2. Dispatch to Telegram OTP Group
+    const cfg = loadBotHostingConfig();
+    if (cfg.chatId) {
+      const otpText = `🚀 <b>SUPER X SMS — LIVE OTP ALERT</b>\n\n` +
+        `🌍 <b>Country:</b> ${target ? `${target.flag} ${target.country}` : "International"}\n` +
+        `📞 <b>Number:</b> <code>${cleanNum}</code>\n` +
+        `⚡ <b>Service:</b> <b>${srv}</b>\n` +
+        `🔑 <b>OTP:</b> <code>${code}</code>\n` +
+        `💬 <b>Message:</b>\n<i>"${msgText}"</i>\n\n` +
+        `🌐 <i>Website Live SMS Dashboard & Bot Synchronized!</i>`;
+
+      fetch(`https://api.telegram.org/bot${controlBotState.botToken}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: cfg.chatId,
+          text: otpText,
+          parse_mode: "HTML",
+        }),
+      }).catch(() => {});
+    }
+
+    // 3. Dispatch to allocated Telegram user if assigned
+    if (target && target.allocatedTo && /^\d+$/.test(target.allocatedTo)) {
+      const userOtpText = `🔔 <b>SUPER X SMS — আপনার নাম্বারে ওটিপি এসেছে!</b>\n\n` +
+        `📞 <b>নাম্বার:</b> <code>${target.number}</code>\n` +
+        `⚡ <b>সার্ভিস:</b> <b>${srv}</b>\n` +
+        `🔑 <b>OTP কোড:</b> <code>${code}</code>\n` +
+        `💬 <b>মেসেজ:</b>\n<i>"${msgText}"</i>\n\n` +
+        `⚡ <i>রিয়েল-টাইমে পাঠানো হয়েছে!</i>`;
+
+      fetch(`https://api.telegram.org/bot${controlBotState.botToken}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: target.allocatedTo,
+          text: userOtpText,
+          parse_mode: "HTML",
+        }),
+      }).catch(() => {});
+    }
+
+    res.json({
+      success: true,
+      message: "Test OTP dispatched to Website Dashboard, Telegram OTP Group, and User!",
+      hit: newHit,
+    });
+  });
+
+  // 9. Delete Range from Pool
+  app.delete("/api/manual-numbers/range/:prefix", (req, res) => {
+    const prefix = req.params.prefix;
+    const pool = loadManualNumbersPool();
+    const filtered = pool.filter((n) => n.rangePrefix !== prefix);
+    const removedCount = pool.length - filtered.length;
+    saveManualNumbersPool(filtered);
+
+    res.json({
+      success: true,
+      message: `Removed ${removedCount} numbers for range ${prefix}`,
+      remainingTotal: filtered.length,
+    });
+  });
+
+  // 10. Clear entire pool
+  app.delete("/api/manual-numbers/clear", (req, res) => {
+    saveManualNumbersPool([]);
+    res.json({ success: true, message: "Manual numbers pool cleared successfully" });
+  });
 
   // Web API Endpoints for Control Bot
   app.get("/api/telegram/control-config", (req, res) => {
@@ -4090,7 +5118,7 @@ async function startServer() {
   app.post("/api/system/api-key", async (req, res) => {
     const { apiKey } = req.body || {};
     const key = typeof apiKey === "string" ? apiKey.trim() : "";
-    activeSystemApiKey = key || "MK1CB2Y3GI9";
+    activeSystemApiKey = key || "MJTFKF97CI2";
     saveSystemApiKey(activeSystemApiKey);
     cachedConsoleData = null;
 
@@ -4533,6 +5561,30 @@ async function startServer() {
       if (found) {
         return res.json({ success: true, apiKey: found });
       }
+
+      // Check serverAccounts as authoritative source
+      const serverAccounts = loadServerAccounts();
+      const matched = serverAccounts.find((a: any) => 
+        (a.email && a.email.toLowerCase() === userEmail) ||
+        (a.accountCode && String(a.accountCode).trim() === userEmail)
+      );
+
+      if (matched && (matched.apiUnlocked || matched.apiKey)) {
+        const keyId = matched.apiKey || generateSuperXsmsApiKey();
+        const newRecord = {
+          apiKey: keyId,
+          email: matched.email || userEmail,
+          accountCode: matched.accountCode || "",
+          name: matched.name || userEmail.split('@')[0] || "SUPER X User",
+          active: !!matched.apiUnlocked,
+          createdAt: matched.createdAt || Date.now(),
+          updatedAt: Date.now(),
+          managerContact: "@super_x_support",
+        };
+        keys[keyId] = newRecord;
+        saveUserApiKeys(keys);
+        return res.json({ success: true, apiKey: newRecord });
+      }
     }
     res.json({ success: true, apiKey: null });
   });
@@ -4638,13 +5690,42 @@ async function startServer() {
     const keys = loadUserApiKeys();
     const serverAccounts = loadServerAccounts();
 
+    // Ensure all accounts with apiUnlocked or apiKey are in keys
+    serverAccounts.forEach((acc: any) => {
+      if (acc && acc.email && (acc.apiUnlocked || acc.apiKey)) {
+        const cleanEm = acc.email.toLowerCase().trim();
+        let existingKey = Object.values(keys).find((k: any) => k.email && k.email.toLowerCase() === cleanEm);
+        if (!existingKey) {
+          const keyId = acc.apiKey || generateSuperXsmsApiKey();
+          existingKey = {
+            apiKey: keyId,
+            email: cleanEm,
+            accountCode: acc.accountCode || "",
+            name: acc.name || cleanEm.split('@')[0],
+            active: !!acc.apiUnlocked,
+            createdAt: acc.createdAt || Date.now(),
+            updatedAt: Date.now(),
+            managerContact: "@super_x_support",
+          };
+          keys[keyId] = existingKey;
+        } else {
+          if (typeof acc.apiUnlocked === "boolean") {
+            existingKey.active = acc.apiUnlocked;
+          }
+          if (acc.accountCode) existingKey.accountCode = acc.accountCode;
+        }
+      }
+    });
+    saveUserApiKeys(keys);
+
     const keysList = Object.values(keys).map((k: any) => {
       const matchedAcc = serverAccounts.find(
         (a: any) => a.email && a.email.toLowerCase() === (k.email || "").toLowerCase()
       );
       return {
         ...k,
-        accountCode: matchedAcc ? matchedAcc.accountCode : null,
+        accountCode: matchedAcc ? matchedAcc.accountCode : k.accountCode || null,
+        active: matchedAcc && typeof matchedAcc.apiUnlocked === "boolean" ? matchedAcc.apiUnlocked : !!k.active,
       };
     });
 
@@ -4661,6 +5742,22 @@ async function startServer() {
       keys[apiKey].active = !!active;
       keys[apiKey].updatedAt = Date.now();
       saveUserApiKeys(keys);
+
+      // Also update server accounts & Firestore & broadcast!
+      const serverAccounts = loadServerAccounts();
+      const matchedAcc = serverAccounts.find((a: any) => 
+        (a.apiKey && a.apiKey === apiKey) ||
+        (a.email && keys[apiKey].email && a.email.toLowerCase() === keys[apiKey].email.toLowerCase())
+      );
+      if (matchedAcc) {
+        matchedAcc.apiUnlocked = !!active;
+        matchedAcc.apiKey = apiKey;
+        matchedAcc.updatedAt = Date.now();
+        saveServerAccounts(serverAccounts);
+        saveAccountToFirestore(matchedAcc).catch(() => null);
+        broadcastAccountChange({ action: "api_toggle", account: matchedAcc });
+      }
+
       return res.json({ success: true, keyRecord: keys[apiKey] });
     }
     res.status(404).json({ error: "API Key not found" });
@@ -4719,7 +5816,7 @@ async function startServer() {
       keys[existingKeyRecord.apiKey] = existingKeyRecord;
     }
 
-    // Update matching server account
+    // Update matching server account & save to Firestore & broadcast
     const matchedAcc = serverAccounts.find((a: any) => 
       (a.email && a.email.toLowerCase() === targetEmail) ||
       (cleanCode && a.accountCode && String(a.accountCode).trim() === cleanCode) ||
@@ -4732,6 +5829,8 @@ async function startServer() {
       }
       matchedAcc.updatedAt = Date.now();
       saveServerAccounts(serverAccounts);
+      saveAccountToFirestore(matchedAcc).catch(() => null);
+      broadcastAccountChange({ action: "api_toggle", account: matchedAcc });
     }
 
     saveUserApiKeys(keys);

@@ -30,7 +30,7 @@ export const DEFAULT_API_CONFIGS: ApiConfigItem[] = [
   {
     id: 'primary-voltx-api',
     name: 'Primary Voltx / 2oo9 Gateway',
-    apiKey: 'MK1CB2Y3GI9',
+    apiKey: 'MJTFKF97CI2',
     serviceType: 'ALL (Global Auto-Detect)',
     endpoint: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
     isActive: true,
@@ -94,12 +94,27 @@ export function getAllApiConfigs(): ApiConfigItem[] {
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        // Filter out any default placeholder keys so API stays completely OFF until user explicitly supplies their API
-        const valid = parsed.filter((c) => {
-          if (!c || !c.apiKey) return false;
-          const k = String(c.apiKey).trim();
-          return k.length > 3 && k !== 'MOBEKJ8H20I' && k !== 'M7ANNWJY6B2' && k !== 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=';
-        });
+        let hasMigration = false;
+        // Filter out any default placeholder keys and migrate old key MK1CB2Y3GI9 -> MJTFKF97CI2
+        const valid = parsed
+          .filter((c) => {
+            if (!c || !c.apiKey) return false;
+            const k = String(c.apiKey).trim();
+            return k.length > 3 && k !== 'MOBEKJ8H20I' && k !== 'M7ANNWJY6B2' && k !== 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=';
+          })
+          .map((c) => {
+            if (c.apiKey.trim() === 'MK1CB2Y3GI9') {
+              hasMigration = true;
+              return { ...c, apiKey: 'MJTFKF97CI2' };
+            }
+            return c;
+          });
+
+        if (hasMigration) {
+          try {
+            localStorage.setItem(API_CONFIGS_STORAGE_KEY, JSON.stringify(valid));
+          } catch {}
+        }
         if (valid.length > 0) return valid;
       }
     }
@@ -109,7 +124,12 @@ export function getAllApiConfigs(): ApiConfigItem[] {
 
   // Fallback: If no explicit config in localStorage, check if voltx_mauthapi_key or voltx_endpoint_key exists
   try {
-    const activeKey = localStorage.getItem('voltx_mauthapi_key') || localStorage.getItem('voltx_endpoint_key');
+    let activeKey = localStorage.getItem('voltx_mauthapi_key') || localStorage.getItem('voltx_endpoint_key');
+    if (activeKey && activeKey.trim() === 'MK1CB2Y3GI9') {
+      activeKey = 'MJTFKF97CI2';
+      localStorage.setItem('voltx_mauthapi_key', 'MJTFKF97CI2');
+      localStorage.setItem('voltx_endpoint_key', 'MJTFKF97CI2');
+    }
     if (activeKey && activeKey.trim() && activeKey.trim().length > 3 && activeKey.trim() !== 'MOBEKJ8H20I') {
       return [
         {
@@ -166,6 +186,14 @@ export function saveAllApiConfigs(configs: ApiConfigItem[]) {
   } catch (err) {
     console.error('Failed to save local API configs:', err);
   }
+
+  // Ensure active API key is synchronized to Voltx client immediately
+  const active = configs.find((c) => c.isActive && c.apiKey && c.apiKey.trim().length > 3);
+  if (active) {
+    setMauthApiKey(active.apiKey.trim());
+    setVoltxEndpointKey(active.apiKey.trim());
+  }
+
   // Immediately persist to server so all other browsers and devices reflect the change in real time
   saveApiConfigsToServer(configs).catch(() => {});
 }

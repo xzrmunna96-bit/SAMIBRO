@@ -13,14 +13,24 @@ import { getCountryInfo } from './countryHelper';
 import { extractOtpCode, sendOtpToTelegram } from './telegramService';
 import { fetchIntsCdrStats } from './intsGatewayService';
 
-export const DEFAULT_VOLTX_ENDPOINT_KEY = 'MK1CB2Y3GI9';
-export const DEFAULT_MAUTH_API_KEY = 'MK1CB2Y3GI9';
+export const DEFAULT_VOLTX_ENDPOINT_KEY = 'MJTFKF97CI2';
+export const DEFAULT_MAUTH_API_KEY = 'MJTFKF97CI2';
 export const VOLTX_BACKEND_SLUG = 'MXS47FLFX0U';
 
 export function getVoltxEndpointKey(): string {
   if (typeof window !== 'undefined') {
     const saved = localStorage.getItem('voltx_endpoint_key');
-    if (saved && saved.trim() && saved.trim() !== 'MOBEKJ8H20I' && saved.trim() !== 'M7ANNWJY6B2' && saved.trim() !== 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=') return saved.trim();
+    if (saved && saved.trim()) {
+      const clean = saved.trim();
+      if (clean === 'MK1CB2Y3GI9') {
+        localStorage.setItem('voltx_endpoint_key', DEFAULT_VOLTX_ENDPOINT_KEY);
+        localStorage.setItem('voltx_mauthapi_key', DEFAULT_MAUTH_API_KEY);
+        return DEFAULT_VOLTX_ENDPOINT_KEY;
+      }
+      if (clean !== 'MOBEKJ8H20I' && clean !== 'M7ANNWJY6B2' && clean !== 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=') {
+        return clean;
+      }
+    }
   }
   return DEFAULT_VOLTX_ENDPOINT_KEY;
 }
@@ -43,7 +53,17 @@ export function setVoltxEndpointKey(key: string): void {
 export function getMauthApiKey(): string {
   if (typeof window !== 'undefined') {
     const saved = localStorage.getItem('voltx_mauthapi_key') || localStorage.getItem('voltx_endpoint_key');
-    if (saved && saved.trim() && saved.trim() !== 'MOBEKJ8H20I' && saved.trim() !== 'M7ANNWJY6B2' && saved.trim() !== 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=') return saved.trim();
+    if (saved && saved.trim()) {
+      const clean = saved.trim();
+      if (clean === 'MK1CB2Y3GI9') {
+        localStorage.setItem('voltx_mauthapi_key', DEFAULT_MAUTH_API_KEY);
+        localStorage.setItem('voltx_endpoint_key', DEFAULT_VOLTX_ENDPOINT_KEY);
+        return DEFAULT_MAUTH_API_KEY;
+      }
+      if (clean !== 'MOBEKJ8H20I' && clean !== 'M7ANNWJY6B2' && clean !== 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=') {
+        return clean;
+      }
+    }
   }
   return DEFAULT_MAUTH_API_KEY;
 }

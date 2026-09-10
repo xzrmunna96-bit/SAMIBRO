@@ -1,15 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import { Key, ShieldCheck, Copy, Check, Send, ExternalLink, RefreshCw, Lock, Eye, EyeOff, Code, Plus, Trash2, UserCheck } from 'lucide-react';
 import { getDedicatedAccountCode } from '../services/userAuthService';
+import { getUserApiKeyData, isUserApiUnlocked } from '../services/userApiKeyService';
 
 interface UserApiSessionCardProps {
   userEmail: string;
   userName?: string;
   accountCode?: string;
+  apiUnlocked?: boolean;
+  apiKey?: string;
 }
 
-export function UserApiSessionCard({ userEmail, userName, accountCode }: UserApiSessionCardProps) {
-  const [apiKeyData, setApiKeyData] = useState<any>(null);
+export function UserApiSessionCard({ userEmail, userName, accountCode, apiUnlocked, apiKey }: UserApiSessionCardProps) {
+  const [apiKeyData, setApiKeyData] = useState<any>(() => {
+    const local = getUserApiKeyData(userEmail) || (accountCode ? getUserApiKeyData(accountCode) : null);
+    const unlocked = isUserApiUnlocked(userEmail) || (accountCode ? isUserApiUnlocked(accountCode) : false) || !!apiUnlocked;
+    if (local) {
+      return { ...local, active: unlocked || local.active };
+    }
+    if (unlocked || apiKey) {
+      return {
+        apiKey: apiKey || 'superxsms_' + (accountCode || 'portal_key'),
+        email: userEmail,
+        accountCode: accountCode,
+        active: true,
+        managerContact: '@super_x_support',
+      };
+    }
+    return null;
+  });
   const [loading, setLoading] = useState(true);
   const [copiedKey, setCopiedKey] = useState(false);
   const [copiedAccountCode, setCopiedAccountCode] = useState(false);
@@ -23,16 +42,38 @@ export function UserApiSessionCard({ userEmail, userName, accountCode }: UserApi
 
   const loadUserKey = async (silent = false) => {
     if (!silent) setLoading(true);
+
+    // 1. Immediate local check from accounts and userApiKeyService
+    const localKey = getUserApiKeyData(userEmail) || (resolvedAccountCode ? getUserApiKeyData(resolvedAccountCode) : null);
+    const unlockedLocal = isUserApiUnlocked(userEmail) || (resolvedAccountCode ? isUserApiUnlocked(resolvedAccountCode) : false) || !!apiUnlocked;
+    
+    if (localKey) {
+      setApiKeyData({
+        ...localKey,
+        active: unlockedLocal || localKey.active,
+      });
+    } else if (unlockedLocal || apiKey) {
+      setApiKeyData((prev: any) => ({
+        ...(prev || {}),
+        apiKey: apiKey || prev?.apiKey || ('superxsms_' + (resolvedAccountCode || 'portal_key')),
+        email: userEmail,
+        accountCode: resolvedAccountCode,
+        active: true,
+        managerContact: '@super_x_support',
+      }));
+    }
+
+    // 2. Fetch fresh status from server backend
     try {
       const res = await fetch(`/api/user-api/key?email=${encodeURIComponent(userEmail)}`);
       const data = await res.json();
       if (data && data.apiKey) {
         setApiKeyData(data.apiKey);
-      } else {
+      } else if (!localKey && !unlockedLocal && !apiUnlocked) {
         setApiKeyData(null);
       }
     } catch {
-      if (!silent) setApiKeyData(null);
+      // Keep established local/sync state if fetch fails
     } finally {
       if (!silent) setLoading(false);
     }
@@ -44,9 +85,20 @@ export function UserApiSessionCard({ userEmail, userName, accountCode }: UserApi
       const interval = setInterval(() => {
         loadUserKey(true);
       }, 3000);
-      return () => clearInterval(interval);
+
+      const onUpdate = () => loadUserKey(true);
+      window.addEventListener('super_x_accounts_updated', onUpdate);
+      window.addEventListener('super_x_user_api_keys_updated', onUpdate);
+      window.addEventListener('storage', onUpdate);
+
+      return () => {
+        clearInterval(interval);
+        window.removeEventListener('super_x_accounts_updated', onUpdate);
+        window.removeEventListener('super_x_user_api_keys_updated', onUpdate);
+        window.removeEventListener('storage', onUpdate);
+      };
     }
-  }, [userEmail]);
+  }, [userEmail, resolvedAccountCode, apiUnlocked, apiKey]);
 
   const isActive = !!(apiKeyData && apiKeyData.active);
 

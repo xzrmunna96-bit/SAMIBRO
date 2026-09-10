@@ -464,25 +464,18 @@ export function requestNewAccount(params: {
       };
     } else {
       // User is submitting/re-submitting their activation request from widget
-      if (existing.status === 'approved') {
-        return {
-          success: false,
-          message: `Your account (${cleanEmail}) is ALREADY approved and active! You can log in directly using your email and password.`,
-          account: existing,
-        };
-      }
-
-      // If pending or rejected, update credentials and ensure status remains strictly 'pending'
+      // Strictly set status to 'pending' until approved by admin/bot
       existing.password = params.password.trim();
       existing.status = 'pending';
       if (params.name?.trim()) existing.name = params.name.trim();
       if (params.country?.trim()) existing.country = params.country.trim();
-      if (params.agentEmail?.trim() || params.agentMail?.trim()) {
-        existing.agentEmail = (params.agentEmail || params.agentMail || '').trim();
-        existing.agentMail = existing.agentEmail;
+      const cleanAgent = (params.agentEmail || params.agentMail || '').trim();
+      if (cleanAgent) {
+        existing.agentEmail = cleanAgent;
+        existing.agentMail = cleanAgent;
       }
       if (params.phoneOrTelegram?.trim()) existing.phoneOrTelegram = params.phoneOrTelegram.trim();
-      existing.note = params.note?.trim() || 'Active account request via registration form';
+      existing.note = params.note?.trim() || `Active account request via registration form | Agent: ${cleanAgent}`;
       existing.updatedAt = Date.now();
       delete existing.banReason;
       delete existing.banRequest;
@@ -490,12 +483,11 @@ export function requestNewAccount(params: {
       saveAllAccounts(accounts);
       saveAccountToFirebase(existing);
       saveAccountToServer(existing);
-
       sendAccountActivationRequestToAdminTelegram(existing).catch(() => {});
 
       return {
         success: true,
-        message: 'Account activation request submitted! Status is PENDING. Admin will review and approve your account shortly.',
+        message: 'Account activation request submitted successfully. Pending Admin approval.',
         account: existing,
       };
     }

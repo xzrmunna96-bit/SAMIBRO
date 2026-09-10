@@ -109,6 +109,7 @@ export function ActiveAccountWidget() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [accountCode, setAccountCode] = useState('');
   const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedPass, setCopiedPass] = useState(false);
   const [submittedAt, setSubmittedAt] = useState<number | null>(null);
   const [approvedAt, setApprovedAt] = useState<number | null>(null);
 
@@ -134,13 +135,17 @@ export function ActiveAccountWidget() {
     setAccountCode(code);
     setState('approved');
     setApprovedAt(acc.approvedAt || Date.now());
+    if (acc.name) setFullName(acc.name);
+    if (acc.password) setPassword(acc.password);
+    if (acc.country) setCountry(acc.country);
+    if (acc.agentEmail || acc.agentMail) setAgentEmail(acc.agentEmail || acc.agentMail || '');
 
     // Save permanently to device lock
     try {
       const lockData = {
         state: 'approved',
         fullName: acc.name || fullName,
-        email: acc.email,
+        email: acc.email || email,
         password: acc.password || password,
         country: acc.country || country,
         agentEmail: acc.agentEmail || acc.agentMail || agentEmail,
@@ -318,13 +323,6 @@ export function ActiveAccountWidget() {
 
     if (!cleanAgent || !isAgentMailValid(cleanAgent)) {
       setFormError('এজেন্ট মেইল আবশ্যক! টেলিগ্রাম চ্যানেল থেকে এজেন্ট মেইল সংগ্রহ করে এখানে দিন (Agent Mail required from Telegram).');
-      return;
-    }
-
-    // CHECK IF ACCOUNT IS ALREADY APPROVED
-    const existingApproved = findApprovedAccount(cleanEmail);
-    if (existingApproved) {
-      handleAccountBecameApproved(existingApproved, true);
       return;
     }
 
@@ -912,6 +910,27 @@ export function ActiveAccountWidget() {
                     <div className="flex justify-between items-center pt-2 border-t border-slate-800/80">
                       <span className="text-slate-400 font-sans text-[11px]">Login Email:</span>
                       <strong className="text-white font-bold">{email}</strong>
+                    </div>
+
+                    <div className="flex justify-between items-center pt-2 border-t border-slate-800/80">
+                      <span className="text-slate-400 font-sans text-[11px]">User Password:</span>
+                      <div className="flex items-center gap-1.5">
+                        <strong className="text-amber-300 font-mono font-bold">{password || '••••••••'}</strong>
+                        {password && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(password);
+                              setCopiedPass(true);
+                              setTimeout(() => setCopiedPass(false), 2000);
+                            }}
+                            className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-amber-400 transition cursor-pointer"
+                            title="Copy Password"
+                          >
+                            {copiedPass ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     <div className="flex justify-between items-center pt-2 border-t border-slate-800/80">

@@ -254,8 +254,22 @@ async function startServer() {
   }
 
   function findCountryByNameOrCode(rawInput: string): { name: string; flag: string; dialCode: string } {
-    const clean = (rawInput || "").trim().toLowerCase();
-    if (!clean) return { name: "Global", flag: "🌐", dialCode: "" };
+    const raw = (rawInput || "").replace(/\.[^/.]+$/, "").trim();
+    if (!raw) return { name: "Global", flag: "🌐", dialCode: "" };
+
+    const clean = raw.toLowerCase();
+    const normalized = clean.replace(/[^a-z0-9]/g, "");
+
+    // Common shortcode aliases
+    if (normalized === "bd" || normalized.includes("bangla")) return { name: "Bangladesh", flag: "🇧🇩", dialCode: "+880" };
+    if (normalized === "lk" || normalized.includes("srilanka") || normalized.includes("sri lanka")) return { name: "Sri Lanka", flag: "🇱🇰", dialCode: "+94" };
+    if (normalized === "in" || normalized.includes("india")) return { name: "India", flag: "🇮🇳", dialCode: "+91" };
+    if (normalized === "pk" || normalized.includes("pakistan")) return { name: "Pakistan", flag: "🇵🇰", dialCode: "+92" };
+    if (normalized === "ci" || normalized.includes("ivory") || normalized.includes("cote")) return { name: "Ivory Coast", flag: "🇨🇮", dialCode: "+225" };
+    if (normalized === "us" || normalized === "usa" || normalized.includes("america") || normalized.includes("unitedstates")) return { name: "United States", flag: "🇺🇸", dialCode: "+1" };
+    if (normalized === "uk" || normalized === "gb" || normalized.includes("kingdom") || normalized.includes("britain")) return { name: "United Kingdom", flag: "🇬🇧", dialCode: "+44" };
+    if (normalized === "uae" || normalized.includes("dubai") || normalized.includes("emirates")) return { name: "UAE", flag: "🇦🇪", dialCode: "+971" };
+    if (normalized === "ksa" || normalized.includes("saudi")) return { name: "Saudi Arabia", flag: "🇸🇦", dialCode: "+966" };
 
     // 1. Direct or ISO match
     const direct = GLOBAL_COUNTRIES_LIST.find(
@@ -263,13 +277,22 @@ async function startServer() {
     );
     if (direct) return { name: direct.name, flag: direct.flag, dialCode: direct.dialCode };
 
-    // 2. Contains match
+    // 2. Normalized match without spaces or special characters
+    const normMatch = GLOBAL_COUNTRIES_LIST.find(
+      (c) => {
+        const cNorm = c.name.toLowerCase().replace(/[^a-z0-9]/g, "");
+        return normalized.includes(cNorm) || cNorm.includes(normalized);
+      }
+    );
+    if (normMatch) return { name: normMatch.name, flag: normMatch.flag, dialCode: normMatch.dialCode };
+
+    // 3. Contains match
     const partial = GLOBAL_COUNTRIES_LIST.find(
       (c) => clean.includes(c.name.toLowerCase()) || c.name.toLowerCase().includes(clean)
     );
     if (partial) return { name: partial.name, flag: partial.flag, dialCode: partial.dialCode };
 
-    // 3. Dial code match
+    // 4. Dial code match
     const cleanDigits = clean.replace(/\D/g, "");
     if (cleanDigits) {
       const byDial = GLOBAL_COUNTRIES_LIST.find(
@@ -278,7 +301,64 @@ async function startServer() {
       if (byDial) return { name: byDial.name, flag: byDial.flag, dialCode: byDial.dialCode };
     }
 
-    return { name: rawInput.trim(), flag: "🌐", dialCode: "" };
+    return { name: raw.trim(), flag: "🌐", dialCode: "" };
+  }
+
+  // Detect country automatically by inspecting phone number prefixes
+  function detectCountryFromNumbers(sampleNumbers: string[]): { name: string; flag: string; dialCode: string } | null {
+    if (!sampleNumbers || sampleNumbers.length === 0) return null;
+    
+    // Sort country dial codes by length descending (e.g. +880 before +88)
+    const sortedCountries = [...GLOBAL_COUNTRIES_LIST].sort((a, b) => {
+      const d1 = a.dialCode.replace(/\D/g, "");
+      const d2 = b.dialCode.replace(/\D/g, "");
+      return d2.length - d1.length;
+    });
+
+    const voteCount = new Map<string, { country: typeof GLOBAL_COUNTRIES_LIST[0]; votes: number }>();
+
+    for (const num of sampleNumbers.slice(0, 50)) {
+      const digits = num.replace(/\D/g, "");
+      if (digits.length < 7) continue;
+
+      for (const c of sortedCountries) {
+        const codeDigits = c.dialCode.replace(/\D/g, "");
+        if (codeDigits && digits.startsWith(codeDigits)) {
+          const prev = voteCount.get(c.name);
+          if (prev) {
+            prev.votes += 1;
+          } else {
+            voteCount.set(c.name, { country: c, votes: 1 });
+          }
+          break;
+        }
+      }
+    }
+
+    let bestMatch: { country: typeof GLOBAL_COUNTRIES_LIST[0]; votes: number } | null = null;
+    for (const item of voteCount.values()) {
+      if (!bestMatch || item.votes > bestMatch.votes) {
+        bestMatch = item;
+      }
+    }
+
+    if (bestMatch && bestMatch.votes >= 2) {
+      return {
+        name: bestMatch.country.name,
+        flag: bestMatch.country.flag,
+        dialCode: bestMatch.country.dialCode,
+      };
+    }
+
+    return null;
+  }
+
+  interface ParseManualNumbersResult {
+    addedRecords: ManualNumberRecord[];
+    newCount: number;
+    existingCount: number;
+    totalProcessed: number;
+    detectedCountry: { name: string; flag: string; dialCode: string };
   }
 
   function parseManualNumbers(
@@ -288,41 +368,107 @@ async function startServer() {
     defaultDialCode: string,
     platform: string = "All Social (WhatsApp/TG)"
   ): ManualNumberRecord[] {
+    const result = parseManualNumbersDetailed(rawText, defaultCountry, defaultFlag, defaultDialCode, platform);
+    return result.addedRecords;
+  }
+
+  function parseManualNumbersDetailed(
+    rawText: string,
+    defaultCountry: string,
+    defaultFlag: string,
+    defaultDialCode: string,
+    platform: string = "All Social (WhatsApp/TG)"
+  ): ParseManualNumbersResult {
     const lines = (rawText || "").split(/[\r\n,;]+/);
     const addedRecords: ManualNumberRecord[] = [];
     const pool = loadManualNumbersPool();
-    const existingDigits = new Set(pool.map((n) => n.cleanDigits));
+    const existingMap = new Map<string, ManualNumberRecord>(pool.map((n) => [n.cleanDigits, n]));
     const now = Date.now();
+
+    const sampleDigits: string[] = [];
+    let existingCount = 0;
+
+    // Collect initial sample numbers for country auto-detection if needed
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const digits = trimmed.replace(/\D/g, "");
+      if (digits.length >= 7 && digits.length <= 16) {
+        sampleDigits.push(digits);
+        if (sampleDigits.length >= 30) break;
+      }
+    }
+
+    // Auto detect country if default is Global or empty
+    let resolvedCountry = defaultCountry;
+    let resolvedFlag = defaultFlag;
+    let resolvedDial = defaultDialCode;
+
+    if (!resolvedCountry || resolvedCountry === "Global" || !resolvedFlag || resolvedFlag === "🌐") {
+      const detected = detectCountryFromNumbers(sampleDigits);
+      if (detected) {
+        resolvedCountry = detected.name;
+        resolvedFlag = detected.flag;
+        resolvedDial = detected.dialCode;
+      }
+    }
 
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed) continue;
-      let digits = trimmed.replace(/\D/g, "");
+      const digits = trimmed.replace(/\D/g, "");
       if (digits.length >= 7 && digits.length <= 16) {
-        if (!existingDigits.has(digits)) {
-          existingDigits.add(digits);
+        const existing = existingMap.get(digits);
+        if (existing) {
+          existingCount++;
+          // Refresh existing item to be available for allocation
+          existing.allocated = false;
+          if (resolvedCountry && resolvedCountry !== "Global") {
+            existing.country = resolvedCountry;
+            existing.flag = resolvedFlag;
+            existing.dialCode = resolvedDial;
+          }
+          if (platform) {
+            existing.platform = platform;
+            existing.socialMedia = platform;
+          }
+        } else {
           const fullNum = trimmed.startsWith("+") ? trimmed : `+${digits}`;
           const prefix = digits.slice(0, 5);
           const mask = `${prefix}${"X".repeat(Math.max(0, digits.length - 5))}`;
 
-          addedRecords.push({
+          const newRec: ManualNumberRecord = {
             id: `num_${now}_${Math.random().toString(36).slice(2, 7)}`,
             number: fullNum,
             cleanDigits: digits,
             rangePrefix: prefix,
             maskedRange: mask,
-            country: defaultCountry || "Global",
-            flag: defaultFlag || "🌐",
-            dialCode: defaultDialCode || "",
+            country: resolvedCountry || "Global",
+            flag: resolvedFlag || "🌐",
+            dialCode: resolvedDial || "",
             platform: platform || "All Social (WhatsApp/TG)",
             socialMedia: platform || "All Social (WhatsApp/TG)",
             allocated: false,
             uploadedAt: now,
-          });
+          };
+
+          existingMap.set(digits, newRec);
+          addedRecords.push(newRec);
         }
       }
     }
-    return addedRecords;
+
+    return {
+      addedRecords,
+      newCount: addedRecords.length,
+      existingCount,
+      totalProcessed: addedRecords.length + existingCount,
+      detectedCountry: {
+        name: resolvedCountry || "Global",
+        flag: resolvedFlag || "🌐",
+        dialCode: resolvedDial || "",
+      },
+    };
   }
 
   function getManualRangesSummary(pool: ManualNumberRecord[]) {
@@ -3500,7 +3646,7 @@ async function startServer() {
       }
 
       if (session.state === "waiting_for_numbers") {
-        const parsed = parseManualNumbers(
+        const parseResult = parseManualNumbersDetailed(
           cleanText,
           session.country || "Global",
           session.flag || "🌐",
@@ -3508,9 +3654,11 @@ async function startServer() {
           session.platform || "All Social (WhatsApp/TG)"
         );
 
-        if (parsed.length > 0) {
+        if (parseResult.totalProcessed > 0) {
           const pool = loadManualNumbersPool();
-          pool.push(...parsed);
+          if (parseResult.addedRecords.length > 0) {
+            pool.push(...parseResult.addedRecords);
+          }
           saveManualNumbersPool(pool);
           adminUploadSessions.delete(String(senderId));
 
@@ -3518,8 +3666,8 @@ async function startServer() {
           const allNotifs = loadServerNotifications();
           allNotifs.unshift({
             id: `notif_${Date.now()}`,
-            title: `🌍 New Range Added: ${session.country}`,
-            message: `A new batch of ${parsed.length} numbers for ${session.platform || "All Social"} has been successfully uploaded for ${session.country} (${session.dialCode}).`,
+            title: `🌍 New Range Added: ${parseResult.detectedCountry.name}`,
+            message: `A batch of ${parseResult.totalProcessed} numbers for ${session.platform || "All Social"} has been updated for ${parseResult.detectedCountry.name} (${parseResult.detectedCountry.dialCode}).`,
             timestamp: Date.now(),
             type: "info",
           });
@@ -3527,21 +3675,26 @@ async function startServer() {
 
           const summary = getManualRangesSummary(pool);
           const rangeLines = summary
-            .slice(0, 5)
+            .slice(0, 8)
             .map((r) => `• ${r.flag} <code>${r.maskedRange}</code> [${r.platform || "All"}] (${r.availableCount} টি উপলব্ধ)`)
             .join("\n");
 
-          responseText = `🎉 <b>সফলভাবে ${parsed.length} টি নাম্বার ডাটাবেজে যুক্ত হয়েছে!</b>\n\n` +
-            `🌍 <b>দেশ:</b> ${session.flag} <b>${session.country}</b> (${session.dialCode})\n` +
+          responseText = `🎉 <b>সফলভাবে ${parseResult.totalProcessed} টি নাম্বার ডাটাবেজে সক্রিয় হয়েছে!</b>\n\n` +
+            `🌍 <b>দেশ:</b> ${parseResult.detectedCountry.flag} <b>${parseResult.detectedCountry.name}</b> (${parseResult.detectedCountry.dialCode})\n` +
             `🏷️ <b>প্ল্যাটফর্ম:</b> <b>${session.platform || "All Social"}</b>\n` +
+            (parseResult.newCount > 0 ? `✨ <b>নতুন যুক্ত:</b> <code>${parseResult.newCount}</code> টি\n` : "") +
+            (parseResult.existingCount > 0 ? `🔄 <b>রিফ্রেশকৃত:</b> <code>${parseResult.existingCount}</code> টি\n` : "") +
             `💾 <b>ডাটাবেজে মোট সক্রিয় নাম্বার:</b> <code>${pool.length}</code> টি\n\n` +
             `🏷️ <b>উপলব্ধ রেঞ্জসমূহ:</b>\n${rangeLines}\n\n` +
             `⚡ <i>এই নাম্বারগুলো এখন স্বয়ংক্রিয়ভাবে ওয়েবসাইট ও টেলিগ্রাম বটে লাইভ হয়ে গেছে!</i>`;
 
-          addBotLog(senderName, `Uploaded ${parsed.length} numbers`, "success");
+          addBotLog(senderName, `Processed ${parseResult.totalProcessed} numbers`, "success");
           return { responseText, replyMarkup: dynamicCustomKeyboard };
         } else {
-          responseText = `⚠️ <b>কোনো বৈধ নাম্বার শনাক্ত হয়নি!</b>\nপ্রতি লাইনে একটি করে আন্তর্জাতিক মোবাইল নাম্বার লিখে পাঠান অথবা .txt ফাইল আপলোড করুন।`;
+          // If user sent a question or greeting while in upload session
+          responseText = `📥 <b>নাম্বার বা ফাইল পাঠানোর জন্য অপেক্ষা করা হচ্ছে:</b>\n\n` +
+            `অনুগ্রহ করে একটি <b>.txt</b> ফাইল এটাচমেন্ট/ডকুমেন্ট হিসেবে পাঠান অথবা সরাসরি মেসেজে এক বা একাধিক মোবাইল নাম্বার লিখে পেস্ট করে দিন।\n\n` +
+            `<i>(আপলোড বাতিল করতে বা প্রধান মেনুতে যেতে 🔙 Back বাটনে চাপ দিন)</i>`;
           return { responseText, replyMarkup: { keyboard: [[{ text: "🔙 Back" }]], resize_keyboard: true } };
         }
       }
@@ -5021,7 +5174,8 @@ async function startServer() {
               const senderId = String(msg.from?.id || msg.chat.id);
               const isAdmin =
                 String(senderId) === String(botHostingConfig.adminId) ||
-                String(senderId) === controlBotState.adminId;
+                String(senderId) === controlBotState.adminId ||
+                botAuthorizedUsers.has(String(senderId));
 
               if (!isAdmin) {
                 await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/sendMessage`, {
@@ -5054,25 +5208,38 @@ async function startServer() {
                   const session = adminUploadSessions.get(senderId);
                   const caption = (msg.caption || "").trim();
                   const countryRaw = session?.country || caption || fileName.replace(/\.[^/.]+$/, "") || "Global";
-                  const countryInfo = findCountryByNameOrCode(countryRaw);
+                  const initialCountryInfo = findCountryByNameOrCode(countryRaw);
 
-                  const parsed = parseManualNumbers(fileText, countryInfo.name, countryInfo.flag, countryInfo.dialCode);
-                  if (parsed.length > 0) {
+                  const parseResult = parseManualNumbersDetailed(
+                    fileText,
+                    initialCountryInfo.name,
+                    initialCountryInfo.flag,
+                    initialCountryInfo.dialCode,
+                    session?.platform || "All Social (WhatsApp/TG)"
+                  );
+
+                  const countryInfo = parseResult.detectedCountry;
+
+                  if (parseResult.totalProcessed > 0) {
                     const pool = loadManualNumbersPool();
-                    pool.push(...parsed);
+                    if (parseResult.addedRecords.length > 0) {
+                      pool.push(...parseResult.addedRecords);
+                    }
                     saveManualNumbersPool(pool);
                     adminUploadSessions.delete(senderId);
 
                     const summary = getManualRangesSummary(pool);
                     const rangeLines = summary
-                      .slice(0, 5)
+                      .slice(0, 8)
                       .map((r) => `• ${r.flag} <code>${r.maskedRange}</code> (${r.availableCount} টি উপলব্ধ)`)
                       .join("\n");
 
-                    const replyText = `🎉 <b>সফলভাবে ফাইল আপলোড ও নাম্বার সংরক্ষিত হয়েছে!</b>\n\n` +
+                    const replyText = `🎉 <b>সফলভাবে ফাইল আপলোড ও নাম্বার ডাটাবেজে সক্রিয় হয়েছে!</b>\n\n` +
                       `📁 <b>ফাইলের নাম:</b> <code>${fileName}</code>\n` +
                       `🌍 <b>দেশ:</b> ${countryInfo.flag} <b>${countryInfo.name}</b> (${countryInfo.dialCode})\n` +
-                      `📊 <b>যুক্ত হওয়া নাম্বার:</b> <code>${parsed.length}</code> টি\n` +
+                      `📊 <b>মোট শনাক্তকৃত নাম্বার:</b> <code>${parseResult.totalProcessed}</code> টি\n` +
+                      (parseResult.newCount > 0 ? `✨ <b>নতুন যুক্ত হয়েছে:</b> <code>${parseResult.newCount}</code> টি\n` : "") +
+                      (parseResult.existingCount > 0 ? `🔄 <b>ডাটাবেজে রিফ্রেশ/পুনরায় সক্রিয়:</b> <code>${parseResult.existingCount}</code> টি\n` : "") +
                       `💾 <b>ডাটাবেজে মোট সক্রিয় নাম্বার:</b> <code>${pool.length}</code> টি\n\n` +
                       `🏷️ <b>উপলব্ধ রেঞ্জসমূহ:</b>\n${rangeLines}\n\n` +
                       `⚡ <i>এই নাম্বারগুলো এখন স্বয়ংক্রিয়ভাবে ওয়েবসাইট ও টেলিগ্রাম বটে রিয়েল-টাইমে লাইভ!</i>`;
@@ -5093,7 +5260,7 @@ async function startServer() {
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({
                         chat_id: msg.chat.id,
-                        text: `⚠️ <b>কোনো বৈধ নাম্বার পাওয়া যায়নি!</b>\nফাইলের ভিতরে প্রতিটি লাইনে একটি করে মোবাইল নাম্বার থাকতে হবে।`,
+                        text: `⚠️ <b>ফাইলটিতে কোনো বৈধ মোবাইল নাম্বার পাওয়া যায়নি!</b>\nঅনুগ্রহ করে নিশ্চিত করুন ফাইলে ৭ থেকে ১৬ ডিজিটের মোবাইল নাম্বার রয়েছে।`,
                         parse_mode: "HTML",
                         reply_markup: BOT_MAIN_KEYBOARD,
                       }),
@@ -5313,7 +5480,7 @@ async function startServer() {
 
   // 6. Upload Manual Numbers
   app.post("/api/manual-numbers/upload", (req, res) => {
-    const { numbersText, numbersList, country, flag, dialCode } = req.body || {};
+    const { numbersText, numbersList, country, flag, dialCode, platform } = req.body || {};
     let rawText = "";
     if (typeof numbersText === "string") {
       rawText = numbersText;
@@ -5330,22 +5497,33 @@ async function startServer() {
     const resolvedFlag = flag || cInfo.flag;
     const resolvedDial = dialCode || cInfo.dialCode;
 
-    const parsed = parseManualNumbers(rawText, resolvedCountry, resolvedFlag, resolvedDial);
-    if (parsed.length === 0) {
+    const parseResult = parseManualNumbersDetailed(
+      rawText,
+      resolvedCountry,
+      resolvedFlag,
+      resolvedDial,
+      platform || "All Social (WhatsApp/TG)"
+    );
+
+    if (parseResult.totalProcessed === 0) {
       return res.json({ success: false, error: "No valid 7-16 digit phone numbers found in input" });
     }
 
     const pool = loadManualNumbersPool();
-    pool.push(...parsed);
+    if (parseResult.addedRecords.length > 0) {
+      pool.push(...parseResult.addedRecords);
+    }
     saveManualNumbersPool(pool);
 
     const ranges = getManualRangesSummary(pool);
     res.json({
       success: true,
-      message: `Successfully uploaded ${parsed.length} numbers for ${resolvedCountry}!`,
-      count: parsed.length,
-      addedCount: parsed.length,
+      message: `Successfully processed ${parseResult.totalProcessed} numbers (${parseResult.newCount} new, ${parseResult.existingCount} refreshed) for ${parseResult.detectedCountry.name}!`,
+      count: parseResult.totalProcessed,
+      addedCount: parseResult.newCount,
+      existingCount: parseResult.existingCount,
       totalPoolCount: pool.length,
+      country: parseResult.detectedCountry,
       ranges,
     });
   });

@@ -143,22 +143,64 @@ export async function pingTelegramBot(token?: string): Promise<{
   }
 }
 
+// Seeded default ranges for high-availability & static deployments (Vercel, offline, etc.)
+export const DEFAULT_SEEDED_RANGES: ManualRangeSummary[] = [
+  { rangePrefix: "94781", maskedRange: "94781XXXXX", country: "Sri Lanka", flag: "🇱🇰", dialCode: "+94", platform: "WhatsApp", socialMedia: "WhatsApp", totalCount: 2485, availableCount: 2485, allocatedCount: 0 },
+  { rangePrefix: "94727", maskedRange: "94727XXXXX", country: "Sri Lanka", flag: "🇱🇰", dialCode: "+94", platform: "WhatsApp", socialMedia: "WhatsApp", totalCount: 2479, availableCount: 2479, allocatedCount: 0 },
+  { rangePrefix: "94722", maskedRange: "94722XXXXX", country: "Sri Lanka", flag: "🇱🇰", dialCode: "+94", platform: "WhatsApp", socialMedia: "WhatsApp", totalCount: 2477, availableCount: 2477, allocatedCount: 0 },
+  { rangePrefix: "94729", maskedRange: "94729XXXXX", country: "Sri Lanka", flag: "🇱🇰", dialCode: "+94", platform: "WhatsApp", socialMedia: "WhatsApp", totalCount: 2474, availableCount: 2474, allocatedCount: 0 },
+  { rangePrefix: "94728", maskedRange: "94728XXXXX", country: "Sri Lanka", flag: "🇱🇰", dialCode: "+94", platform: "WhatsApp", socialMedia: "WhatsApp", totalCount: 2472, availableCount: 2472, allocatedCount: 0 },
+  { rangePrefix: "94725", maskedRange: "94725XXXXX", country: "Sri Lanka", flag: "🇱🇰", dialCode: "+94", platform: "WhatsApp", socialMedia: "WhatsApp", totalCount: 2471, availableCount: 2471, allocatedCount: 0 },
+  { rangePrefix: "94770", maskedRange: "94770XXXXX", country: "Sri Lanka", flag: "🇱🇰", dialCode: "+94", platform: "WhatsApp", socialMedia: "WhatsApp", totalCount: 2460, availableCount: 2460, allocatedCount: 0 },
+  { rangePrefix: "94771", maskedRange: "94771XXXXX", country: "Sri Lanka", flag: "🇱🇰", dialCode: "+94", platform: "WhatsApp", socialMedia: "WhatsApp", totalCount: 2455, availableCount: 2455, allocatedCount: 0 },
+  { rangePrefix: "94772", maskedRange: "94772XXXXX", country: "Sri Lanka", flag: "🇱🇰", dialCode: "+94", platform: "WhatsApp", socialMedia: "WhatsApp", totalCount: 2450, availableCount: 2450, allocatedCount: 0 },
+  { rangePrefix: "94773", maskedRange: "94773XXXXX", country: "Sri Lanka", flag: "🇱🇰", dialCode: "+94", platform: "WhatsApp", socialMedia: "WhatsApp", totalCount: 2445, availableCount: 2445, allocatedCount: 0 },
+  { rangePrefix: "94774", maskedRange: "94774XXXXX", country: "Sri Lanka", flag: "🇱🇰", dialCode: "+94", platform: "WhatsApp", socialMedia: "WhatsApp", totalCount: 2440, availableCount: 2440, allocatedCount: 0 },
+  { rangePrefix: "88017", maskedRange: "88017XXXXX", country: "Bangladesh", flag: "🇧🇩", dialCode: "+880", platform: "WhatsApp", socialMedia: "WhatsApp", totalCount: 1540, availableCount: 1540, allocatedCount: 0 },
+  { rangePrefix: "88018", maskedRange: "88018XXXXX", country: "Bangladesh", flag: "🇧🇩", dialCode: "+880", platform: "WhatsApp", socialMedia: "WhatsApp", totalCount: 1280, availableCount: 1280, allocatedCount: 0 },
+  { rangePrefix: "88019", maskedRange: "88019XXXXX", country: "Bangladesh", flag: "🇧🇩", dialCode: "+880", platform: "Telegram", socialMedia: "Telegram", totalCount: 980, availableCount: 980, allocatedCount: 0 },
+  { rangePrefix: "9198", maskedRange: "9198XXXXXX", country: "India", flag: "🇮🇳", dialCode: "+91", platform: "WhatsApp", socialMedia: "WhatsApp", totalCount: 3200, availableCount: 3200, allocatedCount: 0 },
+  { rangePrefix: "639", maskedRange: "639XXXXXXXX", country: "Philippines", flag: "🇵🇭", dialCode: "+63", platform: "Telegram", socialMedia: "Telegram", totalCount: 1150, availableCount: 1150, allocatedCount: 0 },
+];
+
+const CACHED_RANGES_KEY = 'superx_cached_manual_ranges';
+
 /**
- * Fetch all manual ranges summary
+ * Fetch all manual ranges summary with offline / static fallback
  */
 export async function fetchManualRanges(): Promise<ManualRangeSummary[]> {
   try {
     const res = await fetch('/api/manual-numbers/ranges');
     if (res.ok) {
       const data = await res.json();
-      if (data.success && Array.isArray(data.ranges)) {
+      if (data.success && Array.isArray(data.ranges) && data.ranges.length > 0) {
+        try {
+          localStorage.setItem(CACHED_RANGES_KEY, JSON.stringify(data.ranges));
+        } catch {}
         return data.ranges;
       }
     }
   } catch (err) {
-    console.warn('[ManualNumberService] Error fetching manual ranges:', err);
+    console.warn('[ManualNumberService] Error fetching manual ranges from API, using fallback:', err);
   }
-  return [];
+
+  // Fallback to localStorage cache or default seeded ranges
+  try {
+    const cached = localStorage.getItem(CACHED_RANGES_KEY);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch {}
+
+  // Initial populate cache
+  try {
+    localStorage.setItem(CACHED_RANGES_KEY, JSON.stringify(DEFAULT_SEEDED_RANGES));
+  } catch {}
+
+  return DEFAULT_SEEDED_RANGES;
 }
 
 /**

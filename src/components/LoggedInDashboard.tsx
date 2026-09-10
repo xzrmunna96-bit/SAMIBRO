@@ -2058,6 +2058,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const [isAddNumbersModalOpen, setIsAddNumbersModalOpen] = useState(false);
   const [selectedTerminationPrefix, setSelectedTerminationPrefix] = useState<string>("");
   const [terminationSearchQuery, setTerminationSearchQuery] = useState("");
+  const [terminationDropdownPlatform, setTerminationDropdownPlatform] = useState<string>("ALL");
   const [isTerminationDropdownOpen, setIsTerminationDropdownOpen] = useState(false);
   const [actionFeedbackToast, setActionFeedbackToast] = useState<string | null>(null);
 
@@ -2079,7 +2080,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     }
   }, [actionFeedbackToast]);
 
-  const handleAddTermination = (prefixToAdd?: string) => {
+  const handleAddTermination = (prefixToAdd?: string, keepDropdownOpen: boolean = false) => {
     const prefix = prefixToAdd || selectedTerminationPrefix;
     if (!prefix) return;
 
@@ -2093,11 +2094,13 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
     const targetRange = manualRanges.find((r) => r.rangePrefix === prefix);
     const countryName = targetRange ? targetRange.country : prefix;
-    setActionFeedbackToast(`Termination ${countryName} (${prefix}) added to your workspace!`);
+    setActionFeedbackToast(`Termination ${countryName} (${prefix}) added to workspace in serial order!`);
     playOtpChime();
-    setIsAddNumbersModalOpen(false);
-    setIsTerminationDropdownOpen(false);
-    setSelectedTerminationPrefix("");
+    setSelectedTerminationPrefix(prefix);
+    if (!keepDropdownOpen) {
+      setIsAddNumbersModalOpen(false);
+      setIsTerminationDropdownOpen(false);
+    }
   };
 
   const handleRemoveSingleRange = (prefix: string) => {
@@ -3501,10 +3504,17 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const filteredAvailableTerminations = React.useMemo(() => {
     const q = terminationSearchQuery.trim().toLowerCase();
     return manualRanges.filter((r) => {
-      if (!q) return true;
       const isSriLanka = (r.country || "").toLowerCase().includes("sri lanka");
       const platStr = (isSriLanka ? "whatsapp" : (r.platform || r.socialMedia || "whatsapp")).toLowerCase();
       const info = formatTerminationInfo(r);
+
+      if (terminationDropdownPlatform !== "ALL") {
+        if (!platStr.includes(terminationDropdownPlatform.toLowerCase())) {
+          return false;
+        }
+      }
+
+      if (!q) return true;
       return (
         r.country.toLowerCase().includes(q) ||
         r.rangePrefix.toLowerCase().includes(q) ||
@@ -3514,7 +3524,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         platStr.includes(q)
       );
     });
-  }, [manualRanges, terminationSearchQuery]);
+  }, [manualRanges, terminationSearchQuery, terminationDropdownPlatform]);
 
   const filteredManualNumbersList = React.useMemo(() => {
     return manualNumbers.filter((n) => {
@@ -7227,32 +7237,229 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 </div>
               </div>
 
-              {/* Select Termination dropdown trigger matching Screenshot 1 */}
-              <div className="pt-2 border-t border-slate-100">
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Select termination
-                </label>
+              {/* Select Termination dropdown trigger matching user screenshot */}
+              <div className="pt-2 border-t border-slate-100 relative">
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Select termination
+                  </label>
+                  {userWorkspaceRangePrefixes.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleClearAllWorkspaceRanges}
+                      className="text-[11px] font-bold text-red-600 hover:text-red-700 flex items-center gap-1 cursor-pointer transition"
+                      title="একবারে সব নাম্বার ডিলিট করুন"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      <span>Delete All Numbers</span>
+                    </button>
+                  )}
+                </div>
+
                 <button
                   type="button"
-                  onClick={() => {
-                    setSelectedTerminationPrefix("");
-                    setIsTerminationDropdownOpen(true);
-                    setIsAddNumbersModalOpen(true);
-                  }}
-                  className="w-full bg-slate-50/90 hover:bg-slate-100 border border-lime-600/40 hover:border-lime-600 rounded-xl px-4 py-2.5 text-left text-xs font-semibold text-slate-700 flex items-center justify-between transition cursor-pointer group"
+                  onClick={() => setIsTerminationDropdownOpen(!isTerminationDropdownOpen)}
+                  className={`w-full bg-slate-50/90 hover:bg-slate-100 border rounded-xl px-4 py-3 text-left text-xs font-semibold text-slate-700 flex items-center justify-between transition cursor-pointer group shadow-2xs ${
+                    isTerminationDropdownOpen
+                      ? "border-lime-600 ring-2 ring-lime-100 bg-white"
+                      : "border-lime-600/40 hover:border-lime-600"
+                  }`}
                 >
-                  <span className="flex items-center gap-2 text-slate-500 group-hover:text-slate-800">
-                    <span className="font-mono">-- Choose a termination --</span>
-                  </span>
-                  <ChevronDown className="w-4 h-4 text-slate-400 group-hover:text-slate-700 transition-transform" />
+                  {selectedTerminationPrefix ? (() => {
+                    const chosen = manualRanges.find((r) => r.rangePrefix === selectedTerminationPrefix);
+                    if (!chosen) return <span className="font-mono text-slate-500">-- Choose a termination --</span>;
+                    const info = formatTerminationInfo(chosen);
+                    return (
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <CountryFlag
+                          countryCode={chosen.country}
+                          size="md"
+                          className="w-7 h-5 rounded border border-slate-300/80 shadow-2xs shrink-0"
+                        />
+                        <span className="font-extrabold text-slate-900 truncate">
+                          {chosen.country}
+                        </span>
+                        <span className="text-slate-400 font-medium">&bull;</span>
+                        <span className="font-mono font-bold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded text-[11px] truncate">
+                          {info.masked}
+                        </span>
+                        <span className="text-emerald-600 text-[11px] font-semibold hidden sm:inline">
+                          (Unlimited available)
+                        </span>
+                      </div>
+                    );
+                  })() : (
+                    <span className="flex items-center gap-2 text-slate-500 group-hover:text-slate-800">
+                      <span className="font-mono text-xs">-- Choose a termination --</span>
+                    </span>
+                  )}
+                  <ChevronDown
+                    className={`w-4 h-4 text-slate-400 group-hover:text-slate-700 transition-transform ${
+                      isTerminationDropdownOpen ? "rotate-180 text-lime-600" : ""
+                    }`}
+                  />
                 </button>
                 <p className="text-[11px] text-slate-400 mt-1">
                   Showing {manualRanges.length} active country ranges. Click to choose and add specific terminations to your workspace.
                 </p>
+
+                {/* Dropdown Menu - Serial by serial: Flag -> Country -> Range */}
+                {isTerminationDropdownOpen && (
+                  <div className="mt-2 bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden z-30 transition animate-fadeIn">
+                    {/* Search and filter bar */}
+                    <div className="p-3 bg-slate-50/80 border-b border-slate-100 space-y-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                          Select Country Termination ({filteredAvailableTerminations.length})
+                        </span>
+                        {userWorkspaceRangePrefixes.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={handleClearAllWorkspaceRanges}
+                            className="text-[11px] font-bold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-2 py-1 rounded-lg border border-red-200 flex items-center gap-1 transition cursor-pointer"
+                            title="একবারে সব নাম্বার ডিলিট করুন"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>Clear All ({userWorkspaceRangePrefixes.length})</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                        <input
+                          type="text"
+                          placeholder="Search country name, dial code, or range..."
+                          value={terminationSearchQuery}
+                          onChange={(e) => setTerminationSearchQuery(e.target.value)}
+                          className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-8 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-lime-500"
+                        />
+                        {terminationSearchQuery && (
+                          <button
+                            type="button"
+                            onClick={() => setTerminationSearchQuery("")}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold p-0.5"
+                          >
+                            &times;
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Platform filter tabs */}
+                      <div className="flex items-center gap-1 flex-wrap">
+                        {["ALL", "WhatsApp", "Telegram", "IMO"].map((plat) => (
+                          <button
+                            key={plat}
+                            type="button"
+                            onClick={() => setTerminationDropdownPlatform(plat)}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                              terminationDropdownPlatform === plat
+                                ? "bg-slate-800 text-white"
+                                : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+                            }`}
+                          >
+                            {plat}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Serial List of Countries & Ranges */}
+                    <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
+                      {filteredAvailableTerminations.length === 0 ? (
+                        <div className="p-6 text-center text-xs text-slate-500">
+                          No matching country terminations found.
+                        </div>
+                      ) : (
+                        filteredAvailableTerminations.map((r, index) => {
+                          const info = formatTerminationInfo(r);
+                          const isSriLanka = (r.country || "").toLowerCase().includes("sri lanka");
+                          const resolvedPlat = isSriLanka ? "WhatsApp" : (r.platform || r.socialMedia || "WhatsApp");
+                          const isAdded = userWorkspaceRangePrefixes.includes(r.rangePrefix);
+
+                          return (
+                            <div
+                              key={r.rangePrefix}
+                              onClick={() => handleAddTermination(r.rangePrefix, true)}
+                              className={`p-3 hover:bg-lime-50/50 cursor-pointer transition flex items-center justify-between gap-3 group ${
+                                isAdded ? "bg-slate-50/70" : ""
+                              }`}
+                            >
+                              {/* Left side: Serial Number, Flag (প্রথমে পতাকা), Country (পরে কান্ট্রি), Range (তারপরে রেঞ্জ) */}
+                              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                <span className="text-[11px] font-black text-slate-400 font-mono w-5 text-right shrink-0">
+                                  #{index + 1}
+                                </span>
+
+                                {/* 1. প্রথমে পতাকা (Flag) */}
+                                <div className="shrink-0 p-0.5 bg-slate-50 rounded border border-slate-200/90 shadow-2xs flex items-center justify-center">
+                                  <CountryFlag
+                                    countryCode={r.country}
+                                    size="md"
+                                    className="w-7 h-5 rounded border border-slate-300/80 shadow-2xs shrink-0"
+                                  />
+                                </div>
+
+                                {/* 2. পরে কান্ট্রি (Country Name) & 3. তারপরে হচ্ছে রেঞ্জ (Range) */}
+                                <div className="min-w-0 flex items-center gap-2 flex-wrap">
+                                  <span className="font-extrabold text-slate-900 text-xs tracking-tight">
+                                    {r.country}
+                                  </span>
+                                  <span className="font-mono text-[11px] font-bold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200/80">
+                                    {info.operator} &bull; {info.masked}
+                                  </span>
+                                  <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full border border-emerald-200 inline-flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                    Unlimited available
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Right side: Platform Badge & Action Status */}
+                              <div className="flex items-center gap-2 shrink-0">
+                                <RangeSocialBadge
+                                  platform={resolvedPlat}
+                                  country={r.country}
+                                  size="sm"
+                                />
+                                {isAdded ? (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-black text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-lg">
+                                    <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                    <span>Added</span>
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="inline-flex items-center gap-1 text-[11px] font-bold text-white bg-[#65a30d] group-hover:bg-[#58910b] px-3 py-1 rounded-lg transition shadow-2xs cursor-pointer"
+                                  >
+                                    <Plus className="w-3.5 h-3.5" />
+                                    <span>Add</span>
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    {/* Bottom action bar */}
+                    <div className="p-2.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
+                      <span className="text-[11px]">Click any country above to add in serial order below.</span>
+                      <button
+                        type="button"
+                        onClick={() => setIsTerminationDropdownOpen(false)}
+                        className="px-3 py-1 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg font-bold text-slate-700 text-xs cursor-pointer"
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Workspace Control Bar (Select All, Bulk Delete, Search & Platforms) */}
+            {/* Workspace Control Bar (Select All, Bulk Delete, Clear All, Search & Platforms) */}
             <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
                 <div className="flex items-center gap-3 flex-wrap">
@@ -7286,10 +7493,11 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                     <button
                       type="button"
                       onClick={handleClearAllWorkspaceRanges}
-                      className="px-2.5 py-1.5 rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-50 text-[11px] font-bold transition cursor-pointer"
-                      title="Clear all workspace ranges to pick new ones"
+                      className="px-3 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer shadow-2xs"
+                      title="একবারে সব নাম্বার ডিলিট করুন"
                     >
-                      Clear All
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete All Numbers (একবারে সব মুছুন)</span>
                     </button>
                   )}
                 </div>
@@ -7391,7 +7599,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
               return (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {filtered.map((range) => {
+                  {filtered.map((range, index) => {
                     const termInfo = formatTerminationInfo(range);
                     const isSelectedForDelete = selectedRangesForDelete.has(range.rangePrefix);
 
@@ -7414,9 +7622,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         />
 
                         <div>
-                          {/* Card Top row: Checkbox, Flag, Country, Platform Logo, and Corner Delete Button */}
+                          {/* Card Top row: Serial #, Checkbox, Flag, Country, Platform Logo, and Corner Delete Button */}
                           <div className="flex items-start justify-between gap-2">
-                            <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="flex items-center gap-2 min-w-0">
                               <input
                                 type="checkbox"
                                 checked={isSelectedForDelete}
@@ -7431,6 +7639,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                 className="w-4 h-4 rounded text-indigo-600 border-slate-300 focus:ring-indigo-500 cursor-pointer accent-indigo-600 shrink-0"
                                 title="Mark for deletion"
                               />
+                              <span className="text-[10px] font-black text-slate-500 bg-slate-100 border border-slate-200/80 px-1.5 py-0.5 rounded-md font-mono shrink-0" title={`Serial #${index + 1}`}>
+                                #{index + 1}
+                              </span>
                               <div className="shrink-0 p-0.5 bg-slate-50 rounded border border-slate-200/80 shadow-2xs flex items-center justify-center">
                                 <CountryFlag
                                   countryCode={range.country}
@@ -7560,6 +7771,18 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
+                    {userWorkspaceRangePrefixes.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleClearAllWorkspaceRanges}
+                        className="px-3 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer shadow-2xs"
+                        title="একবারে সব নাম্বার ডিলিট করুন"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Delete All Numbers</span>
+                        <span className="sm:hidden">Delete All</span>
+                      </button>
+                    )}
                     <span className="hidden md:inline-block text-xs font-medium text-slate-500">
                       Showing <strong className="text-slate-800 font-bold">{filteredAvailableTerminations.length}</strong> of {manualRanges.length}
                     </span>
@@ -7657,7 +7880,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         </button>
                       </div>
                     ) : (
-                      filteredAvailableTerminations.map((r) => {
+                      filteredAvailableTerminations.map((r, index) => {
                         const info = formatTerminationInfo(r);
                         const isSelected = selectedTerminationPrefix === r.rangePrefix;
                         const isAlreadyAdded = userWorkspaceRangePrefixes.includes(r.rangePrefix);
@@ -7685,9 +7908,14 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                               }`}
                             />
 
-                            {/* Left: Flag, Country Name, Operator, Masked Range, Stock badge */}
+                            {/* Left: Serial #, Flag (প্রথমে পতাকা), Country Name (পরে কান্ট্রি), Range (তারপরে রেঞ্জ) */}
                             <div className="flex items-center gap-3.5 min-w-0 flex-1">
-                              {/* Authentic Flag matching Test Panel */}
+                              {/* Serial Number */}
+                              <span className="text-xs font-black text-slate-400 font-mono w-6 shrink-0">
+                                #{index + 1}
+                              </span>
+
+                              {/* 1. Authentic Flag matching Test Panel */}
                               <div className="shrink-0 p-1 bg-slate-50 rounded-lg border border-slate-200/80 shadow-2xs flex items-center justify-center">
                                 <CountryFlag
                                   countryCode={r.country}
@@ -7696,6 +7924,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                 />
                               </div>
 
+                              {/* 2. Country Name & 3. Range */}
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="font-extrabold text-slate-900 text-sm sm:text-base tracking-tight">

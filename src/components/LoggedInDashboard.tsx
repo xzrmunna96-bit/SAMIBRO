@@ -841,6 +841,14 @@ const POPULAR_RANGES = [
     cap: "98%",
   },
   {
+    id: "9478",
+    name: "Sri Lanka Dialog / Mobitel",
+    code: "9478XXXX",
+    country: "Sri Lanka",
+    rate: "$0.20",
+    cap: "99%",
+  },
+  {
     id: "44740",
     name: "UK EE Physical",
     code: "44740XXX",
@@ -863,14 +871,6 @@ const POPULAR_RANGES = [
     country: "Indonesia",
     rate: "$0.24",
     cap: "96%",
-  },
-  {
-    id: "91987",
-    name: "India Airtel VIP",
-    code: "91987XXX",
-    country: "India",
-    rate: "$0.15",
-    cap: "99%",
   },
   {
     id: "15552",
@@ -5443,50 +5443,6 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         </span>
                       </button>
                     </div>
-
-                    {/* Active Uploaded Database Ranges Live Quick-Pick Bar */}
-                    {manualRanges.length > 0 && (
-                      <div className="pt-2 border-t border-slate-100">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                            <Zap className="w-3 h-3 text-amber-500" />
-                            <span>Active Uploaded Ranges ({manualRanges.length})</span>
-                          </span>
-                          <span className="text-[10px] text-emerald-600 font-bold">
-                            Live synchronized with Telegram Bot
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-1 bg-slate-50/80 rounded-xl border border-slate-200/80">
-                          {manualRanges.map((r, i) => {
-                            const isSelected = rangeCustomInput === r.rangePrefix || rangeCustomInput === r.maskedRange;
-                            return (
-                              <button
-                                key={`${r.rangePrefix}_${i}`}
-                                type="button"
-                                onClick={() => {
-                                  setRangeCustomInput(r.rangePrefix);
-                                  showDashboardToast(`Selected Range: ${r.maskedRange} (${r.availableCount} available)`, "success", 800);
-                                }}
-                                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 cursor-pointer border ${
-                                  isSelected
-                                    ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
-                                    : "bg-white text-slate-700 border-slate-200 hover:border-emerald-400 hover:bg-emerald-50/50"
-                                }`}
-                                title={`Click to load range ${r.maskedRange} (${r.country})`}
-                              >
-                                <span>{r.flag}</span>
-                                <span className="font-mono font-bold">{r.maskedRange || r.rangePrefix}</span>
-                                <span className={`text-[10px] px-1 py-0.2 rounded font-mono ${
-                                  isSelected ? "bg-emerald-700 text-emerald-100" : "bg-slate-100 text-slate-600"
-                                }`}>
-                                  {r.availableCount}
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -5729,19 +5685,26 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
                     {/* Service Cards Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {[
+                      {(manualRanges.length > 0 ? manualRanges.slice(0, 8).map(mr => ({
+                        name: `${mr.platform || 'All Social'} (${mr.country})`,
+                        range: mr.rangePrefix,
+                        country: `${mr.flag} ${mr.country}`,
+                        rate: "99.2%",
+                        status: `${mr.availableCount} Available`,
+                        desc: `Active carrier route for ${mr.country} (${mr.dialCode}) with high deliverability.`,
+                      })) : [
                         {
                           name: "WhatsApp VIP",
-                          range: "22501",
-                          country: "Ivory Coast (Orange)",
-                          rate: "99.4%",
+                          range: "9478",
+                          country: "🇱🇰 Sri Lanka (Dialog/Mobitel)",
+                          rate: "99.6%",
                           status: "Online",
                           desc: "Instant WhatsApp registration codes with zero block rate",
                         },
                         {
                           name: "Telegram Ultra",
                           range: "88017",
-                          country: "Bangladesh (Grameenphone)",
+                          country: "🇧🇩 Bangladesh (Grameenphone)",
                           rate: "98.8%",
                           status: "Online",
                           desc: "Direct Telegram SMS carrier line for instant account creation",
@@ -5749,7 +5712,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         {
                           name: "IMO Messenger",
                           range: "62812",
-                          country: "Indonesia (Telkomsel)",
+                          country: "🇮🇩 Indonesia (Telkomsel)",
                           rate: "97.5%",
                           status: "Online",
                           desc: "Physical SIM routing for IMO phone verification",
@@ -5757,28 +5720,28 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         {
                           name: "Meta Facebook",
                           range: "44740",
-                          country: "United Kingdom (EE Physical)",
+                          country: "🇬🇧 United Kingdom (EE Physical)",
                           rate: "99.1%",
                           status: "Online",
                           desc: "Official EE Carrier UK numbers for Facebook / Instagram verification",
                         },
                         {
-                          name: "Google / Gmail",
-                          range: "91987",
-                          country: "India (Airtel VIP)",
-                          rate: "96.8%",
+                          name: "Ivory Coast Direct",
+                          range: "22501",
+                          country: "🇨🇮 Ivory Coast (Moov/Orange)",
+                          rate: "98.4%",
                           status: "Online",
-                          desc: "High-speed Airtel physical routes for Google Workspace / Gmail",
+                          desc: "High-speed African gateway for multi-platform activation",
                         },
                         {
                           name: "TikTok / ByteDance",
                           range: "23276",
-                          country: "Sierra Leone (Orange)",
+                          country: "🇸🇱 Sierra Leone (Orange)",
                           rate: "95.5%",
                           status: "Online",
                           desc: "Fast delivery for TikTok creator accounts",
                         },
-                      ].map((service) => (
+                      ]).map((service) => (
                         <div
                           key={service.name}
                           className="bg-gray-50/90 hover:bg-white border border-gray-200/90 rounded-xl p-3.5 space-y-2.5 transition shadow-2xs hover:shadow-sm"
@@ -5836,13 +5799,32 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
               {/* SECTION 2: ALLOCATED NUMBERS TABLE & REAL-TIME OTP DISPLAY */}
               <div>
-                {/* Table Column Labels */}
-                <div className="grid grid-cols-12 px-4 py-3 text-[11px] font-extrabold text-slate-200 uppercase tracking-wider bg-slate-800 border-b-2 border-slate-700">
-                  <div className="col-span-5 sm:col-span-4 border-r border-slate-700 pr-2">NUMBER INFO</div>
+                {/* Table Column Labels with Clear History action */}
+                <div className="grid grid-cols-12 px-4 py-3 text-[11px] font-extrabold text-slate-200 uppercase tracking-wider bg-slate-800 border-b-2 border-slate-700 items-center">
+                  <div className="col-span-5 sm:col-span-4 border-r border-slate-700 pr-2 flex items-center justify-between">
+                    <span>NUMBER INFO</span>
+                    {getNumHistory.length > 0 && (
+                      <span className="text-[10px] font-mono text-emerald-400 font-bold hidden sm:inline">
+                        ({getNumHistory.length})
+                      </span>
+                    )}
+                  </div>
                   <div className="col-span-4 sm:col-span-5 border-r border-slate-700 px-2">
                     COUNTRY / OPERATOR
                   </div>
-                  <div className="col-span-3 text-right pl-2">ACTIVITY</div>
+                  <div className="col-span-3 text-right pl-2 flex items-center justify-end gap-2">
+                    <span>ACTIVITY</span>
+                    {getNumHistory.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleClearAllNumHistory}
+                        className="text-[10px] text-rose-300 hover:text-rose-100 bg-rose-900/60 hover:bg-rose-800 px-2 py-0.5 rounded transition cursor-pointer font-bold"
+                        title="Clear all numbers"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Table Rows or Clean Empty State */}
@@ -5858,12 +5840,12 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                       Enter a prefix range (e.g.,{" "}
                       <strong className="text-gray-700 font-mono">88017</strong>
                       ,{" "}
-                      <strong className="text-gray-700 font-mono">44740</strong>
+                      <strong className="text-gray-700 font-mono">9478</strong>
                       ,{" "}
-                      <strong className="text-gray-700 font-mono">23275</strong>
+                      <strong className="text-gray-700 font-mono">44740</strong>
                       ) above and click{" "}
                       <strong className="text-emerald-700">Get Number</strong>{" "}
-                      to allocate numbers automatically. Teammates on this account will see allocated numbers live!
+                      to allocate numbers automatically.
                     </p>
                   </div>
                 ) : (
@@ -5963,11 +5945,19 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                             )}
                           </div>
 
-                          {/* ACTIVITY */}
-                          <div className="col-span-3 text-right space-y-1 pl-2 h-full flex flex-col justify-center items-end">
+                          {/* ACTIVITY & ACTIONS */}
+                          <div className="col-span-3 text-right space-y-1.5 pl-2 h-full flex flex-col justify-center items-end">
                             <span className="inline-block text-[11px] text-gray-700 font-mono bg-slate-200/80 px-2.5 py-1 rounded-md border border-slate-300 shadow-2xs">
                               {formatRelativeActivityTime(item, nowTick)}
                             </span>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteNumEntry(item.id)}
+                              className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                              title="Delete number"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         </div>
                       );

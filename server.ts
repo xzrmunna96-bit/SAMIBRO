@@ -203,39 +203,79 @@ async function startServer() {
     }
   }
 
+  let cachedManualNumbersPool: ManualNumberRecord[] | null = null;
+
   function loadManualNumbersPool(): ManualNumberRecord[] {
+    if (cachedManualNumbersPool && Array.isArray(cachedManualNumbersPool) && cachedManualNumbersPool.length > 0) {
+      return cachedManualNumbersPool;
+    }
+
     try {
       if (fs.existsSync(MANUAL_NUMBERS_POOL_FILE)) {
         const raw = fs.readFileSync(MANUAL_NUMBERS_POOL_FILE, "utf-8");
         const list = JSON.parse(raw);
-        if (Array.isArray(list)) return list;
+        if (Array.isArray(list) && list.length > 0) {
+          // Filter out unrequested demo countries (India, Ivory Coast, USA)
+          const filtered = list.filter(
+            (item: ManualNumberRecord) =>
+              item.country !== "India" &&
+              item.country !== "Ivory Coast" &&
+              item.country !== "United States"
+          );
+          cachedManualNumbersPool = filtered;
+          return filtered;
+        }
       }
     } catch (e) {
       console.warn("Could not load manual_numbers_pool.json:", e);
     }
 
-    // Seed sample initial numbers pool if empty
+    // Seed sample initial numbers pool if empty (Sri Lanka & Bangladesh)
     const samplePool: ManualNumberRecord[] = [];
     const seedPrefixes = [
+      { prefix: "94782", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2585 },
+      { prefix: "94723", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2567 },
+      { prefix: "94785", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2548 },
+      { prefix: "94726", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2540 },
+      { prefix: "94720", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2529 },
+      { prefix: "94789", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2529 },
+      { prefix: "94724", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2521 },
+      { prefix: "94780", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2506 },
+      { prefix: "94787", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2501 },
+      { prefix: "94784", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2497 },
+      { prefix: "94788", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2495 },
+      { prefix: "94783", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2492 },
+      { prefix: "94786", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2490 },
+      { prefix: "94721", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2486 },
+      { prefix: "94781", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2485 },
+      { prefix: "94727", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2479 },
+      { prefix: "94722", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2477 },
+      { prefix: "94729", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2474 },
+      { prefix: "94728", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2472 },
+      { prefix: "94725", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2471 },
+      { prefix: "94770", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2460 },
+      { prefix: "94771", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2455 },
+      { prefix: "94772", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2450 },
+      { prefix: "94773", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2445 },
+      { prefix: "94774", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2440 },
       { prefix: "88017", country: "Bangladesh", flag: "🇧🇩", dial: "+880", count: 25 },
       { prefix: "88018", country: "Bangladesh", flag: "🇧🇩", dial: "+880", count: 20 },
-      { prefix: "22501", country: "Ivory Coast", flag: "🇨🇮", dial: "+225", count: 15 },
-      { prefix: "91987", country: "India", flag: "🇮🇳", dial: "+91", count: 20 },
-      { prefix: "13125", country: "United States", flag: "🇺🇸", dial: "+1", count: 15 },
     ];
     for (const s of seedPrefixes) {
       for (let i = 1; i <= s.count; i++) {
-        const suffix = String(100000 + i).slice(1);
-        const clean = `${s.prefix}${suffix}`;
+        const pad = String(i).padStart(6, "0");
+        const clean = `${s.prefix}${pad}`;
         samplePool.push({
           id: `seed_${s.prefix}_${i}`,
           number: `+${clean}`,
           cleanDigits: clean,
           rangePrefix: s.prefix,
-          maskedRange: `${s.prefix}${"X".repeat(Math.max(0, clean.length - 5))}`,
+          maskedRange: `${s.prefix}XXXXXX`,
           country: s.country,
           flag: s.flag,
           dialCode: s.dial,
+          platform: "WhatsApp",
+          socialMedia: "WhatsApp",
           allocated: false,
           uploadedAt: Date.now() - 3600000,
         });
@@ -246,6 +286,7 @@ async function startServer() {
   }
 
   function saveManualNumbersPool(list: ManualNumberRecord[]) {
+    cachedManualNumbersPool = list;
     try {
       fs.writeFileSync(MANUAL_NUMBERS_POOL_FILE, JSON.stringify(list, null, 2), "utf-8");
     } catch (e) {
@@ -5172,10 +5213,12 @@ async function startServer() {
             const msg = update.message || update.edited_message;
             if (msg && msg.document && msg.chat && msg.chat.id) {
               const senderId = String(msg.from?.id || msg.chat.id);
+              const authorizedAdmins = loadAuthorizedAdmins();
               const isAdmin =
                 String(senderId) === String(botHostingConfig.adminId) ||
                 String(senderId) === controlBotState.adminId ||
-                botAuthorizedUsers.has(String(senderId));
+                String(senderId) === controlBotState.userId ||
+                authorizedAdmins.has(String(senderId));
 
               if (!isAdmin) {
                 await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/sendMessage`, {

@@ -621,6 +621,99 @@ function ImoLogo({ className = "w-16 h-16" }: { className?: string }) {
   );
 }
 
+// Official Brand Logo / Badge for SMS Ranges (Telegram, WhatsApp, IMO, Facebook)
+export function RangeSocialBadge({
+  platform,
+  country,
+  size = "md",
+}: {
+  platform?: string;
+  country?: string;
+  size?: "sm" | "md" | "lg";
+}) {
+  let plat = platform || "";
+  const isSriLanka = (country || "").toLowerCase().includes("sri lanka");
+  if (isSriLanka) {
+    plat = "WhatsApp";
+  }
+
+  const norm = (plat || (isSriLanka ? "whatsapp" : "telegram")).toLowerCase();
+  const iconSize = size === "lg" ? "w-5 h-5" : size === "sm" ? "w-3.5 h-3.5" : "w-4 h-4";
+  const textSize = size === "sm" ? "text-[10px]" : "text-xs";
+  const pad = size === "sm" ? "px-2 py-0.5" : "px-2.5 py-1";
+
+  if (norm.includes("whatsapp") || isSriLanka) {
+    return (
+      <span className={`inline-flex items-center gap-1.5 ${pad} rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 ${textSize} font-bold shrink-0 shadow-2xs`}>
+        <WhatsAppLogo className={iconSize} />
+        <span>WhatsApp</span>
+      </span>
+    );
+  }
+  if (norm.includes("telegram")) {
+    return (
+      <span className={`inline-flex items-center gap-1.5 ${pad} rounded-full bg-sky-50 text-sky-700 border border-sky-200 ${textSize} font-bold shrink-0 shadow-2xs`}>
+        <TelegramLogo className={iconSize} />
+        <span>Telegram</span>
+      </span>
+    );
+  }
+  if (norm.includes("imo")) {
+    return (
+      <span className={`inline-flex items-center gap-1.5 ${pad} rounded-full bg-cyan-50 text-cyan-700 border border-cyan-200 ${textSize} font-bold shrink-0 shadow-2xs`}>
+        <ImoLogo className={iconSize} />
+        <span>IMO</span>
+      </span>
+    );
+  }
+  if (norm.includes("facebook")) {
+    return (
+      <span className={`inline-flex items-center gap-1.5 ${pad} rounded-full bg-blue-50 text-blue-700 border border-blue-200 ${textSize} font-bold shrink-0 shadow-2xs`}>
+        <FacebookLogo className={iconSize} />
+        <span>Facebook</span>
+      </span>
+    );
+  }
+  return (
+    <span className={`inline-flex items-center gap-1.5 ${pad} rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 ${textSize} font-bold shrink-0 shadow-2xs`}>
+      <WhatsAppLogo className={iconSize} />
+      <span>{plat || "WhatsApp"}</span>
+    </span>
+  );
+}
+
+export function formatTerminationInfo(range: ManualRangeSummary) {
+  const clean = (range.rangePrefix || "").replace(/\D/g, "");
+  const prefix5 = clean.slice(0, 5);
+  const masked = `${prefix5}${"X".repeat(Math.max(5, 10 - prefix5.length))}`;
+
+  let operator = "Telecom Route";
+  const c = (range.country || "").toLowerCase();
+  let resolvedPlatform = range.platform || range.socialMedia || "WhatsApp";
+
+  if (c.includes("sri lanka")) {
+    operator = "Dialog / Mobitel";
+    resolvedPlatform = "WhatsApp";
+  } else if (c.includes("bangladesh")) {
+    if (clean.startsWith("88017")) operator = "Grameenphone";
+    else if (clean.startsWith("88018")) operator = "Robi";
+    else if (clean.startsWith("88019")) operator = "Banglalink";
+    else operator = "Grameenphone / Robi";
+  } else if (c.includes("india")) {
+    operator = "Airtel / Jio";
+  } else if (c.includes("tanzania")) {
+    operator = "Airtel TZ";
+  }
+
+  return {
+    prefix5,
+    masked,
+    operator,
+    resolvedPlatform,
+    label: `${range.country} - ${operator} - ${masked}`,
+  };
+}
+
 export function getCountryFlagEmoji(countryName: string): string {
   if (!countryName) return "🌐";
 
@@ -1938,6 +2031,122 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const [manualRangesPlatformFilter, setManualRangesPlatformFilter] = useState("ALL");
   const [manualNumbersStatusFilter, setManualNumbersStatusFilter] = useState("ALL");
 
+  // User customized workspace for SMS Ranges (Termination picker, individual delete & bulk delete)
+  const userRangesStorageKey = `superx_user_sms_ranges_${user?.accountCode || user?.email || "default"}`;
+  const [userWorkspaceRangePrefixes, setUserWorkspaceRangePrefixes] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(userRangesStorageKey);
+      if (raw !== null) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return [];
+  });
+  const [hasInitializedWorkspaceRanges, setHasInitializedWorkspaceRanges] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(userRangesStorageKey) !== null;
+    } catch {
+      return false;
+    }
+  });
+
+  // Bulk selection for deletion
+  const [selectedRangesForDelete, setSelectedRangesForDelete] = useState<Set<string>>(new Set());
+
+  // Add numbers modal & termination dropdown state (Matching user screenshots 1 & 2)
+  const [isAddNumbersModalOpen, setIsAddNumbersModalOpen] = useState(false);
+  const [selectedTerminationPrefix, setSelectedTerminationPrefix] = useState<string>("");
+  const [terminationSearchQuery, setTerminationSearchQuery] = useState("");
+  const [isTerminationDropdownOpen, setIsTerminationDropdownOpen] = useState(false);
+  const [actionFeedbackToast, setActionFeedbackToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!hasInitializedWorkspaceRanges && manualRanges.length > 0) {
+      const allPrefixes = manualRanges.map((r) => r.rangePrefix);
+      setUserWorkspaceRangePrefixes(allPrefixes);
+      try {
+        localStorage.setItem(userRangesStorageKey, JSON.stringify(allPrefixes));
+      } catch {}
+      setHasInitializedWorkspaceRanges(true);
+    }
+  }, [manualRanges, hasInitializedWorkspaceRanges, userRangesStorageKey]);
+
+  useEffect(() => {
+    if (actionFeedbackToast) {
+      const t = setTimeout(() => setActionFeedbackToast(null), 3500);
+      return () => clearTimeout(t);
+    }
+  }, [actionFeedbackToast]);
+
+  const handleAddTermination = (prefixToAdd?: string) => {
+    const prefix = prefixToAdd || selectedTerminationPrefix;
+    if (!prefix) return;
+
+    setUserWorkspaceRangePrefixes((prev) => {
+      const updated = prev.includes(prefix) ? prev : [...prev, prefix];
+      try {
+        localStorage.setItem(userRangesStorageKey, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+
+    const targetRange = manualRanges.find((r) => r.rangePrefix === prefix);
+    const countryName = targetRange ? targetRange.country : prefix;
+    setActionFeedbackToast(`Termination ${countryName} (${prefix}) added to your workspace!`);
+    playOtpChime();
+    setIsAddNumbersModalOpen(false);
+    setIsTerminationDropdownOpen(false);
+    setSelectedTerminationPrefix("");
+  };
+
+  const handleRemoveSingleRange = (prefix: string) => {
+    setUserWorkspaceRangePrefixes((prev) => {
+      const updated = prev.filter((p) => p !== prefix);
+      try {
+        localStorage.setItem(userRangesStorageKey, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+    setSelectedRangesForDelete((prev) => {
+      const next = new Set(prev);
+      next.delete(prefix);
+      return next;
+    });
+    setActionFeedbackToast(`Range removed from your workspace.`);
+  };
+
+  const handleDeleteSelectedRanges = () => {
+    if (selectedRangesForDelete.size === 0) return;
+    setUserWorkspaceRangePrefixes((prev) => {
+      const updated = prev.filter((p) => !selectedRangesForDelete.has(p));
+      try {
+        localStorage.setItem(userRangesStorageKey, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+    const count = selectedRangesForDelete.size;
+    setSelectedRangesForDelete(new Set());
+    setActionFeedbackToast(`${count} range${count > 1 ? "s" : ""} removed from your workspace.`);
+  };
+
+  const handleToggleSelectAll = (filteredPrefixes: string[]) => {
+    if (selectedRangesForDelete.size > 0 && selectedRangesForDelete.size === filteredPrefixes.length) {
+      setSelectedRangesForDelete(new Set());
+    } else {
+      setSelectedRangesForDelete(new Set(filteredPrefixes));
+    }
+  };
+
+  const handleClearAllWorkspaceRanges = () => {
+    setUserWorkspaceRangePrefixes([]);
+    setSelectedRangesForDelete(new Set());
+    try {
+      localStorage.setItem(userRangesStorageKey, JSON.stringify([]));
+    } catch {}
+    setActionFeedbackToast(`All ranges cleared. Click "+ Add numbers" to choose terminations.`);
+  };
+
   // Admin uploader inputs
   const [uploadCountry, setUploadCountry] = useState("Bangladesh");
   const [uploadFlag, setUploadFlag] = useState("🇧🇩");
@@ -2738,7 +2947,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     const loadRanges = () => {
       fetchManualRanges()
         .then((ranges) => {
-          if (Array.isArray(ranges) && ranges.length > 0) {
+          if (Array.isArray(ranges)) {
             setManualRanges(ranges);
           }
         })
@@ -3265,18 +3474,47 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   }, [liveHits, consoleFilter]);
 
   const filteredManualRangesList = React.useMemo(() => {
-    return manualRanges.filter((r) => {
+    // Only show ranges present in user's active workspace
+    const inWorkspace = manualRanges.filter((r) =>
+      userWorkspaceRangePrefixes.includes(r.rangePrefix)
+    );
+
+    return inWorkspace.filter((r) => {
+      const q = manualRangesSearch.trim().toLowerCase();
+      const isSriLanka = (r.country || "").toLowerCase().includes("sri lanka");
+      const platStr = (isSriLanka ? "WHATSAPP" : (r.platform || r.socialMedia || "WHATSAPP")).toUpperCase();
       const textMatch =
-        !manualRangesSearch.trim() ||
-        r.country.toLowerCase().includes(manualRangesSearch.toLowerCase()) ||
-        r.rangePrefix.includes(manualRangesSearch);
+        !q ||
+        r.country.toLowerCase().includes(q) ||
+        r.rangePrefix.toLowerCase().includes(q) ||
+        (r.maskedRange && r.maskedRange.toLowerCase().includes(q)) ||
+        (r.dialCode && r.dialCode.toLowerCase().includes(q)) ||
+        platStr.toLowerCase().includes(q);
       const platMatch =
         manualRangesPlatformFilter === "ALL" ||
-        r.platform?.toUpperCase() === manualRangesPlatformFilter.toUpperCase() ||
-        r.socialMedia?.toUpperCase() === manualRangesPlatformFilter.toUpperCase();
+        platStr.includes(manualRangesPlatformFilter.toUpperCase()) ||
+        platStr.includes("ALL SOCIAL");
       return textMatch && platMatch;
     });
-  }, [manualRanges, manualRangesSearch, manualRangesPlatformFilter]);
+  }, [manualRanges, userWorkspaceRangePrefixes, manualRangesSearch, manualRangesPlatformFilter]);
+
+  const filteredAvailableTerminations = React.useMemo(() => {
+    const q = terminationSearchQuery.trim().toLowerCase();
+    return manualRanges.filter((r) => {
+      if (!q) return true;
+      const isSriLanka = (r.country || "").toLowerCase().includes("sri lanka");
+      const platStr = (isSriLanka ? "whatsapp" : (r.platform || r.socialMedia || "whatsapp")).toLowerCase();
+      const info = formatTerminationInfo(r);
+      return (
+        r.country.toLowerCase().includes(q) ||
+        r.rangePrefix.toLowerCase().includes(q) ||
+        info.operator.toLowerCase().includes(q) ||
+        info.masked.toLowerCase().includes(q) ||
+        (r.dialCode && r.dialCode.toLowerCase().includes(q)) ||
+        platStr.includes(q)
+      );
+    });
+  }, [manualRanges, terminationSearchQuery]);
 
   const filteredManualNumbersList = React.useMemo(() => {
     return manualNumbers.filter((n) => {
@@ -5685,14 +5923,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
                     {/* Service Cards Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {(manualRanges.length > 0 ? manualRanges.slice(0, 8).map(mr => ({
-                        name: `${mr.platform || 'All Social'} (${mr.country})`,
-                        range: mr.rangePrefix,
-                        country: `${mr.flag} ${mr.country}`,
-                        rate: "99.2%",
-                        status: `${mr.availableCount} Available`,
-                        desc: `Active carrier route for ${mr.country} (${mr.dialCode}) with high deliverability.`,
-                      })) : [
+                      {[
                         {
                           name: "WhatsApp VIP",
                           range: "9478",
@@ -5741,7 +5972,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                           status: "Online",
                           desc: "Fast delivery for TikTok creator accounts",
                         },
-                      ]).map((service) => (
+                      ].map((service) => (
                         <div
                           key={service.name}
                           className="bg-gray-50/90 hover:bg-white border border-gray-200/90 rounded-xl p-3.5 space-y-2.5 transition shadow-2xs hover:shadow-sm"
@@ -6948,35 +7179,156 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               </div>
             )}
 
-            {/* Range Search & Filtering Bar */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs">
-              <div className="relative flex-1">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search active range prefixes... (e.g. 88017)"
-                  value={manualRangesSearch}
-                  onChange={(e) => setManualRangesSearch(e.target.value)}
-                  className="w-full bg-slate-50/80 border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-xs font-medium text-slate-700 focus:outline-none focus:border-indigo-500 transition"
-                />
+            {/* Action Feedback Banner */}
+            {actionFeedbackToast && (
+              <div className="bg-emerald-600 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-md flex items-center justify-between animate-fadeIn">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>{actionFeedbackToast}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActionFeedbackToast(null)}
+                  className="p-1 hover:bg-emerald-700 rounded transition cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            {/* Termination Picker Box (Matching User Screenshots 1 & 2) */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-2xs space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-[#65a30d] flex items-center justify-center text-white shadow-xs shrink-0">
+                    <Plus className="w-5 h-5 font-black" />
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-900">Choice this termination / Add numbers</h2>
+                    <p className="text-xs text-slate-500">
+                      Select a country termination to add ranges to your workspace. Added ranges will appear in serial order below.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedTerminationPrefix("");
+                      setIsTerminationDropdownOpen(true);
+                      setIsAddNumbersModalOpen(true);
+                    }}
+                    className="px-4 py-2.5 rounded-xl bg-[#65a30d] hover:bg-[#58910b] text-white text-xs font-bold flex items-center gap-2 transition active:scale-95 shadow-xs cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>+ Add numbers</span>
+                  </button>
+                </div>
               </div>
 
-              {/* Platform Quick Selection Filter */}
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {["ALL", "Telegram", "WhatsApp", "IMO", "Facebook"].map((plat) => (
-                  <button
-                    key={plat}
-                    type="button"
-                    onClick={() => setManualRangesPlatformFilter(plat)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition active:scale-95 cursor-pointer border ${
-                      manualRangesPlatformFilter === plat
-                        ? "bg-slate-900 text-white border-slate-900"
-                        : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
-                    }`}
-                  >
-                    {plat === "ALL" ? "All Platforms" : plat}
-                  </button>
-                ))}
+              {/* Select Termination dropdown trigger matching Screenshot 1 */}
+              <div className="pt-2 border-t border-slate-100">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Select termination
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedTerminationPrefix("");
+                    setIsTerminationDropdownOpen(true);
+                    setIsAddNumbersModalOpen(true);
+                  }}
+                  className="w-full bg-slate-50/90 hover:bg-slate-100 border border-lime-600/40 hover:border-lime-600 rounded-xl px-4 py-2.5 text-left text-xs font-semibold text-slate-700 flex items-center justify-between transition cursor-pointer group"
+                >
+                  <span className="flex items-center gap-2 text-slate-500 group-hover:text-slate-800">
+                    <span className="font-mono">-- Choose a termination --</span>
+                  </span>
+                  <ChevronDown className="w-4 h-4 text-slate-400 group-hover:text-slate-700 transition-transform" />
+                </button>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Showing {manualRanges.length} active country ranges. Click to choose and add specific terminations to your workspace.
+                </p>
+              </div>
+            </div>
+
+            {/* Workspace Control Bar (Select All, Bulk Delete, Search & Platforms) */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={
+                        filteredManualRangesList.length > 0 &&
+                        selectedRangesForDelete.size === filteredManualRangesList.length
+                      }
+                      onChange={() =>
+                        handleToggleSelectAll(filteredManualRangesList.map((r) => r.rangePrefix))
+                      }
+                      className="w-4 h-4 rounded text-indigo-600 border-slate-300 focus:ring-indigo-500 cursor-pointer accent-indigo-600"
+                    />
+                    <span>Select All ({selectedRangesForDelete.size} of {filteredManualRangesList.length})</span>
+                  </label>
+
+                  {selectedRangesForDelete.size > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleDeleteSelectedRanges}
+                      className="px-3 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer shadow-2xs"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete Selected ({selectedRangesForDelete.size})</span>
+                    </button>
+                  )}
+
+                  {userWorkspaceRangePrefixes.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleClearAllWorkspaceRanges}
+                      className="px-2.5 py-1.5 rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-50 text-[11px] font-bold transition cursor-pointer"
+                      title="Clear all workspace ranges to pick new ones"
+                    >
+                      Clear All
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
+                  <span>Workspace items: <strong className="text-slate-800">{userWorkspaceRangePrefixes.length}</strong></span>
+                </div>
+              </div>
+
+              {/* Range Search & Filtering Bar */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search workspace ranges (e.g. 94782, Sri Lanka)..."
+                    value={manualRangesSearch}
+                    onChange={(e) => setManualRangesSearch(e.target.value)}
+                    className="w-full bg-slate-50/80 border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-xs font-medium text-slate-700 focus:outline-none focus:border-indigo-500 transition"
+                  />
+                </div>
+
+                {/* Platform Quick Selection Filter */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {["ALL", "Telegram", "WhatsApp", "IMO", "Facebook"].map((plat) => (
+                    <button
+                      key={plat}
+                      type="button"
+                      onClick={() => setManualRangesPlatformFilter(plat)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition active:scale-95 cursor-pointer border ${
+                        manualRangesPlatformFilter === plat
+                          ? "bg-slate-900 text-white border-slate-900"
+                          : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                      }`}
+                    >
+                      {plat === "ALL" ? "All Platforms" : plat}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -7005,72 +7357,129 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
               if (filtered.length === 0) {
                 return (
-                  <div className="w-full flex flex-col items-center justify-center py-12 px-4 bg-slate-50 rounded-3xl border border-slate-200 text-center">
-                    <div className="w-16 h-16 rounded-2xl bg-slate-200/50 flex items-center justify-center text-slate-400 mb-4">
-                      <Radio className="w-8 h-8 animate-pulse" />
+                  <div className="w-full flex flex-col items-center justify-center py-14 px-4 bg-white rounded-3xl border border-slate-200 text-center space-y-4 shadow-2xs">
+                    <div className="w-14 h-14 rounded-2xl bg-lime-50 border border-lime-200 flex items-center justify-center text-[#65a30d]">
+                      <Plus className="w-7 h-7" />
                     </div>
-                    <h3 className="text-base font-bold text-slate-800">No active range prefixes</h3>
-                    <p className="text-xs text-slate-400 mt-1 max-w-sm">
-                      Upload manual pool list files or trigger command edits via the admin bot configuration.
-                    </p>
+                    <div>
+                      <h3 className="text-base font-bold text-slate-800">
+                        {userWorkspaceRangePrefixes.length === 0
+                          ? "No ranges in your workspace"
+                          : "No matching ranges found"}
+                      </h3>
+                      <p className="text-xs text-slate-500 mt-1 max-w-sm">
+                        {userWorkspaceRangePrefixes.length === 0
+                          ? "You have removed all ranges. Click below to choose terminations and populate your SMS Range list again."
+                          : "Try searching with a different keyword or selecting 'All Platforms'."}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedTerminationPrefix("");
+                        setIsTerminationDropdownOpen(true);
+                        setIsAddNumbersModalOpen(true);
+                      }}
+                      className="px-5 py-2.5 rounded-xl bg-[#65a30d] hover:bg-[#58910b] text-white text-xs font-bold flex items-center gap-2 transition active:scale-95 shadow-xs cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Choice this termination / Add numbers</span>
+                    </button>
                   </div>
                 );
               }
 
               return (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {filtered.map((range, idx) => {
-                    const canonicalPlat = range.platform || range.socialMedia || "Telegram";
-                    const isTelegram = canonicalPlat.toUpperCase() === "TELEGRAM";
-                    const isWhatsApp = canonicalPlat.toUpperCase() === "WHATSAPP";
-                    const isImo = canonicalPlat.toUpperCase() === "IMO";
+                  {filtered.map((range) => {
+                    const termInfo = formatTerminationInfo(range);
+                    const isSelectedForDelete = selectedRangesForDelete.has(range.rangePrefix);
 
                     return (
                       <div
-                        key={idx}
-                        className="bg-white hover:bg-slate-50/50 rounded-2xl border border-slate-200 p-5 shadow-xs transition hover:shadow-md flex flex-col justify-between relative group overflow-hidden"
+                        key={range.rangePrefix}
+                        className={`bg-white hover:bg-slate-50/60 rounded-2xl border p-5 shadow-xs transition hover:shadow-md flex flex-col justify-between relative group overflow-hidden ${
+                          isSelectedForDelete
+                            ? "border-red-300 ring-2 ring-red-200 bg-red-50/10"
+                            : "border-slate-200"
+                        }`}
                       >
                         {/* Interactive decorative line tag */}
-                        <div className={`absolute top-0 left-0 right-0 h-1 ${
-                          isTelegram ? "bg-sky-400" : isWhatsApp ? "bg-emerald-400" : isImo ? "bg-purple-400" : "bg-indigo-400"
-                        }`} />
+                        <div
+                          className={`absolute top-0 left-0 right-0 h-1 ${
+                            termInfo.resolvedPlatform.toUpperCase().includes("WHATSAPP")
+                              ? "bg-emerald-500"
+                              : "bg-sky-500"
+                          }`}
+                        />
 
                         <div>
-                          {/* Card Top row */}
-                          <div className="flex items-start justify-between">
-                            <div className="flex items-center gap-3">
-                              <span className="text-2xl shadow-inner select-none p-0.5 bg-slate-50 rounded">
-                                {range.flag || "🇧🇩"}
-                              </span>
-                              <div>
-                                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider truncate max-w-[120px]">
+                          {/* Card Top row: Checkbox, Flag, Country, Platform Logo, and Corner Delete Button */}
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <input
+                                type="checkbox"
+                                checked={isSelectedForDelete}
+                                onChange={() => {
+                                  setSelectedRangesForDelete((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(range.rangePrefix)) next.delete(range.rangePrefix);
+                                    else next.add(range.rangePrefix);
+                                    return next;
+                                  });
+                                }}
+                                className="w-4 h-4 rounded text-indigo-600 border-slate-300 focus:ring-indigo-500 cursor-pointer accent-indigo-600 shrink-0"
+                                title="Mark for deletion"
+                              />
+                              <div className="shrink-0 p-0.5 bg-slate-50 rounded border border-slate-200/80 shadow-2xs flex items-center justify-center">
+                                <CountryFlag
+                                  countryCode={range.country}
+                                  size="md"
+                                  className="w-8 h-5.5 rounded border border-slate-300/80 shadow-2xs shrink-0"
+                                />
+                              </div>
+                              <div className="min-w-0">
+                                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider truncate">
                                   {range.country}
                                 </h3>
-                                <p className="text-[10px] font-bold text-slate-400 font-mono mt-0.5">
-                                  {range.dialCode || "+880"} range
+                                <p className="text-[10px] font-bold text-slate-400 font-mono mt-0.5 truncate">
+                                  {range.dialCode || "+94"} &bull; {termInfo.operator}
                                 </p>
                               </div>
                             </div>
 
-                            {/* Service badge */}
-                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
-                              isTelegram
-                                ? "bg-sky-500/10 text-sky-600 border-sky-400/20"
-                                : isWhatsApp
-                                ? "bg-emerald-500/10 text-emerald-600 border-emerald-400/20"
-                                : isImo
-                                ? "bg-purple-500/10 text-purple-600 border-purple-400/20"
-                                : "bg-slate-500/10 text-slate-600 border-slate-400/20"
-                            }`}>
-                              {canonicalPlat}
-                            </span>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {/* Official Social Platform Logo + Name Badge */}
+                              <RangeSocialBadge
+                                platform={termInfo.resolvedPlatform}
+                                country={range.country}
+                                size="md"
+                              />
+
+                              {/* Corner Delete Button (User requested: "কোনায় ডিলিট অপশন থাকবে") */}
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveSingleRange(range.rangePrefix)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition cursor-pointer"
+                                title="Remove range from workspace"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
                           </div>
 
-                          {/* Central Prefix Display */}
-                          <div className="my-5 flex flex-col">
-                            <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Masked Pattern Prefix</span>
+                          {/* Central Prefix Display: First 5 numbers visible, rest hidden, Unlimited available */}
+                          <div className="my-4 bg-slate-50/80 rounded-xl p-3 border border-slate-100 flex flex-col">
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">
+                                Masked Range Prefix
+                              </span>
+                              <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                Unlimited available
+                              </span>
+                            </div>
                             <span className="text-lg font-black font-mono text-slate-900 tracking-wide mt-1">
-                              {range.dialCode}{range.rangePrefix.startsWith(range.dialCode.replace("+","")) ? range.rangePrefix.slice(range.dialCode.replace("+","").length) : range.rangePrefix}XXXXX
+                              {termInfo.masked}
                             </span>
                           </div>
                         </div>
@@ -7080,9 +7489,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                           <div className="flex flex-col">
                             <span className="text-[10px] text-slate-400 font-bold">AVAILABLE STOCK</span>
                             {range.availableCount > 0 ? (
-                              <span className="text-emerald-600 font-extrabold flex items-center gap-1 mt-0.5 animate-pulse">
+                              <span className="text-emerald-600 font-extrabold flex items-center gap-1 mt-0.5">
                                 <Zap className="w-3.5 h-3.5 fill-emerald-500/20" />
-                                <span>{range.availableCount} numbers</span>
+                                <span>{range.availableCount.toLocaleString()} numbers</span>
                               </span>
                             ) : (
                               <span className="text-rose-500 font-extrabold flex items-center gap-1 mt-0.5">
@@ -7102,22 +7511,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                 setCurrentView("getNumber");
                                 playOtpChime();
                               }}
-                              className="w-10 h-10 rounded-full bg-slate-900 hover:bg-indigo-600 text-white flex items-center justify-center transition shadow-lg shadow-slate-900/10 hover:shadow-indigo-500/20 active:scale-95 cursor-pointer"
+                              className="w-9 h-9 rounded-full bg-slate-900 hover:bg-indigo-600 text-white flex items-center justify-center transition shadow-md hover:shadow-indigo-500/20 active:scale-95 cursor-pointer"
                               title="Get dynamic number from this range"
                             >
-                              <Plus className="w-5 h-5" />
-                            </button>
-                          )}
-
-                          {/* Delete Range Button (Admin only) */}
-                          {isAdminUnlocked && range.availableCount === 0 && (
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteRange(range.rangePrefix)}
-                              className="p-2 rounded-lg bg-red-50 hover:bg-red-100 border border-red-100 text-red-600 transition"
-                              title="Delete range prefix"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <Plus className="w-4 h-4" />
                             </button>
                           )}
                         </div>
@@ -7127,6 +7524,305 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 </div>
               );
             })()}
+
+            {/* FULL SCREEN Select Termination / Add Numbers View (Full Page as requested by user) */}
+            {isAddNumbersModalOpen && (
+              <div className="fixed inset-0 z-50 bg-slate-100/95 flex flex-col w-full h-full overflow-hidden animate-fadeIn">
+                {/* Full Screen Header */}
+                <header className="bg-white border-b border-slate-200 px-4 sm:px-6 py-3.5 flex items-center justify-between gap-4 shrink-0 shadow-xs">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAddNumbersModalOpen(false);
+                        setIsTerminationDropdownOpen(false);
+                      }}
+                      className="p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 transition cursor-pointer flex items-center gap-1.5 active:scale-95"
+                      title="Back to SMS Ranges"
+                    >
+                      <ArrowLeft className="w-4 h-4" />
+                      <span className="text-xs font-bold hidden sm:inline">Back to Workspace</span>
+                    </button>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h1 className="text-base sm:text-lg font-black text-slate-900 truncate">
+                          Select Termination
+                        </h1>
+                        <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          Unlimited Stock
+                        </span>
+                      </div>
+                      <p className="text-[11px] sm:text-xs text-slate-500 truncate">
+                        Select a country termination route to add to your SMS Range workspace
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="hidden md:inline-block text-xs font-medium text-slate-500">
+                      Showing <strong className="text-slate-800 font-bold">{filteredAvailableTerminations.length}</strong> of {manualRanges.length}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAddNumbersModalOpen(false);
+                        setIsTerminationDropdownOpen(false);
+                      }}
+                      className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                      title="Close"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                </header>
+
+                {/* Sticky Search & Platform Filters */}
+                <div className="bg-white border-b border-slate-200 px-4 sm:px-6 py-3 shrink-0 shadow-2xs">
+                  <div className="max-w-4xl mx-auto w-full flex flex-col sm:flex-row items-center gap-3">
+                    {/* Search input with clear button */}
+                    <div className="relative flex-1 w-full">
+                      <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Search country, operator, or prefix (e.g. Sri Lanka, 94782, WhatsApp)..."
+                        value={terminationSearchQuery}
+                        onChange={(e) => setTerminationSearchQuery(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-xl pl-10 pr-9 py-2.5 text-xs sm:text-sm font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-emerald-600 focus:bg-white focus:ring-2 focus:ring-emerald-100 transition"
+                        autoFocus
+                      />
+                      {terminationSearchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setTerminationSearchQuery("")}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Platform quick chips */}
+                    <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0 scrollbar-none shrink-0">
+                      {(["ALL", "WhatsApp", "Telegram", "IMO"] as const).map((plat) => {
+                        const isActive =
+                          plat === "ALL"
+                            ? !terminationSearchQuery.toLowerCase().includes("whatsapp") &&
+                              !terminationSearchQuery.toLowerCase().includes("telegram") &&
+                              !terminationSearchQuery.toLowerCase().includes("imo")
+                            : terminationSearchQuery.toLowerCase() === plat.toLowerCase();
+                        return (
+                          <button
+                            key={plat}
+                            type="button"
+                            onClick={() => {
+                              if (plat === "ALL") {
+                                setTerminationSearchQuery("");
+                              } else {
+                                setTerminationSearchQuery(plat);
+                              }
+                            }}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer flex items-center gap-1.5 border ${
+                              isActive
+                                ? "bg-slate-900 text-white border-slate-900 shadow-xs"
+                                : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                            }`}
+                          >
+                            {plat === "WhatsApp" && <WhatsAppLogo className="w-3.5 h-3.5" />}
+                            {plat === "Telegram" && <TelegramLogo className="w-3.5 h-3.5" />}
+                            <span>{plat === "ALL" ? "All Routes" : plat}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Main Full-Screen Scrollable List */}
+                <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50/70">
+                  <div className="max-w-4xl mx-auto w-full space-y-3 pb-28">
+                    {filteredAvailableTerminations.length === 0 ? (
+                      <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-xs">
+                        <Search className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                        <h3 className="text-sm font-bold text-slate-800">No termination routes found</h3>
+                        <p className="text-xs text-slate-500 mt-1">
+                          No active routes matched "{terminationSearchQuery}". Try clearing your search.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setTerminationSearchQuery("")}
+                          className="mt-4 px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 transition cursor-pointer"
+                        >
+                          Clear Search
+                        </button>
+                      </div>
+                    ) : (
+                      filteredAvailableTerminations.map((r) => {
+                        const info = formatTerminationInfo(r);
+                        const isSelected = selectedTerminationPrefix === r.rangePrefix;
+                        const isAlreadyAdded = userWorkspaceRangePrefixes.includes(r.rangePrefix);
+                        const isSriLanka = (r.country || "").toLowerCase().includes("sri lanka");
+                        const resolvedPlat = isSriLanka ? "WhatsApp" : (r.platform || r.socialMedia || "WhatsApp");
+
+                        return (
+                          <div
+                            key={r.rangePrefix}
+                            onClick={() => setSelectedTerminationPrefix(r.rangePrefix)}
+                            className={`bg-white rounded-2xl border p-4 sm:p-5 transition shadow-xs hover:shadow-md cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative overflow-hidden group ${
+                              isSelected
+                                ? "border-emerald-500 ring-2 ring-emerald-200 bg-emerald-50/15"
+                                : "border-slate-200 hover:border-slate-300 hover:bg-slate-50/60"
+                            }`}
+                          >
+                            {/* Decorative Line */}
+                            <div
+                              className={`absolute top-0 left-0 right-0 h-1 transition-colors ${
+                                isSelected
+                                  ? "bg-emerald-500"
+                                  : resolvedPlat.toLowerCase().includes("whatsapp")
+                                  ? "bg-emerald-400/60 group-hover:bg-emerald-500"
+                                  : "bg-sky-400/60 group-hover:bg-sky-500"
+                              }`}
+                            />
+
+                            {/* Left: Flag, Country Name, Operator, Masked Range, Stock badge */}
+                            <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                              {/* Authentic Flag matching Test Panel */}
+                              <div className="shrink-0 p-1 bg-slate-50 rounded-lg border border-slate-200/80 shadow-2xs flex items-center justify-center">
+                                <CountryFlag
+                                  countryCode={r.country}
+                                  size="lg"
+                                  className="w-10 h-7 rounded object-cover shadow-2xs"
+                                />
+                              </div>
+
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-extrabold text-slate-900 text-sm sm:text-base tracking-tight">
+                                    {r.country}
+                                  </span>
+                                  <span className="text-slate-400 text-xs font-semibold">
+                                    &bull; {info.operator}
+                                  </span>
+                                  {isAlreadyAdded && (
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                                      <Check className="w-3 h-3" />
+                                      Already in workspace
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center gap-2.5 mt-1 flex-wrap">
+                                  {/* Masked Range */}
+                                  <span className="font-mono text-xs sm:text-sm font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
+                                    {info.masked}
+                                  </span>
+
+                                  {/* Unlimited available badge */}
+                                  <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/70 inline-flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                    Unlimited available
+                                  </span>
+
+                                  {/* Total in pool */}
+                                  <span className="text-[11px] text-slate-400 font-medium">
+                                    ({r.availableCount || r.totalCount} active)
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Right: Platform Badge & Selection Radio */}
+                            <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 shrink-0">
+                              <RangeSocialBadge platform={resolvedPlat} country={r.country} size="md" />
+
+                              {/* Radio Indicator */}
+                              <div
+                                className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition shrink-0 ${
+                                  isSelected
+                                    ? "border-emerald-600 bg-emerald-600 text-white shadow-xs"
+                                    : "border-slate-300 group-hover:border-slate-400 bg-white"
+                                }`}
+                              >
+                                {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* Sticky Bottom Action Bar */}
+                <footer className="bg-white border-t border-slate-200 px-4 sm:px-6 py-3.5 shrink-0 shadow-lg">
+                  <div className="max-w-4xl mx-auto w-full flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    {/* Selected preview */}
+                    <div className="flex items-center gap-3 min-w-0">
+                      {selectedTerminationPrefix ? (() => {
+                        const chosen = manualRanges.find((r) => r.rangePrefix === selectedTerminationPrefix);
+                        if (!chosen) return null;
+                        const chosenInfo = formatTerminationInfo(chosen);
+                        const isSriLanka = (chosen.country || "").toLowerCase().includes("sri lanka");
+                        const plat = isSriLanka ? "WhatsApp" : (chosen.platform || chosen.socialMedia || "WhatsApp");
+
+                        return (
+                          <div className="flex items-center gap-2.5 truncate">
+                            <CountryFlag
+                              countryCode={chosen.country}
+                              size="md"
+                              className="w-8 h-5.5 rounded border border-slate-300 shadow-2xs shrink-0"
+                            />
+                            <div className="truncate">
+                              <div className="text-xs font-black text-slate-900 truncate">
+                                {chosen.country} &bull; {chosenInfo.masked}
+                              </div>
+                              <div className="text-[11px] text-emerald-600 font-semibold truncate flex items-center gap-1.5">
+                                <span>{plat}</span>
+                                <span>&bull;</span>
+                                <span>Unlimited available</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })() : (
+                        <div className="text-xs text-slate-500 italic">
+                          Tap any termination route above to select it
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="flex items-center gap-2.5 justify-end">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsAddNumbersModalOpen(false);
+                          setIsTerminationDropdownOpen(false);
+                        }}
+                        className="px-4 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-bold transition cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={!selectedTerminationPrefix}
+                        onClick={() => handleAddTermination()}
+                        className={`px-6 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition active:scale-95 shadow-md cursor-pointer ${
+                          selectedTerminationPrefix
+                            ? "bg-[#65a30d] hover:bg-[#58910b] text-white shadow-lime-600/20"
+                            : "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none"
+                        }`}
+                      >
+                        <Plus className="w-4 h-4 stroke-[3]" />
+                        <span>+ Add to Workspace</span>
+                      </button>
+                    </div>
+                  </div>
+                </footer>
+              </div>
+            )}
           </div>
         )}
 

@@ -410,72 +410,35 @@ export function initServerRealtimeSync() {
   isInitialized = true;
 
   // Immediate eager initial fetch
-  fetchAccountsFromServer();
-  fetchSubAdminsFromServer();
+  fetchAccountsFromServer().catch(() => {});
+  fetchSubAdminsFromServer().catch(() => {});
 
-  // 9a. Real-Time Server-Sent Events (SSE) stream for sub-second, eye-blink updates
-  let eventSource: EventSource | null = null;
-  let sseReconnectTimer: any = null;
-
-  const connectSSE = () => {
-    if (typeof EventSource === 'undefined') return;
-    try {
-      if (eventSource) {
-        try {
-          eventSource.close();
-        } catch {}
-      }
-
-      eventSource = new EventSource('/api/accounts/events');
-
-      eventSource.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data && (data.type === 'accounts_updated' || data.type === 'subadmins_updated')) {
-            // Instant sub-second refresh!
-            fetchAccountsFromServer();
-            fetchSubAdminsFromServer();
-          }
-        } catch {}
-      };
-
-      eventSource.onerror = () => {
-        try {
-          eventSource?.close();
-        } catch {}
-        eventSource = null;
-        clearTimeout(sseReconnectTimer);
-        // Exponential/gentle reconnect backoff (10s)
-        sseReconnectTimer = setTimeout(connectSSE, 10000);
-      };
-    } catch {}
-  };
-
-  connectSSE();
-
-  // Gentle fallback heartbeat (every 15s, and only when tab is visible)
-  setInterval(() => {
+  // 9a. Real-Time Accounts Synchronization using lightweight, standard-compliant short polling
+  // This avoids serverless execution limits, prevents browser socket exhaustion (max 6 TCP connections),
+  // and works flawlessly across all mobile data networks and browsers (Chrome, Via, Safari, etc.)
+  
+  // Gentle short polling heartbeat (every 10 seconds when tab is active/visible)
+  const pollInterval = setInterval(() => {
     if (document.hidden) return;
-    fetchAccountsFromServer();
-    fetchSubAdminsFromServer();
-  }, 15000);
+    fetchAccountsFromServer().catch(() => {});
+    fetchSubAdminsFromServer().catch(() => {});
+  }, 10000);
 
   // Sync immediately when user switches tabs or browser windows
   window.addEventListener('focus', () => {
-    fetchAccountsFromServer();
-    fetchSubAdminsFromServer();
+    fetchAccountsFromServer().catch(() => {});
+    fetchSubAdminsFromServer().catch(() => {});
   });
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
-      fetchAccountsFromServer();
-      fetchSubAdminsFromServer();
+      fetchAccountsFromServer().catch(() => {});
+      fetchSubAdminsFromServer().catch(() => {});
     }
   });
 
   window.addEventListener('online', () => {
-    connectSSE();
-    fetchAccountsFromServer();
-    fetchSubAdminsFromServer();
+    fetchAccountsFromServer().catch(() => {});
+    fetchSubAdminsFromServer().catch(() => {});
   });
 }

@@ -1297,52 +1297,13 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
       setActiveChatUserEmail(convs[0].userEmail);
     }
 
-    // Connect to Server-Sent Events (SSE) for Real-Time Accounts Sync across all devices
-    let accEvents: EventSource | null = null;
-    try {
-      accEvents = new EventSource('/api/accounts/events');
-      accEvents.onmessage = (event) => {
-        try {
-          const payload = JSON.parse(event.data);
-          if (payload && (payload.type === 'accounts_updated' || payload.type === 'account_update' || payload.type === 'connected')) {
-            fetchAccountsFromServer().then((accs) => {
-              if (Array.isArray(accs) && accs.length > 0) {
-                setAccountsList(accs);
-              }
-            }).catch(() => {});
-          }
-        } catch {}
-      };
-    } catch {}
-
-    // Connect to Server-Sent Events (SSE) for Real-Time Global SMS Stream across all devices
-    let liveEvents: EventSource | null = null;
-    try {
-      liveEvents = new EventSource('/api/global-live-stream/events');
-      liveEvents.onmessage = (event) => {
-        try {
-          const packet = JSON.parse(event.data);
-          if (packet) {
-            if (packet.type === 'reset') {
-              setLiveStreamHits([]);
-            } else if (packet.hit && (packet.hit.range || packet.hit.number || packet.hit.sid || packet.hit.message)) {
-              setLiveStreamHits((prev) => {
-                const sig = `${(packet.hit.range || packet.hit.number || '').replace(/\D/g, '')}_${packet.hit.time}_${(packet.hit.sid || '').trim().toLowerCase()}_${(packet.hit.message || '').trim()}`;
-                const exists = prev.some((h) => `${(h.range || h.number || '').replace(/\D/g, '')}_${h.time}_${(h.sid || '').trim().toLowerCase()}_${(h.message || '').trim()}` === sig);
-                if (exists) return prev;
-                return [packet.hit, ...prev].slice(0, 1000);
-              });
-            }
-          }
-        } catch {}
-      };
-    } catch {}
-
-    // Auto-poll accounts, sub-admins, notifications & configs gently (every 12 seconds when visible)
+    // Auto-poll accounts, sub-admins, notifications & configs gently (every 10 seconds when visible)
+    // Optimized to use short-polling to completely avoid browser connection exhaustion (max 6 TCP limit)
+    // and Vercel serverless function execution timeout issues.
     const syncInterval = setInterval(() => {
       if (document.hidden) return;
       syncAllAdminData();
-    }, 12000);
+    }, 10000);
 
     // Refresh instantly when user focuses or returns to the browser tab
     const handleWindowFocus = () => {
@@ -1359,8 +1320,6 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     return () => {
       clearInterval(syncInterval);
       window.removeEventListener('focus', handleWindowFocus);
-      if (accEvents) accEvents.close();
-      if (liveEvents) liveEvents.close();
     };
   }, [isAdminAuthenticated]);
 

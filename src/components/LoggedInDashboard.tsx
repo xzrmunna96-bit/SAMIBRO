@@ -18,6 +18,7 @@ import {
   Circle,
   User,
   RotateCw,
+  RefreshCw,
   Copy,
   Check,
   Smartphone,
@@ -329,6 +330,7 @@ import {
 } from "../services/onlineTrackingService";
 import { triggerAdminRoute } from "../App";
 import { TelegramBotController } from "./TelegramBotController";
+import { SupportChatAdmin } from "./SupportChatAdmin";
 import {
   getChatMessagesForUser,
   sendUserMessage,
@@ -341,6 +343,16 @@ import {
   CHAT_UPDATE_EVENT,
   ChatMessage,
 } from "../services/supportChatService";
+import {
+  fetchManualRanges,
+  fetchManualNumbers,
+  uploadManualNumbers,
+  deleteManualRange,
+  clearAllManualNumbers,
+  testSendManualOtp,
+  ManualRangeSummary,
+  ManualNumberRecord,
+} from "../services/manualNumberService";
 import {
   getTopAppsConfig,
   TOP_APPS_UPDATE_EVENT,
@@ -1020,6 +1032,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     | "smsTestHistory"
     | "telegramBot"
     | "userApiSession"
+    | "supportChatAdmin"
   >(() => {
     const fromUrl = getViewFromUrlHash();
     if (fromUrl) {
@@ -1644,6 +1657,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   }, []);
 
   // Synchronize global live stream and monotonic stats across all users and admins in real-time
+  // Optimized to use lightweight short-polling to completely avoid browser connection exhaustion (max 6 TCP limit)
+  // and Vercel serverless function execution timeout issues.
   useEffect(() => {
     let isMounted = true;
 
@@ -1674,53 +1689,15 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     };
 
     syncWithGlobalStream();
+    // Fast 5-second polling interval for real-time responsiveness without persistent SSE streams
     const pollTimer = setInterval(() => {
       if (document.hidden) return;
       syncWithGlobalStream();
-    }, 15000);
-
-    let sse: EventSource | null = null;
-    try {
-      sse = new EventSource("/api/global-live-stream/events");
-      
-      const handleIncomingPacket = (dataStr: string) => {
-        try {
-          const packet = JSON.parse(dataStr);
-          if (packet) {
-            if (packet.type === "reset") {
-              setLiveHits([]);
-              set24HourResetTimestamp(Date.now());
-              try {
-                localStorage.removeItem("super_x_live_console_hits_24h");
-              } catch {}
-            }
-            if (packet.stats) {
-              setGlobalStats(packet.stats);
-            }
-            if (Array.isArray(packet.hits) && packet.hits.length > 0) {
-              mergeIncomingHits(packet.hits);
-            }
-            const hit = packet.hit || (packet.range || packet.number || packet.sid ? packet : null);
-            if (hit && (hit.range || hit.number || hit.sid || hit.message)) {
-              mergeIncomingHits([hit]);
-            }
-          }
-        } catch {}
-      };
-
-      sse.onmessage = (event) => {
-        if (event.data) handleIncomingPacket(event.data);
-      };
-
-      sse.addEventListener("connected", (event: any) => {
-        if (event.data) handleIncomingPacket(event.data);
-      });
-    } catch {}
+    }, 5000);
 
     return () => {
       isMounted = false;
       clearInterval(pollTimer);
-      if (sse) sse.close();
     };
   }, []);
 
@@ -1842,6 +1819,205 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     "WhatsApp" | "Telegram" | "Facebook" | "IMO"
   >("WhatsApp");
   const [isAllocating, setIsAllocating] = useState(false);
+
+  // Manual Number & Range states
+  const [manualRanges, setManualRanges] = useState<ManualRangeSummary[]>([]);
+  const [manualNumbers, setManualNumbers] = useState<ManualNumberRecord[]>([]);
+  const [manualNumbersTotal, setManualNumbersTotal] = useState<number>(0);
+  const [manualRangesLoading, setManualRangesLoading] = useState(false);
+  const [manualNumbersLoading, setManualNumbersLoading] = useState(false);
+  const [manualRangesSearch, setManualRangesSearch] = useState("");
+  const [manualNumbersSearch, setManualNumbersSearch] = useState("");
+  const [manualRangesPlatformFilter, setManualRangesPlatformFilter] = useState("ALL");
+  const [manualNumbersStatusFilter, setManualNumbersStatusFilter] = useState("ALL");
+
+  // Admin uploader inputs
+  const [uploadCountry, setUploadCountry] = useState("Bangladesh");
+  const [uploadFlag, setUploadFlag] = useState("🇧🇩");
+  const [uploadDialCode, setUploadDialCode] = useState("+880");
+  const [uploadPlatform, setUploadPlatform] = useState("Telegram");
+  const [uploadNumbersText, setUploadNumbersText] = useState("");
+
+  // Dev unlock protection
+  const [isAdminUnlocked, setIsAdminUnlocked] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("superx_dev_unlocked") === "true";
+    } catch {
+      return false;
+    }
+  });
+  const [isDevUnlockModalOpen, setIsDevUnlockModalOpen] = useState(false);
+  const [devPasscodeInput, setDevPasscodeInput] = useState("");
+  const [devUnlockError, setDevUnlockError] = useState("");
+
+  // Upload Status Inline Message Banner
+  const [uploadStatus, setUploadStatus] = useState<{ type: 'success' | 'error' | null, text: string }>({ type: null, text: "" });
+
+  const handleVerifyDevUnlock = () => {
+    if (devPasscodeInput.trim() === "MUNNA12061") {
+      setIsAdminUnlocked(true);
+      try {
+        localStorage.setItem("superx_dev_unlocked", "true");
+      } catch {}
+      setIsDevUnlockModalOpen(false);
+      setDevPasscodeInput("");
+      setDevUnlockError("");
+      playOtpChime();
+    } else {
+      setDevUnlockError("Invalid secret key. Access denied.");
+    }
+  };
+
+  const handleUploadManualNumbers = async () => {
+    if (!uploadNumbersText.trim()) {
+      setUploadStatus({ type: 'error', text: "Please paste some numbers first." });
+      return;
+    }
+    setUploadStatus({ type: null, text: "" });
+    try {
+      const res = await uploadManualNumbers({
+        country: uploadCountry,
+        flag: uploadFlag,
+        dialCode: uploadDialCode,
+        platform: uploadPlatform,
+        numbersText: uploadNumbersText,
+      });
+      if (res.success) {
+        setUploadNumbersText("");
+        setUploadStatus({ type: 'success', text: res.message });
+        // Reload ranges
+        const updatedRanges = await fetchManualRanges();
+        setManualRanges(updatedRanges);
+        playOtpChime();
+      } else {
+        setUploadStatus({ type: 'error', text: res.message });
+      }
+    } catch (err: any) {
+      setUploadStatus({ type: 'error', text: err?.message || "Upload failed" });
+    }
+  };
+
+  const [isConfirmingClear, setIsConfirmingClear] = useState(false);
+  const handleClearPool = async () => {
+    if (!isConfirmingClear) {
+      setIsConfirmingClear(true);
+      return;
+    }
+    try {
+      const res = await clearAllManualNumbers();
+      if (res.success) {
+        setManualRanges([]);
+        setManualNumbers([]);
+        setManualNumbersTotal(0);
+        setIsConfirmingClear(false);
+        setUploadStatus({ type: 'success', text: "All manual pool numbers successfully cleared." });
+        playOtpChime();
+      } else {
+        setUploadStatus({ type: 'error', text: res.message });
+      }
+    } catch (err: any) {
+      setUploadStatus({ type: 'error', text: err?.message || "Failed to clear pool" });
+    }
+  };
+
+  const handleDeleteRange = async (rangePrefix: string) => {
+    if (!confirm(`Are you sure you want to delete all numbers in range ${rangePrefix}?`)) return;
+    try {
+      const res = await deleteManualRange(rangePrefix);
+      if (res.success) {
+        const updatedRanges = await fetchManualRanges();
+        setManualRanges(updatedRanges);
+        playOtpChime();
+      }
+    } catch (err: any) {
+      console.error(err);
+    }
+  };
+
+  const [testOtpStatus, setTestOtpStatus] = useState<Record<string, string>>({});
+  const handleTestOtpSend = async (numberStr: string) => {
+    setTestOtpStatus(prev => ({ ...prev, [numberStr]: "Sending..." }));
+    try {
+      const res = await testSendManualOtp({
+        number: numberStr,
+        otpCode: Math.floor(100000 + Math.random() * 900000).toString(),
+        service: "Telegram",
+        sender: "SUPER_X_GATEWAY",
+      });
+      if (res.success) {
+        setTestOtpStatus(prev => ({ ...prev, [numberStr]: "Sent! Check console." }));
+        playOtpChime();
+        setTimeout(() => {
+          setTestOtpStatus(prev => {
+            const next = { ...prev };
+            delete next[numberStr];
+            return next;
+          });
+        }, 5000);
+      } else {
+        setTestOtpStatus(prev => ({ ...prev, [numberStr]: "Failed." }));
+      }
+    } catch (err: any) {
+      setTestOtpStatus(prev => ({ ...prev, [numberStr]: "Error." }));
+    }
+  };
+
+  const renderDevUnlockModal = () => {
+    if (!isDevUnlockModalOpen) return null;
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-fadeIn">
+        <div className="bg-slate-900 border border-amber-500/30 rounded-3xl w-full max-w-md p-6 shadow-2xl text-white relative animate-scaleUp">
+          <button
+            type="button"
+            onClick={() => {
+              setIsDevUnlockModalOpen(false);
+              setDevUnlockError("");
+              setDevPasscodeInput("");
+            }}
+            className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-white/10 text-slate-400 hover:text-white transition"
+          >
+            <X className="w-5 h-5" />
+          </button>
+
+          <div className="flex flex-col items-center text-center space-y-4">
+            <div className="w-16 h-16 rounded-2xl bg-amber-500/20 border border-amber-400/30 flex items-center justify-center text-amber-400">
+              <Lock className="w-8 h-8" />
+            </div>
+
+            <div>
+              <h3 className="text-lg font-black tracking-tight">Admin & Developer Unlock</h3>
+              <p className="text-xs text-slate-400 mt-1">
+                Enter the secret administrator passcode to access protected bot configurations and manual number database uploads.
+              </p>
+            </div>
+
+            <div className="w-full space-y-2">
+              <input
+                type="password"
+                placeholder="••••••••••••"
+                value={devPasscodeInput}
+                onChange={(e) => setDevPasscodeInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleVerifyDevUnlock()}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-center text-sm font-bold tracking-wider text-white focus:outline-none focus:border-amber-500 transition-colors"
+                autoFocus
+              />
+              {devUnlockError && (
+                <p className="text-[11px] font-bold text-rose-400 animate-pulse">{devUnlockError}</p>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={handleVerifyDevUnlock}
+              className="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-extrabold rounded-xl text-sm transition active:scale-95 cursor-pointer shadow-lg shadow-amber-500/20"
+            >
+              Verify Passcode
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   // Get Number Screen Specific State (voltxsms/m29 matching)
   const [getNumTab, setGetNumTab] = useState<"RANGE" | "SEARCH" | "ACCESS">(
@@ -2313,94 +2489,69 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     }
   }, [user.email]);
 
-  // Real-time SSE Live Event Stream for Shared Account Numbers (Multi-device collaborative synchronization)
+  // Real-time Live Synchronization for Shared Account Numbers (Multi-device collaborative synchronization)
+  // Optimized to use lightweight short-polling to completely avoid browser connection exhaustion (max 6 TCP limit)
+  // and Vercel serverless function execution timeout issues.
   useEffect(() => {
     if (!user?.email) return;
 
-    let eventSource: EventSource | null = null;
-    let retryTimeout: any = null;
+    let isMounted = true;
 
-    const connectSSE = () => {
+    const pollNumbers = async () => {
       try {
-        const url = `/api/account/numbers/events?email=${encodeURIComponent(user.email)}`;
-        eventSource = new EventSource(url);
-
-        eventSource.onmessage = (event) => {
+        const saved = localStorage.getItem(`super_x_get_num_history_${user.email}`);
+        let localItems: any[] = [];
+        if (saved) {
           try {
-            if (!event.data || event.data.startsWith(":")) return;
-            const data = JSON.parse(event.data);
-
-            if (data.type === "init" || data.type === "sync" || data.type === "reset_24h") {
-              if (Array.isArray(data.numbers)) {
-                setGetNumHistory(sanitizeAllocatedHistory(data.numbers));
-              }
-            } else if (data.type === "new_number" && data.entry) {
-              setGetNumHistory((prev) => {
-                const cleanNew = String(data.entry.number).replace(/\D/g, "");
-                const exists = prev.some(
-                  (item) => item.id === data.entry.id || item.number.replace(/\D/g, "") === cleanNew
-                );
-                if (exists) {
-                  return prev.map((item) =>
-                    item.id === data.entry.id || item.number.replace(/\D/g, "") === cleanNew
-                      ? { ...item, ...data.entry }
-                      : item
-                  );
-                }
-                showDashboardToast(`⚡ New Number allocated on this account: ${data.entry.number}`, "info");
-                return sanitizeAllocatedHistory([data.entry, ...prev]);
-              });
-            } else if (data.type === "otp_update" && data.entry) {
-              if (data.entry.otp && isGetNumVoiceOn) {
-                speakOtpAnnouncement(data.entry.otp, data.entry.country || "Bangladesh");
-              }
-              setGetNumHistory((prev) => {
-                let updated = false;
-                const next = prev.map((item) => {
-                  const cleanItem = item.number.replace(/\D/g, "");
-                  const cleanTarget = String(data.entry.number || "").replace(/\D/g, "");
-                  if (item.id === data.entry.id || (cleanTarget && cleanItem === cleanTarget)) {
-                    updated = true;
-                    return {
-                      ...item,
-                      status: "SUCCESS" as const,
-                      otp: data.entry.otp,
-                      service: data.entry.service || item.service || "Delivered SMS",
-                      activity: data.entry.activity || "Delivered just now",
-                    };
-                  }
-                  return item;
-                });
-                if (updated && data.entry.otp) {
-                  showDashboardToast(`🎉 Real-time OTP received: ${data.entry.otp} (${data.entry.number})`, "success");
-                }
-                return sanitizeAllocatedHistory(next);
-              });
-            } else if (data.type === "delete_number" && data.deletedId) {
-              setGetNumHistory((prev) => prev.filter((item) => item.id !== data.deletedId));
-            } else if (data.type === "clear") {
-              setGetNumHistory([]);
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed)) {
+              localItems = sanitizeAllocatedHistory(parsed);
             }
           } catch {}
-        };
+        }
 
-        eventSource.onerror = () => {
-          if (eventSource) {
-            eventSource.close();
-            eventSource = null;
+        const res = await fetch("/api/account/numbers/batch-sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: user.email,
+            numbers: localItems,
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.success && Array.isArray(data.numbers) && isMounted) {
+            setGetNumHistory((prev) => {
+              // Compare and play voice announcement for new OTPs if received
+              const oldMap = new Map(prev.map(item => [item.id, item.otp || ""]));
+              data.numbers.forEach((entry: any) => {
+                const prevOtp = oldMap.get(entry.id);
+                if (entry.otp && entry.otp !== prevOtp) {
+                  if (isGetNumVoiceOn) {
+                    speakOtpAnnouncement(entry.otp, entry.country || "Bangladesh");
+                  }
+                  showDashboardToast(`🎉 Real-time OTP received: ${entry.otp} (${entry.number})`, "success");
+                }
+              });
+              return sanitizeAllocatedHistory(data.numbers);
+            });
           }
-          retryTimeout = setTimeout(connectSSE, 3000);
-        };
+        }
       } catch {}
     };
 
-    connectSSE();
+    // Fast 5-second polling interval for sub-second synchronization among concurrent users
+    const intervalId = setInterval(() => {
+      if (document.hidden) return;
+      pollNumbers();
+    }, 5000);
 
     return () => {
-      if (eventSource) eventSource.close();
-      if (retryTimeout) clearTimeout(retryTimeout);
+      isMounted = false;
+      clearInterval(intervalId);
     };
-  }, [user?.email]);
+  }, [user?.email, isGetNumVoiceOn]);
 
   // Support Chat State for User
   const [isUserChatOpen, setIsUserChatOpen] = useState(false);
@@ -2470,6 +2621,28 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       setUnreadNotifCount(0);
     }
   }, [isNotifModalOpen, user.email]);
+
+  // Fetch manual number ranges and pool list when currentView changes
+  useEffect(() => {
+    if (currentView === "smsRange") {
+      setManualRangesLoading(true);
+      fetchManualRanges()
+        .then((ranges) => {
+          setManualRanges(ranges);
+        })
+        .catch(() => {})
+        .finally(() => setManualRangesLoading(false));
+    } else if (currentView === "smsNumber") {
+      setManualNumbersLoading(true);
+      fetchManualNumbers(1000, 0)
+        .then((res) => {
+          setManualNumbers(res.numbers || []);
+          setManualNumbersTotal(res.total || 0);
+        })
+        .catch(() => {})
+        .finally(() => setManualNumbersLoading(false));
+    }
+  }, [currentView]);
 
   // Sync Live Chat updates in real-time
   useEffect(() => {
@@ -3277,6 +3450,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   };
 
   const handleNavClick = (view: typeof currentView) => {
+    if ((view === "telegramBot" || view === "userApiSession") && !isAdminUnlocked) {
+      setIsDevUnlockModalOpen(true);
+      return;
+    }
     setCurrentView(view);
     setIsSidebarOpen(false);
     try {
@@ -4109,6 +4286,39 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             </button>
           </div>
 
+          {/* Developer Lock Status Bar */}
+          <div className="px-5 py-2.5 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-xs">
+            <span className="text-slate-400 font-medium">Developer Status:</span>
+            {isAdminUnlocked ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAdminUnlocked(false);
+                  try {
+                    localStorage.removeItem("superx_dev_unlocked");
+                  } catch {}
+                  setCurrentView("dashboard");
+                  playOtpChime();
+                }}
+                className="flex items-center gap-1.5 px-2 py-1 rounded bg-emerald-950/70 text-emerald-400 border border-emerald-500/30 text-[10px] font-black cursor-pointer animate-pulse hover:bg-emerald-900 transition-colors"
+                title="Click to lock Developer Mode"
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>UNLOCKED</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsDevUnlockModalOpen(true)}
+                className="flex items-center gap-1.5 px-2 py-1 rounded bg-amber-950/70 text-amber-400 border border-amber-500/30 text-[10px] font-black cursor-pointer hover:bg-amber-900 transition-colors"
+                title="Click to unlock Developer Mode"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span>LOCKED</span>
+              </button>
+            )}
+          </div>
+
           {/* Navigation Items */}
           <div className="p-3 space-y-1">
             {/* Dashboard */}
@@ -4139,7 +4349,34 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 }`}
               >
                 <Bot className="w-4.5 h-4.5 text-sky-400 shrink-0 opacity-90 animate-pulse" />
-                <span>Telegram Admin Bot</span>
+                <span className="flex items-center justify-between w-full">
+                  <span>Telegram Admin Bot</span>
+                  {!isAdminUnlocked && (
+                    <Lock className="w-3 h-3 text-amber-500 animate-pulse" />
+                  )}
+                </span>
+              </button>
+            )}
+
+            {/* Live Support Admin Panel (Admin / Sub-Admin Only) */}
+            {(user.role === "admin" || user.role === "subadmin") && (
+              <button
+                type="button"
+                id="sidebar-item-support-chat-admin"
+                onClick={() => handleNavClick("supportChatAdmin")}
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer ${
+                  currentView === "supportChatAdmin"
+                    ? "bg-orange-600 text-white shadow-sm"
+                    : "text-slate-300 hover:bg-slate-800/70 hover:text-white"
+                }`}
+              >
+                <MessageSquare className="w-4.5 h-4.5 text-orange-400 shrink-0 opacity-90 animate-pulse" />
+                <span className="flex items-center justify-between w-full">
+                  <span>Live Support Chat</span>
+                  {!isAdminUnlocked && (
+                    <Lock className="w-3 h-3 text-amber-500 animate-pulse" />
+                  )}
+                </span>
               </button>
             )}
 
@@ -4301,9 +4538,13 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               <Key className="w-4.5 h-4.5 shrink-0 opacity-90 text-teal-400" />
               <span className="flex items-center justify-between w-full">
                 <span>User API Session</span>
-                <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-teal-500/20 text-teal-300 border border-teal-500/30">
-                  NEW
-                </span>
+                {isAdminUnlocked ? (
+                  <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-teal-500/20 text-teal-300 border border-teal-500/30">
+                    NEW
+                  </span>
+                ) : (
+                  <Lock className="w-3 h-3 text-amber-500 animate-pulse" />
+                )}
               </span>
             </button>
 
@@ -6258,77 +6499,631 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           </div>
         )}
 
-        {/* -------------------- SMS RANGE VIEW (COMING SOON) -------------------- */}
+        {/* -------------------- SMS RANGE VIEW -------------------- */}
         {currentView === "smsRange" && (
-          <div className="w-full min-h-[70vh] flex items-center justify-center py-6 px-4 animate-fadeIn">
-            <div className="w-full max-w-2xl relative overflow-hidden rounded-3xl bg-gradient-to-b from-slate-900 via-slate-900 to-indigo-950 border border-amber-500/30 p-8 sm:p-14 text-center text-white shadow-2xl flex flex-col items-center justify-center">
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-amber-500/15 rounded-full blur-3xl pointer-events-none" />
-              <div className="absolute bottom-0 right-10 w-72 h-72 bg-indigo-500/15 rounded-full blur-3xl pointer-events-none" />
-
-              <div className="inline-flex items-center justify-center w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-gradient-to-tr from-amber-500/20 to-amber-300/10 border border-amber-400/30 shadow-inner mb-6 relative">
-                <Radio className="w-10 h-10 sm:w-12 sm:h-12 text-amber-400 animate-pulse" />
-                <span className="absolute -top-1 -right-1 flex h-4 w-4">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-4 w-4 bg-amber-500"></span>
-                </span>
+          <div className="w-full space-y-8 py-4 animate-fadeIn">
+            {/* Header section with Stats summary */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white/80 backdrop-blur-md rounded-2xl border border-slate-200/80 p-5 shadow-xs">
+              <div>
+                <h1 className="text-xl font-extrabold text-slate-900 flex items-center gap-2">
+                  <Radio className="w-5 h-5 text-indigo-500 animate-pulse" />
+                  <span>Interactive SMS Range Pool</span>
+                </h1>
+                <p className="text-xs text-slate-500 mt-1">
+                  Browse country prefix lists dynamically added via our admin control bot. Select any range to immediately allocate numbers.
+                </p>
               </div>
 
-              <h1 className="text-2xl sm:text-3xl font-black tracking-wider text-slate-300 uppercase mb-2">
-                SMS Range
-              </h1>
-              
-              <div className="text-4xl sm:text-6xl font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-amber-200 to-indigo-300 py-3 drop-shadow-md">
-                COMING SOON
-              </div>
-
-              <div className="mt-8">
+              <div className="flex items-center gap-3">
+                <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-center">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Active Countries</div>
+                  <div className="text-sm font-black text-slate-800">
+                    {Array.from(new Set(manualRanges.map(r => r.country))).length}
+                  </div>
+                </div>
+                <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-center">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Inventory</div>
+                  <div className="text-sm font-black text-slate-800">
+                    {manualRanges.reduce((sum, r) => sum + r.totalCount, 0)}
+                  </div>
+                </div>
                 <button
                   type="button"
-                  onClick={() => handleNavClick("dashboard")}
-                  className="px-8 py-3.5 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black rounded-2xl text-sm sm:text-base shadow-xl shadow-amber-500/20 transition active:scale-95 cursor-pointer flex items-center gap-2.5"
+                  onClick={() => {
+                    setManualRangesLoading(true);
+                    fetchManualRanges().then(setManualRanges).finally(() => setManualRangesLoading(false));
+                  }}
+                  className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition active:scale-95 border border-slate-200 cursor-pointer"
+                  title="Refresh Range List"
                 >
-                  <Home className="w-5 h-5" />
-                  <span>Home to Dashboard</span>
+                  <RefreshCw className={`w-4 h-4 ${manualRangesLoading ? 'animate-spin text-indigo-600' : ''}`} />
                 </button>
               </div>
             </div>
+
+            {/* Admin Upload and Control Panel (If Unlocked) */}
+            {isAdminUnlocked && (
+              <div className="bg-slate-950 text-white rounded-3xl border border-amber-500/30 p-6 shadow-xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
+                <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-4">
+                  <h2 className="text-sm font-black tracking-wider text-amber-400 uppercase flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>Administrator Database Uploader</span>
+                  </h2>
+                  <span className="text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-full">
+                    2FA Verified Authorized
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  {/* Select Country */}
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-slate-400 uppercase">Country Name</label>
+                    <select
+                      value={uploadCountry}
+                      onChange={(e) => {
+                        const c = e.target.value;
+                        setUploadCountry(c);
+                        const match = [
+                          { name: "Bangladesh", code: "BD", flag: "🇧🇩", dialCode: "+880" },
+                          { name: "India", code: "IN", flag: "🇮🇳", dialCode: "+91" },
+                          { name: "Russia", code: "RU", flag: "🇷🇺", dialCode: "+7" },
+                          { name: "Malaysia", code: "MY", flag: "🇲🇾", dialCode: "+60" },
+                          { name: "United States", code: "US", flag: "🇺🇸", dialCode: "+1" },
+                          { name: "United Kingdom", code: "GB", flag: "🇬🇧", dialCode: "+44" },
+                          { name: "Indonesia", code: "ID", flag: "🇮🇩", dialCode: "+62" },
+                          { name: "Vietnam", code: "VN", flag: "🇻🇳", dialCode: "+84" },
+                        ].find(item => item.name === c);
+                        if (match) {
+                          setUploadFlag(match.flag);
+                          setUploadDialCode(match.dialCode);
+                        }
+                      }}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-xs font-semibold text-white focus:outline-none focus:border-amber-500 transition-colors"
+                    >
+                      <option value="Bangladesh">🇧🇩 Bangladesh</option>
+                      <option value="India">🇮🇳 India</option>
+                      <option value="Russia">🇷🇺 Russia</option>
+                      <option value="Malaysia">🇲🇾 Malaysia</option>
+                      <option value="United States">🇺🇸 United States</option>
+                      <option value="United Kingdom">🇬🇧 United Kingdom</option>
+                      <option value="Indonesia">🇮🇩 Indonesia</option>
+                      <option value="Vietnam">🇻🇳 Vietnam</option>
+                    </select>
+                  </div>
+
+                  {/* Dial Code & Flag Displays */}
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-slate-400 uppercase">Country Dial Code</label>
+                    <input
+                      type="text"
+                      value={uploadDialCode}
+                      onChange={(e) => setUploadDialCode(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-xs font-semibold text-white focus:outline-none focus:border-amber-500 transition-colors"
+                      placeholder="+880"
+                    />
+                  </div>
+
+                  {/* Platform / Social Media selection */}
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-slate-400 uppercase">Service Platform</label>
+                    <select
+                      value={uploadPlatform}
+                      onChange={(e) => setUploadPlatform(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-xs font-semibold text-white focus:outline-none focus:border-amber-500 transition-colors"
+                    >
+                      <option value="Telegram">Telegram</option>
+                      <option value="WhatsApp">WhatsApp</option>
+                      <option value="IMO">IMO</option>
+                      <option value="Facebook">Facebook</option>
+                      <option value="Discord">Discord</option>
+                    </select>
+                  </div>
+
+                  {/* Flag Display Indicator */}
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-slate-400 uppercase">Country Flag Icon</label>
+                    <input
+                      type="text"
+                      value={uploadFlag}
+                      onChange={(e) => setUploadFlag(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-center text-lg text-white focus:outline-none focus:border-amber-500 transition-colors"
+                      placeholder="🇧🇩"
+                    />
+                  </div>
+                </div>
+
+                {/* Textarea paste and Clear action */}
+                <div className="mt-4 space-y-2">
+                  <label className="text-[11px] font-bold text-slate-400 uppercase flex items-center justify-between">
+                    <span>Numbers List (Copy paste list or separated by commas/newlines - supports up to 10,000 numbers)</span>
+                    <span className="text-amber-500/80 text-[10px] lowercase font-normal">e.g. +8801700000000, 8801700000001</span>
+                  </label>
+                  <textarea
+                    rows={4}
+                    placeholder="8801712345678&#10;8801787654321"
+                    value={uploadNumbersText}
+                    onChange={(e) => setUploadNumbersText(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-xs font-mono text-amber-200 placeholder-slate-600 focus:outline-none focus:border-amber-500 transition-colors"
+                  />
+                </div>
+
+                {/* Upload Status Inline Message Banner */}
+                {uploadStatus.type && (
+                  <div className={`mt-3 px-4 py-2.5 rounded-xl border text-xs font-semibold ${
+                    uploadStatus.type === 'success'
+                      ? 'bg-emerald-950/40 border-emerald-500/20 text-emerald-400'
+                      : 'bg-rose-950/40 border-rose-500/20 text-rose-400'
+                  }`}>
+                    {uploadStatus.text}
+                  </div>
+                )}
+
+                {/* Command actions buttons */}
+                <div className="flex flex-wrap items-center justify-between gap-3 mt-4 border-t border-slate-900 pt-4">
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={handleUploadManualNumbers}
+                      className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black rounded-xl text-xs transition active:scale-95 cursor-pointer flex items-center gap-2 shadow-md shadow-amber-500/10"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Upload to Database</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setUploadNumbersText("")}
+                      className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-300 font-bold rounded-xl text-xs transition"
+                    >
+                      Clear Input
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleClearPool}
+                    className={`px-4 py-2.5 rounded-xl text-xs font-black transition active:scale-95 cursor-pointer flex items-center gap-1.5 ${
+                      isConfirmingClear
+                        ? 'bg-red-600 hover:bg-red-500 text-white animate-pulse'
+                        : 'bg-red-950/50 text-red-400 border border-red-950 hover:bg-red-900/40'
+                    }`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>{isConfirmingClear ? "Click again to confirm complete deletion!" : "Wipe manual pool database"}</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Range Search & Filtering Bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs">
+              <div className="relative flex-1">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search active range prefixes... (e.g. 88017)"
+                  value={manualRangesSearch}
+                  onChange={(e) => setManualRangesSearch(e.target.value)}
+                  className="w-full bg-slate-50/80 border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-xs font-medium text-slate-700 focus:outline-none focus:border-indigo-500 transition"
+                />
+              </div>
+
+              {/* Platform Quick Selection Filter */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {["ALL", "Telegram", "WhatsApp", "IMO", "Facebook"].map((plat) => (
+                  <button
+                    key={plat}
+                    type="button"
+                    onClick={() => setManualRangesPlatformFilter(plat)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition active:scale-95 cursor-pointer border ${
+                      manualRangesPlatformFilter === plat
+                        ? "bg-slate-900 text-white border-slate-900"
+                        : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    {plat === "ALL" ? "All Platforms" : plat}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Manual Ranges Grid Layout (Sophisticated border-cards) */}
+            {manualRangesLoading ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {[1, 2, 3].map((n) => (
+                  <div key={n} className="bg-white border border-slate-200 rounded-2xl p-5 animate-pulse space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-slate-100" />
+                        <div className="space-y-1">
+                          <div className="h-3.5 w-24 bg-slate-100 rounded" />
+                          <div className="h-2.5 w-16 bg-slate-100 rounded" />
+                        </div>
+                      </div>
+                      <div className="h-4 w-12 bg-slate-100 rounded-full" />
+                    </div>
+                    <div className="h-6 w-full bg-slate-100 rounded" />
+                    <div className="h-3.5 w-1/2 bg-slate-100 rounded" />
+                  </div>
+                ))}
+              </div>
+            ) : (() => {
+              const filtered = manualRanges.filter((r) => {
+                const textMatch =
+                  r.country.toLowerCase().includes(manualRangesSearch.toLowerCase()) ||
+                  r.rangePrefix.includes(manualRangesSearch);
+                const platMatch =
+                  manualRangesPlatformFilter === "ALL" ||
+                  r.platform?.toUpperCase() === manualRangesPlatformFilter.toUpperCase() ||
+                  r.socialMedia?.toUpperCase() === manualRangesPlatformFilter.toUpperCase();
+                return textMatch && platMatch;
+              });
+
+              if (filtered.length === 0) {
+                return (
+                  <div className="w-full flex flex-col items-center justify-center py-12 px-4 bg-slate-50 rounded-3xl border border-slate-200 text-center">
+                    <div className="w-16 h-16 rounded-2xl bg-slate-200/50 flex items-center justify-center text-slate-400 mb-4">
+                      <Radio className="w-8 h-8 animate-pulse" />
+                    </div>
+                    <h3 className="text-base font-bold text-slate-800">No active range prefixes</h3>
+                    <p className="text-xs text-slate-400 mt-1 max-w-sm">
+                      Upload manual pool list files or trigger command edits via the admin bot configuration.
+                    </p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {filtered.map((range, idx) => {
+                    const canonicalPlat = range.platform || range.socialMedia || "Telegram";
+                    const isTelegram = canonicalPlat.toUpperCase() === "TELEGRAM";
+                    const isWhatsApp = canonicalPlat.toUpperCase() === "WHATSAPP";
+                    const isImo = canonicalPlat.toUpperCase() === "IMO";
+
+                    return (
+                      <div
+                        key={idx}
+                        className="bg-white hover:bg-slate-50/50 rounded-2xl border border-slate-200 p-5 shadow-xs transition hover:shadow-md flex flex-col justify-between relative group overflow-hidden"
+                      >
+                        {/* Interactive decorative line tag */}
+                        <div className={`absolute top-0 left-0 right-0 h-1 ${
+                          isTelegram ? "bg-sky-400" : isWhatsApp ? "bg-emerald-400" : isImo ? "bg-purple-400" : "bg-indigo-400"
+                        }`} />
+
+                        <div>
+                          {/* Card Top row */}
+                          <div className="flex items-start justify-between">
+                            <div className="flex items-center gap-3">
+                              <span className="text-2xl shadow-inner select-none p-0.5 bg-slate-50 rounded">
+                                {range.flag || "🇧🇩"}
+                              </span>
+                              <div>
+                                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider truncate max-w-[120px]">
+                                  {range.country}
+                                </h3>
+                                <p className="text-[10px] font-bold text-slate-400 font-mono mt-0.5">
+                                  {range.dialCode || "+880"} range
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Service badge */}
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
+                              isTelegram
+                                ? "bg-sky-500/10 text-sky-600 border-sky-400/20"
+                                : isWhatsApp
+                                ? "bg-emerald-500/10 text-emerald-600 border-emerald-400/20"
+                                : isImo
+                                ? "bg-purple-500/10 text-purple-600 border-purple-400/20"
+                                : "bg-slate-500/10 text-slate-600 border-slate-400/20"
+                            }`}>
+                              {canonicalPlat}
+                            </span>
+                          </div>
+
+                          {/* Central Prefix Display */}
+                          <div className="my-5 flex flex-col">
+                            <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Masked Pattern Prefix</span>
+                            <span className="text-lg font-black font-mono text-slate-900 tracking-wide mt-1">
+                              {range.dialCode}{range.rangePrefix.startsWith(range.dialCode.replace("+","")) ? range.rangePrefix.slice(range.dialCode.replace("+","").length) : range.rangePrefix}XXXXX
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Bottom stock row */}
+                        <div className="flex items-center justify-between border-t border-slate-100 pt-3 mt-1 text-xs">
+                          <div className="flex flex-col">
+                            <span className="text-[10px] text-slate-400 font-bold">AVAILABLE STOCK</span>
+                            {range.availableCount > 0 ? (
+                              <span className="text-emerald-600 font-extrabold flex items-center gap-1 mt-0.5 animate-pulse">
+                                <Zap className="w-3.5 h-3.5 fill-emerald-500/20" />
+                                <span>{range.availableCount} numbers</span>
+                              </span>
+                            ) : (
+                              <span className="text-rose-500 font-extrabold flex items-center gap-1 mt-0.5">
+                                <Lock className="w-3 h-3" />
+                                <span>Sold out</span>
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Purchase direct circle action */}
+                          {range.availableCount > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRangeCustomInput(range.rangePrefix);
+                                setGetNumTab("RANGE");
+                                setCurrentView("getNumber");
+                                playOtpChime();
+                              }}
+                              className="w-10 h-10 rounded-full bg-slate-900 hover:bg-indigo-600 text-white flex items-center justify-center transition shadow-lg shadow-slate-900/10 hover:shadow-indigo-500/20 active:scale-95 cursor-pointer"
+                              title="Get dynamic number from this range"
+                            >
+                              <Plus className="w-5 h-5" />
+                            </button>
+                          )}
+
+                          {/* Delete Range Button (Admin only) */}
+                          {isAdminUnlocked && range.availableCount === 0 && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteRange(range.rangePrefix)}
+                              className="p-2 rounded-lg bg-red-50 hover:bg-red-100 border border-red-100 text-red-600 transition"
+                              title="Delete range prefix"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
         )}
 
-        {/* -------------------- SMS NUMBER VIEW (COMING SOON) -------------------- */}
+        {/* -------------------- SMS NUMBER VIEW -------------------- */}
         {currentView === "smsNumber" && (
-          <div className="w-full min-h-[70vh] flex items-center justify-center py-6 px-4 animate-fadeIn">
-            <div className="w-full max-w-2xl relative overflow-hidden rounded-3xl bg-gradient-to-b from-slate-900 via-slate-900 to-purple-950 border border-purple-500/30 p-8 sm:p-14 text-center text-white shadow-2xl flex flex-col items-center justify-center">
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-purple-500/15 rounded-full blur-3xl pointer-events-none" />
-              <div className="absolute bottom-0 left-10 w-72 h-72 bg-amber-500/15 rounded-full blur-3xl pointer-events-none" />
+          <div className="w-full space-y-6 py-4 animate-fadeIn">
+            {/* Header section */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white/80 backdrop-blur-md rounded-2xl border border-slate-200 p-5 shadow-xs">
+              <div>
+                <h1 className="text-xl font-extrabold text-slate-900 flex items-center gap-2">
+                  <Smartphone className="w-5 h-5 text-indigo-500" />
+                  <span>Manual Number Pool Inventory</span>
+                </h1>
+                <p className="text-xs text-slate-500 mt-1">
+                  View individual numbers loaded in the pool. Available numbers can receive test OTP triggers dispatched to Telegram and the dashboard.
+                </p>
+              </div>
 
-              <div className="inline-flex items-center justify-center w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-gradient-to-tr from-purple-500/20 to-amber-300/10 border border-purple-400/30 shadow-inner mb-6 relative">
-                <Smartphone className="w-10 h-10 sm:w-12 sm:h-12 text-purple-400 animate-bounce" />
-                <span className="absolute -top-1 -right-1 flex h-4 w-4">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-4 w-4 bg-purple-500"></span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+                  Pool Total: <strong className="text-slate-800 font-extrabold">{manualNumbersTotal}</strong>
                 </span>
-              </div>
 
-              <h1 className="text-2xl sm:text-3xl font-black tracking-wider text-slate-300 uppercase mb-2">
-                SMS Number
-              </h1>
-
-              <div className="text-4xl sm:text-6xl font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-amber-200 to-indigo-300 py-3 drop-shadow-md">
-                COMING SOON
-              </div>
-
-              <div className="mt-8">
                 <button
                   type="button"
-                  onClick={() => handleNavClick("dashboard")}
-                  className="px-8 py-3.5 bg-gradient-to-r from-purple-500 via-purple-400 to-indigo-500 hover:from-purple-400 hover:to-indigo-400 text-white font-black rounded-2xl text-sm sm:text-base shadow-xl shadow-purple-500/20 transition active:scale-95 cursor-pointer flex items-center gap-2.5"
+                  onClick={() => {
+                    setManualNumbersLoading(true);
+                    fetchManualNumbers(1000, 0)
+                      .then((res) => {
+                        setManualNumbers(res.numbers || []);
+                        setManualNumbersTotal(res.total || 0);
+                      })
+                      .finally(() => setManualNumbersLoading(false));
+                  }}
+                  className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition active:scale-95 border border-slate-200 cursor-pointer"
+                  title="Reload list"
                 >
-                  <Home className="w-5 h-5" />
-                  <span>Home to Dashboard</span>
+                  <RefreshCw className={`w-4 h-4 ${manualNumbersLoading ? 'animate-spin text-indigo-600' : ''}`} />
                 </button>
               </div>
             </div>
+
+            {/* Filters bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs">
+              <div className="relative flex-1">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search numbers or country names... (e.g. +880)"
+                  value={manualNumbersSearch}
+                  onChange={(e) => setManualNumbersSearch(e.target.value)}
+                  className="w-full bg-slate-50/80 border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-xs font-medium text-slate-700 focus:outline-none focus:border-indigo-500 transition"
+                />
+              </div>
+
+              {/* Quick Stock Filters */}
+              <div className="flex items-center gap-1.5">
+                {["ALL", "Available", "Allocated"].map((stat) => (
+                  <button
+                    key={stat}
+                    type="button"
+                    onClick={() => setManualNumbersStatusFilter(stat)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition active:scale-95 cursor-pointer border ${
+                      manualNumbersStatusFilter === stat
+                        ? "bg-slate-900 text-white border-slate-900"
+                        : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    {stat}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Numbers Inventory List */}
+            {manualNumbersLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3, 4].map((n) => (
+                  <div key={n} className="h-14 w-full bg-white rounded-xl border border-slate-200 animate-pulse" />
+                ))}
+              </div>
+            ) : (() => {
+              const filtered = manualNumbers.filter((n) => {
+                const textMatch =
+                  n.number.includes(manualNumbersSearch) ||
+                  n.country.toLowerCase().includes(manualNumbersSearch.toLowerCase()) ||
+                  n.cleanDigits.includes(manualNumbersSearch);
+                const statMatch =
+                  manualNumbersStatusFilter === "ALL" ||
+                  (manualNumbersStatusFilter === "Available" && !n.allocated) ||
+                  (manualNumbersStatusFilter === "Allocated" && n.allocated);
+                return textMatch && statMatch;
+              });
+
+              if (filtered.length === 0) {
+                return (
+                  <div className="w-full flex flex-col items-center justify-center py-16 px-4 bg-slate-50 rounded-3xl border border-slate-200 text-center">
+                    <Smartphone className="w-10 h-10 text-slate-400 animate-bounce mb-3" />
+                    <h3 className="text-base font-bold text-slate-800">No active numbers matches filters</h3>
+                    <p className="text-xs text-slate-400 mt-1 max-w-sm">
+                      Try searching with other country flags, prefixes, or status keys.
+                    </p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                          <th className="px-5 py-3.5"># Index</th>
+                          <th className="px-5 py-3.5">Country / Code</th>
+                          <th className="px-5 py-3.5">Phone Number</th>
+                          <th className="px-5 py-3.5">Service Platform</th>
+                          <th className="px-5 py-3.5">Allocation Status</th>
+                          <th className="px-5 py-3.5 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
+                        {filtered.slice(0, 200).map((num, idx) => {
+                          const canonicalPlat = num.platform || num.socialMedia || "Telegram";
+                          const isTelegram = canonicalPlat.toUpperCase() === "TELEGRAM";
+                          const isWhatsApp = canonicalPlat.toUpperCase() === "WHATSAPP";
+
+                          return (
+                            <tr key={num.id} className="hover:bg-slate-50/50 transition-colors">
+                              <td className="px-5 py-4 font-mono font-bold text-slate-400">
+                                {idx + 1}
+                              </td>
+                              <td className="px-5 py-4">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-lg">{num.flag || "🇧🇩"}</span>
+                                  <div>
+                                    <div className="font-extrabold text-slate-800">{num.country}</div>
+                                    <div className="text-[10px] font-bold text-slate-400 font-mono">{num.dialCode}</div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-5 py-4">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono font-extrabold text-slate-950 text-sm">
+                                    {num.number}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => copyToClipboard(num.number, `num_inv_${idx}`)}
+                                    className="p-1 text-slate-400 hover:text-slate-600 rounded hover:bg-slate-100 transition"
+                                    title="Copy raw phone number"
+                                  >
+                                    {copiedText === `num_inv_${idx}` ? (
+                                      <Check className="w-3.5 h-3.5 text-emerald-500" />
+                                    ) : (
+                                      <Copy className="w-3.5 h-3.5" />
+                                    )}
+                                  </button>
+                                </div>
+                              </td>
+                              <td className="px-5 py-4">
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${
+                                  isTelegram
+                                    ? "bg-sky-500/10 text-sky-600 border-sky-500/20"
+                                    : isWhatsApp
+                                    ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+                                    : "bg-slate-500/10 text-slate-600 border-slate-500/20"
+                                }`}>
+                                  {canonicalPlat}
+                                </span>
+                              </td>
+                              <td className="px-5 py-4">
+                                {num.allocated ? (
+                                  <div className="flex flex-col gap-0.5">
+                                    <span className="inline-flex items-center gap-1 text-slate-500 font-semibold">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                                      <span>Allocated</span>
+                                    </span>
+                                    <span className="text-[10px] text-slate-400 font-mono truncate max-w-[140px]" title={num.allocatedTo}>
+                                      by {num.allocatedTo}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 text-emerald-600 font-bold bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-md animate-pulse">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                    <span>Available</span>
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-5 py-4 text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  {/* Test OTP play button */}
+                                  {!num.allocated && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleTestOtpSend(num.number)}
+                                      className={`px-3 py-1 rounded-lg text-[10px] font-black transition active:scale-95 cursor-pointer flex items-center gap-1 ${
+                                        testOtpStatus[num.number]
+                                          ? "bg-slate-900 text-amber-400"
+                                          : "bg-slate-900 hover:bg-slate-800 text-white"
+                                      }`}
+                                      disabled={testOtpStatus[num.number] === "Sending..."}
+                                    >
+                                      <Zap className="w-3 h-3 text-amber-400" />
+                                      <span>{testOtpStatus[num.number] || "Send Test OTP"}</span>
+                                    </button>
+                                  )}
+
+                                  {/* Direct select redirect */}
+                                  {!num.allocated && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setRangeCustomInput(num.rangePrefix);
+                                        setGetNumTab("RANGE");
+                                        setCurrentView("getNumber");
+                                        playOtpChime();
+                                      }}
+                                      className="p-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 rounded-lg transition"
+                                      title="Purchase dynamic number"
+                                    >
+                                      <Plus className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {filtered.length > 200 && (
+                    <div className="bg-slate-50 border-t border-slate-100 px-5 py-3 text-center text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                      Showing first 200 numbers of {filtered.length} matching pool items.
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -6683,6 +7478,14 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             userEmail={user.email}
           />
         )}
+
+        {/* Support Chat Admin View */}
+        {currentView === "supportChatAdmin" && (
+          <SupportChatAdmin
+            userRole={user.role || 'client'}
+            userEmail={user.email}
+          />
+        )}
       </main>
 
       {/* Floating Compact Toast Notification matching User Red Box Area */}
@@ -7015,6 +7818,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           </div>
         );
       })()}
+      {renderDevUnlockModal()}
     </div>
   );
 }

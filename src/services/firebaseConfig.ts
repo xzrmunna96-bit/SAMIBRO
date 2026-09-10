@@ -29,10 +29,15 @@ try {
 // Export Firebase services with robust long-polling for sandboxed iframes & containers
 let db: any;
 try {
-  db = initializeFirestore(firebaseApp, {
-    experimentalForceLongPolling: true,
-    experimentalAutoDetectLongPolling: true,
-  });
+  const isIframe = typeof window !== "undefined" && window.self !== window.top;
+  if (isIframe) {
+    db = initializeFirestore(firebaseApp, {
+      experimentalForceLongPolling: true,
+      experimentalAutoDetectLongPolling: true,
+    });
+  } else {
+    db = initializeFirestore(firebaseApp, {});
+  }
 } catch {
   try {
     db = getFirestore(firebaseApp);

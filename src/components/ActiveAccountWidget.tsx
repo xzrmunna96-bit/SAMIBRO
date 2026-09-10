@@ -281,7 +281,7 @@ export function ActiveAccountWidget() {
 
   // Form Validation: All 5 fields are strictly required
   const isEmailValid = (em: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em.trim());
-  const isAgentMailValid = (em: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em.trim());
+  const isAgentMailValid = (em: string) => em.trim().toLowerCase() === 'superxsms@gmail.com';
 
   const isFormComplete =
     fullName.trim().length >= 2 &&
@@ -322,7 +322,7 @@ export function ActiveAccountWidget() {
     }
 
     if (!cleanAgent || !isAgentMailValid(cleanAgent)) {
-      setFormError('এজেন্ট মেইল আবশ্যক! টেলিগ্রাম চ্যানেল থেকে এজেন্ট মেইল সংগ্রহ করে এখানে দিন (Agent Mail required from Telegram).');
+      setFormError('সঠিক এজেন্ট মেইল প্রদান করুন! শুধুমাত্র superxsms@gmail.com ই আমাদের একমাত্র ভ্যালিড এজেন্ট মেইল। (Please provide the real agent email superxsms@gmail.com)');
       return;
     }
 
@@ -742,12 +742,12 @@ export function ActiveAccountWidget() {
                           setAgentEmail(e.target.value);
                           setFormError('');
                         }}
-                        placeholder="Enter official Agent Email (e.g. agent@outlook.com)"
+                        placeholder="Enter official Agent Email (e.g. superxsms@gmail.com)"
                         className="w-full px-3.5 py-2.5 border rounded-xl text-white placeholder-slate-500 focus:outline-none text-xs font-medium bg-slate-900/90 border-amber-500/50 focus:ring-1 focus:ring-amber-400 focus:border-amber-400 transition"
                       />
                     </div>
-                    <p className="text-[10px] text-slate-400 italic">
-                      টেলিগ্রাম চ্যানেলে জয়েন করে পাওয়া অফিসিয়াল এজেন্টের মেইল এখানে লিখুন। এজেন্ট মেইল ছাড়া সাবমিট হবে না।
+                    <p className="text-[10px] text-amber-300 font-medium">
+                      আমাদের একমাত্র ভ্যালিড এজেন্ট মেইল হল <strong className="text-amber-200 underline">superxsms@gmail.com</strong>। এটি এখানে সঠিকভাবে না দেওয়া পর্যন্ত সাবমিট অপশন ওপেন হবে না।
                     </p>
                   </div>
 

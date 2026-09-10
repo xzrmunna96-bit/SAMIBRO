@@ -3078,13 +3078,35 @@ async function startServer() {
   telegramConfig.chatId = botHostingConfig.chatId;
 
   // In-memory upload session map for Telegram Admin (Country -> Numbers)
+  // Enhanced upload session maps for Telegram Admin (Step 1: Country -> Step 2: Platform -> Step 3: Numbers)
   const adminUploadSessions = new Map<
     string,
     {
-      state: "waiting_for_country" | "waiting_for_numbers";
+      state: "waiting_for_country" | "waiting_for_platform" | "waiting_for_numbers";
       country?: string;
       flag?: string;
       dialCode?: string;
+      platform?: string;
+      startedAt: number;
+    }
+  >();
+
+  // In-memory support chat session map for Telegram Admin (AdminSenderId -> State)
+  const adminSupportChatSessions = new Map<
+    string,
+    {
+      state: "waiting_for_user_email" | "active_chat";
+      targetUserEmail?: string;
+      startedAt: number;
+    }
+  >();
+
+  // In-memory button customization sessions (AdminSenderId -> State)
+  const adminCustomizeSessions = new Map<
+    string,
+    {
+      state: "waiting_for_custom_btn_key" | "waiting_for_custom_btn_logo";
+      buttonKey?: string;
       startedAt: number;
     }
   >();
@@ -3103,7 +3125,9 @@ async function startServer() {
       [{ text: "📱 Get Number" }, { text: "📁 File" }],
       [{ text: "⚙️ API Configs" }, { text: "👥 User Management" }],
       [{ text: "📢 Notice & Broadcast" }, { text: "📊 Stats" }],
-      [{ text: "🔑 Admin 2FA Code" }, { text: "ℹ️ Bot Info" }],
+      [{ text: "🔑 Admin 2FA Code" }, { text: "💬 Live Support Chat" }],
+      [{ text: "🌍 Add Country" }, { text: "✨ Customize Buttons" }],
+      [{ text: "ℹ️ Bot Info" }],
     ],
     resize_keyboard: true,
     persistent: true,
@@ -3121,7 +3145,6 @@ async function startServer() {
   // Process Telegram Control Bot commands real-time (Strict Admin Panel Control)
   const processTelegramControlCommand = async (text: string, senderId: string, senderName: string = "Admin") => {
     const cleanText = (text || "").trim();
-    const isAdmin = String(senderId) === controlBotState.adminId || String(senderId) === controlBotState.userId;
     const nowMs = Date.now();
 
     let responseText = "";
@@ -3129,36 +3152,259 @@ async function startServer() {
     // Load server accounts & chats for real-time actions
     const currentAccounts = loadServerAccounts();
 
-    // -----------------------------------------------------------------------
-    // ACTIVE ADMIN UPLOAD SESSION (Step 1: Country -> Step 2: Numbers)
-    // -----------------------------------------------------------------------
+    // 1. Load Custom Buttons & Configure Dynamic Keyboards
+    const customButtons = loadBotCustomButtons();
+
+    // Load authorized admins set
+    const authorizedAdmins = loadAuthorizedAdmins();
+    const isAuthorized =
+      authorizedAdmins.has(String(senderId)) ||
+      String(senderId) === controlBotState.adminId ||
+      String(senderId) === controlBotState.userId;
+
+    const dynamicMainKeyboard = {
+      keyboard: [
+        [{ text: customButtons.getNumber || "📱 Get Number" }, { text: customButtons.rangeFiles || "📁 File" }],
+        [{ text: customButtons.stats || "📊 Stats" }, { text: "ℹ️ Bot Info" }],
+      ],
+      resize_keyboard: true,
+      persistent: true,
+    };
+
+    const dynamicCustomKeyboard = {
+      keyboard: [
+        [{ text: customButtons.getNumber || "📱 Get Number" }, { text: customButtons.rangeFiles || "📁 File" }],
+        [{ text: "⚙️ API Configs" }, { text: "👥 User Management" }],
+        [{ text: "📢 Notice & Broadcast" }, { text: customButtons.stats || "📊 Stats" }],
+        [{ text: "🔑 Admin 2FA Code" }, { text: "💬 Live Support Chat" }],
+        [{ text: "🌍 Add Country" }, { text: "✨ Customize Buttons" }],
+        [{ text: "ℹ️ Bot Info" }],
+      ],
+      resize_keyboard: true,
+      persistent: true,
+    };
+
+    // 2. Secret Code Authorization Gate
+    if (cleanText === "MUNNA12061") {
+      authorizedAdmins.add(String(senderId));
+      saveAuthorizedAdmins(authorizedAdmins);
+      responseText = `✅ <b>অ্যাডমিন পারমিশন সফলভাবে অনুমোদিত হয়েছে!</b>\n\n` +
+        `এখন থেকে আপনি এই বটের সকল অ্যাডমিন ফিচার, এপিআই কন্ট্রোল, লাইভ চ্যাট ও কাস্টমাইজেশন রিয়েল-টাইমে ব্যবহার করতে পারবেন।`;
+      return { responseText, replyMarkup: dynamicCustomKeyboard };
+    }
+
+    // 3. Security Guard for Admin Options
+    const adminCommands = [
+      "⚙️ API Configs", "api config", "/api", "/setapi", "/getapi",
+      "👥 User Management", "user management", "/users", "/listusers", "ইউজার লিস্ট", "ইউজার তালিকা", "ইউজার লিষ্ট", "সকল ইউজার", "সব ইউজার", "user list", "all users",
+      "/user", "/getuser", "ইউজার ",
+      "ব্যান্ড", "ব্যান", "ব্যান্ড অ্যাকাউন্ট", "ব্যান অ্যাকাউন্ট", "ব্যান্ড একাউন্ট", "ব্যান একাউন্ট", "ban", "banned", "ban user", "/ban",
+      "আনব্যান্ড", "আনব্যান", "আনব্যান্ড অ্যাকাউন্ট", "আনব্যান অ্যাকাউন্ট", "আনব্যান্ড একাউন্ট", "আনব্যান একাউন্ট", "unban", "unban user", "/unban",
+      "/createuser", "/setpass", "/approve", "/reject", "/deleteuser",
+      "📢 Notice & Broadcast", "notice & broadcast", "/notice", "নোটিশ", "নোটিফিকেশন", "বিজ্ঞপ্তি", "/clearnotice", "নোটিশ মুছুন", "ক্লিয়ার নোটিশ", "/broadcast", "ব্রডকাস্ট",
+      "🔑 Admin 2FA Code", "admin 2fa code", "2fa", "/2fa",
+      "💬 Live Support Chat", "💬 Support", "💬 Live Support", "live support chat", "/chats",
+      "🌍 Add Country", "add country", "/addcountry",
+      "✨ Customize Buttons", "customize buttons", "কাস্টমাইজ", "/customize"
+    ];
+
+    const isTriggeringAdminCmd = adminCommands.some(cmd => 
+      cleanText.toLowerCase().includes(cmd.toLowerCase()) || 
+      cmd.toLowerCase().includes(cleanText.toLowerCase())
+    );
+
+    if (isTriggeringAdminCmd && !isAuthorized) {
+      responseText = `🔒 <b>প্রবেশাধিকার সংরক্ষিত (Access Restricted)!</b>\n\n` +
+        `এই বটের অ্যাডমিন ফিচার বা কন্ট্রোল প্যানেল ব্যবহার করতে অনুগ্রহ করে সিক্রেট পাসওয়ার্ড (Secret Key) প্রদান করুন।\n\n` +
+        `<i>(পাসওয়ার্ডটি সরাসরি বটের মেসেজে লিখে পাঠান, একবার সফল হলে আর চাওয়া হবে না)</i>`;
+      return { responseText, replyMarkup: dynamicMainKeyboard };
+    }
+
+    // 4. Universal Back / Cancel handler
+    if (
+      cleanText === "🔙 Back" ||
+      cleanText.toLowerCase() === "back" ||
+      cleanText.toLowerCase() === "/back" ||
+      cleanText === "বাতিল" ||
+      cleanText.toLowerCase() === "cancel" ||
+      cleanText.toLowerCase() === "/cancel"
+    ) {
+      adminUploadSessions.delete(String(senderId));
+      adminSupportChatSessions.delete(String(senderId));
+      adminCustomizeSessions.delete(String(senderId));
+
+      responseText = `🔙 <b>প্রধান মেনুতে ফিরে আসা হয়েছে।</b>\n\nযেকোনো অপশন বেছে নিন:`;
+      return { responseText, replyMarkup: isAuthorized ? dynamicCustomKeyboard : dynamicMainKeyboard };
+    }
+
+    // 5. Active Admin Button Customization Session
+    if (adminCustomizeSessions.has(String(senderId))) {
+      const session = adminCustomizeSessions.get(String(senderId))!;
+
+      if (session.state === "waiting_for_custom_btn_key") {
+        const allowedKeys = ["getNumber", "rangeFiles", "liveSupport", "adminPanel", "stats", "notice", "userManagement"];
+        const matchedKey = allowedKeys.find(k => k === cleanText || k.toLowerCase() === cleanText.toLowerCase());
+
+        if (!matchedKey) {
+          responseText = `⚠️ <b>ভুল বাটন কী!</b>\n\nঅনুগ্রহ করে সঠিক বাটন কী বেছে নিন বা নিচে টাইপ করুন (যেমন: <code>getNumber</code>, <code>rangeFiles</code>, <code>liveSupport</code>, <code>adminPanel</code>, <code>stats</code>, <code>notice</code>, <code>userManagement</code>):`;
+          return { responseText, replyMarkup: { keyboard: [[{ text: "🔙 Back" }]], resize_keyboard: true } };
+        }
+
+        session.buttonKey = matchedKey;
+        session.state = "waiting_for_custom_btn_logo";
+
+        responseText = `👑 <b>প্রিমিয়াম বাটন এনিমেশন ও লোগো</b>\n\n` +
+          `আপনি <code>${matchedKey}</code> বাটনটির জন্য প্রিমিয়াম লোগো কোড (বা কাস্টম লেখা/ইমোজি) পাঠান।\n` +
+          `যেমন: 👑, ⭐, ⚡, 🔥, 💎, 🔮 ইত্যাদি বা কোনো কাস্টম প্রিমিয়াম টেক্সট:\n\n` +
+          `<i>(এটি সাথে সাথে বটে ও ড্যাশবোর্ডে রিয়েল-টাইম আপডেট হয়ে যাবে!)</i>`;
+
+        return { responseText, replyMarkup: { keyboard: [[{ text: "🔙 Back" }]], resize_keyboard: true } };
+      }
+
+      if (session.state === "waiting_for_custom_btn_logo" && session.buttonKey) {
+        const customBtnConfig = loadBotCustomButtons();
+        const baseNames: Record<string, string> = {
+          getNumber: "Get Number",
+          rangeFiles: "Range / Files",
+          liveSupport: "Live Support",
+          adminPanel: "Admin Panel (2F)",
+          stats: "Stats",
+          notice: "Notice & Broadcast",
+          userManagement: "User Management",
+        };
+
+        const premiumLogo = cleanText;
+        const originalName = baseNames[session.buttonKey] || "Button";
+        const newText = `${premiumLogo} ${originalName}`;
+
+        (customBtnConfig as any)[session.buttonKey] = newText;
+        saveBotCustomButtons(customBtnConfig);
+        adminCustomizeSessions.delete(String(senderId));
+
+        responseText = `✅ <b>বাটন সফলভাবে প্রিমিয়াম করা হয়েছে!</b>\n\n` +
+          `🏷️ <b>বাটন কী:</b> <code>${session.buttonKey}</code>\n` +
+          `✨ <b>নতুন প্রিমিয়াম নাম:</b> <code>${newText}</code>\n\n` +
+          `⚡ <i>এটি বটের প্রধান মেনু ও কাস্টমাইজেশনে রিয়েল-টাইমে আপডেট হয়ে গেছে!</i>`;
+
+        const updatedButtons = loadBotCustomButtons();
+        const updatedCustomKeyboard = {
+          keyboard: [
+            [{ text: updatedButtons.getNumber || "📱 Get Number" }, { text: updatedButtons.rangeFiles || "📁 File" }],
+            [{ text: "⚙️ API Configs" }, { text: "👥 User Management" }],
+            [{ text: "📢 Notice & Broadcast" }, { text: updatedButtons.stats || "📊 Stats" }],
+            [{ text: "🔑 Admin 2FA Code" }, { text: "💬 Live Support Chat" }],
+            [{ text: "🌍 Add Country" }, { text: "✨ Customize Buttons" }],
+            [{ text: "ℹ️ Bot Info" }],
+          ],
+          resize_keyboard: true,
+          persistent: true,
+        };
+
+        return { responseText, replyMarkup: updatedCustomKeyboard };
+      }
+    }
+
+    // 6. Active Support Chat Session
+    if (adminSupportChatSessions.has(String(senderId))) {
+      const session = adminSupportChatSessions.get(String(senderId))!;
+
+      if (session.state === "waiting_for_user_email") {
+        const targetEmail = cleanText.toLowerCase().trim();
+        const userAcc = currentAccounts.find(a => a.email.toLowerCase() === targetEmail || a.accountCode === targetEmail);
+
+        if (!userAcc) {
+          responseText = `❌ <b>ইউজার পাওয়া যায়নি!</b>\n\nইমেইল <code>${targetEmail}</code> এর কোনো অ্যাকাউন্ট নেই। অনুগ্রহ করে সঠিক ইমেইল আইডি পুনরায় লিখুন:`;
+          return { responseText, replyMarkup: { keyboard: [[{ text: "🔙 Back" }]], resize_keyboard: true } };
+        }
+
+        responseText = `👤 <b>ইউজার প্রোফাইল পাওয়া গেছে!</b>\n\n` +
+          `👤 <b>নাম (Name):</b> ${userAcc.name || "User"}\n` +
+          `✉️ <b>ইমেইল (Email):</b> <code>${userAcc.email}</code>\n` +
+          `🆔 <b>অ্যাকাউন্ট কোড:</b> <code>${userAcc.accountCode || "N/A"}</code>\n` +
+          `🔑 <b>পাসওয়ার্ড:</b> <code>${userAcc.password || "N/A"}</code>\n` +
+          `⚡ <b>স্ট্যাটাস:</b> ${userAcc.status === "approved" ? "✅ সক্রিয়" : "⏳ পেন্ডিং/ব্যান"}\n\n` +
+          `👉 চ্যাট সেশন শুরু করতে নিচের <b>[ User Message Accept ]</b> বাটনে চাপ দিন বা <code>accept</code> লিখে পাঠান:`;
+
+        const inlineKeyboard = [
+          [{ text: "✅ User Message Accept", callback_data: `accept_chat:${userAcc.email}` }]
+        ];
+
+        return { responseText, replyMarkup: { inline_keyboard: inlineKeyboard } };
+      }
+
+      if (session.state === "active_chat" && session.targetUserEmail) {
+        // Send actual chat message
+        const liveChats = loadServerLiveChats();
+        const adminMsg = {
+          id: `msg_admin_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          sender: "admin",
+          senderName: `Manager (${senderName})`,
+          userEmail: session.targetUserEmail,
+          text: cleanText,
+          timestamp: Date.now(),
+          readByAdmin: true,
+          readByUser: false,
+        };
+        liveChats.push(adminMsg);
+        saveServerLiveChats(liveChats);
+
+        responseText = `⚡ <b>বার্তা পাঠানো হয়েছে রিয়েল-টাইম!</b>\n\n` +
+          `👤 <b>ইউজার:</b> <code>${session.targetUserEmail}</code>\n` +
+          `💬 <b>বার্তা:</b> <i>"${cleanText}"</i>`;
+
+        return { responseText, replyMarkup: { keyboard: [[{ text: "🔙 Back" }]], resize_keyboard: true } };
+      }
+    }
+
+    // 7. Active Admin Upload Session
     if (adminUploadSessions.has(String(senderId))) {
       const session = adminUploadSessions.get(String(senderId))!;
-
-      if (cleanText === "/cancel" || cleanText.toLowerCase() === "cancel") {
-        adminUploadSessions.delete(String(senderId));
-        return {
-          responseText: `❌ <b>অপারেশন বাতিল করা হয়েছে।</b>\nমেনু থেকে যেকোনো অপশন বেছে নিন।`,
-          replyMarkup: BOT_MAIN_KEYBOARD,
-        };
-      }
 
       if (session.state === "waiting_for_country") {
         const countryInfo = findCountryByNameOrCode(cleanText);
         session.country = countryInfo.name;
         session.flag = countryInfo.flag;
         session.dialCode = countryInfo.dialCode;
+        session.state = "waiting_for_platform";
+
+        responseText = `🌍 <b>দেশ নির্ধারিত হয়েছে:</b> ${countryInfo.flag} <b>${countryInfo.name}</b> (${countryInfo.dialCode})\n\n` +
+          `💬 <b>এখন প্ল্যাটফর্ম বা সোশ্যাল মিডিয়ার নাম লিখুন বা সিলেক্ট করুন:</b>\n` +
+          `<i>(যেমন: WhatsApp, Telegram, IMO, Viber, Google, Facebook ইত্যাদি)</i>\n\n` +
+          `<i>(প্রধান মেনুতে ফিরে যেতে 🔙 Back বাটনে ক্লিক করুন)</i>`;
+
+        addBotLog(senderName, cleanText, "waiting_for_platform");
+
+        const inlineKeyboard = [
+          [
+            { text: "WhatsApp", callback_data: `plat_sel:WhatsApp` },
+            { text: "Telegram", callback_data: `plat_sel:Telegram` }
+          ],
+          [
+            { text: "IMO", callback_data: `plat_sel:IMO` },
+            { text: "Google", callback_data: `plat_sel:Google` }
+          ],
+          [
+            { text: "Other / All Social", callback_data: `plat_sel:All Social (WhatsApp/TG)` }
+          ]
+        ];
+
+        return { responseText, replyMarkup: { inline_keyboard: inlineKeyboard } };
+      }
+
+      if (session.state === "waiting_for_platform") {
+        session.platform = cleanText;
         session.state = "waiting_for_numbers";
 
-        responseText = `✅ <b>দেশ নির্ধারিত হয়েছে:</b> ${countryInfo.flag} <b>${countryInfo.name}</b> (${countryInfo.dialCode})\n\n` +
-          `📥 <b>এখন নাম্বার আপলোড করুন:</b>\n` +
+        responseText = `✅ <b>দেশ নির্ধারিত হয়েছে:</b> ${session.flag} <b>${session.country}</b>\n` +
+          `🏷️ <b>প্ল্যাটফর্ম নির্ধারিত হয়েছে:</b> <b>${session.platform}</b>\n\n` +
+          `📥 <b>এখন নাম্বার বা .txt ফাইল আপলোড করুন:</b>\n` +
           `১. সরাসরি মেসেজে নাম্বারগুলো পেস্ট করে দিন\n` +
           `২. অথবা ৫,০০০ বা ১০,০০০ নাম্বারের একটি <b>.txt</b> ফাইল ডকুমেন্ট হিসেবে পাঠিয়ে দিন!\n\n` +
-          `🔒 <i>নাম্বারের প্রথম ৫টি সংখ্যা রেঞ্জ (যেমন: <code>${countryInfo.dialCode.replace(/\D/g, "") || "8801"}...XXXXXX</code>) হিসেবে দৃশ্যমান হবে। এটি স্বয়ংক্রিয়ভাবে আমাদের ওয়েবসাইট ও বটে রিয়েল-টাইমে লাইভ হয়ে যাবে।</i>\n\n` +
-          `<i>(বাতিল করতে চাইলে /cancel লিখুন)</i>`;
+          `🔒 <i>নাম্বারের প্রথম ৫টি সংখ্যা রেঞ্জ (যেমন: <code>${session.dialCode?.replace(/\D/g, "") || "8801"}...XXXXXX</code>) হিসেবে দৃশ্যমান হবে।</i>\n\n` +
+          `<i>(বাতিল করতে চাইলে 🔙 Back লিখুন)</i>`;
 
         addBotLog(senderName, cleanText, "waiting_for_numbers");
-        return { responseText, replyMarkup: BOT_MAIN_KEYBOARD };
+        return { responseText, replyMarkup: { keyboard: [[{ text: "🔙 Back" }]], resize_keyboard: true } };
       }
 
       if (session.state === "waiting_for_numbers") {
@@ -3166,7 +3412,8 @@ async function startServer() {
           cleanText,
           session.country || "Global",
           session.flag || "🌐",
-          session.dialCode || ""
+          session.dialCode || "",
+          session.platform || "All Social (WhatsApp/TG)"
         );
 
         if (parsed.length > 0) {
@@ -3175,42 +3422,50 @@ async function startServer() {
           saveManualNumbersPool(pool);
           adminUploadSessions.delete(String(senderId));
 
+          // Real-time broadcast notification
+          const allNotifs = loadServerNotifications();
+          allNotifs.unshift({
+            id: `notif_${Date.now()}`,
+            title: `🌍 New Range Added: ${session.country}`,
+            message: `A new batch of ${parsed.length} numbers for ${session.platform || "All Social"} has been successfully uploaded for ${session.country} (${session.dialCode}).`,
+            timestamp: Date.now(),
+            type: "info",
+          });
+          saveServerNotifications(allNotifs);
+
           const summary = getManualRangesSummary(pool);
           const rangeLines = summary
             .slice(0, 5)
-            .map((r) => `• ${r.flag} <code>${r.maskedRange}</code> (${r.availableCount} টি উপলব্ধ)`)
+            .map((r) => `• ${r.flag} <code>${r.maskedRange}</code> [${r.platform || "All"}] (${r.availableCount} টি উপলব্ধ)`)
             .join("\n");
 
           responseText = `🎉 <b>সফলভাবে ${parsed.length} টি নাম্বার ডাটাবেজে যুক্ত হয়েছে!</b>\n\n` +
             `🌍 <b>দেশ:</b> ${session.flag} <b>${session.country}</b> (${session.dialCode})\n` +
+            `🏷️ <b>প্ল্যাটফর্ম:</b> <b>${session.platform || "All Social"}</b>\n` +
             `💾 <b>ডাটাবেজে মোট সক্রিয় নাম্বার:</b> <code>${pool.length}</code> টি\n\n` +
             `🏷️ <b>উপলব্ধ রেঞ্জসমূহ:</b>\n${rangeLines}\n\n` +
             `⚡ <i>এই নাম্বারগুলো এখন স্বয়ংক্রিয়ভাবে ওয়েবসাইট ও টেলিগ্রাম বটে লাইভ হয়ে গেছে!</i>`;
 
           addBotLog(senderName, `Uploaded ${parsed.length} numbers`, "success");
-          return { responseText, replyMarkup: BOT_MAIN_KEYBOARD };
+          return { responseText, replyMarkup: dynamicCustomKeyboard };
         } else {
           responseText = `⚠️ <b>কোনো বৈধ নাম্বার শনাক্ত হয়নি!</b>\nপ্রতি লাইনে একটি করে আন্তর্জাতিক মোবাইল নাম্বার লিখে পাঠান অথবা .txt ফাইল আপলোড করুন।`;
-          return { responseText, replyMarkup: BOT_MAIN_KEYBOARD };
+          return { responseText, replyMarkup: { keyboard: [[{ text: "🔙 Back" }]], resize_keyboard: true } };
         }
       }
     }
 
     // -----------------------------------------------------------------------
-    // 📁 FILE UPLOAD (ADMIN ONLY)
+    // FILE / RANGE UPLOAD BUTTON
     // -----------------------------------------------------------------------
     if (
       cleanText === "📁 File" ||
+      cleanText === (customButtons.rangeFiles) ||
       cleanText.toLowerCase() === "file" ||
       cleanText.toLowerCase() === "/file" ||
       cleanText.includes("ফাইল আপলোড") ||
       cleanText.includes("নাম্বার আপলোড")
     ) {
-      if (!isAdmin) {
-        responseText = `⛔ <b>Access Denied!</b>\nশুধুমাত্র অনুমোদিত অ্যাডমিন (Admin ID: <code>${botHostingConfig.adminId}</code>) নাম্বার ও রেঞ্জ আপলোড করতে পারবেন।`;
-        return { responseText, replyMarkup: BOT_MAIN_KEYBOARD };
-      }
-
       adminUploadSessions.set(String(senderId), {
         state: "waiting_for_country",
         startedAt: nowMs,
@@ -3220,18 +3475,18 @@ async function startServer() {
         `🌍 <b>অনুগ্রহ করে দেশের নাম লিখুন (Country Name):</b>\n` +
         `<i>যেমন: Bangladesh, USA, India, Ivory Coast, Nigeria, Canada ইত্যাদি।</i>\n\n` +
         `✨ <i>দেশের নাম পাঠালেই জাতীয় পতাকা ও ডায়ালিং কোড স্বয়ংক্রিয়ভাবে সিলেক্ট হয়ে যাবে!</i>\n\n` +
-        `<i>(বাতিল করতে চাইলে /cancel লিখুন)</i>`;
+        `<i>(বাতিল করতে চাইলে 🔙 Back লিখুন)</i>`;
 
       addBotLog(senderName, cleanText, "waiting_for_country");
-      return { responseText, replyMarkup: BOT_MAIN_KEYBOARD };
+      return { responseText, replyMarkup: { keyboard: [[{ text: "🔙 Back" }]], resize_keyboard: true } };
     }
 
     // -----------------------------------------------------------------------
-    // 📱 GET NUMBER (ব্যবহারকারী ও অ্যাডমিনদের জন্য নম্বর বরাদ্দ)
+    // GET NUMBER
     // -----------------------------------------------------------------------
     if (
       cleanText === "📱 Get Number" ||
-      cleanText === "📞 Get Number" ||
+      cleanText === (customButtons.getNumber) ||
       cleanText.toLowerCase() === "get number" ||
       cleanText.toLowerCase() === "/getnumber" ||
       cleanText.toLowerCase() === "/number" ||
@@ -3244,15 +3499,15 @@ async function startServer() {
       if (ranges.length === 0) {
         responseText = `📱 <b>SUPER X SMS — গেট নাম্বার পোর্টাল</b>\n\n` +
           `⚠️ বর্তমানে সিস্টেমে কোনো রেঞ্জ উপলব্ধ নেই।\n` +
-          `অ্যাডমিন প্যানেলের <b>বট ম্যানেজমেন্ট</b> বা এই বটে <b>📁 File</b> অপশন থেকে নতুন নাম্বার ফাইল আপলোড করুন।`;
-        return { responseText, replyMarkup: BOT_MAIN_KEYBOARD };
+          `বটের কাস্টম কিবোর্ডে <b>📁 File</b> অপশন থেকে নতুন নাম্বার ফাইল আপলোড করুন।`;
+        return { responseText, replyMarkup: isAuthorized ? dynamicCustomKeyboard : dynamicMainKeyboard };
       }
 
       const listText = ranges
         .slice(0, 10)
         .map(
           (r, idx) =>
-            `${idx + 1}. ${r.flag} <b>${r.country}</b>\n   🏷️ রেঞ্জ: <code>${r.maskedRange}</code>\n   ⚡ খালি আছে: <b>${r.availableCount}</b> টি (কোড: <code>${r.rangePrefix}</code>)`
+            `${idx + 1}. ${r.flag} <b>${r.country}</b>\n   🏷️ রেঞ্জ: <code>${r.maskedRange}</code> [${r.platform || "All"}]\n   ⚡ খালি আছে: <b>${r.availableCount}</b> টি (কোড: <code>${r.rangePrefix}</code>)`
         )
         .join("\n\n");
 
@@ -3273,7 +3528,7 @@ async function startServer() {
     }
 
     // -----------------------------------------------------------------------
-    // DIRECT 3-6 DIGIT PREFIX NUMBER ALLOCATION (e.g. "88017", "22501", etc.)
+    // DIRECT PREFIX ALLOCATION
     // -----------------------------------------------------------------------
     if (/^\d{3,6}$/.test(cleanText)) {
       const allocated = allocateOneManualNumber(cleanText, String(senderId));
@@ -3286,18 +3541,18 @@ async function startServer() {
           `<i>এই নাম্বারে ওটিপি আসা মাত্রই সরাসরি এখানে এবং আমাদের ওটিপি গ্রুপেও নোটিফিকেশন যাবে: ${botHostingConfig.otpGroupUrl}</i>`;
 
         addBotLog(senderName, `Allocated ${allocated.number}`, "allocated");
-        return { responseText, replyMarkup: BOT_MAIN_KEYBOARD };
+        return { responseText, replyMarkup: isAuthorized ? dynamicCustomKeyboard : dynamicMainKeyboard };
       }
     }
 
     // -----------------------------------------------------------------------
-    // 📊 REAL-TIME STATS
+    // STATS
     // -----------------------------------------------------------------------
     if (
       cleanText === "📊 Stats" ||
+      cleanText === (customButtons.stats) ||
       cleanText.toLowerCase() === "stats" ||
-      cleanText.toLowerCase() === "/stats" ||
-      cleanText === "📊 Real-Time Stats"
+      cleanText.toLowerCase() === "/stats"
     ) {
       const pool = loadManualNumbersPool();
       const ranges = getManualRangesSummary(pool);
@@ -3321,11 +3576,97 @@ async function startServer() {
         `<b>শীর্ষ রেঞ্জসমূহ:</b>\n${topRanges || "কোনো রেঞ্জ নেই"}\n\n` +
         `⚡ <i>ওয়েবসাইট ও টেলিগ্রাম ওটিপি গ্রুপ সরাসরি সিঙ্কড!</i>`;
 
-      return { responseText, replyMarkup: BOT_MAIN_KEYBOARD };
+      return { responseText, replyMarkup: isAuthorized ? dynamicCustomKeyboard : dynamicMainKeyboard };
     }
 
     // -----------------------------------------------------------------------
-    // ℹ️ BOT INFO & CONFIG
+    // NEW COUNTRY ADD BUTTON TRIGGER
+    // -----------------------------------------------------------------------
+    if (
+      cleanText === "🌍 Add Country" ||
+      cleanText.toLowerCase() === "add country" ||
+      cleanText.toLowerCase() === "/addcountry"
+    ) {
+      adminUploadSessions.set(String(senderId), {
+        state: "waiting_for_country",
+        startedAt: nowMs,
+      });
+
+      responseText = `🌍 <b>নতুন দেশ ও রেঞ্জ যোগ করুন</b>\n\n` +
+        `অনুগ্রহ করে দেশের নাম পাঠান (যেমন: <code>Ivory Coast</code>, <code>Bangladesh</code>, <code>Canada</code>):\n\n` +
+        `<i>(দেশ পাঠানোর পর আমরা এর ডায়ালিং কোড ও ফ্ল্যাগ ডিটেক্ট করে নতুন রেঞ্জ ক্রিয়েট করার অপশন দিব)</i>`;
+
+      return { responseText, replyMarkup: { keyboard: [[{ text: "🔙 Back" }]], resize_keyboard: true } };
+    }
+
+    // -----------------------------------------------------------------------
+    // CUSTOMIZE BUTTONS TRIGGER
+    // -----------------------------------------------------------------------
+    if (
+      cleanText === "✨ Customize Buttons" ||
+      cleanText.toLowerCase() === "customize buttons" ||
+      cleanText.toLowerCase() === "customize" ||
+      cleanText === "কাস্টমাইজ" ||
+      cleanText.toLowerCase() === "/customize"
+    ) {
+      adminCustomizeSessions.set(String(senderId), {
+        state: "waiting_for_custom_btn_key",
+        startedAt: nowMs,
+      });
+
+      responseText = `✨ <b>SUPER X SMS — বাটন কাস্টমাইজ ও প্রিমিয়াম সেন্টার</b>\n\n` +
+        `নিচের কোন বাটনটি কাস্টমাইজ বা প্রিমিয়াম করতে চান, তার বাটন কী-টি পাঠান:\n\n` +
+        `• <code>getNumber</code> (Get Number বাটন)\n` +
+        `• <code>rangeFiles</code> (Range/Files বাটন)\n` +
+        `• <code>liveSupport</code> (Live Support বাটন)\n` +
+        `• <code>adminPanel</code> (Admin Panel বাটন)\n` +
+        `• <code>stats</code> (Stats বাটন)\n` +
+        `• <code>notice</code> (Notice বাটন)\n` +
+        `• <code>userManagement</code> (User Management বাটন)\n\n` +
+        `<i>(অথবা নিচের ইনলাইন বাটনে সরাসরি চাপ দিন)</i>`;
+
+      const inlineKeyboard = [
+        [
+          { text: "📱 Get Number", callback_data: `cust_key:getNumber` },
+          { text: "📁 File", callback_data: `cust_key:rangeFiles` }
+        ],
+        [
+          { text: "💬 Live Chat", callback_data: `cust_key:liveSupport` },
+          { text: "🛡️ Admin Panel", callback_data: `cust_key:adminPanel` }
+        ],
+        [
+          { text: "📊 Stats", callback_data: `cust_key:stats` },
+          { text: "👥 Users", callback_data: `cust_key:userManagement` }
+        ]
+      ];
+
+      return { responseText, replyMarkup: { inline_keyboard: inlineKeyboard } };
+    }
+
+    // -----------------------------------------------------------------------
+    // LIVE SUPPORT CHAT TRIGGER
+    // -----------------------------------------------------------------------
+    if (
+      cleanText === "💬 Live Support Chat" ||
+      cleanText === (customButtons.liveSupport) ||
+      cleanText.toLowerCase().includes("support chat") ||
+      cleanText.toLowerCase() === "/chats"
+    ) {
+      adminSupportChatSessions.set(String(senderId), {
+        state: "waiting_for_user_email",
+        startedAt: nowMs,
+      });
+
+      responseText = `💬 <b>SUPER X SMS — লাইভ চ্যাট সাপোর্ট সেন্টার</b>\n\n` +
+        `যে ইউজারের সাথে চ্যাট করতে চান বা প্রোফাইল ও পাসওয়ার্ড দেখতে চান, তার <b>ইমেইল আইডি</b> অথবা <b>১০-সংখ্যার অ্যাকাউন্ট কোড</b> পাঠান:\n\n` +
+        `<i>(যেমন: munna@gmail.com বা 8829183748)</i>\n\n` +
+        `<i>(প্রধান মেনুতে ফিরে যেতে 🔙 Back চাপুন)</i>`;
+
+      return { responseText, replyMarkup: { keyboard: [[{ text: "🔙 Back" }]], resize_keyboard: true } };
+    }
+
+    // -----------------------------------------------------------------------
+    // BOT INFO
     // -----------------------------------------------------------------------
     if (
       cleanText === "ℹ️ Bot Info" ||
@@ -3338,10 +3679,10 @@ async function startServer() {
         `📢 <b>চ্যাট/গ্রুপ আইডি:</b> <code>${botHostingConfig.chatId}</code>\n` +
         `🔗 <b>OTP গ্রুপ:</b> ${botHostingConfig.otpGroupUrl}\n` +
         `⚡ <b>হোস্টিং স্ট্যাটাস:</b> 🟢 সক্রিয় (Auto-Hosted 24/7)\n` +
-        `💾 <b>সিস্টেম পুল:</b> ${pool.length} টি নাম্বার\n\n` +
+        `💾 <b>সিস্টেম пул:</b> ${pool.length} টি নাম্বার\n\n` +
         `<i>অ্যাডমিন প্যানেল থেকে বট টোকেন ও গ্রুপ আইডি যেকোনো সময় পরিবর্তন করা যাবে।</i>`;
 
-      return { responseText, replyMarkup: BOT_MAIN_KEYBOARD };
+      return { responseText, replyMarkup: isAuthorized ? dynamicCustomKeyboard : dynamicMainKeyboard };
     }
 
     // -----------------------------------------------------------------------
@@ -5900,6 +6241,20 @@ async function startServer() {
     saveServerNotifications(filtered);
 
     res.json({ success: true, count: filtered.length, notifications: filtered });
+  });
+
+  // Telegram Custom Buttons endpoints
+  app.get("/api/telegram/custom-buttons", (req, res) => {
+    res.json({ success: true, customButtons: loadBotCustomButtons() });
+  });
+
+  app.post("/api/telegram/custom-buttons", (req, res) => {
+    const updatedConfig = req.body;
+    if (updatedConfig && typeof updatedConfig === "object") {
+      saveBotCustomButtons(updatedConfig);
+      return res.json({ success: true, customButtons: loadBotCustomButtons() });
+    }
+    res.status(400).json({ error: "Invalid buttons config" });
   });
 
   // Live Support Chat endpoints

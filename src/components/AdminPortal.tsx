@@ -903,14 +903,6 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
   });
   const [isNoticeSaved, setIsNoticeSaved] = useState(false);
 
-  // Popup Banner Manager State
-  const [popupBannerEnabled, setPopupBannerEnabled] = useState(true);
-  const [popupBannerImageUrl, setPopupBannerImageUrl] = useState('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80');
-  const [popupBannerTitle, setPopupBannerTitle] = useState('ওয়েবসাইট মোটেন্যান্স নোটিশ 📢');
-  const [popupBannerMessage, setPopupBannerMessage] = useState('আমাদের ওয়েবসাইটের কাজ চলার কারণে পূর্বে যারা অ্যাকাউন্ট অ্যাক্টিভ করার জন্য রিকোয়েস্ট পাঠিয়েছেন, তাদের সবগুলো রিজেক্ট করা হয়েছে। আপনারা নতুন করে আবার অ্যাকাউন্ট অ্যাক্টিভ করার জন্য তথ্যগুলো প্রদান করুন।');
-  const [popupBannerButtonText, setPopupBannerButtonText] = useState('অ্যাক্টিভেশন ফর্ম পূরণ করুন');
-  const [isPopupBannerSaved, setIsPopupBannerSaved] = useState(false);
-
   useEffect(() => {
     fetch('/api/site-notice')
       .then((res) => res.json())
@@ -924,64 +916,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
         }
       })
       .catch(() => {});
-
-    fetch('/api/popup-banner')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data && data.success && data.banner) {
-          setPopupBannerEnabled(data.banner.enabled ?? true);
-          if (data.banner.imageUrl) setPopupBannerImageUrl(data.banner.imageUrl);
-          if (data.banner.title) setPopupBannerTitle(data.banner.title);
-          if (data.banner.message) setPopupBannerMessage(data.banner.message);
-          if (data.banner.buttonText) setPopupBannerButtonText(data.banner.buttonText);
-        }
-      })
-      .catch(() => {});
   }, []);
-
-  const handleSavePopupBanner = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const payload = {
-        enabled: popupBannerEnabled,
-        imageUrl: popupBannerImageUrl.trim(),
-        title: popupBannerTitle.trim(),
-        message: popupBannerMessage.trim(),
-        buttonText: popupBannerButtonText.trim(),
-      };
-      const res = await fetch('/api/popup-banner', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (data && data.success) {
-        setIsPopupBannerSaved(true);
-        showToast('📢 পপআপ ব্যানার সফলভাবে আপডেট করা হয়েছে!');
-        setTimeout(() => setIsPopupBannerSaved(false), 3000);
-      }
-    } catch {
-      showToast('পপআপ ব্যানার সেভ করতে সমস্যা হয়েছে।');
-    }
-  };
-
-  const handleBannerImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        showToast('ছবি সর্বোচ্চ 5MB এর বেশি হতে পারবে না।');
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (typeof reader.result === 'string') {
-          setPopupBannerImageUrl(reader.result);
-          showToast('📸 ছবি সফলভাবে সিলেক্ট করা হয়েছে!');
-        }
-      };
-      reader.readAsDataURL(file);
-    }
-  };
 
   const handleSaveMarqueeNotice = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2666,7 +2601,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                   </span>
                 </button>
 
-                {/* 10. Global Maintenance Mode Switch */}
+                {/* 10. Global Maintenance & Notice Mode Switch */}
                 <button
                   type="button"
                   onClick={() => setActiveTab('maintenance-mode')}
@@ -2676,8 +2611,8 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                       : 'text-amber-400 hover:text-amber-200 hover:bg-amber-950/40 border border-amber-500/20'
                   }`}
                 >
-                  <Wrench className="w-4 h-4 text-amber-400" />
-                  <span>Website Maintenance</span>
+                  <Megaphone className="w-4 h-4 text-amber-400" />
+                  <span>📢 নোটিশ ও মেইনটেন্যান্স</span>
                 </button>
 
                 {/* 11. User Online Management */}
@@ -4979,149 +4914,6 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
               </form>
             </section>
 
-            {/* Website Login Popup Banner Manager Card */}
-            <section className="bg-slate-900 border border-emerald-500/30 rounded-2xl p-5 sm:p-6 space-y-5 shadow-xl">
-              <div className="border-b border-slate-800 pb-4 flex items-center justify-between flex-wrap gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-emerald-500/15 border border-emerald-500/30 rounded-xl text-emerald-400">
-                    <Megaphone className="w-5 h-5 animate-bounce" />
-                  </div>
-                  <div>
-                    <h2 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
-                      <span>ওয়েবসাইট পপআপ ব্যানার ম্যানেজার (Login Popup Notice)</span>
-                    </h2>
-                    <p className="text-xs text-slate-400">
-                      ওয়েবসাইটে প্রবেশ করার সময় স্ক্রিনে ভেসে ওঠা পপআপ নোটিশ ও ছবি পরিবর্তন করুন।
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={popupBannerEnabled}
-                      onChange={(e) => setPopupBannerEnabled(e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
-                    <span className="ml-2 text-xs font-bold text-slate-300">
-                      {popupBannerEnabled ? 'পপআপ চালু (ACTIVE)' : 'পপআপ বন্ধ (DISABLED)'}
-                    </span>
-                  </label>
-
-                  {isPopupBannerSaved && (
-                    <span className="text-xs font-bold text-emerald-400 bg-emerald-950/80 px-3 py-1 rounded-full border border-emerald-500/40 animate-pulse">
-                      ✓ সেভ হয়েছে!
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <form onSubmit={handleSavePopupBanner} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
-                      পপআপ টাইটেল (Title)
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={popupBannerTitle}
-                      onChange={(e) => setPopupBannerTitle(e.target.value)}
-                      placeholder="ওয়েবসাইট মোটেন্যান্স নোটিশ 📢"
-                      className="w-full p-3 text-xs sm:text-sm bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
-                      বাটন টেক্সট (Button Label)
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={popupBannerButtonText}
-                      onChange={(e) => setPopupBannerButtonText(e.target.value)}
-                      placeholder="অ্যাক্টিভেশন ফর্ম পূরণ করুন"
-                      className="w-full p-3 text-xs sm:text-sm bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
-                    পপআপ ছবি (Banner Image URL or Upload Picture)
-                  </label>
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <input
-                      type="url"
-                      required
-                      value={popupBannerImageUrl}
-                      onChange={(e) => setPopupBannerImageUrl(e.target.value)}
-                      placeholder="https://example.com/banner.jpg"
-                      className="flex-1 p-3 text-xs sm:text-sm bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    />
-                    <label className="px-4 py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl border border-slate-700 cursor-pointer shrink-0 flex items-center justify-center gap-1.5">
-                      <ImageIcon className="w-4 h-4 text-emerald-400" />
-                      <span>গ্যালারি থেকে ছবি দিন</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleBannerImageUpload}
-                        className="hidden"
-                      />
-                    </label>
-                  </div>
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    💡 ইউজারদের জন্য যেকোনো ব্যানার ছবি আপলোড করুন অথবা ইমেজের লিঙ্ক পেস্ট করুন।
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
-                    নোটিশ মেসেজ (Notice Message)
-                  </label>
-                  <textarea
-                    rows={4}
-                    required
-                    value={popupBannerMessage}
-                    onChange={(e) => setPopupBannerMessage(e.target.value)}
-                    placeholder="আমাদের ওয়েবসাইটের কাজ চলার কারণে পূর্বে যারা অ্যাকাউন্ট অ্যাক্টিভ করার জন্য রিকোয়েস্ট পাঠিয়েছেন, তাদের সবগুলো রিজেক্ট করা হয়েছে। আপনারা নতুন করে আবার অ্যাকাউন্ট অ্যাক্টিভ করার জন্য তথ্যগুলো প্রদান করুন।"
-                    className="w-full p-3 text-xs sm:text-sm bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 font-sans"
-                  />
-                </div>
-
-                {/* Live Preview Box */}
-                {popupBannerImageUrl && (
-                  <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Image Live Preview:</span>
-                    <div className="h-32 w-full max-w-sm rounded-lg overflow-hidden border border-slate-700 bg-slate-900">
-                      <img
-                        src={popupBannerImageUrl}
-                        alt="Preview"
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).src =
-                            'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80';
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex justify-end pt-1">
-                  <button
-                    type="submit"
-                    className="px-6 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-emerald-900/30 transition cursor-pointer flex items-center gap-2 border border-emerald-400/30"
-                  >
-                    <Megaphone className="w-4 h-4" />
-                    <span>পপআপ ব্যানার সেভ ও পাবলিশ করুন</span>
-                  </button>
-                </div>
-              </form>
-            </section>
-
             {/* Create Notification Card */}
             <section className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 space-y-5">
               <div className="border-b border-slate-800 pb-4">
@@ -5568,7 +5360,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                       type="text"
                       value={chatSearchQuery}
                       onChange={(e) => setChatSearchQuery(e.target.value)}
-                      placeholder="Search users or messages..."
+                      placeholder="Search users by email or ID..."
                       className="w-full pl-8 pr-8 py-2 text-xs bg-slate-900 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                     />
                     {chatSearchQuery && (
@@ -5581,6 +5373,27 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                       </button>
                     )}
                   </div>
+
+                  {/* Direct Accept & Open Chat Quick Button if email or account code is searched */}
+                  {chatSearchQuery.trim() && (
+                    <div className="mt-2 pt-2 border-t border-slate-800/60 flex items-center justify-between gap-2">
+                      <span className="text-[11px] text-slate-300 font-mono truncate">
+                        {chatSearchQuery.trim()}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const target = chatSearchQuery.trim();
+                          handleSelectChatUser(target);
+                          handleClaimChatSession(target);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 shrink-0 shadow-xs cursor-pointer transition"
+                      >
+                        <span>✅</span>
+                        <span>Accept &amp; Chat</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Conversations Scroll Area */}
@@ -5735,11 +5548,11 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                         <button
                           type="button"
                           onClick={() => handleClaimChatSession(activeChatUserEmail)}
-                          className="px-3 py-1.5 rounded-xl bg-indigo-950 hover:bg-indigo-900 active:bg-indigo-800 text-indigo-200 border border-indigo-500/40 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-sm"
-                          title="Claim this conversation so other sub-admins see you are handling it"
+                          className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white border border-emerald-400/40 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                          title="Accept and claim this conversation so other sub-admins see you are handling it"
                         >
-                          <span>🔒</span>
-                          <span>Claim</span>
+                          <span>✅</span>
+                          <span>Accept &amp; Claim</span>
                         </button>
 
                         {/* Handover Button */}

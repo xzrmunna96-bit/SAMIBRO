@@ -4,7 +4,7 @@ import { LoginForm, UserData } from './components/LoginForm';
 import { LoggedInDashboard } from './components/LoggedInDashboard';
 import { AdminPortal } from './components/AdminPortal';
 import { ActiveAccountWidget } from './components/ActiveAccountWidget';
-import { PopupBannerModal } from './components/PopupBannerModal';
+import { OfflineDetectorModal } from './components/OfflineDetectorModal';
 import { CheckCircle2 } from 'lucide-react';
 import { getAllAccounts, getAllSubAdmins } from './services/userAuthService';
 import { fetchAccountsFromServer, fetchSubAdminsFromServer } from './services/serverAuthSync';
@@ -191,13 +191,19 @@ export function App() {
 
   // 1. If on /admin route -> render Admin Portal
   if (isAdminRoute) {
-    return <AdminPortal onBackToLogin={handleBackToLoginFromAdmin} />;
+    return (
+      <>
+        <OfflineDetectorModal />
+        <AdminPortal onBackToLogin={handleBackToLoginFromAdmin} />
+      </>
+    );
   }
 
   // 2. When logged in -> render the complete full-screen SMS/OTP Dashboard matching the portal layout
   if (currentUser) {
     return (
       <>
+        <OfflineDetectorModal />
         <MaintenanceOverlay />
         <LoggedInDashboard user={currentUser} onLogout={handleLogout} />
       </>
@@ -210,6 +216,7 @@ export function App() {
       id="main-login-viewport"
       className="min-h-screen w-full relative flex items-center justify-center p-3 sm:p-6 md:p-10 font-sans overflow-x-hidden selection:bg-teal-600 selection:text-white bg-gradient-to-br from-[#f3f8d2] via-[#e6f3aa] to-[#d4eb89]"
     >
+      <OfflineDetectorModal />
       <MaintenanceOverlay />
       {/* Floating Organic Fluid circles matching image background */}
       <div className="fixed top-0 left-0 w-80 h-80 bg-[#bef264]/40 rounded-full blur-3xl pointer-events-none -translate-x-1/3 -translate-y-1/3" />
@@ -253,9 +260,6 @@ export function App() {
 
       {/* Floating Active Account Support Widget at bottom right */}
       <ActiveAccountWidget />
-
-      {/* Website Notice Popup Banner Modal */}
-      <PopupBannerModal />
     </main>
   );
 }

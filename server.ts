@@ -3293,8 +3293,19 @@ async function startServer() {
       const session = adminCustomizeSessions.get(String(senderId))!;
 
       if (session.state === "waiting_for_custom_btn_key") {
-        const allowedKeys = ["getNumber", "rangeFiles", "liveSupport", "adminPanel", "stats", "notice", "userManagement"];
-        const matchedKey = allowedKeys.find(k => k === cleanText || k.toLowerCase() === cleanText.toLowerCase());
+        const normalizeBtnKey = (input: string): string | null => {
+          const lower = input.toLowerCase().trim();
+          if (lower.includes("getnumber") || lower.includes("get number") || lower.includes("নাম্বার") || lower.includes("নম্বর")) return "getNumber";
+          if (lower.includes("rangefiles") || lower.includes("file") || lower.includes("ফাইল") || lower.includes("রেঞ্জ")) return "rangeFiles";
+          if (lower.includes("livesupport") || lower.includes("support") || lower.includes("chat") || lower.includes("চ্যাট")) return "liveSupport";
+          if (lower.includes("adminpanel") || lower.includes("admin") || lower.includes("2fa") || lower.includes("অ্যাডমিন")) return "adminPanel";
+          if (lower.includes("stats") || lower.includes("স্ট্যাটস") || lower.includes("পরিসংখ্যান")) return "stats";
+          if (lower.includes("notice") || lower.includes("broadcast") || lower.includes("নোটিশ") || lower.includes("বিজ্ঞপ্তি")) return "notice";
+          if (lower.includes("usermanagement") || lower.includes("user") || lower.includes("ইউজার")) return "userManagement";
+          return null;
+        };
+
+        const matchedKey = normalizeBtnKey(cleanText);
 
         if (!matchedKey) {
           responseText = `⚠️ <b>ভুল বাটন কী!</b>\n\nঅনুগ্রহ করে সঠিক বাটন কী বেছে নিন বা নিচে টাইপ করুন (যেমন: <code>getNumber</code>, <code>rangeFiles</code>, <code>liveSupport</code>, <code>adminPanel</code>, <code>stats</code>, <code>notice</code>, <code>userManagement</code>):`;
@@ -3361,12 +3372,25 @@ async function startServer() {
 
       if (session.state === "waiting_for_user_email") {
         const targetEmail = cleanText.toLowerCase().trim();
+
+        if (targetEmail === "accept" || targetEmail === "এক্সেপ্ট" || targetEmail === "start" || targetEmail === "শুরু") {
+          if (session.targetUserEmail) {
+            session.state = "active_chat";
+            responseText = `💬 <b>লাইভ চ্যাট সেশন সক্রিয় হয়েছে!</b>\n\n` +
+              `👤 <b>ইউজার:</b> <code>${session.targetUserEmail}</code>\n\n` +
+              `<i>এখন যে টেক্সট লিখবেন তা সরাসরি ইউজারের ওয়েবসাইট ড্যাশবোর্ডে চলে যাবে।</i>`;
+            return { responseText, replyMarkup: { keyboard: [[{ text: "🔙 Back" }]], resize_keyboard: true } };
+          }
+        }
+
         const userAcc = currentAccounts.find(a => a.email.toLowerCase() === targetEmail || a.accountCode === targetEmail);
 
         if (!userAcc) {
           responseText = `❌ <b>ইউজার পাওয়া যায়নি!</b>\n\nইমেইল <code>${targetEmail}</code> এর কোনো অ্যাকাউন্ট নেই। অনুগ্রহ করে সঠিক ইমেইল আইডি পুনরায় লিখুন:`;
           return { responseText, replyMarkup: { keyboard: [[{ text: "🔙 Back" }]], resize_keyboard: true } };
         }
+
+        session.targetUserEmail = userAcc.email;
 
         responseText = `👤 <b>ইউজার প্রোফাইল পাওয়া গেছে!</b>\n\n` +
           `👤 <b>নাম (Name):</b> ${userAcc.name || "User"}\n` +
@@ -4365,7 +4389,7 @@ async function startServer() {
     }
 
     addBotLog(senderName, cleanText, "processed");
-    return { responseText, replyMarkup: CUSTOM_KEYBOARD };
+    return { responseText, replyMarkup: isAuthorized ? dynamicCustomKeyboard : dynamicMainKeyboard };
   };
 
   // Telegram Control Bot Long Polling Worker
@@ -4798,6 +4822,128 @@ async function startServer() {
                     }).catch(() => {});
                   }
                 }
+              } else if (cbData.startsWith("plat_sel:")) {
+                const platform = cbData.replace("plat_sel:", "").trim();
+                const session = adminUploadSessions.get(String(cb.from?.id || cbChatId));
+                if (session) {
+                  session.platform = platform;
+                  session.state = "waiting_for_numbers";
+                } else {
+                  adminUploadSessions.set(String(cb.from?.id || cbChatId), {
+                    state: "waiting_for_numbers",
+                    country: "Global",
+                    flag: "🌐",
+                    dialCode: "",
+                    platform: platform,
+                    startedAt: Date.now(),
+                  });
+                }
+
+                await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    callback_query_id: cbId,
+                    text: `✅ প্ল্যাটফর্ম: ${platform}`,
+                    show_alert: false,
+                  }),
+                }).catch(() => {});
+
+                const promptMsg = `✅ <b>প্ল্যাটফর্ম নির্ধারিত হয়েছে:</b> <b>${platform}</b>\n\n` +
+                  `📱 <b>এখন মোবাইল নাম্বার পাঠান:</b>\n` +
+                  `• সরাসরি মেসেজে প্রতি লাইনে একটি করে নাম্বার লিখে পাঠান\n` +
+                  `• অথবা নাম্বারের <code>.txt</code> ফাইল সেন্ড করুন\n\n` +
+                  `<i>(উদাহরণ: +8801700000000 বা 01700000000)</i>\n\n` +
+                  `<i>(বাতিল করতে চাইলে 🔙 Back লিখুন)</i>`;
+
+                await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/sendMessage`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    chat_id: cbChatId,
+                    text: promptMsg,
+                    parse_mode: "HTML",
+                    reply_markup: { keyboard: [[{ text: "🔙 Back" }]], resize_keyboard: true },
+                  }),
+                }).catch(() => {});
+              } else if (cbData.startsWith("cust_key:")) {
+                const buttonKey = cbData.replace("cust_key:", "").trim();
+                adminCustomizeSessions.set(String(cb.from?.id || cbChatId), {
+                  state: "waiting_for_custom_btn_logo",
+                  buttonKey: buttonKey,
+                  startedAt: Date.now(),
+                });
+
+                await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    callback_query_id: cbId,
+                    text: `বাটন: ${buttonKey}`,
+                    show_alert: false,
+                  }),
+                }).catch(() => {});
+
+                const promptMsg = `👑 <b>প্রিমিয়াম বাটন এনিমেশন ও লোগো</b>\n\n` +
+                  `আপনি <code>${buttonKey}</code> বাটনটির জন্য প্রিমিয়াম লোগো কোড (বা কাস্টম লেখা/ইমোজি) পাঠান।\n` +
+                  `যেমন: 👑, ⭐, ⚡, 🔥, 💎, 🔮 ইত্যাদি বা কোনো কাস্টম প্রিমিয়াম টেক্সট:\n\n` +
+                  `<i>(মেসেজ পাঠানো মাত্রই সাথে সাথে বটে ও ড্যাশবোর্ডে রিয়েল-টাইম আপডেট হয়ে যাবে!)</i>`;
+
+                await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/sendMessage`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    chat_id: cbChatId,
+                    text: promptMsg,
+                    parse_mode: "HTML",
+                    reply_markup: { keyboard: [[{ text: "🔙 Back" }]], resize_keyboard: true },
+                  }),
+                }).catch(() => {});
+              } else if (cbData.startsWith("accept_chat:")) {
+                const userEmail = cbData.replace("accept_chat:", "").trim().toLowerCase();
+                adminSupportChatSessions.set(String(cb.from?.id || cbChatId), {
+                  state: "active_chat",
+                  targetUserEmail: userEmail,
+                  startedAt: Date.now(),
+                });
+
+                // Claim the chat in live chats store as well
+                const chats = loadServerLiveChats();
+                chats.forEach(c => {
+                  if (c.userEmail && c.userEmail.toLowerCase() === userEmail) {
+                    c.claimedByEmail = `telegram_${cbSender}`;
+                    c.claimedByName = `Telegram Admin (${cbSender})`;
+                    c.claimedAt = Date.now();
+                  }
+                });
+                saveServerLiveChats(chats);
+
+                await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    callback_query_id: cbId,
+                    text: `✅ চ্যাট শুরু: ${userEmail}`,
+                    show_alert: false,
+                  }),
+                }).catch(() => {});
+
+                const promptMsg = `💬 <b>লাইভ চ্যাট সেশন সক্রিয় হয়েছে!</b>\n\n` +
+                  `👤 <b>ইউজার ইমেইল:</b> <code>${userEmail}</code>\n` +
+                  `⚡ <b>স্ট্যাটাস:</b> কানেক্টেড (Connected)\n\n` +
+                  `<i>এখন যে টেক্সট লিখবেন তা সরাসরি ইউজারের ওয়েবসাইট ড্যাশবোর্ডে রিয়েল-টাইমে চলে যাবে।</i>\n\n` +
+                  `<i>(চ্যাট সেশন শেষ করতে বা প্রধান মেনুতে ফিরতে 🔙 Back বাটনে ক্লিক করুন)</i>`;
+
+                await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/sendMessage`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    chat_id: cbChatId,
+                    text: promptMsg,
+                    parse_mode: "HTML",
+                    reply_markup: { keyboard: [[{ text: "🔙 Back" }]], resize_keyboard: true },
+                  }),
+                }).catch(() => {});
               } else if (cbData.startsWith("noop")) {
                 await fetch(`https://api.telegram.org/bot${controlBotState.botToken}/answerCallbackQuery`, {
                   method: "POST",

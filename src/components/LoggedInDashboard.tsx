@@ -974,6 +974,9 @@ export const VIEW_TO_HASH_MAP: Record<string, string> = {
   adminRequests: "admin-approvals",
   liveTestSms: "live-test-sms",
   smsTestHistory: "sms-test-history",
+  telegramBot: "telegram-bot",
+  userApiSession: "user-api",
+  supportChatAdmin: "support-chat",
 };
 
 export const HASH_TO_VIEW_MAP: Record<string, any> = {
@@ -1000,6 +1003,12 @@ export const HASH_TO_VIEW_MAP: Record<string, any> = {
   "test-sms": "liveTestSms",
   "sms-test-history": "smsTestHistory",
   "test-history": "smsTestHistory",
+  "telegram-bot": "telegramBot",
+  telegrambot: "telegramBot",
+  "user-api": "userApiSession",
+  userapisession: "userApiSession",
+  "support-chat": "supportChatAdmin",
+  supportchatadmin: "supportChatAdmin",
 };
 
 export function getViewFromUrlHash(): any {
@@ -1193,17 +1202,21 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     }
   }, [currentView]);
 
-  // Listen to browser Back/Forward & hashchange
+  // Listen to browser Back/Forward & hashchange in real-time
   useEffect(() => {
     const onHashChange = () => {
       const view = getViewFromUrlHash();
-      if (view && view !== currentView) {
+      if (view) {
         setCurrentView(view);
       }
     };
     window.addEventListener("hashchange", onHashChange);
-    return () => window.removeEventListener("hashchange", onHashChange);
-  }, [currentView]);
+    window.addEventListener("popstate", onHashChange);
+    return () => {
+      window.removeEventListener("hashchange", onHashChange);
+      window.removeEventListener("popstate", onHashChange);
+    };
+  }, []);
   const [accountCode, setAccountCode] = useState(() =>
     getDedicatedAccountCode(user.email, user.accountCode),
   );
@@ -3500,22 +3513,34 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   };
 
   const handleNavClick = (view: typeof currentView) => {
-    if ((view === "telegramBot" || view === "userApiSession") && !isAdminUnlocked) {
+    if ((view === "telegramBot" || view === "userApiSession" || view === "supportChatAdmin") && !isAdminUnlocked) {
       setIsDevUnlockModalOpen(true);
       return;
     }
-    // Instantly close mobile sidebar for zero-delay touch response
-    setIsSidebarOpen(false);
 
-    // Use non-blocking transition for view state changes
-    React.startTransition(() => {
-      setCurrentView(view);
-    });
+    // Direct synchronous state update for real-time immediate response across all browsers
+    setCurrentView(view);
+
+    try {
+      localStorage.setItem("super_x_current_view", view);
+    } catch {}
 
     try {
       const targetHash = VIEW_TO_HASH_MAP[view] || view;
-      window.history.replaceState(null, "", `#${targetHash}`);
-    } catch {}
+      if (window.location.hash !== `#${targetHash}`) {
+        window.history.replaceState(null, "", `#${targetHash}`);
+      }
+    } catch {
+      try {
+        const targetHash = VIEW_TO_HASH_MAP[view] || view;
+        window.location.hash = targetHash;
+      } catch {}
+    }
+
+    // Smoothly close mobile sidebar drawer on next micro-tick
+    setTimeout(() => {
+      setIsSidebarOpen(false);
+    }, 40);
   };
 
   const handleReloadAccount = () => {
@@ -4213,7 +4238,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       <div
         id="sidebar-backdrop"
         onClick={() => setIsSidebarOpen(false)}
-        className={`fixed inset-0 z-50 bg-black/60 backdrop-blur-xs transition-opacity duration-300 ${
+        className={`fixed inset-0 z-40 bg-black/60 backdrop-blur-xs transition-opacity duration-300 ${
           isSidebarOpen
             ? "opacity-100 pointer-events-auto"
             : "opacity-0 pointer-events-none"

@@ -302,7 +302,7 @@ import {
   sendOtpToTelegram,
   sendUserActivityToTelegram,
 } from "../services/telegramService";
-import { getCountryInfo } from "../services/countryHelper";
+import { getCountryInfo, GLOBAL_COUNTRIES_LIST } from "../services/countryHelper";
 import { fetchIntsCdrStats } from "../services/intsGatewayService";
 import {
   getActiveApiKeys,
@@ -814,6 +814,7 @@ export function getCountryFlagEmoji(countryName: string): string {
     if (digits.startsWith("971")) return "🇦🇪";
     if (digits.startsWith("44")) return "🇬🇧";
     if (digits.startsWith("1")) return "🇺🇸";
+    if (digits.startsWith("94")) return "🇱🇰";
     if (digits.startsWith("967")) return "🇾🇪";
     if (digits.startsWith("964")) return "🇮🇶";
   }
@@ -2428,8 +2429,26 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           status = "PENDING";
         }
 
+        let country = item.country;
+        let operator = item.operator;
+        if (!country || country.toLowerCase().includes("international") || country.toLowerCase() === "global" || country.toLowerCase().includes("carrier")) {
+          const numDigits = (item.number || "").replace(/\D/g, "");
+          const info = getCountryInfo(numDigits);
+          if (info && info.name && !info.name.toLowerCase().includes("international")) {
+            country = info.name;
+          } else {
+            country = "Sri Lanka";
+          }
+        }
+        if (!operator || operator.toLowerCase().includes("physical carrier route") || operator === "Carrier Route" || operator.toLowerCase().includes("gateway")) {
+          const cObj = GLOBAL_COUNTRIES_LIST.find((c) => c.name.toLowerCase() === country.toLowerCase());
+          operator = cObj?.operators?.[0] || "Dialog";
+        }
+
         return {
           ...item,
+          country,
+          operator,
           status,
           otp: cleanOtp,
           service: cleanOtp ? (item.service || "Delivered SMS") : "Waiting for SMS...",
@@ -4011,38 +4030,32 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     }, 1500);
 
     try {
-      const prefix = cleanDigits.slice(0, 6) || "88017";
+      const prefix = cleanDigits.slice(0, 6) || "94722";
       const matchedRange = POPULAR_RANGES.find(
         (r) => r.id === prefix || r.code.includes(prefix),
       );
+      const detectedInfo = getCountryInfo(cleanDigits);
+      const detectedCountry = (detectedInfo && detectedInfo.name && !detectedInfo.name.toLowerCase().includes("international"))
+        ? detectedInfo.name
+        : undefined;
+
+      const matchedCountryObj = (countryOverride || selectedCountryOperator?.country || matchedRange?.country || detectedCountry)
+        ? GLOBAL_COUNTRIES_LIST.find((c) => c.name.toLowerCase() === (countryOverride || selectedCountryOperator?.country || matchedRange?.country || detectedCountry || "").toLowerCase())
+        : undefined;
+
       const fallbackCountry =
         countryOverride ||
         selectedCountryOperator?.country ||
         matchedRange?.country ||
-        (prefix.startsWith("880")
-          ? "Bangladesh"
-          : prefix.startsWith("44")
-            ? "United Kingdom"
-            : prefix.startsWith("225")
-              ? "Ivory Coast"
-              : prefix.startsWith("232")
-                ? "Sierra Leone"
-                : prefix.startsWith("93")
-                  ? "Afghanistan"
-                  : "International");
+        detectedCountry ||
+        "Sri Lanka";
+
       const fallbackOperator =
         operatorOverride ||
         selectedCountryOperator?.operator ||
         matchedRange?.name ||
-        (prefix.startsWith("880")
-          ? "Grameenphone"
-          : prefix.startsWith("44")
-            ? "EE Physical"
-            : prefix.startsWith("232")
-              ? "Orange (Airtel)"
-              : prefix.startsWith("93")
-                ? "Mobile"
-                : "Carrier Route");
+        matchedCountryObj?.operators?.[0] ||
+        "Dialog";
 
       const res = await allocateRealNumberDetailed(
         rangeToUse || prefix,
@@ -4058,7 +4071,22 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         return;
       }
 
-      const targetCountry = countryOverride || res.data.country || fallbackCountry;
+      let targetCountry = countryOverride || res.data.country || fallbackCountry;
+      if (!targetCountry || targetCountry.toLowerCase().includes("international") || targetCountry.toLowerCase() === "global") {
+        const numDigits = (res.data.full_number || cleanDigits).replace(/\D/g, "");
+        const infoAfter = getCountryInfo(numDigits);
+        if (infoAfter && infoAfter.name && !infoAfter.name.toLowerCase().includes("international")) {
+          targetCountry = infoAfter.name;
+        } else {
+          targetCountry = fallbackCountry && !fallbackCountry.toLowerCase().includes("international") ? fallbackCountry : "Sri Lanka";
+        }
+      }
+
+      let targetOperator = operatorOverride || res.data.operator || fallbackOperator;
+      if (!targetOperator || targetOperator.toLowerCase().includes("physical carrier route") || targetOperator === "Carrier Route" || targetOperator.toLowerCase().includes("gateway")) {
+        const cObj = GLOBAL_COUNTRIES_LIST.find((c) => c.name.toLowerCase() === targetCountry.toLowerCase());
+        targetOperator = cObj?.operators?.[0] || "Dialog";
+      }
       let displayNum = res.data.full_number || "";
       if (removePlus) {
         displayNum = (res.data.no_plus_number || displayNum).replace(/^\+/, "");
@@ -6170,14 +6198,38 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
                           {/* COUNTRY / OPERATOR */}
                           <div className="col-span-4 sm:col-span-5 space-y-0.5 border-r border-slate-300 px-2 h-full flex flex-col justify-center">
-                            <div className="text-gray-900 font-bold text-xs sm:text-sm flex items-center gap-1.5">
-                              <CountryFlag countryCode={item.country} size="sm" />
-                              <span>{stripFlagFromCountryName(item.country)}</span>
-                            </div>
-                            <div className="text-gray-600 text-[11px] sm:text-xs flex items-center gap-1">
-                              <Radio className="w-3 h-3 text-gray-600 shrink-0" />
-                              <span className="truncate">{item.operator}</span>
-                            </div>
+                            {(() => {
+                              let displayCountry = item.country;
+                              let displayOperator = item.operator;
+
+                              if (!displayCountry || displayCountry.toLowerCase().includes("international") || displayCountry.toLowerCase() === "global" || displayCountry.toLowerCase().includes("carrier")) {
+                                const digits = (item.number || "").replace(/\D/g, "");
+                                const info = getCountryInfo(digits);
+                                if (info && info.name && !info.name.toLowerCase().includes("international")) {
+                                  displayCountry = info.name;
+                                } else {
+                                  displayCountry = "Sri Lanka";
+                                }
+                              }
+
+                              if (!displayOperator || displayOperator.toLowerCase().includes("physical carrier route") || displayOperator === "Carrier Route" || displayOperator.toLowerCase().includes("gateway")) {
+                                const cObj = GLOBAL_COUNTRIES_LIST.find((c) => c.name.toLowerCase() === displayCountry.toLowerCase());
+                                displayOperator = cObj?.operators?.[0] || "Dialog";
+                              }
+
+                              return (
+                                <>
+                                  <div className="text-gray-900 font-bold text-xs sm:text-sm flex items-center gap-1.5">
+                                    <CountryFlag countryCode={displayCountry} size="sm" />
+                                    <span className="truncate">{stripFlagFromCountryName(displayCountry)}</span>
+                                  </div>
+                                  <div className="text-gray-600 text-[11px] sm:text-xs flex items-center gap-1">
+                                    <Radio className="w-3 h-3 text-gray-600 shrink-0" />
+                                    <span className="truncate">{displayOperator}</span>
+                                  </div>
+                                </>
+                              );
+                            })()}
                             {(item as any).allocatedBy && (
                               <div className="text-[10px] text-indigo-600 font-semibold flex items-center gap-1 pt-0.5">
                                 <span className="w-1 h-1 rounded-full bg-indigo-500" />

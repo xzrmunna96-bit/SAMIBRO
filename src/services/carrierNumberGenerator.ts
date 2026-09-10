@@ -1,4 +1,5 @@
 // SUPER X SMS — Physical Carrier Number Generator & Dial-Code Routing Engine
+import { GLOBAL_COUNTRIES_LIST, getCountryInfo } from "./countryHelper";
 
 export interface CarrierCountryDef {
   dialCode: string;
@@ -254,33 +255,65 @@ export function generateRealisticCarrierNumber(
   const cleanInput = (rangeInput || "").trim();
   const digitsOnly = cleanInput.replace(/[^0-9]/g, "");
 
-  // Sort dial codes by length descending (e.g. 880 before 88, 228 before 22, 225 before 22)
-  const sorted = [...KNOWN_CARRIER_COUNTRIES].sort(
-    (a, b) => b.dialCode.length - a.dialCode.length
-  );
+  // Combine KNOWN_CARRIER_COUNTRIES and GLOBAL_COUNTRIES_LIST
+  // Ensure every global country in Asia, Europe, Africa, Americas, Oceania is represented
+  const allCarrierCountries: CarrierCountryDef[] = [...KNOWN_CARRIER_COUNTRIES];
 
-  let countryDef: CarrierCountryDef = {
-    dialCode: digitsOnly.slice(0, 3) || "225",
-    country: "International",
-    operators: ["Physical Carrier Route", "Moov / Orange Route"],
-    nationalLength: 10,
-  };
-
-  // 1. Try prefix match on digitsOnly
-  if (digitsOnly) {
-    const foundByDial = sorted.find((c) => digitsOnly.startsWith(c.dialCode));
-    if (foundByDial) {
-      countryDef = foundByDial;
+  for (const gc of GLOBAL_COUNTRIES_LIST) {
+    const cleanDial = gc.dialCode.replace(/\D/g, "");
+    if (cleanDial && !allCarrierCountries.some((c) => c.dialCode === cleanDial)) {
+      allCarrierCountries.push({
+        dialCode: cleanDial,
+        country: gc.name,
+        operators: gc.operators.length > 0 ? gc.operators : ["Direct Carrier"],
+        nationalLength: 9,
+      });
     }
   }
 
-  // 2. Try to match preferred country if given
-  if (preferredCountry) {
+  // Sort dial codes by length descending (e.g. 880, 228, 225, 971 before 97, 94, 44, 49, 1, 7, etc.)
+  const sorted = allCarrierCountries.sort(
+    (a, b) => b.dialCode.length - a.dialCode.length
+  );
+
+  // 1. Detect using dial prefix match
+  let matchedCountryDef: CarrierCountryDef | undefined;
+  if (digitsOnly) {
+    matchedCountryDef = sorted.find((c) => digitsOnly.startsWith(c.dialCode));
+  }
+
+  // 2. Detect using getCountryInfo lookup
+  const detectedInfo = getCountryInfo(digitsOnly);
+  if (!matchedCountryDef && detectedInfo && detectedInfo.name && !detectedInfo.name.toLowerCase().includes("international")) {
+    const cleanDial = detectedInfo.dialCode.replace(/\D/g, "");
+    matchedCountryDef = sorted.find(
+      (c) => c.country.toLowerCase() === detectedInfo.name.toLowerCase() || c.dialCode === cleanDial
+    );
+    if (!matchedCountryDef) {
+      matchedCountryDef = {
+        dialCode: cleanDial || digitsOnly.slice(0, 3) || "94",
+        country: detectedInfo.name,
+        operators: ["Direct Carrier", "Telecom"],
+        nationalLength: 9,
+      };
+    }
+  }
+
+  // 3. Prefer requested country override if provided
+  if (preferredCountry && !preferredCountry.toLowerCase().includes("international")) {
     const foundByCountry = sorted.find(
       (c) => c.country.toLowerCase() === preferredCountry.toLowerCase()
     );
-    if (foundByCountry) countryDef = foundByCountry;
+    if (foundByCountry) matchedCountryDef = foundByCountry;
   }
+
+  // Fallback if completely unmatched (NEVER "International", fallback to Sri Lanka or first 2 digits)
+  const countryDef: CarrierCountryDef = matchedCountryDef || {
+    dialCode: digitsOnly.slice(0, 2) || "94",
+    country: "Sri Lanka",
+    operators: ["Dialog", "Mobitel", "Airtel", "Hutch"],
+    nationalLength: 9,
+  };
 
   // Ensure digitsOnly starts with country dial code if available
   let fullDigits = digitsOnly;
@@ -304,11 +337,15 @@ export function generateRealisticCarrierNumber(
   const finalNoPlus = fullDigits + randomSuffix;
   const finalFull = `+${finalNoPlus}`;
 
-  // Operator selection
+  // Operator selection - authentic carrier operator, never "Physical Carrier Route"
   let operator = preferredOperator || "";
-  if (!operator && countryDef.operators.length > 0) {
-    const pick = Math.floor(Math.random() * countryDef.operators.length);
-    operator = countryDef.operators[pick];
+  if (!operator || operator.toLowerCase().includes("physical carrier route") || operator === "Carrier Route") {
+    if (countryDef.operators.length > 0) {
+      const pick = Math.floor(Math.random() * countryDef.operators.length);
+      operator = countryDef.operators[pick];
+    } else {
+      operator = "Dialog";
+    }
   }
 
   return {
@@ -316,6 +353,6 @@ export function generateRealisticCarrierNumber(
     national_number: finalNoPlus, // Preserve exact user prefix without stripping country code
     no_plus_number: finalNoPlus,
     country: countryDef.country,
-    operator: operator || "Tier-1 Carrier",
+    operator: operator || "Direct Carrier",
   };
 }

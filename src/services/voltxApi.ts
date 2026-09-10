@@ -9,7 +9,7 @@ import {
   getBaselineSignatures,
 } from './apiConfigService';
 import { generateRealisticCarrierNumber } from './carrierNumberGenerator';
-import { getCountryInfo } from './countryHelper';
+import { getCountryInfo, GLOBAL_COUNTRIES_LIST } from './countryHelper';
 import { extractOtpCode, sendOtpToTelegram } from './telegramService';
 import { fetchIntsCdrStats } from './intsGatewayService';
 
@@ -283,59 +283,26 @@ export function resolveCarrierDetails(range: string): { operator: string; countr
   const digits = (range || '').replace(/\D/g, '');
   const info = getCountryInfo(range);
 
-  // 3-digit country dialing prefixes
-  if (digits.startsWith('856')) return { operator: 'LAO TELECOM / Tplus', country: 'Laos' };
-  if (digits.startsWith('855')) return { operator: 'SMART / METFONE', country: 'Cambodia' };
-  if (digits.startsWith('852')) return { operator: 'CSL / HK TONE', country: 'Hong Kong' };
-  if (digits.startsWith('853')) return { operator: 'CTM', country: 'Macau' };
-  if (digits.startsWith('886')) return { operator: 'CHUNGHWA / TAIWAN MOBILE', country: 'Taiwan' };
-  if (digits.startsWith('880')) return { operator: 'GRAMEENPHONE / ROBI', country: 'Bangladesh' };
-  if (digits.startsWith('977')) return { operator: 'NCELL / NTC', country: 'Nepal' };
-  if (digits.startsWith('975')) return { operator: 'B-MOBILE', country: 'Bhutan' };
-  if (digits.startsWith('960')) return { operator: 'DHIRAAGU', country: 'Maldives' };
-  if (digits.startsWith('976')) return { operator: 'MOBICOM', country: 'Mongolia' };
-  if (digits.startsWith('992')) return { operator: 'TACELL', country: 'Tajikistan' };
-  if (digits.startsWith('993')) return { operator: 'TMCELL', country: 'Turkmenistan' };
-  if (digits.startsWith('994')) return { operator: 'AZERCELL', country: 'Azerbaijan' };
-  if (digits.startsWith('995')) return { operator: 'MAGTICOM', country: 'Georgia' };
-  if (digits.startsWith('996')) return { operator: 'MEGACOM', country: 'Kyrgyzstan' };
-  if (digits.startsWith('998')) return { operator: 'UCELL', country: 'Uzbekistan' };
-
-  // Middle East 3-digits
-  if (digits.startsWith('966')) return { operator: 'STC / MOBILY', country: 'Saudi Arabia' };
-  if (digits.startsWith('971')) return { operator: 'ETISALAT / DU', country: 'UAE' };
-  if (digits.startsWith('965')) return { operator: 'ZAIN / OOREDOO', country: 'Kuwait' };
-  if (digits.startsWith('974')) return { operator: 'OOREDOO / VODAFONE', country: 'Qatar' };
-  if (digits.startsWith('968')) return { operator: 'OMANTEL', country: 'Oman' };
-  if (digits.startsWith('973')) return { operator: 'BATELCO', country: 'Bahrain' };
-  if (digits.startsWith('962')) return { operator: 'ZAIN / ORANGE', country: 'Jordan' };
-  if (digits.startsWith('961')) return { operator: 'TOUCH / ALPHA', country: 'Lebanon' };
-  if (digits.startsWith('963')) return { operator: 'SYRIATEL', country: 'Syria' };
-  if (digits.startsWith('964')) return { operator: 'ASIACELL / ZAIN', country: 'Iraq' };
-  if (digits.startsWith('967')) return { operator: 'YEMEN MOBILE', country: 'Yemen' };
-
-  // 2-digit & 1-digit
-  if (digits.startsWith('91')) return { operator: 'AIRTEL / JIO / VI', country: 'India' };
-  if (digits.startsWith('92')) return { operator: 'JAZZ / TELENOR', country: 'Pakistan' };
-  if (digits.startsWith('90')) return { operator: 'TURKCELL / VODAFONE', country: 'Turkey' };
-  if (digits.startsWith('60')) return { operator: 'MAXIS / CELCOM', country: 'Malaysia' };
-  if (digits.startsWith('62')) return { operator: 'TELKOMSEL / INDOSAT', country: 'Indonesia' };
-  if (digits.startsWith('63')) return { operator: 'GLOBE / SMART', country: 'Philippines' };
-  if (digits.startsWith('66')) return { operator: 'AIS / TRUE', country: 'Thailand' };
-  if (digits.startsWith('84')) return { operator: 'VIETTEL / VINAPHONE', country: 'Vietnam' };
-  if (digits.startsWith('44')) return { operator: 'EE / VODAFONE / O2', country: 'United Kingdom' };
-  if (digits.startsWith('49')) return { operator: 'TELEKOM / VODAFONE', country: 'Germany' };
-  if (digits.startsWith('33')) return { operator: 'ORANGE / SFR', country: 'France' };
-  if (digits.startsWith('39')) return { operator: 'TIM / VODAFONE', country: 'Italy' };
-  if (digits.startsWith('34')) return { operator: 'MOVISTAR / ORANGE', country: 'Spain' };
-  if (digits.startsWith('7')) return { operator: 'MTS / BEELINE / MEGAFON', country: 'Russia' };
-  if (digits.startsWith('1')) return { operator: 'T-MOBILE / AT&T / VERIZON', country: 'United States' };
-
-  if (info.name) {
-    return { operator: 'National Carrier Gateway', country: info.name };
+  // Check in GLOBAL_COUNTRIES_LIST by prefix (sorted longest dial code first)
+  const sorted = [...GLOBAL_COUNTRIES_LIST].sort(
+    (a, b) => b.dialCode.replace(/\D/g, '').length - a.dialCode.replace(/\D/g, '').length
+  );
+  const found = sorted.find((c) => digits.startsWith(c.dialCode.replace(/\D/g, '')));
+  if (found) {
+    const op = found.operators && found.operators.length > 0
+      ? found.operators.join(' / ')
+      : 'Direct Carrier';
+    return { operator: op, country: found.name };
   }
 
-  return { operator: 'Carrier Gateway Route', country: 'International' };
+  if (info && info.name && !info.name.toLowerCase().includes('international')) {
+    const matched = GLOBAL_COUNTRIES_LIST.find((c) => c.name.toLowerCase() === info.name.toLowerCase());
+    const op = matched?.operators?.length ? matched.operators.join(' / ') : 'Direct Carrier';
+    return { operator: op, country: info.name };
+  }
+
+  // Fallback to Sri Lanka with real carrier instead of International
+  return { operator: 'Dialog / Mobitel', country: 'Sri Lanka' };
 }
 
 export function stripFlagFromCountryName(name: string): string {
@@ -794,9 +761,23 @@ export async function allocateRealNumberDetailed(
       });
 
       if (res.meta?.code === 200 && res.data?.full_number) {
+        let country = res.data.country;
+        let operator = res.data.operator;
+        if (!country || country.toLowerCase().includes('international')) {
+          const info = getCountryInfo(res.data.full_number || cleanDigits);
+          if (info.name && !info.name.toLowerCase().includes('international')) {
+            country = info.name;
+          } else {
+            country = 'Sri Lanka';
+          }
+        }
         return {
           success: true,
-          data: res.data,
+          data: {
+            ...res.data,
+            country,
+            operator: operator && !operator.toLowerCase().includes('physical carrier route') ? operator : 'Direct Carrier',
+          },
           message: res.message || 'Number allocated successfully',
           code: 200,
         };

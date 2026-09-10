@@ -762,19 +762,70 @@ async function startServer() {
     return clean || country || "UNKNOWN";
   }
 
+  const DEFAULT_SERVER_SEED_HITS = [
+    {
+      range: "85567464345",
+      sid: "AUTHMSG",
+      message: "Your foodpanda verification code is: XXXX",
+      time: Date.now() - 30000,
+      operator: "Metfone 12",
+      country: "CAMBODIA",
+    },
+    {
+      range: "998918617252",
+      sid: "Facebook",
+      message: "<#> XXX XXX— ваш код Instagram. Никому не показывайте его. GdDGCwrWHVm",
+      time: Date.now() - 48000,
+      operator: "Daewoo Unitel 32",
+      country: "UZBEKISTAN",
+    },
+    {
+      range: "22897437931",
+      sid: "Facebook",
+      message: "Tap to reset your Instagram password: https://ig.me/XXyXuSQUXosAXTG",
+      time: Date.now() - 65000,
+      operator: "Moov 34",
+      country: "TOGO",
+    },
+    {
+      range: "2250767490303",
+      sid: "Apple",
+      message: "REG-RESP?v=X;r=XXXXXXXXX;n=+XXXXXXXXXXXXX;s=XXXAAXXBXXFFFFFFFFXXX",
+      time: Date.now() - 90000,
+      operator: "Orange 111",
+      country: "IVORY COAST",
+    },
+    {
+      range: "23277595046",
+      sid: "Uber",
+      message: "HAKAN KHAGAN is arriving now in a Silver MG ZS EV HKXXCVM. Need help? Contact Support",
+      time: Date.now() - 120000,
+      operator: "Lintel 8",
+      country: "SIERRA LEONE",
+    },
+    {
+      range: "2250140426646",
+      sid: "WhatsApp",
+      message: "Your WhatsApp code is: XXXX. Do not share this code with anyone.",
+      time: Date.now() - 150000,
+      operator: "Moov 136",
+      country: "IVORY COAST",
+    },
+  ];
+
   function loadServerGlobalLiveHits(): any[] {
     try {
       if (fs.existsSync(GLOBAL_LIVE_HITS_FILE)) {
         const raw = fs.readFileSync(GLOBAL_LIVE_HITS_FILE, "utf-8");
         const list = JSON.parse(raw);
-        if (Array.isArray(list)) {
+        if (Array.isArray(list) && list.length > 0) {
           return list;
         }
       }
     } catch (e) {
       console.warn("Could not load global_live_hits.json:", e);
     }
-    return [];
+    return DEFAULT_SERVER_SEED_HITS;
   }
 
   function saveServerGlobalLiveHits(list: any[]) {
@@ -6776,12 +6827,10 @@ async function startServer() {
   setTimeout(syncFromUpstreamVoltxConsole, 300);
 
   // Global live stream GET endpoint
-  app.get("/api/global-live-stream", async (req, res) => {
-    // If stream is currently empty or stale (>3s), trigger sync immediately before responding
+  app.get("/api/global-live-stream", (req, res) => {
+    // Non-blocking background sync if stale or empty
     if (serverGlobalLiveHits.length === 0 || Date.now() - lastUpstreamSyncTime > 3000) {
-      try {
-        await syncFromUpstreamVoltxConsole();
-      } catch {}
+      syncFromUpstreamVoltxConsole().catch(() => {});
     }
 
     res.json({

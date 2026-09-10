@@ -230,11 +230,11 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
   const [currentPage, setCurrentPage] = useState(1);
   const [isLiveConnected, setIsLiveConnected] = useState(true);
   const [isSoundOn, setIsSoundOn] = useState(true);
-  const [itemsList, setItemsList] = useState<TestSmsCardItem[]>([]);
+  const [itemsList, setItemsList] = useState<TestSmsCardItem[]>(INITIAL_SAMPLE_HITS);
 
   // Sync real liveHits when prop changes
   useEffect(() => {
-    if (liveHits) {
+    if (liveHits && liveHits.length > 0) {
       const converted: TestSmsCardItem[] = liveHits.map((h, i) => {
         const rawRange = (h.range || (h as any).rangeCode || "").trim();
         const rawPhone = ((h as any).number || (h as any).testNumber || rawRange).trim();

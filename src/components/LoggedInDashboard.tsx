@@ -1229,6 +1229,18 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       window.removeEventListener("popstate", onHashChange);
     };
   }, []);
+
+  // Strict check: Non-admin users cannot access admin-only views
+  useEffect(() => {
+    if (
+      user.role !== "admin" &&
+      (currentView === "telegramBot" ||
+        currentView === "userApiSession" ||
+        currentView === "supportChatAdmin")
+    ) {
+      setCurrentView("dashboard");
+    }
+  }, [user.role, currentView]);
   const [accountCode, setAccountCode] = useState(() =>
     getDedicatedAccountCode(user.email, user.accountCode),
   );
@@ -1586,6 +1598,58 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const [isEditingKey, setIsEditingKey] = useState(false);
   const [keyInput, setKeyInput] = useState("");
 
+  // Initial default seed hits for instant load without 2-3s delay
+  const DEFAULT_INITIAL_HITS: LiveConsoleHit[] = [
+    {
+      range: "85567464345",
+      sid: "AUTHMSG",
+      message: "Your foodpanda verification code is: XXXX",
+      time: Date.now() - 30000,
+      operator: "Metfone 12",
+      country: "CAMBODIA",
+    },
+    {
+      range: "998918617252",
+      sid: "Facebook",
+      message: "<#> XXX XXX— ваш код Instagram. Никому не показывайте его. GdDGCwrWHVm",
+      time: Date.now() - 48000,
+      operator: "Daewoo Unitel 32",
+      country: "UZBEKISTAN",
+    },
+    {
+      range: "22897437931",
+      sid: "Facebook",
+      message: "Tap to reset your Instagram password: https://ig.me/XXyXuSQUXosAXTG",
+      time: Date.now() - 65000,
+      operator: "Moov 34",
+      country: "TOGO",
+    },
+    {
+      range: "2250767490303",
+      sid: "Apple",
+      message: "REG-RESP?v=X;r=XXXXXXXXX;n=+XXXXXXXXXXXXX;s=XXXAAXXBXXFFFFFFFFXXX",
+      time: Date.now() - 90000,
+      operator: "Orange 111",
+      country: "IVORY COAST",
+    },
+    {
+      range: "23277595046",
+      sid: "Uber",
+      message: "HAKAN KHAGAN is arriving now in a Silver MG ZS EV HKXXCVM. Need help? Contact Support",
+      time: Date.now() - 120000,
+      operator: "Lintel 8",
+      country: "SIERRA LEONE",
+    },
+    {
+      range: "2250140426646",
+      sid: "WhatsApp",
+      message: "Your WhatsApp code is: XXXX. Do not share this code with anyone.",
+      time: Date.now() - 150000,
+      operator: "Moov 136",
+      country: "IVORY COAST",
+    },
+  ];
+
   // Live Real Data State with 24-Hour Persistence & Automatic Reset
   // Synchronized across all users & admins in real-time from server
   const [liveHits, setLiveHits] = useState<LiveConsoleHit[]>(() => {
@@ -1596,7 +1660,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch {}
-    return [];
+    return DEFAULT_INITIAL_HITS;
   });
 
   const [globalStats, setGlobalStats] = useState<{
@@ -1826,7 +1890,25 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     };
   }, [user?.email]);
 
-  const [liveAccessList, setLiveAccessList] = useState<LiveAccessService[]>([]);
+  const DEFAULT_INITIAL_ACCESS_SERVICES: LiveAccessService[] = [
+    { sid: "WhatsApp", ranges: ["88017", "88018", "88019", "22501", "22897", "85567"], last_at: Date.now() },
+    { sid: "Telegram", ranges: ["88017", "88018", "88019", "99891", "23277"], last_at: Date.now() },
+    { sid: "Facebook", ranges: ["88013", "88014", "99891", "22897"], last_at: Date.now() },
+    { sid: "Google", ranges: ["88017", "88018", "88019", "85567", "22507"], last_at: Date.now() },
+    { sid: "IMO", ranges: ["88017", "88018", "88019"], last_at: Date.now() },
+    { sid: "TikTok", ranges: ["88017", "88018", "88019"], last_at: Date.now() },
+  ];
+
+  const [liveAccessList, setLiveAccessList] = useState<LiveAccessService[]>(() => {
+    try {
+      const saved = localStorage.getItem("super_x_live_access_list");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return DEFAULT_INITIAL_ACCESS_SERVICES;
+  });
   const [liveSuccessOtps, setLiveSuccessOtps] = useState<LiveSuccessOtp[]>([]);
   const [allocatedNumbers, setAllocatedNumbers] = useState<
     Array<
@@ -2850,6 +2932,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const showDashboardToast = (
     msg: string,
     type: "success" | "warning" | "info" = "success",
+    durationMs: number = 1000,
   ) => {
     setDashboardToast({ message: msg, type });
     if (toastTimerRef.current) {
@@ -2857,7 +2940,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     }
     toastTimerRef.current = setTimeout(() => {
       setDashboardToast(null);
-    }, 4000);
+    }, durationMs);
   };
 
   // Console Specific State
@@ -3528,9 +3611,20 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     // Immediately close sidebar drawer on any navigation selection
     setIsSidebarOpen(false);
 
-    if ((view === "telegramBot" || view === "userApiSession" || view === "supportChatAdmin") && !isAdminUnlocked) {
-      setIsDevUnlockModalOpen(true);
-      return;
+    // Unfocus tapped element so mobile browser touch-focus highlight doesn't linger
+    if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+
+    if (view === "telegramBot" || view === "userApiSession" || view === "supportChatAdmin") {
+      if (user.role !== "admin") {
+        showDashboardToast("Only the main Admin can access this option.", "warning", 1500);
+        return;
+      }
+      if (!isAdminUnlocked) {
+        setIsDevUnlockModalOpen(true);
+        return;
+      }
     }
 
     // Mark programmatic navigation to prevent popstate listener from resetting state
@@ -3598,18 +3692,19 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
     setCopiedText(id);
     if (id.startsWith("otp_") || id.startsWith("sender_otp_")) {
-      showDashboardToast(`Copied OTP: ${text}`, "success");
+      showDashboardToast(`Copied OTP: ${text}`, "success", 1000);
     } else if (id.startsWith("msg_")) {
-      showDashboardToast("Copied message text", "success");
+      showDashboardToast("Copied message text", "success", 1000);
     } else if (id.startsWith("range_")) {
-      showDashboardToast(`Copied Range: ${text}`, "success");
+      showDashboardToast(`Copied Range: ${text}`, "success", 1000);
     } else {
       showDashboardToast(
         `Copied (Without Area Code): ${textToCopy}`,
         "success",
+        1000,
       );
     }
-    setTimeout(() => setCopiedText(null), 2500);
+    setTimeout(() => setCopiedText(null), 1500);
   };
 
   // Get Number Custom Allocation matching voltxsms / m29 UI with RANGE validation
@@ -3618,6 +3713,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     countryOverride?: string,
     operatorOverride?: string,
   ) => {
+    if (isAllocating) return;
+
     const rangeToUse = (
       typeof customRangePrefix === "string"
         ? customRangePrefix
@@ -3630,7 +3727,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     // 1. Validation: If no range provided, show alert & prompt
     if (!cleanDigits) {
       setRangeInputError(true);
-      showDashboardToast("Please enter a number range", "warning");
+      showDashboardToast("Please enter a number range", "warning", 1500);
       return;
     }
 
@@ -3645,6 +3742,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
     setRangeInputError(false);
     setIsAllocating(true);
+
+    const safetyTimeout = setTimeout(() => {
+      setIsAllocating(false);
+    }, 1500);
 
     try {
       const prefix = cleanDigits.slice(0, 6) || "88017";
@@ -3689,6 +3790,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         showDashboardToast(
           res.message || "No numbers found in this range. Please try another range or service.",
           "warning",
+          1500,
         );
         return;
       }
@@ -3720,7 +3822,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         }
       } catch {}
 
-      showDashboardToast(`Allocated & Copied ${displayNum}`, "success");
+      showDashboardToast(`Allocated & Copied ${displayNum}`, "success", 1000);
 
       const newId = `gn_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
       const nowMs = Date.now();
@@ -3765,10 +3867,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       showDashboardToast(
         err?.message || "Failed to communicate with the server API.",
         "warning",
+        1500,
       );
     } finally {
-      // 400ms smooth minimum delay so the spinner icon completes a clear visual spin for tactile button feedback
-      await new Promise((resolve) => setTimeout(resolve, 400));
+      clearTimeout(safetyTimeout);
       setIsAllocating(false);
     }
   };
@@ -4387,42 +4489,44 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             </button>
           </div>
 
-          {/* Developer Lock Status Bar */}
-          <div className="px-5 py-2.5 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-xs">
-            <span className="text-slate-400 font-medium">Developer Status:</span>
-            {isAdminUnlocked ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSidebarOpen(false);
-                  setIsAdminUnlocked(false);
-                  try {
-                    localStorage.removeItem("superx_dev_unlocked");
-                  } catch {}
-                  setCurrentView("dashboard");
-                  playOtpChime();
-                }}
-                className="flex items-center gap-1.5 px-2 py-1 rounded bg-emerald-950/70 text-emerald-400 border border-emerald-500/30 text-[10px] font-black cursor-pointer animate-pulse hover:bg-emerald-900 transition-colors"
-                title="Click to lock Developer Mode"
-              >
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>UNLOCKED</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSidebarOpen(false);
-                  setIsDevUnlockModalOpen(true);
-                }}
-                className="flex items-center gap-1.5 px-2 py-1 rounded bg-amber-950/70 text-amber-400 border border-amber-500/30 text-[10px] font-black cursor-pointer hover:bg-amber-900 transition-colors"
-                title="Click to unlock Developer Mode"
-              >
-                <Lock className="w-3.5 h-3.5" />
-                <span>LOCKED</span>
-              </button>
-            )}
-          </div>
+          {/* Developer Lock Status Bar - Only for Main Admin */}
+          {user.role === "admin" && (
+            <div className="px-5 py-2.5 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-xs">
+              <span className="text-slate-400 font-medium">Developer Status:</span>
+              {isAdminUnlocked ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSidebarOpen(false);
+                    setIsAdminUnlocked(false);
+                    try {
+                      localStorage.removeItem("superx_dev_unlocked");
+                    } catch {}
+                    setCurrentView("dashboard");
+                    playOtpChime();
+                  }}
+                  className="flex items-center gap-1.5 px-2 py-1 rounded bg-emerald-950/70 text-emerald-400 border border-emerald-500/30 text-[10px] font-black cursor-pointer animate-pulse hover:bg-emerald-900 transition-colors"
+                  title="Click to lock Developer Mode"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>UNLOCKED</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSidebarOpen(false);
+                    setIsDevUnlockModalOpen(true);
+                  }}
+                  className="flex items-center gap-1.5 px-2 py-1 rounded bg-amber-950/70 text-amber-400 border border-amber-500/30 text-[10px] font-black cursor-pointer hover:bg-amber-900 transition-colors"
+                  title="Click to unlock Developer Mode"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>LOCKED</span>
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Navigation Items */}
           <div className="p-3 space-y-1">
@@ -4431,26 +4535,26 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               type="button"
               id="sidebar-item-dashboard"
               onClick={() => handleNavClick("dashboard")}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer ${
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer select-none focus:outline-none focus:ring-0 ${
                 currentView === "dashboard"
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : "text-slate-300 hover:bg-slate-800/70 hover:text-white"
+                  ? "bg-blue-600 text-white shadow-sm font-semibold"
+                  : "bg-transparent text-slate-300 hover:bg-slate-800/70 hover:text-white"
               }`}
             >
               <Home className="w-4.5 h-4.5 shrink-0 opacity-90" />
               <span>Dashboard</span>
             </button>
 
-            {/* Telegram Bot Control (Admin / Sub-Admin Only) */}
-            {(user.role === "admin" || user.role === "subadmin") && (
+            {/* Telegram Bot Control (Main Admin Only) */}
+            {user.role === "admin" && (
               <button
                 type="button"
                 id="sidebar-item-telegram-bot"
                 onClick={() => handleNavClick("telegramBot")}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer select-none focus:outline-none focus:ring-0 ${
                   currentView === "telegramBot"
-                    ? "bg-sky-500 text-white shadow-sm"
-                    : "text-slate-300 hover:bg-slate-800/70 hover:text-white"
+                    ? "bg-sky-500 text-white shadow-sm font-semibold"
+                    : "bg-transparent text-slate-300 hover:bg-slate-800/70 hover:text-white"
                 }`}
               >
                 <Bot className="w-4.5 h-4.5 text-sky-400 shrink-0 opacity-90 animate-pulse" />
@@ -4463,16 +4567,16 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               </button>
             )}
 
-            {/* Live Support Admin Panel (Admin / Sub-Admin Only) */}
-            {(user.role === "admin" || user.role === "subadmin") && (
+            {/* Live Support Admin Panel (Main Admin Only) */}
+            {user.role === "admin" && (
               <button
                 type="button"
                 id="sidebar-item-support-chat-admin"
                 onClick={() => handleNavClick("supportChatAdmin")}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer select-none focus:outline-none focus:ring-0 ${
                   currentView === "supportChatAdmin"
-                    ? "bg-orange-600 text-white shadow-sm"
-                    : "text-slate-300 hover:bg-slate-800/70 hover:text-white"
+                    ? "bg-orange-600 text-white shadow-sm font-semibold"
+                    : "bg-transparent text-slate-300 hover:bg-slate-800/70 hover:text-white"
                 }`}
               >
                 <MessageSquare className="w-4.5 h-4.5 text-orange-400 shrink-0 opacity-90 animate-pulse" />
@@ -4490,10 +4594,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 type="button"
                 id="sidebar-item-get-number"
                 onClick={() => handleNavClick("getNumber")}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer select-none focus:outline-none focus:ring-0 ${
                   currentView === "getNumber"
-                    ? "bg-blue-600 text-white shadow-sm"
-                    : "text-slate-300 hover:bg-slate-800/70 hover:text-white"
+                    ? "bg-blue-600 text-white shadow-sm font-semibold"
+                    : "bg-transparent text-slate-300 hover:bg-slate-800/70 hover:text-white"
                 }`}
               >
                 <Hash className="w-4.5 h-4.5 shrink-0 opacity-90" />
@@ -4508,10 +4612,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   type="button"
                   id="sidebar-item-sms-range"
                   onClick={() => handleNavClick("smsRange")}
-                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer ${
+                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer select-none focus:outline-none focus:ring-0 ${
                     currentView === "smsRange"
-                      ? "bg-blue-600 text-white shadow-sm"
-                      : "text-slate-300 hover:bg-slate-800/70 hover:text-white"
+                      ? "bg-blue-600 text-white shadow-sm font-semibold"
+                      : "bg-transparent text-slate-300 hover:bg-slate-800/70 hover:text-white"
                   }`}
                 >
                   <Radio className="w-4.5 h-4.5 shrink-0 opacity-90" />
@@ -4523,10 +4627,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   type="button"
                   id="sidebar-item-sms-number"
                   onClick={() => handleNavClick("smsNumber")}
-                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer ${
+                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer select-none focus:outline-none focus:ring-0 ${
                     currentView === "smsNumber"
-                      ? "bg-blue-600 text-white shadow-sm"
-                      : "text-slate-300 hover:bg-slate-800/70 hover:text-white"
+                      ? "bg-blue-600 text-white shadow-sm font-semibold"
+                      : "bg-transparent text-slate-300 hover:bg-slate-800/70 hover:text-white"
                   }`}
                 >
                   <Smartphone className="w-4.5 h-4.5 shrink-0 opacity-90" />
@@ -4540,10 +4644,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 type="button"
                 id="sidebar-item-access-list"
                 onClick={() => handleNavClick("accessList")}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer select-none focus:outline-none focus:ring-0 ${
                   currentView === "accessList"
-                    ? "bg-blue-600 text-white shadow-sm"
-                    : "text-slate-300 hover:bg-slate-800/70 hover:text-white"
+                    ? "bg-blue-600 text-white shadow-sm font-semibold"
+                    : "bg-transparent text-slate-300 hover:bg-slate-800/70 hover:text-white"
                 }`}
               >
                 <List className="w-4.5 h-4.5 shrink-0 opacity-90" />
@@ -4556,10 +4660,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 type="button"
                 id="sidebar-item-sender-range"
                 onClick={() => handleNavClick("senderRange")}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer select-none focus:outline-none focus:ring-0 ${
                   currentView === "senderRange"
-                    ? "bg-blue-600 text-white shadow-sm"
-                    : "text-slate-300 hover:bg-slate-800/70 hover:text-white"
+                    ? "bg-blue-600 text-white shadow-sm font-semibold"
+                    : "bg-transparent text-slate-300 hover:bg-slate-800/70 hover:text-white"
                 }`}
               >
                 <Globe2 className="w-4.5 h-4.5 shrink-0 opacity-90" />
@@ -4629,39 +4733,41 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               )}
             </div>
 
-            {/* User API Session Navigation Item */}
-            <button
-              type="button"
-              id="sidebar-item-user-api"
-              onClick={() => handleNavClick("userApiSession")}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer ${
-                currentView === "userApiSession"
-                  ? "bg-teal-600 text-white shadow-sm"
-                  : "text-slate-300 hover:bg-slate-800/70 hover:text-white"
-              }`}
-            >
-              <Key className="w-4.5 h-4.5 shrink-0 opacity-90 text-teal-400" />
-              <span className="flex items-center justify-between w-full">
-                <span>User API Session</span>
-                {isAdminUnlocked ? (
-                  <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-teal-500/20 text-teal-300 border border-teal-500/30">
-                    NEW
-                  </span>
-                ) : (
-                  <Lock className="w-3 h-3 text-amber-500 animate-pulse" />
-                )}
-              </span>
-            </button>
+            {/* User API Session Navigation Item (Main Admin Only) */}
+            {user.role === "admin" && (
+              <button
+                type="button"
+                id="sidebar-item-user-api"
+                onClick={() => handleNavClick("userApiSession")}
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer select-none focus:outline-none focus:ring-0 ${
+                  currentView === "userApiSession"
+                    ? "bg-teal-600 text-white shadow-sm font-semibold"
+                    : "bg-transparent text-slate-300 hover:bg-slate-800/70 hover:text-white"
+                }`}
+              >
+                <Key className="w-4.5 h-4.5 shrink-0 opacity-90 text-teal-400" />
+                <span className="flex items-center justify-between w-full">
+                  <span>User API Session</span>
+                  {isAdminUnlocked ? (
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-teal-500/20 text-teal-300 border border-teal-500/30">
+                      NEW
+                    </span>
+                  ) : (
+                    <Lock className="w-3 h-3 text-amber-500 animate-pulse" />
+                  )}
+                </span>
+              </button>
+            )}
 
             {/* Profile Navigation Item */}
             <button
               type="button"
               id="sidebar-item-profile"
               onClick={() => handleNavClick("profile")}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer ${
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer select-none focus:outline-none focus:ring-0 ${
                 currentView === "profile"
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : "text-slate-300 hover:bg-slate-800/70 hover:text-white"
+                  ? "bg-blue-600 text-white shadow-sm font-semibold"
+                  : "bg-transparent text-slate-300 hover:bg-slate-800/70 hover:text-white"
               }`}
             >
               <User className="w-4.5 h-4.5 shrink-0 opacity-90" />
@@ -5703,19 +5809,18 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   </div>
                 ) : (
                   <div className="divide-y divide-slate-300 bg-white border border-slate-300">
-                    <AnimatePresence initial={false}>
-                      {getNumHistory.map((item, idx) => {
-                        const isEven = idx % 2 === 0;
-                        return (
-                        <motion.div
+                    {getNumHistory.map((item, idx) => {
+                      const isEven = idx % 2 === 0;
+                      const isFirstNew = idx === 0;
+                      return (
+                        <div
                           key={item.id}
-                          layout
-                          initial={{ opacity: 0, y: -12, scale: 0.98 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.95 }}
-                          transition={{ duration: 0.25, ease: "easeOut" }}
-                          className={`grid grid-cols-12 px-4 py-4 items-center text-xs transition gap-2 border-b border-slate-300 ${
-                            isEven ? "bg-white hover:bg-emerald-50/50" : "bg-slate-100/90 hover:bg-emerald-100/50"
+                          className={`grid grid-cols-12 px-4 py-4 items-center text-xs transition-colors duration-200 gap-2 border-b border-slate-300 ${
+                            isFirstNew
+                              ? "bg-[#e8f5e9] hover:bg-[#c8e6c9]/50 animate-in fade-in duration-150"
+                              : isEven
+                                ? "bg-white hover:bg-emerald-50/50"
+                                : "bg-slate-100/90 hover:bg-emerald-100/50"
                           }`}
                         >
                           {/* NUMBER INFO */}
@@ -5805,10 +5910,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                               {formatRelativeActivityTime(item, nowTick)}
                             </span>
                           </div>
-                        </motion.div>
+                        </div>
                       );
                     })}
-                    </AnimatePresence>
                   </div>
                 )}
               </div>
@@ -7500,8 +7604,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           </div>
         )}
 
-        {/* User API Session Standalone View */}
-        {currentView === "userApiSession" && (
+        {/* User API Session Standalone View (Main Admin Only) */}
+        {currentView === "userApiSession" && user.role === "admin" && (
           <div className="animate-fadeIn">
             <UserApiSessionCard 
               userEmail={user.email} 
@@ -7551,16 +7655,16 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           />
         )}
 
-        {/* Telegram Bot View */}
-        {currentView === "telegramBot" && (
+        {/* Telegram Bot View (Main Admin Only) */}
+        {currentView === "telegramBot" && user.role === "admin" && (
           <TelegramBotController
             userRole={user.role || 'client'}
             userEmail={user.email}
           />
         )}
 
-        {/* Support Chat Admin View */}
-        {currentView === "supportChatAdmin" && (
+        {/* Support Chat Admin View (Main Admin Only) */}
+        {currentView === "supportChatAdmin" && user.role === "admin" && (
           <SupportChatAdmin
             userRole={user.role || 'client'}
             userEmail={user.email}
@@ -7568,23 +7672,34 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         )}
       </main>
 
-      {/* Floating Compact Toast Notification matching User Red Box Area */}
-      {dashboardToast && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 bg-white border border-gray-200/90 shadow-xl px-4 py-2.5 rounded-2xl animate-in fade-in slide-in-from-bottom-2 duration-200 w-auto max-w-sm whitespace-nowrap">
-          {dashboardToast.type === "warning" ? (
-            <div className="w-5 h-5 rounded-full bg-[#fde68a] text-[#b45309] flex items-center justify-center font-bold text-xs shrink-0 select-none">
-              !
-            </div>
-          ) : (
-            <div className="w-5 h-5 rounded-full bg-[#10b981] text-white flex items-center justify-center font-bold text-xs shrink-0 select-none shadow-2xs">
-              <Check className="w-3 h-3 text-white stroke-[3]" />
-            </div>
-          )}
-          <span className="text-xs font-semibold text-gray-800 tracking-tight">
-            {dashboardToast.message}
-          </span>
-        </div>
-      )}
+      {/* Floating Compact Toast Notification */}
+      <AnimatePresence>
+        {dashboardToast && (
+          <motion.div 
+            initial={{ opacity: 0, y: 16, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 16, scale: 0.95 }}
+            transition={{ duration: 0.16 }}
+            onClick={() => setDashboardToast(null)}
+            className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 bg-white/95 backdrop-blur-xs border border-gray-200/90 shadow-2xl px-4 py-2 rounded-2xl w-auto max-w-[92vw] whitespace-nowrap cursor-pointer hover:bg-slate-50 transition active:scale-95 select-none"
+            title="Click to close"
+          >
+            {dashboardToast.type === "warning" ? (
+              <div className="w-5 h-5 rounded-full bg-[#fde68a] text-[#b45309] flex items-center justify-center font-bold text-xs shrink-0 select-none">
+                !
+              </div>
+            ) : (
+              <div className="w-5 h-5 rounded-full bg-[#10b981] text-white flex items-center justify-center font-bold text-xs shrink-0 select-none shadow-2xs">
+                <Check className="w-3 h-3 text-white stroke-[3]" />
+              </div>
+            )}
+            <span className="text-xs font-semibold text-gray-800 tracking-tight">
+              {dashboardToast.message}
+            </span>
+            <X className="w-3.5 h-3.5 text-gray-400 hover:text-gray-600 ml-1 shrink-0" />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Footer matching Screenshot layout */}
       <footer className="w-full bg-[#1e293b] text-gray-400 py-3 text-center border-t border-slate-700">

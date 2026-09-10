@@ -101,6 +101,8 @@ export function ActiveAccountWidget() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [country, setCountry] = useState('Bangladesh (🇧🇩)');
+  const [dialCode, setDialCode] = useState('+880');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [agentEmail, setAgentEmail] = useState('');
 
   // UI Helper States
@@ -138,6 +140,7 @@ export function ActiveAccountWidget() {
     if (acc.name) setFullName(acc.name);
     if (acc.password) setPassword(acc.password);
     if (acc.country) setCountry(acc.country);
+    if (acc.phoneOrTelegram) setPhoneNumber(acc.phoneOrTelegram);
     if (acc.agentEmail || acc.agentMail) setAgentEmail(acc.agentEmail || acc.agentMail || '');
 
     // Save permanently to device lock
@@ -148,6 +151,8 @@ export function ActiveAccountWidget() {
         email: acc.email || email,
         password: acc.password || password,
         country: acc.country || country,
+        phoneNumber: acc.phoneOrTelegram || phoneNumber,
+        phoneOrTelegram: acc.phoneOrTelegram || phoneNumber,
         agentEmail: acc.agentEmail || acc.agentMail || agentEmail,
         accountCode: code,
         submittedAt: submittedAt || acc.createdAt || Date.now(),
@@ -185,7 +190,14 @@ export function ActiveAccountWidget() {
           setEmail(parsed.email);
         }
         if (parsed.password) setPassword(parsed.password);
-        if (parsed.country) setCountry(parsed.country);
+        if (parsed.country) {
+          setCountry(parsed.country);
+          const found = GLOBAL_COUNTRIES_LIST.find(c => `${c.name} (${c.flag})` === parsed.country || c.name === parsed.country);
+          if (found) setDialCode(found.dialCode);
+        }
+        if (parsed.phoneNumber || parsed.phoneOrTelegram) {
+          setPhoneNumber(parsed.phoneNumber || parsed.phoneOrTelegram);
+        }
         if (parsed.agentEmail || parsed.agentMail) setAgentEmail(parsed.agentEmail || parsed.agentMail);
         if (parsed.accountCode) setAccountCode(parsed.accountCode);
         if (parsed.submittedAt) setSubmittedAt(parsed.submittedAt);
@@ -285,15 +297,17 @@ export function ActiveAccountWidget() {
     };
   }, [email, state]);
 
-  // Form Validation: All 5 fields are strictly required
+  // Form Validation: All 5 fields (Name, Email, Pass, Country & Phone, Agent Mail) are strictly required
   const isEmailValid = (em: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em.trim());
-  const isAgentMailValid = (em: string) => em.trim().toLowerCase() === 'superxsms@gmail.com';
+  const isPhoneValid = (ph: string) => ph.trim().replace(/\D/g, '').length >= 6;
+  const isAgentMailValid = (em: string) => isEmailValid(em) && em.trim().length >= 6;
 
   const isFormComplete =
     fullName.trim().length >= 2 &&
     isEmailValid(email) &&
     password.trim().length >= 4 &&
     country.trim().length > 0 &&
+    isPhoneValid(phoneNumber) &&
     isAgentMailValid(agentEmail);
 
   // Handle Form Submission
@@ -305,6 +319,8 @@ export function ActiveAccountWidget() {
     const cleanEmail = email.trim().toLowerCase();
     const cleanPass = password.trim();
     const cleanCountry = country.trim();
+    const cleanPhone = phoneNumber.trim();
+    const fullPhoneNumber = cleanPhone.startsWith('+') ? cleanPhone : `${dialCode} ${cleanPhone}`.trim();
     const cleanAgent = agentEmail.trim().toLowerCase();
 
     if (!cleanName || cleanName.length < 2) {
@@ -327,8 +343,13 @@ export function ActiveAccountWidget() {
       return;
     }
 
+    if (!cleanPhone || !isPhoneValid(cleanPhone)) {
+      setFormError('সঠিক মোবাইল নাম্বার প্রদান করুন (Please enter a valid phone number).');
+      return;
+    }
+
     if (!cleanAgent || !isAgentMailValid(cleanAgent)) {
-      setFormError('সঠিক এজেন্ট মেইল প্রদান করুন! শুধুমাত্র superxsms@gmail.com ই আমাদের একমাত্র ভ্যালিড এজেন্ট মেইল। (Please provide the real agent email superxsms@gmail.com)');
+      setFormError('সঠিক এজেন্ট মেইল প্রদান করুন! আমাদের অফিসিয়াল টেলিগ্রাম গ্রুপে পিন করা অনুমোদিত এজেন্ট মেইলটি সংগ্রহ করে এখানে দিন। (Valid Agent Mail required from official Telegram pinned message).');
       return;
     }
 
@@ -344,9 +365,10 @@ export function ActiveAccountWidget() {
         email: cleanEmail,
         password: cleanPass,
         country: cleanCountry,
+        phoneOrTelegram: fullPhoneNumber,
         agentEmail: cleanAgent,
         agentMail: cleanAgent,
-        note: `Submitted via Support Bot Form | Country: ${cleanCountry} | Agent: ${cleanAgent}`,
+        note: `Submitted via Support Bot Form | Country: ${cleanCountry} | Phone: ${fullPhoneNumber} | Agent: ${cleanAgent}`,
       });
 
       if (!res.success && res.message) {
@@ -366,11 +388,12 @@ export function ActiveAccountWidget() {
         email: cleanEmail,
         password: cleanPass,
         country: cleanCountry,
+        phoneOrTelegram: fullPhoneNumber,
         agentEmail: cleanAgent,
         agentMail: cleanAgent,
         accountCode: generatedCode,
         createdAt: nowTime,
-        note: `Submitted via Support Bot Form | Agent: ${cleanAgent}`,
+        note: `Submitted via Support Bot Form | Phone: ${fullPhoneNumber} | Agent: ${cleanAgent}`,
       }).catch(() => {});
 
       // 3. Submit to Server Backend (/api/accounts/request) in background
@@ -382,10 +405,11 @@ export function ActiveAccountWidget() {
           email: cleanEmail,
           password: cleanPass,
           country: cleanCountry,
+          phoneOrTelegram: fullPhoneNumber,
           agentEmail: cleanAgent,
           agentMail: cleanAgent,
           accountCode: generatedCode,
-          note: `Submitted via Support Bot Form | Agent: ${cleanAgent}`,
+          note: `Submitted via Support Bot Form | Phone: ${fullPhoneNumber} | Agent: ${cleanAgent}`,
         }),
       }).catch((err) => {
         console.warn('Server account request error:', err);
@@ -399,6 +423,8 @@ export function ActiveAccountWidget() {
           email: cleanEmail,
           password: cleanPass,
           country: cleanCountry,
+          phoneNumber: cleanPhone,
+          phoneOrTelegram: fullPhoneNumber,
           agentEmail: cleanAgent,
           accountCode: generatedCode,
           submittedAt: nowTime,
@@ -681,45 +707,81 @@ export function ActiveAccountWidget() {
                     </div>
                   </div>
 
-                  {/* Field 4: Country */}
+                  {/* Field 4: Country & Phone Number */}
                   <div className="space-y-1.5">
                     <label className="text-[11px] font-bold text-slate-300 flex items-center justify-between">
                       <span className="flex items-center gap-1.5">
                         <Globe className="w-3.5 h-3.5 text-amber-400" />
-                        <span>Country (দেশ)</span>
+                        <span>Country &amp; Phone Number (দেশ ও নাম্বার)</span>
                       </span>
-                      <span className="text-[10px] text-cyan-400 font-mono">USER_COUNTRY</span>
+                      <span className="text-[10px] text-cyan-400 font-mono">REQ_PHONE</span>
                     </label>
-                    <div className="relative">
-                      <select
-                        value={country}
-                        disabled={state === 'submitting'}
-                        onChange={(e) => {
-                          setCountry(e.target.value);
-                          setFormError('');
-                        }}
-                        className="w-full px-3.5 py-2.5 border rounded-xl text-white bg-slate-900/90 border-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 text-xs font-medium transition cursor-pointer"
-                      >
-                        <option value="Bangladesh (🇧🇩)">🇧🇩 Bangladesh (+880)</option>
-                        <option value="India (🇮🇳)">🇮🇳 India (+91)</option>
-                        <option value="Pakistan (🇵🇰)">🇵🇰 Pakistan (+92)</option>
-                        <option value="Saudi Arabia (🇸🇦)">🇸🇦 Saudi Arabia (+966)</option>
-                        <option value="United Arab Emirates (🇦🇪)">🇦🇪 UAE (+971)</option>
-                        <option value="Qatar (🇶🇦)">🇶🇦 Qatar (+974)</option>
-                        <option value="Kuwait (🇰🇼)">🇰🇼 Kuwait (+965)</option>
-                        <option value="Oman (🇴🇲)">🇴🇲 Oman (+968)</option>
-                        <option value="Malaysia (🇲🇾)">🇲🇾 Malaysia (+60)</option>
-                        <option value="Singapore (🇸🇬)">🇸🇬 Singapore (+65)</option>
-                        <option value="United States (🇺🇸)">🇺🇸 United States (+1)</option>
-                        <option value="United Kingdom (🇬🇧)">🇬🇧 United Kingdom (+44)</option>
-                        <option value="Canada (🇨🇦)">🇨🇦 Canada (+1)</option>
-                        <option value="Australia (🇦🇺)">🇦🇺 Australia (+61)</option>
-                        {GLOBAL_COUNTRIES_LIST.filter(c => !['BD', 'IN', 'PK', 'SA', 'AE', 'QA', 'KW', 'OM', 'MY', 'SG', 'US', 'GB', 'CA', 'AU'].includes(c.iso)).map((c) => (
-                          <option key={c.iso} value={`${c.name} (${c.flag})`}>
-                            {c.flag} {c.name} ({c.dialCode})
-                          </option>
-                        ))}
-                      </select>
+
+                    <div className="space-y-2">
+                      <div className="relative">
+                        <select
+                          value={country}
+                          disabled={state === 'submitting'}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setCountry(val);
+                            const found = GLOBAL_COUNTRIES_LIST.find(c => `${c.name} (${c.flag})` === val || c.name === val);
+                            if (found) {
+                              setDialCode(found.dialCode);
+                            } else if (val.includes('Bangladesh')) {
+                              setDialCode('+880');
+                            } else if (val.includes('India')) {
+                              setDialCode('+91');
+                            } else if (val.includes('Pakistan')) {
+                              setDialCode('+92');
+                            } else if (val.includes('Saudi Arabia')) {
+                              setDialCode('+966');
+                            } else if (val.includes('UAE')) {
+                              setDialCode('+971');
+                            }
+                            setFormError('');
+                          }}
+                          className="w-full px-3.5 py-2.5 border rounded-xl text-white bg-slate-900/90 border-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 text-xs font-medium transition cursor-pointer"
+                        >
+                          <option value="Bangladesh (🇧🇩)">🇧🇩 Bangladesh (+880)</option>
+                          <option value="India (🇮🇳)">🇮🇳 India (+91)</option>
+                          <option value="Pakistan (🇵🇰)">🇵🇰 Pakistan (+92)</option>
+                          <option value="Saudi Arabia (🇸🇦)">🇸🇦 Saudi Arabia (+966)</option>
+                          <option value="United Arab Emirates (🇦🇪)">🇦🇪 UAE (+971)</option>
+                          <option value="Qatar (🇶🇦)">🇶🇦 Qatar (+974)</option>
+                          <option value="Kuwait (🇰🇼)">🇰🇼 Kuwait (+965)</option>
+                          <option value="Oman (🇴🇲)">🇴🇲 Oman (+968)</option>
+                          <option value="Malaysia (🇲🇾)">🇲🇾 Malaysia (+60)</option>
+                          <option value="Singapore (🇸🇬)">🇸🇬 Singapore (+65)</option>
+                          <option value="United States (🇺🇸)">🇺🇸 United States (+1)</option>
+                          <option value="United Kingdom (🇬🇧)">🇬🇧 United Kingdom (+44)</option>
+                          <option value="Canada (🇨🇦)">🇨🇦 Canada (+1)</option>
+                          <option value="Australia (🇦🇺)">🇦🇺 Australia (+61)</option>
+                          {GLOBAL_COUNTRIES_LIST.filter(c => !['BD', 'IN', 'PK', 'SA', 'AE', 'QA', 'KW', 'OM', 'MY', 'SG', 'US', 'GB', 'CA', 'AU'].includes(c.iso)).map((c) => (
+                            <option key={c.iso} value={`${c.name} (${c.flag})`}>
+                              {c.flag} {c.name} ({c.dialCode})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="relative flex items-center">
+                        <div className="absolute left-3.5 text-xs font-mono font-bold text-amber-400 pointer-events-none select-none">
+                          {dialCode}
+                        </div>
+                        <input
+                          type="tel"
+                          required
+                          value={phoneNumber}
+                          disabled={state === 'submitting'}
+                          onChange={(e) => {
+                            setPhoneNumber(e.target.value);
+                            setFormError('');
+                          }}
+                          placeholder="Phone number / ফোন নাম্বার দিন"
+                          className="w-full pl-16 pr-3.5 py-2.5 border rounded-xl text-white placeholder-slate-500 focus:outline-none text-xs font-medium bg-slate-900/90 border-slate-800 focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition font-mono"
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -744,12 +806,12 @@ export function ActiveAccountWidget() {
                           setAgentEmail(e.target.value);
                           setFormError('');
                         }}
-                        placeholder="Enter official Agent Email (e.g. superxsms@gmail.com)"
+                        placeholder="Enter official Agent Email (অফিসিয়াল এজেন্ট মেইল লিখুন)"
                         className="w-full px-3.5 py-2.5 border rounded-xl text-white placeholder-slate-500 focus:outline-none text-xs font-medium bg-slate-900/90 border-amber-500/50 focus:ring-1 focus:ring-amber-400 focus:border-amber-400 transition"
                       />
                     </div>
-                    <p className="text-[10px] text-amber-300 font-medium">
-                      আমাদের একমাত্র ভ্যালিড এজেন্ট মেইল হল <strong className="text-amber-200 underline">superxsms@gmail.com</strong>। এটি এখানে সঠিকভাবে না দেওয়া পর্যন্ত সাবমিট অপশন ওপেন হবে না।
+                    <p className="text-[10px] text-amber-300/90 font-medium leading-relaxed">
+                      📌 ভ্যালিড এজেন্ট মেইল পেতে উপরের অফিসিয়াল টেলিগ্রাম গ্রুপে জয়েন করুন এবং পিন মেসেজ (Pinned Message) থেকে এজেন্ট মেইল সংগ্রহ করে এখানে দিন। এজেন্ট মেইল ছাড়া সাবমিট অপশন ওপেন হবে না।
                     </p>
                   </div>
 
@@ -782,7 +844,7 @@ export function ActiveAccountWidget() {
                     ) : !isFormComplete ? (
                       <>
                         <Lock className="w-4 h-4 text-amber-400" />
-                        <span>COMPLETE ALL 5 FIELDS (AGENT MAIL REQUIRED)</span>
+                        <span>COMPLETE ALL FIELDS (AGENT MAIL REQUIRED)</span>
                       </>
                     ) : (
                       <>
@@ -827,6 +889,13 @@ export function ActiveAccountWidget() {
                       <span className="text-slate-400">Country:</span>
                       <strong className="text-white font-bold">{country}</strong>
                     </div>
+
+                    {phoneNumber && (
+                      <div className="flex justify-between items-center text-[11px] pb-2 border-b border-slate-800">
+                        <span className="text-slate-400">Phone:</span>
+                        <strong className="text-cyan-300 font-mono font-bold">{phoneNumber.startsWith('+') ? phoneNumber : `${dialCode} ${phoneNumber}`}</strong>
+                      </div>
+                    )}
 
                     <div className="flex justify-between items-center text-[11px] pb-2 border-b border-slate-800">
                       <span className="text-slate-400">Agent Mail:</span>
@@ -939,6 +1008,13 @@ export function ActiveAccountWidget() {
                       <span className="text-slate-400 font-sans text-[11px]">Country:</span>
                       <strong className="text-emerald-300 font-bold font-sans">{country}</strong>
                     </div>
+
+                    {phoneNumber && (
+                      <div className="flex justify-between items-center pt-2 border-t border-slate-800/80">
+                        <span className="text-slate-400 font-sans text-[11px]">Phone:</span>
+                        <strong className="text-cyan-300 font-mono font-bold">{phoneNumber.startsWith('+') ? phoneNumber : `${dialCode} ${phoneNumber}`}</strong>
+                      </div>
+                    )}
 
                     <div className="flex justify-between items-center pt-2 border-t border-slate-800/80">
                       <span className="text-slate-400 font-sans text-[11px]">Agent Mail:</span>

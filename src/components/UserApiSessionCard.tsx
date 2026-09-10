@@ -83,6 +83,7 @@ export function UserApiSessionCard({ userEmail, userName, accountCode, apiUnlock
     if (userEmail) {
       loadUserKey();
       const interval = setInterval(() => {
+        if (document.hidden) return;
         loadUserKey(true);
       }, 3000);
 

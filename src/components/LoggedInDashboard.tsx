@@ -1157,9 +1157,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     };
   }, []);
 
-  const pendingUsersCount = allUsersList.filter(
-    (u) => u.status === "pending",
-  ).length;
+  const pendingUsersCount = React.useMemo(() => {
+    return allUsersList.filter((u) => u.status === "pending").length;
+  }, [allUsersList]);
 
   useEffect(() => {
     try {
@@ -2523,6 +2523,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           const data = await res.json();
           if (data?.success && Array.isArray(data.numbers) && isMounted) {
             setGetNumHistory((prev) => {
+              const sanitizedNext = sanitizeAllocatedHistory(data.numbers);
               // Compare and play voice announcement for new OTPs if received
               const oldMap = new Map(prev.map(item => [item.id, item.otp || ""]));
               data.numbers.forEach((entry: any) => {
@@ -2534,7 +2535,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   showDashboardToast(`🎉 Real-time OTP received: ${entry.otp} (${entry.number})`, "success");
                 }
               });
-              return sanitizeAllocatedHistory(data.numbers);
+              if (JSON.stringify(prev) === JSON.stringify(sanitizedNext)) {
+                return prev;
+              }
+              return sanitizedNext;
             });
           }
         }
@@ -2786,8 +2790,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
   useEffect(() => {
     const timer = setInterval(() => {
+      if (document.hidden) return;
       setNowTick(Date.now());
-    }, 5000);
+    }, 30000);
     return () => clearInterval(timer);
   }, []);
 
@@ -3101,24 +3106,69 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     return Array.from(map.values());
   }, [liveHits, liveAccessList]);
 
-  const filteredSenderRanges = senderRangeList.filter((item) => {
-    if (senderCategoryFilter !== "ALL") {
-      const sidUpper = item.sid.toUpperCase();
-      const catUpper = senderCategoryFilter.toUpperCase();
-      if (!sidUpper.includes(catUpper)) return false;
-    }
-    if (senderRangeFilter.trim()) {
-      const q = senderRangeFilter.toLowerCase();
+  const filteredSenderRanges = React.useMemo(() => {
+    return senderRangeList.filter((item) => {
+      if (senderCategoryFilter !== "ALL") {
+        const sidUpper = item.sid.toUpperCase();
+        const catUpper = senderCategoryFilter.toUpperCase();
+        if (!sidUpper.includes(catUpper)) return false;
+      }
+      if (senderRangeFilter.trim()) {
+        const q = senderRangeFilter.toLowerCase();
+        return (
+          item.sid.toLowerCase().includes(q) ||
+          item.range.toLowerCase().includes(q) ||
+          item.operator.toLowerCase().includes(q) ||
+          item.country.toLowerCase().includes(q) ||
+          item.latestMessage.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [senderRangeList, senderCategoryFilter, senderRangeFilter]);
+
+  const consoleFilteredHits = React.useMemo(() => {
+    if (!consoleFilter.trim()) return liveHits;
+    const q = consoleFilter.toLowerCase();
+    return liveHits.filter((hit) => {
       return (
-        item.sid.toLowerCase().includes(q) ||
-        item.range.toLowerCase().includes(q) ||
-        item.operator.toLowerCase().includes(q) ||
-        item.country.toLowerCase().includes(q) ||
-        item.latestMessage.toLowerCase().includes(q)
+        hit.sid?.toLowerCase().includes(q) ||
+        hit.operator?.toLowerCase().includes(q) ||
+        hit.country?.toLowerCase().includes(q) ||
+        hit.range?.toLowerCase().includes(q) ||
+        hit.message?.toLowerCase().includes(q)
       );
-    }
-    return true;
-  });
+    });
+  }, [liveHits, consoleFilter]);
+
+  const filteredManualRangesList = React.useMemo(() => {
+    return manualRanges.filter((r) => {
+      const textMatch =
+        !manualRangesSearch.trim() ||
+        r.country.toLowerCase().includes(manualRangesSearch.toLowerCase()) ||
+        r.rangePrefix.includes(manualRangesSearch);
+      const platMatch =
+        manualRangesPlatformFilter === "ALL" ||
+        r.platform?.toUpperCase() === manualRangesPlatformFilter.toUpperCase() ||
+        r.socialMedia?.toUpperCase() === manualRangesPlatformFilter.toUpperCase();
+      return textMatch && platMatch;
+    });
+  }, [manualRanges, manualRangesSearch, manualRangesPlatformFilter]);
+
+  const filteredManualNumbersList = React.useMemo(() => {
+    return manualNumbers.filter((n) => {
+      const textMatch =
+        !manualNumbersSearch.trim() ||
+        n.number.includes(manualNumbersSearch) ||
+        n.country.toLowerCase().includes(manualNumbersSearch.toLowerCase()) ||
+        n.cleanDigits.includes(manualNumbersSearch);
+      const statMatch =
+        manualNumbersStatusFilter === "ALL" ||
+        (manualNumbersStatusFilter === "Available" && !n.allocated) ||
+        (manualNumbersStatusFilter === "Allocated" && n.allocated);
+      return textMatch && statMatch;
+    });
+  }, [manualNumbers, manualNumbersSearch, manualNumbersStatusFilter]);
 
   const handleAllocateFromSenderRange = (
     rangeDigits: string,
@@ -3454,8 +3504,14 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       setIsDevUnlockModalOpen(true);
       return;
     }
-    setCurrentView(view);
+    // Instantly close mobile sidebar for zero-delay touch response
     setIsSidebarOpen(false);
+
+    // Use non-blocking transition for view state changes
+    React.startTransition(() => {
+      setCurrentView(view);
+    });
+
     try {
       const targetHash = VIEW_TO_HASH_MAP[view] || view;
       window.history.replaceState(null, "", `#${targetHash}`);
@@ -3619,10 +3675,12 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         }
       }
 
-      // Real-time instant auto copy to clipboard (fire & forget for ultra performance)
-      if (typeof navigator !== "undefined" && navigator.clipboard) {
-        navigator.clipboard.writeText(displayNum).catch(() => {});
-      }
+      // Real-time instant auto copy to clipboard (safely guarded against browser iframe security restrictions)
+      try {
+        if (typeof navigator !== "undefined" && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+          navigator.clipboard.writeText(displayNum).catch(() => {});
+        }
+      } catch {}
 
       showDashboardToast(`Allocated & Copied ${displayNum}`, "success");
 
@@ -3671,6 +3729,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         "warning",
       );
     } finally {
+      // 400ms smooth minimum delay so the spinner icon completes a clear visual spin for tactile button feedback
+      await new Promise((resolve) => setTimeout(resolve, 400));
       setIsAllocating(false);
     }
   };
@@ -5205,11 +5265,13 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         type="button"
                         onClick={() => handleGetNumberCustom()}
                         disabled={isAllocating}
-                        className="min-w-[145px] bg-[#10b981] hover:bg-[#059669] text-white font-black px-6 py-2.5 rounded-full text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm shadow-emerald-500/20 transition active:scale-95 cursor-pointer disabled:opacity-50"
+                        className="min-w-[145px] bg-[#10b981] hover:bg-[#059669] text-white font-black px-6 py-2.5 rounded-full text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm shadow-emerald-500/20 transition active:scale-90 cursor-pointer disabled:opacity-50"
                       >
-                        <Phone
-                          className={`w-3.5 h-3.5 text-white ${isAllocating ? "animate-spin" : ""}`}
-                        />
+                        {isAllocating ? (
+                          <RefreshCw className="w-3.5 h-3.5 text-white animate-spin" />
+                        ) : (
+                          <Phone className="w-3.5 h-3.5 text-white" />
+                        )}
                         <span>
                           {isAllocating ? "Getting..." : "Get Number"}
                         </span>
@@ -5427,11 +5489,13 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                           )
                         }
                         disabled={isAllocating}
-                        className="min-w-[145px] bg-[#10b981] hover:bg-[#059669] text-white font-black px-6 py-2.5 rounded-full text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm shadow-emerald-500/20 transition active:scale-95 cursor-pointer disabled:opacity-50"
+                        className="min-w-[145px] bg-[#10b981] hover:bg-[#059669] text-white font-black px-6 py-2.5 rounded-full text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm shadow-emerald-500/20 transition active:scale-90 cursor-pointer disabled:opacity-50"
                       >
-                        <Phone
-                          className={`w-3.5 h-3.5 text-white ${isAllocating ? "animate-spin" : ""}`}
-                        />
+                        {isAllocating ? (
+                          <RefreshCw className="w-3.5 h-3.5 text-white animate-spin" />
+                        ) : (
+                          <Phone className="w-3.5 h-3.5 text-white" />
+                        )}
                         <span>
                           {isAllocating ? "Getting..." : "Get Number"}
                         </span>
@@ -5764,17 +5828,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
             {/* Live Logs List Cards or Clean Empty State */}
             {(() => {
-              const filteredHits = liveHits.filter((hit) => {
-                if (!consoleFilter.trim()) return true;
-                const q = consoleFilter.toLowerCase();
-                return (
-                  hit.sid?.toLowerCase().includes(q) ||
-                  hit.operator?.toLowerCase().includes(q) ||
-                  hit.country?.toLowerCase().includes(q) ||
-                  hit.range?.toLowerCase().includes(q) ||
-                  hit.message?.toLowerCase().includes(q)
-                );
-              });
+              const filteredHits = consoleFilteredHits;
 
               if (filteredHits.length === 0) {
                 return (
@@ -6749,16 +6803,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 ))}
               </div>
             ) : (() => {
-              const filtered = manualRanges.filter((r) => {
-                const textMatch =
-                  r.country.toLowerCase().includes(manualRangesSearch.toLowerCase()) ||
-                  r.rangePrefix.includes(manualRangesSearch);
-                const platMatch =
-                  manualRangesPlatformFilter === "ALL" ||
-                  r.platform?.toUpperCase() === manualRangesPlatformFilter.toUpperCase() ||
-                  r.socialMedia?.toUpperCase() === manualRangesPlatformFilter.toUpperCase();
-                return textMatch && platMatch;
-              });
+              const filtered = filteredManualRangesList;
 
               if (filtered.length === 0) {
                 return (
@@ -6966,17 +7011,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 ))}
               </div>
             ) : (() => {
-              const filtered = manualNumbers.filter((n) => {
-                const textMatch =
-                  n.number.includes(manualNumbersSearch) ||
-                  n.country.toLowerCase().includes(manualNumbersSearch.toLowerCase()) ||
-                  n.cleanDigits.includes(manualNumbersSearch);
-                const statMatch =
-                  manualNumbersStatusFilter === "ALL" ||
-                  (manualNumbersStatusFilter === "Available" && !n.allocated) ||
-                  (manualNumbersStatusFilter === "Allocated" && n.allocated);
-                return textMatch && statMatch;
-              });
+              const filtered = filteredManualNumbersList;
 
               if (filtered.length === 0) {
                 return (

@@ -51,7 +51,7 @@ body {
   box-sizing: border-box;
 }
 
-/* Interactive Touch Targets Optimization */
+/* Interactive Touch Targets Optimization & Fast Touch Feedback */
 button,
 a,
 input,
@@ -60,6 +60,15 @@ textarea,
 [role="button"],
 .touch-target {
   touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:active,
+[role="button"]:active,
+a:active {
+  opacity: 0.92;
+  transform: scale(0.98);
+  transition: transform 0.05s ease-out, opacity 0.05s ease-out;
 }
 
 /* Prevent layout jank/shaking on horizontal screens or deployment platforms like Vercel */

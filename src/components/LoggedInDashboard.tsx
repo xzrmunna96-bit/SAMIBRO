@@ -999,10 +999,13 @@ export const HASH_TO_VIEW_MAP: Record<string, any> = {
   terminal: "terminal",
   profile: "profile",
   "admin-approvals": "adminRequests",
+  adminrequests: "adminRequests",
   "live-test-sms": "liveTestSms",
   "test-sms": "liveTestSms",
+  livetestsms: "liveTestSms",
   "sms-test-history": "smsTestHistory",
   "test-history": "smsTestHistory",
+  smstesthistory: "smsTestHistory",
   "telegram-bot": "telegramBot",
   telegrambot: "telegramBot",
   "user-api": "userApiSession",
@@ -1022,6 +1025,7 @@ export function getViewFromUrlHash(): any {
 }
 
 export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
+  const isProgrammaticNavRef = React.useRef(false);
   const [showWelcomeMarquee, setShowWelcomeMarquee] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [currentView, setCurrentView] = useState<
@@ -1176,6 +1180,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       const targetHash = VIEW_TO_HASH_MAP[currentView] || currentView;
       const currentCleanHash = (window.location.hash || "").replace(/^#\/?/, "").toLowerCase().trim();
       if (currentCleanHash !== targetHash) {
+        isProgrammaticNavRef.current = true;
         window.history.replaceState(null, "", `#${targetHash}`);
       }
 
@@ -1194,6 +1199,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         adminRequests: "Admin Approvals",
         liveTestSms: "Live Test SMS",
         smsTestHistory: "SMS Test History",
+        telegramBot: "Telegram Admin Bot",
+        userApiSession: "User API Session",
+        supportChatAdmin: "Live Support Chat",
       };
       const titleName = titles[currentView] || "SMS Portal";
       document.title = `SUPER X SMS - ${titleName}`;
@@ -1205,6 +1213,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   // Listen to browser Back/Forward & hashchange in real-time
   useEffect(() => {
     const onHashChange = () => {
+      if (isProgrammaticNavRef.current) {
+        isProgrammaticNavRef.current = false;
+        return;
+      }
       const view = getViewFromUrlHash();
       if (view) {
         setCurrentView(view);
@@ -3517,6 +3529,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       setIsDevUnlockModalOpen(true);
       return;
     }
+
+    // Mark programmatic navigation to prevent popstate listener from resetting state
+    isProgrammaticNavRef.current = true;
 
     // Direct synchronous state update for real-time immediate response across all browsers
     setCurrentView(view);

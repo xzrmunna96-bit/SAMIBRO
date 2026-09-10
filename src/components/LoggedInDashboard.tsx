@@ -2733,8 +2733,21 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     }
   }, [isNotifModalOpen, user.email]);
 
-  // Fetch manual number ranges and pool list when currentView changes
+  // Fetch manual number ranges and pool list on mount, interval, and view change
   useEffect(() => {
+    const loadRanges = () => {
+      fetchManualRanges()
+        .then((ranges) => {
+          if (Array.isArray(ranges) && ranges.length > 0) {
+            setManualRanges(ranges);
+          }
+        })
+        .catch(() => {});
+    };
+
+    loadRanges();
+    const interval = setInterval(loadRanges, 6000);
+
     if (currentView === "smsRange") {
       setManualRangesLoading(true);
       fetchManualRanges()
@@ -2753,6 +2766,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         .catch(() => {})
         .finally(() => setManualNumbersLoading(false));
     }
+
+    return () => clearInterval(interval);
   }, [currentView]);
 
   // Sync Live Chat updates in real-time
@@ -5428,6 +5443,50 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         </span>
                       </button>
                     </div>
+
+                    {/* Active Uploaded Database Ranges Live Quick-Pick Bar */}
+                    {manualRanges.length > 0 && (
+                      <div className="pt-2 border-t border-slate-100">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                            <Zap className="w-3 h-3 text-amber-500" />
+                            <span>Active Uploaded Ranges ({manualRanges.length})</span>
+                          </span>
+                          <span className="text-[10px] text-emerald-600 font-bold">
+                            Live synchronized with Telegram Bot
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-1 bg-slate-50/80 rounded-xl border border-slate-200/80">
+                          {manualRanges.map((r, i) => {
+                            const isSelected = rangeCustomInput === r.rangePrefix || rangeCustomInput === r.maskedRange;
+                            return (
+                              <button
+                                key={`${r.rangePrefix}_${i}`}
+                                type="button"
+                                onClick={() => {
+                                  setRangeCustomInput(r.rangePrefix);
+                                  showDashboardToast(`Selected Range: ${r.maskedRange} (${r.availableCount} available)`, "success", 800);
+                                }}
+                                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 cursor-pointer border ${
+                                  isSelected
+                                    ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                                    : "bg-white text-slate-700 border-slate-200 hover:border-emerald-400 hover:bg-emerald-50/50"
+                                }`}
+                                title={`Click to load range ${r.maskedRange} (${r.country})`}
+                              >
+                                <span>{r.flag}</span>
+                                <span className="font-mono font-bold">{r.maskedRange || r.rangePrefix}</span>
+                                <span className={`text-[10px] px-1 py-0.2 rounded font-mono ${
+                                  isSelected ? "bg-emerald-700 text-emerald-100" : "bg-slate-100 text-slate-600"
+                                }`}>
+                                  {r.availableCount}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 

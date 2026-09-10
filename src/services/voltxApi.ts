@@ -747,10 +747,44 @@ export async function allocateRealNumberDetailed(
   const cleanDigits = trimmed.replace(/[^0-9]/g, '');
   const ridToUse = trimmed || cleanDigits || '23274';
 
-  // Fast-path instant allocation for maximum UI responsiveness
-  const carrierNumber = generateRealisticCarrierNumber(trimmed || ridToUse);
+  // 1. FIRST: Check server-side uploaded manual numbers pool (Real uploaded numbers from Telegram Bot/Web)
+  try {
+    const poolRes = await fetch('/api/manual-numbers/allocate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        range: trimmed || cleanDigits,
+        rangePrefix: cleanDigits.slice(0, 5),
+        allocatedTo: 'website_user',
+      }),
+    });
+    if (poolRes.ok) {
+      const poolData = await poolRes.json();
+      const rec = poolData.record || poolData.numberRecord;
+      if (poolData.success && rec && rec.number) {
+        const rawNum = rec.number.trim();
+        const fullNum = rawNum.startsWith('+') ? rawNum : `+${rawNum}`;
+        const noPlus = fullNum.replace(/^\+/, '');
+        const allocatedItem: AllocatedNumber = {
+          full_number: fullNum,
+          no_plus_number: noPlus,
+          national_number: noPlus,
+          country: rec.country || 'Sri Lanka',
+          operator: rec.platform || 'Direct Range Pool',
+        };
+        return {
+          success: true,
+          data: allocatedItem,
+          message: `Number ${fullNum} allocated from database range ${rec.maskedRange || rec.rangePrefix}`,
+          code: 200,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('[allocateRealNumberDetailed] Manual numbers pool query error:', err);
+  }
 
-  // If specific custom key provided, try fast call with fallback
+  // 2. SECOND: Upstream Voltx / m29 API if custom key provided
   if (apiKey && apiKey.length > 5 && apiKey !== DEFAULT_MAUTH_API_KEY) {
     try {
       const res = await callVoltxApi<AllocatedNumber>('/getnum', {
@@ -772,6 +806,8 @@ export async function allocateRealNumberDetailed(
     }
   }
 
+  // 3. Realistic carrier fallback
+  const carrierNumber = generateRealisticCarrierNumber(trimmed || ridToUse);
   return {
     success: true,
     data: carrierNumber,

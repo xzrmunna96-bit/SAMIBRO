@@ -374,15 +374,32 @@ async function startServer() {
     rangeInput: string,
     allocatedTo?: string
   ): ManualNumberRecord | null {
-    const cleanPrefix = (rangeInput || "").replace(/\D/g, "").slice(0, 5);
+    const raw = (rangeInput || "").trim();
+    const cleanDigits = raw.replace(/\D/g, "");
+    const cleanPrefix = cleanDigits.slice(0, 5);
     const pool = loadManualNumbersPool();
 
-    const targetIndex = pool.findIndex(
+    // 1. First priority: match unallocated numbers starting with the cleanDigits or exact rangePrefix
+    let targetIndex = pool.findIndex(
       (n) =>
         !n.allocated &&
-        (n.rangePrefix === cleanPrefix ||
+        (n.rangePrefix === cleanDigits ||
+          n.rangePrefix === cleanPrefix ||
+          (cleanDigits.length >= 3 && n.cleanDigits.startsWith(cleanDigits)) ||
           (cleanPrefix.length >= 3 && n.cleanDigits.startsWith(cleanPrefix)))
     );
+
+    // 2. Second priority: match if number contains cleanDigits (at least 4 digits)
+    if (targetIndex < 0 && cleanDigits.length >= 4) {
+      targetIndex = pool.findIndex(
+        (n) => !n.allocated && n.cleanDigits.includes(cleanDigits)
+      );
+    }
+
+    // 3. Third priority: if input is empty or "ALL" or "ANY", allocate next available unallocated number
+    if (targetIndex < 0 && (!cleanDigits || raw.toLowerCase() === "all" || raw.toLowerCase() === "any")) {
+      targetIndex = pool.findIndex((n) => !n.allocated);
+    }
 
     if (targetIndex >= 0) {
       pool[targetIndex].allocated = true;
@@ -3557,7 +3574,7 @@ async function startServer() {
     }
 
     // -----------------------------------------------------------------------
-    // GET NUMBER
+    // GET NUMBER (Command / Button / Text)
     // -----------------------------------------------------------------------
     if (
       cleanText === "📱 Get Number" ||
@@ -3565,9 +3582,32 @@ async function startServer() {
       cleanText.toLowerCase() === "get number" ||
       cleanText.toLowerCase() === "/getnumber" ||
       cleanText.toLowerCase() === "/number" ||
+      cleanText.toLowerCase() === "number" ||
       cleanText.includes("নম্বর নিন") ||
-      cleanText.includes("নাম্বার নিন")
+      cleanText.includes("নাম্বার নিন") ||
+      cleanText.includes("গেট নাম্বার") ||
+      cleanText.toLowerCase().startsWith("/getnumber") ||
+      cleanText.toLowerCase().startsWith("get number")
     ) {
+      // Check if user passed range argument e.g. "/getnumber 94782" or "get number 94782XXXXXX"
+      const parts = cleanText.split(/[\s,:]+/);
+      const possibleRange = parts.length > 1 ? parts[1].replace(/[^0-9]/g, "") : "";
+
+      if (possibleRange && possibleRange.length >= 3) {
+        const allocated = allocateOneManualNumber(possibleRange, String(senderId));
+        if (allocated) {
+          responseText = `📱 <b>SUPER X SMS — নাম্বার বরাদ্দ সম্পন্ন!</b>\n\n` +
+            `🌍 <b>দেশ:</b> ${allocated.flag} <b>${allocated.country}</b>\n` +
+            `🏷️ <b>রেঞ্জ:</b> <code>${allocated.maskedRange}</code>\n` +
+            `📞 <b>আপনার নাম্বার:</b> <code>${allocated.number}</code>\n\n` +
+            `⏳ <b>ওটিপির জন্য অপেক্ষা করা হচ্ছে (Waiting for OTP)...</b>\n` +
+            `<i>এই নাম্বারে ওটিপি আসা মাত্রই সরাসরি এখানে এবং আমাদের ওটিপি গ্রুপেও নোটিফিকেশন যাবে: ${botHostingConfig.otpGroupUrl}</i>`;
+
+          addBotLog(senderName, `Allocated ${allocated.number}`, "allocated");
+          return { responseText, replyMarkup: isAuthorized ? dynamicCustomKeyboard : dynamicMainKeyboard };
+        }
+      }
+
       const pool = loadManualNumbersPool();
       const ranges = getManualRangesSummary(pool).filter((r) => r.availableCount > 0);
 
@@ -3586,7 +3626,7 @@ async function startServer() {
         )
         .join("\n\n");
 
-      const inlineButtons = ranges.slice(0, 8).map((r) => [
+      const inlineButtons = ranges.slice(0, 10).map((r) => [
         {
           text: `${r.flag} ${r.maskedRange} (${r.availableCount} Available)`,
           callback_data: `alloc_num:${r.rangePrefix}`,
@@ -3596,17 +3636,24 @@ async function startServer() {
       responseText = `📱 <b>SUPER X SMS — গেট নাম্বার পোর্টাল</b>\n\n` +
         `উপলব্ধ রেঞ্জসমূহ থেকে একটি নির্বাচন করুন:\n\n` +
         listText +
-        `\n\n<i>💡 নিচের বাটনে চাপ দিন অথবা রেঞ্জের ৫ ডিজিট কোড লিখে পাঠান (যেমন: <code>${ranges[0].rangePrefix}</code>):</i>`;
+        `\n\n<i>💡 নিচের বাটনে চাপ দিন অথবা রেঞ্জের কোড লিখে পাঠান (যেমন: <code>${ranges[0].rangePrefix}</code> বা <code>${ranges[0].maskedRange}</code>):</i>`;
 
       addBotLog(senderName, cleanText, "list_ranges");
       return { responseText, replyMarkup: { inline_keyboard: inlineButtons } };
     }
 
     // -----------------------------------------------------------------------
-    // DIRECT PREFIX ALLOCATION
+    // DIRECT PREFIX OR MASKED PATTERN ALLOCATION (e.g. 94782, 94782XXXXXX, 94723)
     // -----------------------------------------------------------------------
-    if (/^\d{3,6}$/.test(cleanText)) {
-      const allocated = allocateOneManualNumber(cleanText, String(senderId));
+    const rawCleanDigits = cleanText.replace(/[^0-9]/g, "");
+    if (
+      rawCleanDigits.length >= 3 &&
+      rawCleanDigits.length <= 15 &&
+      !cleanText.startsWith("/") &&
+      !cleanText.startsWith("http") &&
+      !cleanText.includes(" ")
+    ) {
+      const allocated = allocateOneManualNumber(rawCleanDigits, String(senderId));
       if (allocated) {
         responseText = `📱 <b>SUPER X SMS — নাম্বার বরাদ্দ সম্পন্ন!</b>\n\n` +
           `🌍 <b>দেশ:</b> ${allocated.flag} <b>${allocated.country}</b>\n` +
@@ -3616,6 +3663,10 @@ async function startServer() {
           `<i>এই নাম্বারে ওটিপি আসা মাত্রই সরাসরি এখানে এবং আমাদের ওটিপি গ্রুপেও নোটিফিকেশন যাবে: ${botHostingConfig.otpGroupUrl}</i>`;
 
         addBotLog(senderName, `Allocated ${allocated.number}`, "allocated");
+        return { responseText, replyMarkup: isAuthorized ? dynamicCustomKeyboard : dynamicMainKeyboard };
+      } else {
+        responseText = `⚠️ <b>রেঞ্জে কোনো নাম্বার খালি নেই!</b>\n` +
+          `রেঞ্জ <code>${cleanText}</code> এ বর্তমানে কোনো আন-বরাদ্দকৃত নাম্বার নেই। অনুগ্রহ করে অন্য রেঞ্জ চেষ্টা করুন।`;
         return { responseText, replyMarkup: isAuthorized ? dynamicCustomKeyboard : dynamicMainKeyboard };
       }
     }

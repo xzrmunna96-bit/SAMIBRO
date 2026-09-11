@@ -253,12 +253,13 @@ export function ActiveAccountWidget() {
       }
     };
 
-    // Polling interval for approval detection when pending
-    const interval = setInterval(checkApprovalStatus, state === 'submitted_pending' ? 6000 : 15000);
+    // Polling interval for approval detection when pending (fast 2.5s for instant reaction)
+    const interval = setInterval(checkApprovalStatus, state === 'submitted_pending' ? 2500 : 10000);
 
-    // Instant check on window focus
+    // Instant check on window focus & online
     const onFocus = () => checkApprovalStatus();
     window.addEventListener('focus', onFocus);
+    window.addEventListener('online', onFocus);
 
     // Cross-tab storage change listener
     const onStorage = (e: StorageEvent) => {
@@ -287,13 +288,45 @@ export function ActiveAccountWidget() {
     };
     window.addEventListener('super_x_account_update', onAccountUpdate);
     window.addEventListener('super_x_account_approved', onAccountUpdate);
+    window.addEventListener('super_x_accounts_updated', checkApprovalStatus);
+
+    // Direct EventSource connection for sub-second approval notifications
+    let sse: EventSource | null = null;
+    if (typeof EventSource !== 'undefined') {
+      try {
+        sse = new EventSource('/api/accounts/events');
+        sse.onmessage = (evt) => {
+          try {
+            const data = JSON.parse(evt.data);
+            if (data?.type === 'accounts_updated') {
+              if (
+                data.account &&
+                data.account.email?.toLowerCase().trim() === cleanEmail &&
+                data.account.status === 'approved'
+              ) {
+                handleAccountBecameApproved(data.account, true);
+              } else {
+                checkApprovalStatus();
+              }
+            }
+          } catch {}
+        };
+      } catch {}
+    }
 
     return () => {
       clearInterval(interval);
+      if (sse) {
+        try {
+          sse.close();
+        } catch {}
+      }
       window.removeEventListener('focus', onFocus);
+      window.removeEventListener('online', onFocus);
       window.removeEventListener('storage', onStorage);
       window.removeEventListener('super_x_account_update', onAccountUpdate);
       window.removeEventListener('super_x_account_approved', onAccountUpdate);
+      window.removeEventListener('super_x_accounts_updated', checkApprovalStatus);
     };
   }, [email, state]);
 

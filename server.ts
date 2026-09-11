@@ -175,9 +175,9 @@ async function startServer() {
   }
 
   const DEFAULT_BOT_HOSTING_CONFIG: BotHostingConfig = {
-    botToken: "8831851994:AAEjiZhHWDl97RABfkzOuk3NbI8291dS1b8",
+    botToken: "8631714331:AAEd33AVl9oqI-HdGW7jtxE37y4N4nH4ox4",
     adminId: "7084317713",
-    chatId: "-1003877961573",
+    chatId: "-1004476126020",
     otpGroupUrl: "https://t.me/trstyyop",
     activePolling: true,
     lastUpdated: Date.now(),
@@ -1363,12 +1363,12 @@ async function startServer() {
       (typeof controlBotState !== "undefined" && controlBotState.botToken) ||
       (typeof botHostingConfig !== "undefined" && botHostingConfig.botToken) ||
       (typeof telegramConfig !== "undefined" && telegramConfig.botToken) ||
-      "8831851994:AAEjiZhHWDl97RABfkzOuk3NbI8291dS1b8"
+      "8631714331:AAEd33AVl9oqI-HdGW7jtxE37y4N4nH4ox4"
     );
   }
 
-  async function updateTelegramAccountMessagesOnApproval(target: any, approverName: string, directChatId?: string | number, directMessageId?: number) {
-    const botToken = getActiveBotToken();
+  async function updateTelegramAccountMessagesOnApproval(target: any, approverName: string, directChatId?: string | number, directMessageId?: number, tokenOverride?: string) {
+    const botToken = tokenOverride || getActiveBotToken();
     const messages = getTrackedTelegramMessages(target.id, target.email);
     if (directChatId && directMessageId) {
       const exists = messages.some(m => String(m.chatId) === String(directChatId) && m.messageId === directMessageId);
@@ -1423,8 +1423,8 @@ async function startServer() {
     }
   }
 
-  async function updateTelegramAccountMessagesOnRejection(target: any, rejecterName: string, directChatId?: string | number, directMessageId?: number) {
-    const botToken = getActiveBotToken();
+  async function updateTelegramAccountMessagesOnRejection(target: any, rejecterName: string, directChatId?: string | number, directMessageId?: number, tokenOverride?: string) {
+    const botToken = tokenOverride || getActiveBotToken();
     const messages = getTrackedTelegramMessages(target.id, target.email);
     if (directChatId && directMessageId) {
       const exists = messages.some(m => String(m.chatId) === String(directChatId) && m.messageId === directMessageId);
@@ -3224,7 +3224,7 @@ async function startServer() {
 
   // Telegram Bot Configuration state
   let telegramConfig = {
-    botToken: "8041954168:AAHev2mnmF0nUyLe00QP3VpUMrFhjPW9pbo",
+    botToken: "8631714331:AAEd33AVl9oqI-HdGW7jtxE37y4N4nH4ox4",
     chatId: "-1004476126020",
     channelUrl: "https://t.me/+ZTN2ldN9repmNWNl",
     autoForwardEnabled: true,
@@ -3339,7 +3339,7 @@ async function startServer() {
   const botHostingConfig = loadBotHostingConfig();
 
   const controlBotState = {
-    botToken: botHostingConfig.botToken || "8831851994:AAEjiZhHWDl97RABfkzOuk3NbI8291dS1b8",
+    botToken: botHostingConfig.botToken || "8631714331:AAEd33AVl9oqI-HdGW7jtxE37y4N4nH4ox4",
     adminId: botHostingConfig.adminId || "7084317713",
     userId: botHostingConfig.adminId || "7084317713",
     activePolling: botHostingConfig.activePolling ?? true,

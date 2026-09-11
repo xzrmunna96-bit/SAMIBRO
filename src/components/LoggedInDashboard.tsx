@@ -1816,7 +1816,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         });
 
         if (matchHit) {
-          let extractedCode = matchHit.code || (matchHit as any).otp || "";
+          let extractedCode = (matchHit as any).code || (matchHit as any).otp || "";
           if (!extractedCode && matchHit.message) {
             const cMatch = String(matchHit.message).match(/(?:code|YOUR CODE|🔐\s*YOUR CODE|is)\s*[:\s]*『?\s*([A-Za-z0-9\-]+)\s*』?/i);
             if (cMatch && cMatch[1]) extractedCode = cMatch[1].trim();
@@ -1831,8 +1831,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             return {
               ...item,
               otp: extractedCode,
-              status: "SUCCESS",
-              service: matchHit.service || matchHit.platform || "Delivered SMS",
+              status: "SUCCESS" as const,
+              service: (matchHit as any).service || (matchHit as any).platform || "Delivered SMS",
               activity: `Delivered just now (${extractedCode})`,
             };
           }
@@ -2485,18 +2485,32 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
         let country = item.country;
         let operator = item.operator;
-        if (!country || country.toLowerCase().includes("international") || country.toLowerCase() === "global" || country.toLowerCase().includes("carrier")) {
-          const numDigits = (item.number || "").replace(/\D/g, "");
+        const numDigits = (item.number || "").replace(/\D/g, "");
+
+        if (
+          !country ||
+          country.toLowerCase().includes("international") ||
+          country.toLowerCase() === "global" ||
+          country.toLowerCase().includes("carrier") ||
+          (country.toLowerCase().includes("sri lanka") && !numDigits.startsWith("94"))
+        ) {
           const info = getCountryInfo(numDigits);
-          if (info && info.name && !info.name.toLowerCase().includes("international")) {
+          if (info && info.name) {
             country = info.name;
           } else {
-            country = "Sri Lanka";
+            country = "Global Route";
           }
         }
-        if (!operator || operator.toLowerCase().includes("physical carrier route") || operator === "Carrier Route" || operator.toLowerCase().includes("gateway")) {
+
+        if (
+          !operator ||
+          operator.toLowerCase().includes("physical carrier route") ||
+          operator === "Carrier Route" ||
+          operator.toLowerCase().includes("gateway") ||
+          (operator.toLowerCase().includes("dialog") && !numDigits.startsWith("94"))
+        ) {
           const cObj = GLOBAL_COUNTRIES_LIST.find((c) => c.name.toLowerCase() === country.toLowerCase());
-          operator = cObj?.operators?.[0] || "Dialog";
+          operator = cObj?.operators?.[0] || "Direct Carrier";
         }
 
         return {
@@ -4126,20 +4140,31 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       }
 
       let targetCountry = countryOverride || res.data.country || fallbackCountry;
-      if (!targetCountry || targetCountry.toLowerCase().includes("international") || targetCountry.toLowerCase() === "global") {
-        const numDigits = (res.data.full_number || cleanDigits).replace(/\D/g, "");
-        const infoAfter = getCountryInfo(numDigits);
-        if (infoAfter && infoAfter.name && !infoAfter.name.toLowerCase().includes("international")) {
+      const allocNumDigits = (res.data.full_number || cleanDigits).replace(/\D/g, "");
+      if (
+        !targetCountry ||
+        targetCountry.toLowerCase().includes("international") ||
+        targetCountry.toLowerCase() === "global" ||
+        (targetCountry.toLowerCase().includes("sri lanka") && !allocNumDigits.startsWith("94"))
+      ) {
+        const infoAfter = getCountryInfo(allocNumDigits);
+        if (infoAfter && infoAfter.name) {
           targetCountry = infoAfter.name;
         } else {
-          targetCountry = fallbackCountry && !fallbackCountry.toLowerCase().includes("international") ? fallbackCountry : "Sri Lanka";
+          targetCountry = fallbackCountry && !fallbackCountry.toLowerCase().includes("international") ? fallbackCountry : "Global Route";
         }
       }
 
       let targetOperator = operatorOverride || res.data.operator || fallbackOperator;
-      if (!targetOperator || targetOperator.toLowerCase().includes("physical carrier route") || targetOperator === "Carrier Route" || targetOperator.toLowerCase().includes("gateway")) {
+      if (
+        !targetOperator ||
+        targetOperator.toLowerCase().includes("physical carrier route") ||
+        targetOperator === "Carrier Route" ||
+        targetOperator.toLowerCase().includes("gateway") ||
+        (targetOperator.toLowerCase().includes("dialog") && !allocNumDigits.startsWith("94"))
+      ) {
         const cObj = GLOBAL_COUNTRIES_LIST.find((c) => c.name.toLowerCase() === targetCountry.toLowerCase());
-        targetOperator = cObj?.operators?.[0] || "Dialog";
+        targetOperator = cObj?.operators?.[0] || "Direct Carrier";
       }
       let displayNum = res.data.full_number || "";
       if (removePlus) {
@@ -6255,20 +6280,32 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                             {(() => {
                               let displayCountry = item.country;
                               let displayOperator = item.operator;
+                              const digits = (item.number || "").replace(/\D/g, "");
 
-                              if (!displayCountry || displayCountry.toLowerCase().includes("international") || displayCountry.toLowerCase() === "global" || displayCountry.toLowerCase().includes("carrier")) {
-                                const digits = (item.number || "").replace(/\D/g, "");
+                              if (
+                                !displayCountry ||
+                                displayCountry.toLowerCase().includes("international") ||
+                                displayCountry.toLowerCase() === "global" ||
+                                displayCountry.toLowerCase().includes("carrier") ||
+                                (displayCountry.toLowerCase().includes("sri lanka") && !digits.startsWith("94"))
+                              ) {
                                 const info = getCountryInfo(digits);
-                                if (info && info.name && !info.name.toLowerCase().includes("international")) {
+                                if (info && info.name) {
                                   displayCountry = info.name;
                                 } else {
-                                  displayCountry = "Sri Lanka";
+                                  displayCountry = "Global Route";
                                 }
                               }
 
-                              if (!displayOperator || displayOperator.toLowerCase().includes("physical carrier route") || displayOperator === "Carrier Route" || displayOperator.toLowerCase().includes("gateway")) {
+                              if (
+                                !displayOperator ||
+                                displayOperator.toLowerCase().includes("physical carrier route") ||
+                                displayOperator === "Carrier Route" ||
+                                displayOperator.toLowerCase().includes("gateway") ||
+                                (displayOperator.toLowerCase().includes("dialog") && !digits.startsWith("94"))
+                              ) {
                                 const cObj = GLOBAL_COUNTRIES_LIST.find((c) => c.name.toLowerCase() === displayCountry.toLowerCase());
-                                displayOperator = cObj?.operators?.[0] || "Dialog";
+                                displayOperator = cObj?.operators?.[0] || "Direct Carrier";
                               }
 
                               return (
@@ -7158,7 +7195,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         className="w-7 h-5 rounded border border-slate-300/80 shadow-2xs shrink-0"
                       />
                       <span className="font-black text-slate-900 truncate">
-                        {chosen.country} - {info.operator} - {info.maskedPrefix || chosen.rangePrefix || chosen.dialCode}
+                        {chosen.country} - {info.operator} - {(info as any).maskedPrefix || chosen.rangePrefix || chosen.dialCode}
                       </span>
                       <span className="text-emerald-600 text-xs font-semibold shrink-0">
                         (Unlimited available)
@@ -7256,7 +7293,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                       filteredAvailableTerminations.map((r) => {
                         const info = formatTerminationInfo(r);
                         const isSelected = selectedTerminationPrefix === r.rangePrefix;
-                        const displayText = `${r.country} - ${info.operator} - ${info.maskedPrefix || r.rangePrefix || r.dialCode} (Unlimited available)`;
+                        const displayText = `${r.country} - ${info.operator} - ${(info as any).maskedPrefix || r.rangePrefix || r.dialCode} (Unlimited available)`;
 
                         return (
                           <button
@@ -7367,24 +7404,6 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                     onChange={(e) => setManualRangesSearch(e.target.value)}
                     className="w-full bg-slate-50/80 border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-xs font-medium text-slate-700 focus:outline-none focus:border-indigo-500 transition"
                   />
-                </div>
-
-                {/* Platform Quick Selection Filter */}
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {["ALL", "Telegram", "WhatsApp", "IMO", "Facebook"].map((plat) => (
-                    <button
-                      key={plat}
-                      type="button"
-                      onClick={() => setManualRangesPlatformFilter(plat)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition active:scale-95 cursor-pointer border ${
-                        manualRangesPlatformFilter === plat
-                          ? "bg-slate-900 text-white border-slate-900"
-                          : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
-                      }`}
-                    >
-                      {plat === "ALL" ? "All Platforms" : plat}
-                    </button>
-                  ))}
                 </div>
               </div>
             </div>

@@ -1034,7 +1034,7 @@ async function startServer() {
 
   function saveServerGlobalLiveHits(list: any[]) {
     try {
-      fs.writeFileSync(GLOBAL_LIVE_HITS_FILE, JSON.stringify(list.slice(0, 1000), null, 2), "utf-8");
+      fs.writeFileSync(GLOBAL_LIVE_HITS_FILE, JSON.stringify(list.slice(0, 5000), null, 2), "utf-8");
     } catch (e) {
       console.warn("Could not save global_live_hits.json:", e);
     }
@@ -4711,20 +4711,18 @@ async function startServer() {
         .trim();
     }
 
-    if (!country) {
-      const numDigits = extractedPhone.replace(/\D/g, "");
-      if (numDigits.startsWith("880") || extractedPhone.startsWith("+880")) country = "Bangladesh";
-      else if (numDigits.startsWith("91")) country = "India";
-      else if (numDigits.startsWith("7")) country = "Russia";
-      else if (numDigits.startsWith("60")) country = "Malaysia";
-      else if (numDigits.startsWith("1")) country = "United States";
-      else if (numDigits.startsWith("44")) country = "United Kingdom";
-      else if (numDigits.startsWith("62")) country = "Indonesia";
-      else if (numDigits.startsWith("84")) country = "Vietnam";
-      else if (numDigits.startsWith("94")) country = "Sri Lanka";
-      else if (numDigits.startsWith("257")) country = "Burundi";
-      else if (numDigits.startsWith("967")) country = "Yemen";
-      else country = "Global Route";
+    if (country) {
+      const resolved = findCountryByNameOrCode(country);
+      if (resolved && resolved.name && resolved.name !== "Global") {
+        country = resolved.name;
+      }
+    } else {
+      const detected = detectCountryFromNumbers([extractedPhone]);
+      if (detected && detected.name) {
+        country = detected.name;
+      } else {
+        country = "Global Route";
+      }
     }
 
     // 3. Service Extraction (Supports "Service: WHATSAPP", "👑 Service: IMO")

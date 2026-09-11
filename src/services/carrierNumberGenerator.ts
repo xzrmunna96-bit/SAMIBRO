@@ -307,11 +307,12 @@ export function generateRealisticCarrierNumber(
     if (foundByCountry) matchedCountryDef = foundByCountry;
   }
 
-  // Fallback if completely unmatched (NEVER "International", fallback to Sri Lanka or first 2 digits)
+  // Fallback if completely unmatched (NEVER "International", fallback to getCountryInfo or Global Route)
+  const fallbackInfo = getCountryInfo(digitsOnly);
   const countryDef: CarrierCountryDef = matchedCountryDef || {
-    dialCode: digitsOnly.slice(0, 2) || "94",
-    country: "Sri Lanka",
-    operators: ["Dialog", "Mobitel", "Airtel", "Hutch"],
+    dialCode: digitsOnly.slice(0, 3) || "880",
+    country: fallbackInfo.name || "Global Route",
+    operators: ["Direct Carrier"],
     nationalLength: 9,
   };
 

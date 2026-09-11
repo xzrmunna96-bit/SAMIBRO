@@ -107,6 +107,8 @@ export const GLOBAL_COUNTRIES_LIST: GlobalCountryData[] = [
   { iso: 'GA', name: 'Gabon', flag: '🇬🇦', dialCode: '+241', region: 'Africa', operators: ['Airtel Gabon', 'Moov Africa Gabon Telecom'], topServices: ['WhatsApp', 'Telegram'], sampleRange: '24177', ratePerSms: '$0.28', status: 'Ready', defaultHits: 18 },
   { iso: 'CG', name: 'Republic of the Congo', flag: '🇨🇬', dialCode: '+242', region: 'Africa', operators: ['MTN Congo', 'Airtel Congo'], topServices: ['WhatsApp', 'Telegram'], sampleRange: '24206', ratePerSms: '$0.28', status: 'Ready', defaultHits: 15 },
   { iso: 'TD', name: 'Chad', flag: '🇹🇩', dialCode: '+235', region: 'Africa', operators: ['Airtel Chad', 'Moov Africa Chad'], topServices: ['WhatsApp', 'Telegram'], sampleRange: '23566', ratePerSms: '$0.29', status: 'Ready', defaultHits: 14 },
+  { iso: 'CF', name: 'Central African Republic', flag: '🇨🇫', dialCode: '+236', region: 'Africa', operators: ['Orange CAF', 'Telecel', 'Nationlink'], topServices: ['WhatsApp', 'Facebook', 'Telegram'], sampleRange: '23674', ratePerSms: '$0.28', status: 'Active', defaultHits: 35 },
+  { iso: 'BI', name: 'Burundi', flag: '🇧🇮', dialCode: '+257', region: 'Africa', operators: ['Econet Leo', 'Lumitel', 'Onatel'], topServices: ['WhatsApp', 'Telegram'], sampleRange: '25779', ratePerSms: '$0.27', status: 'Ready', defaultHits: 20 },
   { iso: 'MR', name: 'Mauritania', flag: '🇲🇷', dialCode: '+222', region: 'Africa', operators: ['Mauritel', 'Chinguitel', 'Mattel'], topServices: ['WhatsApp', 'Telegram'], sampleRange: '22245', ratePerSms: '$0.28', status: 'Ready', defaultHits: 16 },
 
   // Europe
@@ -266,6 +268,7 @@ export const COUNTRY_CODES_MAP: Record<string, { flag: string; name: string }> =
     '233': { flag: '🇬🇭', name: 'Ghana' },
     '234': { flag: '🇳🇬', name: 'Nigeria' },
     '235': { flag: '🇹🇩', name: 'Chad' },
+    '236': { flag: '🇨🇫', name: 'Central African Republic' },
     '237': { flag: '🇨🇲', name: 'Cameroon' },
     '241': { flag: '🇬🇦', name: 'Gabon' },
     '242': { flag: '🇨🇬', name: 'Congo' },
@@ -278,6 +281,7 @@ export const COUNTRY_CODES_MAP: Record<string, { flag: string; name: string }> =
     '254': { flag: '🇰🇪', name: 'Kenya' },
     '255': { flag: '🇹🇿', name: 'Tanzania' },
     '256': { flag: '🇺🇬', name: 'Uganda' },
+    '257': { flag: '🇧🇮', name: 'Burundi' },
     '258': { flag: '🇲🇿', name: 'Mozambique' },
     '260': { flag: '🇿🇲', name: 'Zambia' },
     '261': { flag: '🇲🇬', name: 'Madagascar' },

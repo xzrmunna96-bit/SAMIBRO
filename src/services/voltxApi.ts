@@ -301,8 +301,12 @@ export function resolveCarrierDetails(range: string): { operator: string; countr
     return { operator: op, country: info.name };
   }
 
-  // Fallback to Sri Lanka with real carrier instead of International
-  return { operator: 'Dialog / Mobitel', country: 'Sri Lanka' };
+  // Dynamic fallback based on getCountryInfo or Global Route (NEVER hardcode Sri Lanka for non-94 numbers)
+  if (info && info.name) {
+    return { operator: 'Direct Carrier', country: info.name };
+  }
+
+  return { operator: 'Direct Carrier', country: 'Global Route' };
 }
 
 export function stripFlagFromCountryName(name: string): string {
@@ -314,21 +318,25 @@ export function stripFlagFromCountryName(name: string): string {
 }
 
 export function getRealCountryName(rawCountry?: string, rangeStr?: string): string {
-  const carrier = resolveCarrierDetails(rangeStr || '');
-  let val = '';
+  const digits = (rangeStr || '').replace(/\D/g, '');
+  const info = getCountryInfo(rangeStr || '');
+  
+  // If rawCountry is missing, "International", or incorrectly "Sri Lanka" when range does NOT start with 94:
   if (
     !rawCountry ||
     !rawCountry.trim() ||
-    rawCountry.trim().toLowerCase() === 'international' ||
+    rawCountry.trim().toLowerCase().includes('international') ||
     rawCountry.trim().toLowerCase() === 'global' ||
     rawCountry.trim().toLowerCase() === 'global route' ||
-    rawCountry.trim().toLowerCase().includes('international')
+    (rawCountry.trim().toLowerCase().includes('sri lanka') && digits && !digits.startsWith('94'))
   ) {
-    val = carrier.country;
-  } else {
-    val = rawCountry.trim();
+    if (info && info.name && !info.name.toLowerCase().includes('international')) {
+      return stripFlagFromCountryName(info.name);
+    }
+    const carrier = resolveCarrierDetails(rangeStr || '');
+    return stripFlagFromCountryName(carrier.country);
   }
-  return stripFlagFromCountryName(val);
+  return stripFlagFromCountryName(rawCountry.trim());
 }
 
 export interface FetchConsoleResponse {

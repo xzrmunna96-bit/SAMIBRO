@@ -18,7 +18,7 @@ import {
   Radio,
 } from "lucide-react";
 import { LiveConsoleHit, stripFlagFromCountryName } from "../services/voltxApi";
-import { getCountryInfo } from "../services/countryHelper";
+import { getCountryInfo, GLOBAL_COUNTRIES_LIST } from "../services/countryHelper";
 import { getCountryFlagEmoji, speakOtpAnnouncement } from "./LoggedInDashboard";
 import { CountryFlag } from "./CountryFlags";
 import { sendOtpToTelegram } from "../services/telegramService";
@@ -226,7 +226,7 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
   
   // Filter & Search states matching Screenshot 1
   const [searchQuery, setSearchQuery] = useState("");
-  const [perPage, setPerPage] = useState(50);
+  const [perPage, setPerPage] = useState(200);
   const [currentPage, setCurrentPage] = useState(1);
   const [isLiveConnected, setIsLiveConnected] = useState(true);
   const [isSoundOn, setIsSoundOn] = useState(true);
@@ -238,11 +238,32 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
       const converted: TestSmsCardItem[] = liveHits.map((h, i) => {
         const rawRange = (h.range || (h as any).rangeCode || "").trim();
         const rawPhone = ((h as any).number || (h as any).testNumber || rawRange).trim();
+        const cleanDigits = (rawPhone || rawRange).replace(/\D/g, "");
         const info = getCountryInfo(rawRange || rawPhone);
 
         let countryName = (h.country || (h as any).countryName || "").trim();
-        if (!countryName || countryName.toUpperCase() === "INTERNATIONAL") {
+        if (
+          !countryName ||
+          countryName.toUpperCase().includes("INTERNATIONAL") ||
+          (countryName.toUpperCase().includes("SRI LANKA") && !cleanDigits.startsWith("94"))
+        ) {
           countryName = info.name;
+        }
+
+        let operatorName = h.operator || "";
+        if (
+          !operatorName ||
+          operatorName === "Gateway Route" ||
+          (operatorName.toLowerCase().includes("dialog") && !cleanDigits.startsWith("94"))
+        ) {
+          const matchedCountry = GLOBAL_COUNTRIES_LIST.find(
+            (c) => c.name.toLowerCase() === countryName.toLowerCase()
+          );
+          if (matchedCountry && matchedCountry.operators && matchedCountry.operators.length > 0) {
+            operatorName = matchedCountry.operators.join(" / ");
+          } else {
+            operatorName = "Direct Carrier";
+          }
         }
 
         const now = Date.now();
@@ -253,7 +274,7 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
         return {
           id: (h as any).id || `prop_hit_${rawPhone}_${tVal}_${h.sid || ""}_${i}`,
           country: countryName.toUpperCase(),
-          operator: h.operator || "Gateway Route",
+          operator: operatorName,
           range: rawRange || info.dialCode.replace("+", ""),
           number: rawPhone,
           sid: h.sid || (h as any).service || "WhatsApp",
@@ -609,10 +630,12 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
               }}
               className="bg-white border border-slate-200 rounded px-2 py-1 text-xs font-bold focus:outline-none cursor-pointer"
             >
-              <option value={10}>10</option>
-              <option value={20}>20</option>
               <option value={50}>50</option>
               <option value={100}>100</option>
+              <option value={200}>200</option>
+              <option value={500}>500</option>
+              <option value={1000}>1000</option>
+              <option value={5000}>All (5000+)</option>
             </select>
           </div>
 

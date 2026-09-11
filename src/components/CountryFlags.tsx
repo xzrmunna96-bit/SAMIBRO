@@ -205,6 +205,7 @@ const DIAL_TO_ISO: Record<string, string> = {
   '254': 'ke',
   '255': 'tz',
   '256': 'ug',
+  '257': 'bi',
   '250': 'rw',
   '234': 'ng',
   '233': 'gh',

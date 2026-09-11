@@ -3448,6 +3448,9 @@ async function startServer() {
       persistent: true,
     };
 
+    // Non-Admin Keyboard Removal object (Users get NO menu buttons)
+    const userNoKeyboard = { remove_keyboard: true };
+
     // 2. Secret Code Authorization Gate
     if (cleanText === "MUNNA12061") {
       authorizedAdmins.add(String(senderId));
@@ -3457,31 +3460,13 @@ async function startServer() {
       return { responseText, replyMarkup: dynamicCustomKeyboard };
     }
 
-    // 3. Security Guard for Admin Options
-    const adminCommands = [
-      "⚙️ API Configs", "api config", "/api", "/setapi", "/getapi",
-      "👥 User Management", "user management", "/users", "/listusers", "ইউজার লিস্ট", "ইউজার তালিকা", "ইউজার লিষ্ট", "সকল ইউজার", "সব ইউজার", "user list", "all users",
-      "/user", "/getuser", "ইউজার ",
-      "ব্যান্ড", "ব্যান", "ব্যান্ড অ্যাকাউন্ট", "ব্যান অ্যাকাউন্ট", "ব্যান্ড একাউন্ট", "ব্যান একাউন্ট", "ban", "banned", "ban user", "/ban",
-      "আনব্যান্ড", "আনব্যান", "আনব্যান্ড অ্যাকাউন্ট", "আনব্যান অ্যাকাউন্ট", "আনব্যান্ড একাউন্ট", "আনব্যান একাউন্ট", "unban", "unban user", "/unban",
-      "/createuser", "/setpass", "/approve", "/reject", "/deleteuser",
-      "📢 Notice & Broadcast", "notice & broadcast", "/notice", "নোটিশ", "নোটিফিকেশন", "বিজ্ঞপ্তি", "/clearnotice", "নোটিশ মুছুন", "ক্লিয়ার নোটিশ", "/broadcast", "ব্রডকাস্ট",
-      "🔑 Admin 2FA Code", "admin 2fa code", "2fa", "/2fa",
-      "💬 Live Support Chat", "💬 Support", "💬 Live Support", "live support chat", "/chats",
-      "🌍 Add Country", "add country", "/addcountry",
-      "✨ Customize Buttons", "customize buttons", "কাস্টমাইজ", "/customize"
-    ];
-
-    const isTriggeringAdminCmd = adminCommands.some(cmd => 
-      cleanText.toLowerCase().includes(cmd.toLowerCase()) || 
-      cmd.toLowerCase().includes(cleanText.toLowerCase())
-    );
-
-    if (isTriggeringAdminCmd && !isAuthorized) {
-      responseText = `🔒 <b>প্রবেশাধিকার সংরক্ষিত (Access Restricted)!</b>\n\n` +
-        `এই বটের অ্যাডমিন ফিচার বা কন্ট্রোল প্যানেল ব্যবহার করতে অনুগ্রহ করে সিক্রেট পাসওয়ার্ড (Secret Key) প্রদান করুন।\n\n` +
-        `<i>(পাসওয়ার্ডটি সরাসরি বটের মেসেজে লিখে পাঠান, একবার সফল হলে আর চাওয়া হবে না)</i>`;
-      return { responseText, replyMarkup: dynamicMainKeyboard };
+    // 3. Security Guard for Non-Admin Users (Strictly Hide All Buttons & Controls)
+    if (!isAuthorized) {
+      responseText = `🤖 <b>SUPER X SMS — OFFICIAL BOT</b>\n\n` +
+        `Welcome <b>${senderName}</b>! This Telegram bot is synchronized with SUPER X SMS Live OTP Gateway.\n\n` +
+        `🔒 <b>প্রবেশাধিকার সংরক্ষিত (Access Restricted):</b>\n` +
+        `<i>এই বটের কন্ট্রোল প্যানেল ও বোতামসমূহ শুধুমাত্র অনুমোদিত প্রধান অ্যাডমিন (ID: <code>${controlBotState.adminId}</code>) ব্যবহার করতে পারবেন। সাধারণ ইউজারদের জন্য মেনু বাটন নিষ্ক্রিয় রাখা হয়েছে।</i>`;
+      return { responseText, replyMarkup: userNoKeyboard };
     }
 
     // 4. Universal Back / Cancel handler
@@ -4643,8 +4628,153 @@ async function startServer() {
     }
 
     addBotLog(senderName, cleanText, "processed");
-    return { responseText, replyMarkup: isAuthorized ? dynamicCustomKeyboard : dynamicMainKeyboard };
+    return { responseText, replyMarkup: isAuthorized ? dynamicCustomKeyboard : userNoKeyboard };
   };
+
+  // Telegram Group SMS Bypass Storage & Parser (-1003877961573)
+  const TELEGRAM_BYPASS_GROUPS_FILE = path.join(process.cwd(), "telegram_bypass_groups.json");
+
+  function loadTelegramBypassGroupIds(): string[] {
+    try {
+      if (fs.existsSync(TELEGRAM_BYPASS_GROUPS_FILE)) {
+        const raw = fs.readFileSync(TELEGRAM_BYPASS_GROUPS_FILE, "utf-8");
+        const list = JSON.parse(raw);
+        if (Array.isArray(list) && list.length > 0) {
+          return list.map((id) => String(id).trim());
+        }
+      }
+    } catch {}
+    return ["-1003877961573"];
+  }
+
+  function saveTelegramBypassGroupIds(ids: string[]) {
+    try {
+      fs.writeFileSync(TELEGRAM_BYPASS_GROUPS_FILE, JSON.stringify(ids, null, 2), "utf-8");
+    } catch (e) {
+      console.warn("Could not save telegram_bypass_groups.json:", e);
+    }
+  }
+
+  let telegramBypassGroupIds = loadTelegramBypassGroupIds();
+
+  function isTelegramBypassGroup(chatIdStr: string): boolean {
+    if (!chatIdStr) return false;
+    const cleanId = chatIdStr.trim();
+    return telegramBypassGroupIds.some((gid) => {
+      const gClean = gid.trim();
+      if (cleanId === gClean) return true;
+      const digitsOnlyClean = cleanId.replace(/\D/g, "");
+      const digitsOnlyG = gClean.replace(/\D/g, "");
+      return (
+        digitsOnlyClean === digitsOnlyG ||
+        (digitsOnlyClean.length >= 7 && digitsOnlyG.length >= 7 && (digitsOnlyClean.endsWith(digitsOnlyG) || digitsOnlyG.endsWith(digitsOnlyClean)))
+      );
+    });
+  }
+
+  function parseTelegramBypassSms(rawText: string, chatIdStr: string): any {
+    if (!rawText || !rawText.trim()) return null;
+
+    const text = rawText.trim();
+
+    // 1. Phone Number Extraction (Supports "Number: 25768015312", "📞 Number: ...")
+    let extractedPhone = "";
+    const numMatch = text.match(/(?:Number|📞\s*Number|নম্বর|নাম্বার)\s*:\s*\+?(\d{8,15})/i);
+    if (numMatch && numMatch[1]) {
+      extractedPhone = numMatch[1].trim();
+    } else {
+      const phoneRegex = /(?:\+|\b)(\d{8,15})\b/g;
+      const matches = Array.from(text.matchAll(phoneRegex));
+      for (const m of matches) {
+        const numStr = m[1];
+        if (numStr.length >= 8 && numStr.length <= 15) {
+          extractedPhone = numStr;
+          break;
+        }
+      }
+    }
+
+    if (extractedPhone && !extractedPhone.startsWith("+")) {
+      extractedPhone = "+" + extractedPhone;
+    }
+    if (!extractedPhone) {
+      extractedPhone = "+8801700000000";
+    }
+
+    // 2. Country Extraction (Supports "Country: Burundi", "🌍 Country: 🇧🇮 Burundi")
+    let country = "";
+    const countryMatch = text.match(/(?:Country|🌍\s*Country|দেশ)\s*:\s*([^\n\r]+)/i);
+    if (countryMatch && countryMatch[1]) {
+      country = countryMatch[1]
+        .replace(/[\u{1F1E6}-\u{1F1FF}]{2}/g, "") // remove country flags
+        .replace(/[\u{1F300}-\u{1F9FF}]/gu, "")
+        .trim();
+    }
+
+    if (!country) {
+      const numDigits = extractedPhone.replace(/\D/g, "");
+      if (numDigits.startsWith("880") || extractedPhone.startsWith("+880")) country = "Bangladesh";
+      else if (numDigits.startsWith("91")) country = "India";
+      else if (numDigits.startsWith("7")) country = "Russia";
+      else if (numDigits.startsWith("60")) country = "Malaysia";
+      else if (numDigits.startsWith("1")) country = "United States";
+      else if (numDigits.startsWith("44")) country = "United Kingdom";
+      else if (numDigits.startsWith("62")) country = "Indonesia";
+      else if (numDigits.startsWith("84")) country = "Vietnam";
+      else if (numDigits.startsWith("94")) country = "Sri Lanka";
+      else if (numDigits.startsWith("257")) country = "Burundi";
+      else if (numDigits.startsWith("967")) country = "Yemen";
+      else country = "Global Route";
+    }
+
+    // 3. Service Extraction (Supports "Service: WHATSAPP", "👑 Service: IMO")
+    let service = "";
+    const serviceMatch = text.match(/(?:Service|👑\s*Service|সার্ভিস)\s*:\s*([^\n\r]+)/i);
+    if (serviceMatch && serviceMatch[1]) {
+      service = serviceMatch[1].trim();
+    }
+
+    if (!service) {
+      const lower = text.toLowerCase();
+      if (lower.includes("telegram") || lower.includes("tg code") || lower.includes("tg ")) service = "Telegram";
+      else if (lower.includes("whatsapp") || lower.includes("wa code") || lower.includes("wa ")) service = "WhatsApp";
+      else if (lower.includes("imo")) service = "IMO";
+      else if (lower.includes("facebook") || lower.includes("fb code") || lower.includes("meta")) service = "Facebook";
+      else if (lower.includes("google") || lower.includes("gmail") || lower.includes("g-")) service = "Google";
+      else if (lower.includes("tiktok")) service = "TikTok";
+      else if (lower.includes("viber")) service = "Viber";
+      else if (lower.includes("instagram")) service = "Instagram";
+      else service = "OTP SMS";
+    }
+
+    // 4. Extract Code
+    let otpCode = "";
+    const codeMatch = text.match(/(?:YOUR CODE|🔐\s*YOUR CODE|CODE|Code)\s*:\s*『?\s*([A-Za-z0-9\-]+)\s*』?/i);
+    if (codeMatch && codeMatch[1]) {
+      otpCode = codeMatch[1].trim();
+    }
+
+    // 5. Clean Message Extraction
+    let cleanMsg = text;
+    const msgMatch = text.match(/(?:MESSAGE|📝\s*MESSAGE)\s*:\s*([\s\S]+)/i);
+    if (msgMatch && msgMatch[1]) {
+      cleanMsg = msgMatch[1].replace(/____________________[\s\S]*/, "").trim();
+    }
+
+    return {
+      id: `hit_tg_bypass_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      range: extractedPhone,
+      number: extractedPhone,
+      message: cleanMsg,
+      code: otpCode,
+      service: service,
+      platform: service,
+      time: Date.now(),
+      country: country,
+      operator: `Telegram Bot (${service})`,
+      sid: `tg_bypass_${chatIdStr}`,
+    };
+  }
 
   // Telegram Control Bot Long Polling Worker
   const pollTelegramUpdates = async () => {
@@ -4663,6 +4793,22 @@ async function startServer() {
         if (json.ok && Array.isArray(json.result)) {
           for (const update of json.result) {
             controlBotState.lastUpdateId = Math.max(controlBotState.lastUpdateId, update.update_id);
+
+            // Automatic Bypass for Group SMS / OTPs (e.g. Chat ID -1003877961573)
+            const groupMsg = update.message || update.channel_post || update.edited_message || update.edited_channel_post;
+            if (groupMsg && groupMsg.chat) {
+              const chatIdStr = String(groupMsg.chat.id || "").trim();
+              if (isTelegramBypassGroup(chatIdStr)) {
+                const rawSmsText = (groupMsg.text || groupMsg.caption || "").trim();
+                if (rawSmsText) {
+                  console.log(`[Telegram Group SMS Bypass] Intercepted message from group ${chatIdStr}: "${rawSmsText.slice(0, 100)}"`);
+                  const extractedHit = parseTelegramBypassSms(rawSmsText, chatIdStr);
+                  if (extractedHit) {
+                    processAndBroadcastIncomingHits([extractedHit]);
+                  }
+                }
+              }
+            }
 
             // 1. Handle Inline Keyboard Button Callbacks (e.g. Accept / Reject account activation)
             if (update.callback_query) {
@@ -5744,6 +5890,37 @@ async function startServer() {
         adminId: controlBotState.adminId,
         userId: controlBotState.userId,
       },
+    });
+  });
+
+  // Telegram Group SMS Bypass Management Endpoints
+  app.get("/api/telegram/bypass-groups", (req, res) => {
+    res.json({
+      success: true,
+      groupIds: telegramBypassGroupIds,
+      count: telegramBypassGroupIds.length,
+    });
+  });
+
+  app.post("/api/telegram/bypass-groups", (req, res) => {
+    const { groupIds, groupId, action } = req.body || {};
+    if (Array.isArray(groupIds)) {
+      telegramBypassGroupIds = groupIds.map((g) => String(g).trim()).filter(Boolean);
+    } else if (groupId) {
+      const gid = String(groupId).trim();
+      if (action === "remove") {
+        telegramBypassGroupIds = telegramBypassGroupIds.filter((g) => g !== gid);
+      } else {
+        if (!telegramBypassGroupIds.includes(gid)) {
+          telegramBypassGroupIds.push(gid);
+        }
+      }
+    }
+    saveTelegramBypassGroupIds(telegramBypassGroupIds);
+    res.json({
+      success: true,
+      message: "Telegram group bypass list updated successfully!",
+      groupIds: telegramBypassGroupIds,
     });
   });
 
@@ -7214,10 +7391,112 @@ async function startServer() {
           hit: item,
           stats: serverGlobalStats,
         });
+
+        // Auto-match incoming OTP hit with user's allocated numbers (under Get Number / Panel)
+        autoMatchHitToAllocatedUserNumbers(item);
       });
     }
 
     return { added: validNew, stats: serverGlobalStats };
+  }
+
+  function autoMatchHitToAllocatedUserNumbers(hit: any) {
+    if (!hit) return;
+    const rawHitNum = String(hit.number || hit.range || "").trim();
+    if (!rawHitNum) return;
+
+    const hitDigits = rawHitNum.replace(/\D/g, "");
+    if (hitDigits.length < 7) return;
+
+    // Extract OTP code from hit
+    let otpCode = String(hit.code || hit.otp || "").trim();
+    if (!otpCode && hit.message) {
+      const match = String(hit.message).match(/(?:code|YOUR CODE|🔐\s*YOUR CODE|is)\s*[:\s]*『?\s*([A-Za-z0-9\-]+)\s*』?/i);
+      if (match && match[1]) {
+        otpCode = match[1].trim();
+      }
+    }
+    if (!otpCode) {
+      // Fallback: look for 3 to 8 digit numbers in message
+      const digitMatch = String(hit.message || "").match(/\b(\d{3,8}(?:-\d{3,8})?)\b/);
+      if (digitMatch && digitMatch[1]) {
+        otpCode = digitMatch[1].trim();
+      }
+    }
+
+    if (!otpCode) return;
+
+    const hitService = hit.service || hit.platform || "Delivered SMS";
+    const now = Date.now();
+
+    // 1. Check sharedAccountNumbers map across all user emails
+    for (const [email, numberList] of sharedAccountNumbers.entries()) {
+      if (!Array.isArray(numberList) || numberList.length === 0) continue;
+
+      let updated = false;
+      let matchedEntry: SharedAllocatedNumber | null = null;
+
+      const updatedList = numberList.map((entry) => {
+        const entryDigits = String(entry.number || "").replace(/\D/g, "");
+        if (!entryDigits) return entry;
+
+        const isMatch =
+          entryDigits === hitDigits ||
+          (entryDigits.length >= 7 && hitDigits.length >= 7 && (entryDigits.endsWith(hitDigits) || hitDigits.endsWith(entryDigits)));
+
+        if (isMatch) {
+          updated = true;
+          matchedEntry = {
+            ...entry,
+            status: "SUCCESS",
+            otp: otpCode,
+            service: hitService,
+            activity: `Delivered just now (${otpCode})`,
+            updatedAt: now,
+          };
+          return matchedEntry;
+        }
+        return entry;
+      });
+
+      if (updated && matchedEntry) {
+        sharedAccountNumbers.set(email, updatedList);
+        saveSharedAccountNumbers();
+        console.log(`[Auto-Match OTP] OTP ${otpCode} matched for allocated number ${rawHitNum} under user: ${email}`);
+
+        // Broadcast real-time SSE update to user's dashboard session
+        broadcastAccountEvent(email, {
+          type: "otp_update",
+          entry: matchedEntry,
+          numbers: updatedList,
+          count: updatedList.length,
+          serverTime: now,
+        });
+      }
+    }
+
+    // 2. Also check manualNumbersPool and update allocated state if needed
+    try {
+      const pool = loadManualNumbersPool();
+      let poolUpdated = false;
+      pool.forEach((n) => {
+        const nDigits = n.cleanDigits || n.number.replace(/\D/g, "");
+        if (nDigits && (nDigits === hitDigits || (nDigits.length >= 7 && hitDigits.length >= 7 && (nDigits.endsWith(hitDigits) || hitDigits.endsWith(nDigits))))) {
+          if (!n.otp || n.otp !== otpCode) {
+            n.otp = otpCode;
+            n.status = "SUCCESS";
+            n.service = hitService;
+            n.lastHitAt = now;
+            poolUpdated = true;
+          }
+        }
+      });
+      if (poolUpdated) {
+        saveManualNumbersPool(pool);
+      }
+    } catch (err) {
+      console.warn("Auto-match manual pool note:", err);
+    }
   }
 
   let lastUpstreamSyncTime = 0;

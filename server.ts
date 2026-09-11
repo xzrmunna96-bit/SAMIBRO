@@ -14,7 +14,18 @@ import { GLOBAL_COUNTRIES_LIST } from "./src/services/countryHelper";
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+  const PORT = 3000;
+
+  // CORS middleware for external and local API access
+  app.use((req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept");
+    if (req.method === "OPTIONS") {
+      return res.status(200).end();
+    }
+    next();
+  });
 
   app.use(express.json({ limit: "10mb" }));
 
@@ -4706,7 +4717,7 @@ async function startServer() {
     const countryMatch = text.match(/(?:Country|🌍\s*Country|দেশ)\s*:\s*([^\n\r]+)/i);
     if (countryMatch && countryMatch[1]) {
       country = countryMatch[1]
-        .replace(/[\u{1F1E6}-\u{1F1FF}]{2}/g, "") // remove country flags
+        .replace(/[\u{1F1E6}-\u{1F1FF}]{2}/gu, "") // remove country flags
         .replace(/[\u{1F300}-\u{1F9FF}]/gu, "")
         .trim();
     }
@@ -7642,7 +7653,7 @@ async function startServer() {
     try {
       const { createServer: createViteServer } = await import("vite");
       const vite = await createViteServer({
-        server: { middlewareMode: true },
+        server: { middlewareMode: true, hmr: false },
         appType: "spa",
       });
       app.use(vite.middlewares);

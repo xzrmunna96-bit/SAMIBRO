@@ -1246,6 +1246,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
       fetchIncomingSmsHits();
     };
     window.addEventListener('focus', handleWindowFocus);
+    window.addEventListener('super_x_accounts_updated', syncAllAdminData);
     window.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {
         handleWindowFocus();
@@ -1255,6 +1256,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     return () => {
       clearInterval(syncInterval);
       window.removeEventListener('focus', handleWindowFocus);
+      window.removeEventListener('super_x_accounts_updated', syncAllAdminData);
     };
   }, [isAdminAuthenticated]);
 

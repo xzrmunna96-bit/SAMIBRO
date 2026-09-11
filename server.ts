@@ -1347,8 +1347,17 @@ async function startServer() {
     };
   }
 
+  function getActiveBotToken(): string {
+    return (
+      (typeof controlBotState !== "undefined" && controlBotState.botToken) ||
+      (typeof botHostingConfig !== "undefined" && botHostingConfig.botToken) ||
+      (typeof telegramConfig !== "undefined" && telegramConfig.botToken) ||
+      "8831851994:AAEjiZhHWDl97RABfkzOuk3NbI8291dS1b8"
+    );
+  }
+
   async function updateTelegramAccountMessagesOnApproval(target: any, approverName: string, directChatId?: string | number, directMessageId?: number) {
-    const botToken = "8631714331:AAEd33AVl9oqI-HdGW7jtxE37y4N4nH4ox4";
+    const botToken = getActiveBotToken();
     const messages = getTrackedTelegramMessages(target.id, target.email);
     if (directChatId && directMessageId) {
       const exists = messages.some(m => String(m.chatId) === String(directChatId) && m.messageId === directMessageId);
@@ -1404,7 +1413,7 @@ async function startServer() {
   }
 
   async function updateTelegramAccountMessagesOnRejection(target: any, rejecterName: string, directChatId?: string | number, directMessageId?: number) {
-    const botToken = "8631714331:AAEd33AVl9oqI-HdGW7jtxE37y4N4nH4ox4";
+    const botToken = getActiveBotToken();
     const messages = getTrackedTelegramMessages(target.id, target.email);
     if (directChatId && directMessageId) {
       const exists = messages.some(m => String(m.chatId) === String(directChatId) && m.messageId === directMessageId);
@@ -1551,7 +1560,7 @@ async function startServer() {
     const undelivered = queue.filter((q) => !q.delivered);
     if (undelivered.length === 0) return;
 
-    const botToken = "8631714331:AAEd33AVl9oqI-HdGW7jtxE37y4N4nH4ox4";
+    const botToken = getActiveBotToken();
     const adminTargets = new Set<string>();
     adminTargets.add("-1004476126020");
     adminTargets.add("7084317713");

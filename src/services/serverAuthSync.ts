@@ -472,6 +472,25 @@ export function initServerRealtimeSync() {
   fetchAccountsFromServer().catch(() => {});
   fetchSubAdminsFromServer().catch(() => {});
 
+  // Real-Time Server-Sent Events (SSE) listener for instant cross-client updates
+  if (typeof window !== 'undefined' && typeof EventSource !== 'undefined') {
+    try {
+      const sse = new EventSource('/api/accounts/events');
+      sse.onmessage = (evt) => {
+        try {
+          const data = JSON.parse(evt.data);
+          if (data && (data.type === 'accounts_updated' || data.type === 'connected')) {
+            fetchAccountsFromServer(true).catch(() => {});
+            fetchSubAdminsFromServer(true).catch(() => {});
+          }
+        } catch {}
+      };
+      sse.onerror = () => {
+        // EventSource will automatically reconnect
+      };
+    } catch {}
+  }
+
   // 9a. Real-Time Accounts Synchronization using lightweight, standard-compliant short polling
   // This avoids serverless execution limits, prevents browser socket exhaustion (max 6 TCP connections),
   // and works flawlessly across all mobile data networks and browsers (Chrome, Via, Safari, etc.)

@@ -3257,7 +3257,7 @@ async function startServer() {
   };
 
   // Persistent Telegram Sent Signatures Store to prevent any OTP from ever being sent more than once
-  const TELEGRAM_SENT_SIGNATURES_FILE = path.join(SERVER_DATA_DIR, "telegram_sent_signatures.json");
+  const TELEGRAM_SENT_SIGNATURES_FILE = path.join(DATA_DIR, "telegram_sent_signatures.json");
   let sentTelegramSignatures = new Set<string>();
 
   function loadTelegramSentSignatures() {
@@ -7794,8 +7794,8 @@ async function startServer() {
       validNew.push({
         ...h,
         time: hitTime,
-        code: extractedOtp || h.code || h.otp,
-        otp: extractedOtp || h.code || h.otp,
+        code: h.code || h.otp || extractOtpCode(h.message || "") || extractedOtp,
+        otp: h.otp || h.code || extractOtpCode(h.message || "") || extractedOtp,
         isFoxSms: h.isFoxSms ?? true,
         source: h.source || "FOX SMS",
       });

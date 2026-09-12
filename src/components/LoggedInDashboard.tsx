@@ -2262,15 +2262,15 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     };
   }, []);
 
-  // Save live hits to localStorage with debouncing (stores full 24-hour pool up to 500 hits)
+  // Save live hits to localStorage with debouncing (stores full 7-day pool up to 1500 hits)
   useEffect(() => {
     const timer = setTimeout(() => {
       try {
         const now = Date.now();
-        const oneDayAgo = now - 24 * 60 * 60 * 1000;
-        const validHits = liveHits.slice(0, 500).filter((item: any) => {
+        const maxAge = now - 7 * 24 * 60 * 60 * 1000;
+        const validHits = liveHits.slice(0, 1500).filter((item: any) => {
           const t = typeof item.time === "number" ? item.time : (item.timestamp || new Date(item.time).getTime());
-          return !isNaN(t) && t >= oneDayAgo;
+          return !isNaN(t) && t >= maxAge;
         });
         localStorage.setItem("super_x_live_console_hits_24h", JSON.stringify(validHits));
       } catch {}
@@ -2279,40 +2279,40 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     return () => clearTimeout(timer);
   }, [liveHits]);
 
-  // Periodic 24-hour cleanup check every 2 minutes
+  // Periodic cleanup check every 5 minutes
   useEffect(() => {
     const purgeInterval = setInterval(() => {
       setLiveHits((prev) => {
         const now = Date.now();
-        const oneDayAgo = now - 24 * 60 * 60 * 1000;
+        const maxAge = now - 7 * 24 * 60 * 60 * 1000;
         const filtered = prev.filter((item: any) => {
           const t = typeof item.time === "number" ? item.time : (item.timestamp || new Date(item.time).getTime());
-          return !isNaN(t) && t >= oneDayAgo;
+          return !isNaN(t) && t >= maxAge;
         });
         if (filtered.length !== prev.length) {
           try {
-            localStorage.setItem("super_x_live_console_hits_24h", JSON.stringify(filtered.slice(0, 500)));
+            localStorage.setItem("super_x_live_console_hits_24h", JSON.stringify(filtered.slice(0, 1500)));
           } catch {}
           return filtered;
         }
         return prev;
       });
-    }, 120000);
+    }, 300000);
 
     return () => clearInterval(purgeInterval);
   }, []);
 
-  // Strict 24-Hour Active Hits Pool (Deduplicated & Canonical Source of Truth)
+  // Strict Active Hits Pool (Deduplicated & Canonical Source of Truth)
   const active24hHits = useMemo(() => {
     const now = Date.now();
-    const oneDayAgo = now - 24 * 60 * 60 * 1000;
+    const maxAge = now - 7 * 24 * 60 * 60 * 1000;
     const seen = new Set<string>();
     const result: LiveConsoleHit[] = [];
 
     for (const h of liveHits) {
       if (!h) continue;
       const t = parseHitTimestamp(h.time ?? (h as any).timestamp);
-      if (t < oneDayAgo) continue;
+      if (t < maxAge) continue;
       const numStr = ((h as any).number || (h as any).num || h.range || "").replace(/\D/g, "");
       const sidStr = (h.sid || (h as any).service || (h as any).cli || "").toLowerCase().trim();
       const msgStr = (h.message || "").trim().slice(0, 45);
@@ -9181,6 +9181,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             onAddLiveHit={(hit) => {
               setLiveHits((prev) => [hit, ...prev]);
             }}
+            onMergeHits={mergeIncomingHits}
             onRefreshHits={fetchRealTimeData}
             onSelectService={(service, range, phoneNum) => {
               if (service) {

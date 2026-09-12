@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   Search,
   RotateCw,
@@ -16,16 +16,29 @@ import {
   ChevronLeft,
   ChevronRight,
   Radio,
+  Key,
 } from "lucide-react";
 import { LiveConsoleHit, stripFlagFromCountryName } from "../services/voltxApi";
 import { getCountryInfo, GLOBAL_COUNTRIES_LIST } from "../services/countryHelper";
 import { getCountryFlagEmoji, speakOtpAnnouncement } from "./LoggedInDashboard";
 import { CountryFlag } from "./CountryFlags";
-import { sendOtpToTelegram } from "../services/telegramService";
+import { sendOtpToTelegram, extractOtpCode } from "../services/telegramService";
 import {
   SKYPE_DIRECT_CHAT_URL,
   handleOpenSkypeOrTeams,
 } from "../utils/contactLinks";
+import {
+  SkypeLogo,
+  WhatsAppLogo,
+  TelegramLogo,
+  FacebookLogo,
+  ImoLogo,
+  TikTokLogo,
+  GoogleLogo,
+  AppleLogo,
+  UberLogo,
+  InstagramLogo,
+} from "./BrandLogos";
 
 // Web Audio API "Tung-Tung" ascending chime notification generator
 export function playTungTungSound() {
@@ -64,18 +77,6 @@ export function playTungTungSound() {
     // Ignore audio context restriction errors
   }
 }
-import {
-  SkypeLogo,
-  WhatsAppLogo,
-  TelegramLogo,
-  FacebookLogo,
-  ImoLogo,
-  TikTokLogo,
-  GoogleLogo,
-  AppleLogo,
-  UberLogo,
-  InstagramLogo,
-} from "./BrandLogos";
 
 export interface SmsTestRecord {
   id: string;
@@ -90,11 +91,12 @@ export interface SmsTestRecord {
   speedSec: number;
 }
 
-interface LiveTestSmsViewProps {
+export interface LiveTestSmsViewProps {
   userEmail: string;
   liveHits: LiveConsoleHit[];
   onAddTestHistory?: (record: SmsTestRecord) => void;
   onAddLiveHit?: (hit: LiveConsoleHit) => void;
+  onMergeHits?: (hits: LiveConsoleHit[]) => void;
   onRefreshHits?: () => void;
   onSelectService?: (service: string, range?: string, phoneNum?: string) => void;
 }
@@ -111,30 +113,85 @@ export interface TestSmsCardItem {
   elapsed: string;
   timeStr: string;
   timestamp: number;
+  otpCode?: string;
+  source?: string;
+  isFoxSms?: boolean;
 }
 
-// Function to automatically mask OTP codes with XXXX in message text
-export function maskOtpInMessage(msg: string): string {
-  if (!msg) return "";
-  if (msg.includes("XXXX")) return msg;
+// Convert any incoming hit (from FOX SMS API or Voltx API) to display card item
+export function convertHitToCard(h: any, i: number = 0): TestSmsCardItem {
+  const rawRange = (h.range || (h as any).rangeCode || "").trim();
+  const rawPhone = ((h as any).number || (h as any).num || (h as any).testNumber || rawRange).trim();
+  const cleanDigits = (rawPhone || rawRange).replace(/\D/g, "");
+  const info = getCountryInfo(rawRange || rawPhone);
 
-  let masked = msg;
-  // Mask 4 to 8 digit numbers with XXXX
-  masked = masked.replace(/\b\d{4,8}\b/g, "XXXX");
-  // Mask 3+3 spaced numbers like 123 456 with XXX XXX
-  masked = masked.replace(/\b\d{3}\s\d{3}\b/g, "XXX XXX");
-  // Mask G-123456 with G-XXXXXX
-  masked = masked.replace(/G-\d{6}/gi, "G-XXXXXX");
-  return masked;
+  let countryName = (h.country || (h as any).countryName || "").trim();
+  if (
+    !countryName ||
+    countryName.toUpperCase().includes("INTERNATIONAL") ||
+    (countryName.toUpperCase().includes("SRI LANKA") && !cleanDigits.startsWith("94"))
+  ) {
+    countryName = info.name;
+  }
+
+  let operatorName = h.operator || "";
+  if (
+    !operatorName ||
+    operatorName === "Gateway Route" ||
+    (operatorName.toLowerCase().includes("dialog") && !cleanDigits.startsWith("94"))
+  ) {
+    const matchedCountry = GLOBAL_COUNTRIES_LIST.find(
+      (c) => c.name.toLowerCase() === countryName.toLowerCase()
+    );
+    if (matchedCountry && matchedCountry.operators && matchedCountry.operators.length > 0) {
+      operatorName = matchedCountry.operators.join(" / ");
+    } else {
+      operatorName = "Direct Carrier";
+    }
+  }
+
+  const now = Date.now();
+  let tVal = typeof h.time === "number" ? (h.time < 1e10 ? h.time * 1000 : h.time) : now;
+  if ((h as any).dt) {
+    const dtStr = String((h as any).dt).trim();
+    const isoStr = dtStr.includes(" ") && !dtStr.includes("T") ? dtStr.replace(" ", "T") + "Z" : dtStr;
+    const parsedDt = new Date(isoStr).getTime();
+    if (!isNaN(parsedDt) && parsedDt > 0) tVal = parsedDt;
+  }
+  const elapsedSec = Math.max(0, Math.floor((now - tVal) / 1000));
+  let elapsedStr = "Just now";
+  if (elapsedSec < 60) elapsedStr = `${Math.max(1, elapsedSec)}s ago`;
+  else if (elapsedSec < 3600) elapsedStr = `${Math.floor(elapsedSec / 60)}m ago`;
+  else if (elapsedSec < 86400) elapsedStr = `${Math.floor(elapsedSec / 3600)}h ago`;
+  else elapsedStr = `${Math.floor(elapsedSec / 86400)}d ago`;
+
+  const rawMsg = String(h.message || h.text || "Incoming SMS Packet").trim();
+  const extractedOtp = (h as any).code || (h as any).otp || extractOtpCode(rawMsg) || "";
+
+  return {
+    id: (h as any).id || `hit_${cleanDigits}_${tVal}_${(h.sid || "").toLowerCase()}_${i}`,
+    country: countryName.toUpperCase(),
+    operator: operatorName,
+    range: rawRange || info.dialCode.replace("+", ""),
+    number: rawPhone,
+    sid: h.sid || (h as any).service || (h as any).cli || "SMS",
+    message: rawMsg,
+    payout: h.payout && h.payout !== "-" ? String(h.payout) : "-",
+    elapsed: elapsedStr,
+    timeStr: new Date(tVal).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }),
+    timestamp: tVal,
+    otpCode: extractedOtp ? String(extractedOtp).trim() : undefined,
+    source: h.source || (h.isFoxSms ? "FOX SMS" : "VOLTX SMS"),
+    isFoxSms: Boolean(h.isFoxSms || h.source === "FOX SMS" || (h.operator && String(h.operator).includes("FOX SMS"))),
+  };
 }
-
-const INITIAL_SAMPLE_HITS: TestSmsCardItem[] = [];
 
 export const LiveTestSmsView = React.memo(function LiveTestSmsView({
   userEmail,
   liveHits,
   onAddTestHistory,
   onAddLiveHit,
+  onMergeHits,
   onRefreshHits,
   onSelectService,
 }: LiveTestSmsViewProps) {
@@ -144,102 +201,120 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
   const [testServiceInput, setTestServiceInput] = useState("WhatsApp");
   const [testCustomOtp, setTestCustomOtp] = useState("");
   const [isSendingTest, setIsSendingTest] = useState(false);
-  
-  // Filter & Search states matching Screenshot 1
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Filter & Search states
   const [searchQuery, setSearchQuery] = useState("");
   const [perPage, setPerPage] = useState(200);
   const [currentPage, setCurrentPage] = useState(1);
   const [isLiveConnected, setIsLiveConnected] = useState(true);
   const [isSoundOn, setIsSoundOn] = useState(true);
-  const [itemsList, setItemsList] = useState<TestSmsCardItem[]>(INITIAL_SAMPLE_HITS);
+  const [itemsList, setItemsList] = useState<TestSmsCardItem[]>([]);
 
-  // Sync real liveHits when prop changes
-  useEffect(() => {
-    if (onRefreshHits) {
-      onRefreshHits();
-    }
-  }, []);
-
-  useEffect(() => {
-    if (liveHits && liveHits.length > 0) {
-      const converted: TestSmsCardItem[] = liveHits.map((h, i) => {
-        const rawRange = (h.range || (h as any).rangeCode || "").trim();
-        const rawPhone = ((h as any).number || (h as any).testNumber || rawRange).trim();
-        const cleanDigits = (rawPhone || rawRange).replace(/\D/g, "");
-        const info = getCountryInfo(rawRange || rawPhone);
-
-        let countryName = (h.country || (h as any).countryName || "").trim();
-        if (
-          !countryName ||
-          countryName.toUpperCase().includes("INTERNATIONAL") ||
-          (countryName.toUpperCase().includes("SRI LANKA") && !cleanDigits.startsWith("94"))
-        ) {
-          countryName = info.name;
-        }
-
-        let operatorName = h.operator || "";
-        if (
-          !operatorName ||
-          operatorName === "Gateway Route" ||
-          (operatorName.toLowerCase().includes("dialog") && !cleanDigits.startsWith("94"))
-        ) {
-          const matchedCountry = GLOBAL_COUNTRIES_LIST.find(
-            (c) => c.name.toLowerCase() === countryName.toLowerCase()
-          );
-          if (matchedCountry && matchedCountry.operators && matchedCountry.operators.length > 0) {
-            operatorName = matchedCountry.operators.join(" / ");
-          } else {
-            operatorName = "Direct Carrier";
-          }
-        }
-
-        const now = Date.now();
-        let tVal = typeof h.time === "number" ? (h.time < 1e10 ? h.time * 1000 : h.time) : now;
-        if ((h as any).dt) {
-          const dtStr = String((h as any).dt).trim();
-          const isoStr = dtStr.includes(" ") && !dtStr.includes("T") ? dtStr.replace(" ", "T") + "Z" : dtStr;
-          const parsedDt = new Date(isoStr).getTime();
-          if (!isNaN(parsedDt) && parsedDt > 0) tVal = parsedDt;
-        }
-        const elapsedSec = Math.max(1, Math.floor((now - tVal) / 1000));
-        const elapsedStr = elapsedSec < 60 ? `${elapsedSec}s` : `${Math.floor(elapsedSec / 60)}m`;
-
-        return {
-          id: (h as any).id || `prop_hit_${rawPhone}_${tVal}_${h.sid || ""}_${i}`,
-          country: countryName.toUpperCase(),
-          operator: operatorName,
-          range: rawRange || info.dialCode.replace("+", ""),
-          number: rawPhone,
-          sid: h.sid || (h as any).service || "WhatsApp",
-          message: maskOtpInMessage(h.message || "Incoming SMS Packet"),
-          payout: "-",
-          elapsed: elapsedStr,
-          timeStr: new Date(tVal).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }),
-          timestamp: tVal,
-        };
-      });
-
-      // Strictly sort newest hits on top
-      converted.sort((a, b) => b.timestamp - a.timestamp);
-      setItemsList(converted);
-    } else {
-      setItemsList([]);
-    }
-  }, [liveHits]);
-
+  // Sound chime tracking ref
   const prevItemsCountRef = useRef<number | null>(null);
 
-  // Sound notification trigger when user is inside Live Test SMS view
+  // Merge newly received hits into the card feed
+  const mergeCardsIntoList = useCallback((newHits: any[]) => {
+    if (!Array.isArray(newHits) || newHits.length === 0) return;
+
+    setItemsList((prev) => {
+      const map = new Map<string, TestSmsCardItem>();
+      prev.forEach((item) => {
+        const sig = `${item.number.replace(/\D/g, "")}_${item.timestamp}_${item.sid.toLowerCase()}_${item.message.slice(0, 40)}`;
+        map.set(sig, item);
+      });
+
+      let hasNew = false;
+      newHits.forEach((h, idx) => {
+        if (!h) return;
+        const card = convertHitToCard(h, idx);
+        const sig = `${card.number.replace(/\D/g, "")}_${card.timestamp}_${card.sid.toLowerCase()}_${card.message.slice(0, 40)}`;
+        if (!map.has(sig)) {
+          map.set(sig, card);
+          hasNew = true;
+        }
+      });
+
+      if (!hasNew && map.size === prev.length) return prev;
+      const sorted = Array.from(map.values()).sort((a, b) => b.timestamp - a.timestamp);
+      return sorted;
+    });
+  }, []);
+
+  // Fetch real-time hits from FOX SMS & global stream immediately
+  const syncLiveData = useCallback(async () => {
+    try {
+      if (onRefreshHits) {
+        onRefreshHits();
+      }
+
+      // 1. Fetch from global live stream
+      const resStream = await fetch("/api/global-live-stream").catch(() => null);
+      let streamHits: any[] = [];
+      if (resStream && resStream.ok) {
+        const sJson = await resStream.json();
+        if (sJson?.success && Array.isArray(sJson.hits)) {
+          streamHits = sJson.hits;
+        }
+      }
+
+      // 2. Fetch directly from FOX SMS stats endpoint
+      const resFox = await fetch("/api/foxsms/stats", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ records: 100, forceRefresh: true }),
+      }).catch(() => null);
+      let foxHits: any[] = [];
+      if (resFox && resFox.ok) {
+        const fJson = await resFox.json();
+        if (fJson?.success && Array.isArray(fJson.hits)) {
+          foxHits = fJson.hits;
+        }
+      }
+
+      const combined = [...streamHits, ...foxHits];
+      if (combined.length > 0) {
+        mergeCardsIntoList(combined);
+        if (onMergeHits) {
+          onMergeHits(combined);
+        }
+      }
+    } catch (e) {
+      // quiet
+    }
+  }, [mergeCardsIntoList, onMergeHits, onRefreshHits]);
+
+  // Initial load & continuous 3-second live polling
+  useEffect(() => {
+    syncLiveData();
+
+    if (!isLiveConnected) return;
+    const interval = setInterval(() => {
+      syncLiveData();
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [isLiveConnected, syncLiveData]);
+
+  // Sync when liveHits prop changes from parent
+  useEffect(() => {
+    if (liveHits && liveHits.length > 0) {
+      mergeCardsIntoList(liveHits);
+    }
+  }, [liveHits, mergeCardsIntoList]);
+
+  // Sound notification trigger when new SMS arrives
   useEffect(() => {
     if (itemsList.length === 0) return;
 
     if (prevItemsCountRef.current === null) {
-      // User just entered/opened Live Test SMS view - play chime to announce initial SMS feed
+      // User entered Live Test SMS view - announce incoming feed
       if (isSoundOn) {
         playTungTungSound();
       }
     } else if (itemsList.length > prevItemsCountRef.current) {
-      // A new SMS arrived while the user is inside Live Test SMS view
+      // New incoming OTP arrived in real time
       if (isSoundOn) {
         playTungTungSound();
       }
@@ -247,6 +322,12 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
 
     prevItemsCountRef.current = itemsList.length;
   }, [itemsList, isSoundOn]);
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    await syncLiveData();
+    setTimeout(() => setIsRefreshing(false), 500);
+  };
 
   const copyToClipboard = (text: string, id: string) => {
     try {
@@ -256,7 +337,7 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  // Filter items based on search query (Country, Range, Full Number, Operator, Service, Message)
+  // Filter items based on search query (Country, Range, Number, Operator, Service, Message, OTP)
   const filteredItems = useMemo(() => {
     if (!searchQuery.trim()) return itemsList;
     const q = searchQuery.toLowerCase().trim();
@@ -271,6 +352,8 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
         item.number.toLowerCase().includes(q) ||
         (cleanQ.length > 0 && (cleanNum.includes(cleanQ) || cleanRange.includes(cleanQ))) ||
         item.sid.toLowerCase().includes(q) ||
+        (item.otpCode && item.otpCode.toLowerCase().includes(q)) ||
+        (item.source && item.source.toLowerCase().includes(q)) ||
         item.message.toLowerCase().includes(q)
       );
     });
@@ -318,15 +401,15 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
     } else {
       logoElem = (
         <span className="w-4 h-4 rounded bg-slate-200 text-slate-700 font-bold text-[10px] flex items-center justify-center shrink-0">
-          A
+          {sid.charAt(0).toUpperCase()}
         </span>
       );
     }
 
     return (
-      <div className="inline-flex items-center gap-1.5 bg-slate-100/80 px-2.5 py-1 rounded-md text-xs font-semibold text-slate-800 border border-slate-200/60">
+      <div className="flex items-center gap-1.5 bg-slate-100/90 border border-slate-200/80 px-2 py-0.5 rounded-md text-xs font-bold text-slate-800">
         {logoElem}
-        <span>{sid}</span>
+        <span className="truncate max-w-[120px]">{sid}</span>
       </div>
     );
   };
@@ -365,11 +448,14 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
       range: testNumberInput.slice(0, 6) || "880171",
       number: testNumberInput.trim(),
       sid: testServiceInput,
-      message: maskOtpInMessage(rawMsg),
+      message: rawMsg,
       payout: "0.0102 USD",
-      elapsed: "1s",
-      timeStr: new Date(testNow).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }),
+      elapsed: "Just now",
+      timeStr: new Date(testNow).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }),
       timestamp: testNow,
+      otpCode: generatedOtp,
+      source: "FOX SMS",
+      isFoxSms: true,
     };
 
     setItemsList((prev) => [newCardItem, ...prev]);
@@ -384,6 +470,10 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
         message: rawMsg,
         time: testNow,
         operator: "Live Test Direct",
+        isFoxSms: true,
+        source: "FOX SMS",
+        code: generatedOtp,
+        otp: generatedOtp,
       } as any);
     }
 
@@ -441,7 +531,6 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
 
       {/* 2. Top Metric Cards (TOTAL MESSAGES) matching user screenshot */}
       <div className="grid grid-cols-1 gap-4">
-        {/* TOTAL MESSAGES Card */}
         <div className="bg-white rounded-xl border border-slate-200/90 p-5 shadow-2xs relative overflow-hidden flex items-center justify-between">
           <div className="space-y-1">
             <span className="text-[11px] font-bold text-slate-400 tracking-wider uppercase block">
@@ -450,23 +539,28 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
             <div className="text-3xl font-extrabold text-slate-900 tracking-tight">
               {itemsList.length}
             </div>
-            <div className="text-xs text-slate-500 font-medium">Live Stream</div>
+            <span className="text-xs text-emerald-600 font-medium flex items-center gap-1 mt-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              FOX SMS &amp; Live Stream Active Feed
+            </span>
           </div>
-          <div className="w-11 h-11 rounded-lg bg-[#e8f5e9] text-[#2e7d32] flex items-center justify-center shrink-0 border border-[#c8e6c9]/60">
-            <Mail className="w-5 h-5 stroke-[2.2]" />
+
+          <div className="w-12 h-12 rounded-xl bg-[#e8f5e9] text-[#2e7d32] flex items-center justify-center border border-[#c8e6c9]/60 shadow-2xs">
+            <Mail className="w-6 h-6" />
           </div>
-          {/* Top accent border */}
-          <div className="absolute top-0 left-0 right-0 h-0.5 bg-emerald-500/30" />
         </div>
       </div>
 
-      {/* 3. Main Message Stream Card matching Screenshot 1 & 2 */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
-        {/* Card Header: Message stream + Connected status */}
-        <div className="px-4 py-3.5 border-b border-slate-100 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <h2 className="text-base font-bold text-slate-900 tracking-tight">
-              Message stream
+      {/* 3. Live Test SMS Main Panel */}
+      <div className="bg-white rounded-xl border border-slate-200/90 shadow-2xs overflow-hidden">
+        {/* Panel Header: Title + Status Pill */}
+        <div className="p-4 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h2 className="text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+              <span>Live Test SMS Feed</span>
+              <span className="px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 text-[10px] font-extrabold uppercase border border-orange-200">
+                FOX SMS
+              </span>
             </h2>
           </div>
 
@@ -499,51 +593,70 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
           </div>
         </div>
 
-        {/* Toolbar Row: LIVE pill, Clear, Export */}
-        <div className="p-3 bg-slate-50/50 border-b border-slate-100 flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={() => setIsLiveConnected(!isLiveConnected)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-2xs transition cursor-pointer ${
-              isLiveConnected
-                ? "bg-[#2e7d32] text-white hover:bg-[#1b5e20]"
-                : "bg-slate-200 text-slate-600 hover:bg-slate-300"
-            }`}
-          >
-            <Radio className="w-3.5 h-3.5 animate-pulse" />
-            <span>LIVE ●</span>
-          </button>
+        {/* Toolbar Row: LIVE pill, Refresh, Clear, Export */}
+        <div className="p-3 bg-slate-50/50 border-b border-slate-100 flex items-center gap-2 flex-wrap justify-between">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setIsLiveConnected(!isLiveConnected)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-2xs transition cursor-pointer ${
+                isLiveConnected
+                  ? "bg-[#2e7d32] text-white hover:bg-[#1b5e20]"
+                  : "bg-slate-200 text-slate-600 hover:bg-slate-300"
+              }`}
+            >
+              <Radio className="w-3.5 h-3.5 animate-pulse" />
+              <span>{isLiveConnected ? "LIVE ●" : "PAUSED"}</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setItemsList([])}
-            className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg text-xs font-medium flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
-          >
-            <Trash2 className="w-3.5 h-3.5 text-slate-500" />
-            <span>Clear</span>
-          </button>
+            <button
+              type="button"
+              onClick={handleManualRefresh}
+              disabled={isRefreshing}
+              className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg text-xs font-medium flex items-center gap-1.5 transition cursor-pointer shadow-2xs disabled:opacity-60"
+              title="Refresh FOX SMS & Stream Hits"
+            >
+              <RotateCw className={`w-3.5 h-3.5 text-slate-500 ${isRefreshing ? "animate-spin text-emerald-600" : ""}`} />
+              <span>Refresh</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(itemsList, null, 2));
-              const downloadAnchor = document.createElement("a");
-              downloadAnchor.setAttribute("href", dataStr);
-              downloadAnchor.setAttribute("download", `live_sms_stream_${Date.now()}.json`);
-              document.body.appendChild(downloadAnchor);
-              downloadAnchor.click();
-              downloadAnchor.remove();
-            }}
-            className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg text-xs font-medium flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
-          >
-            <Download className="w-3.5 h-3.5 text-slate-500" />
-            <span>Export</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => setItemsList([])}
+              className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg text-xs font-medium flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-slate-500" />
+              <span>Clear</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(itemsList, null, 2));
+                const downloadAnchor = document.createElement("a");
+                downloadAnchor.setAttribute("href", dataStr);
+                downloadAnchor.setAttribute("download", `live_sms_stream_${Date.now()}.json`);
+                document.body.appendChild(downloadAnchor);
+                downloadAnchor.click();
+                downloadAnchor.remove();
+              }}
+              className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg text-xs font-medium flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+            >
+              <Download className="w-3.5 h-3.5 text-slate-500" />
+              <span>Export</span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <span className="px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-800 text-xs font-bold border border-emerald-200 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>{itemsList.length} OTPs Available</span>
+            </span>
+          </div>
         </div>
 
         {/* Filter Controls Row: Search Input */}
         <div className="p-3 border-b border-slate-100">
-          {/* Search Input */}
           <div className="relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
@@ -553,7 +666,7 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
                 setSearchQuery(e.target.value);
                 setCurrentPage(1);
               }}
-              placeholder="Search messages, phone numbers, countries..."
+              placeholder="Search by OTP code, phone number, service, message, or country..."
               className="w-full pl-9 pr-3.5 py-2 text-xs bg-white border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 font-sans"
             />
           </div>
@@ -613,7 +726,7 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
         <div className="divide-y divide-slate-100">
           {paginatedItems.length === 0 ? (
             <div className="py-12 text-center text-slate-400 text-xs font-medium">
-              No live test messages received yet.
+              No live test messages received yet. Click Refresh above or wait for incoming stream.
             </div>
           ) : (
             paginatedItems.map((item, idx) => {
@@ -625,10 +738,10 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
                 <div
                   key={item.id || `hit_card_${idx}`}
                   className={`p-4 transition-colors relative space-y-2 border-b border-slate-100/90 ${
-                    isNewest ? "bg-[#f4fbf7]" : "bg-white"
+                    isNewest ? "bg-[#f4fbf7] ring-1 ring-emerald-400/20" : "bg-white"
                   }`}
                 >
-                  {/* Top Line: Flag + Country Name (Operator if applicable) + Time Elapsed + Timestamp */}
+                  {/* Top Line: Flag + Country Name (Operator) + Source Tag + Elapsed Time + Timestamp */}
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-start gap-2.5 min-w-0">
                       {/* Flag Image */}
@@ -639,13 +752,39 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
                       />
 
                       <div className="min-w-0">
-                        {/* Title: Country Name */}
-                        <div className="font-bold text-slate-900 text-sm tracking-tight leading-tight">
-                          {cleanCountry}{!isGenericGateway ? ` - ${item.operator}` : ""}
+                        {/* Title: Country Name + Operator + Route Badge */}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-bold text-slate-900 text-sm tracking-tight leading-tight">
+                            {cleanCountry}{!isGenericGateway ? ` - ${item.operator}` : ""}
+                          </span>
+                          {item.isFoxSms ? (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-orange-100 text-orange-800 border border-orange-200 uppercase tracking-wide">
+                              FOX SMS
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-blue-100 text-blue-800 border border-blue-200 uppercase tracking-wide">
+                              VOLTX SMS
+                            </span>
+                          )}
                         </div>
-                        {/* Subtitle: Phone Number */}
-                        <div className="text-xs font-mono text-slate-500 font-medium mt-0.5">
-                          {item.number}
+
+                        {/* Subtitle: Phone Number + Copy Button */}
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-xs font-mono text-slate-600 font-bold">
+                            {item.number}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => copyToClipboard(item.number, `num_${item.id}`)}
+                            className="text-slate-400 hover:text-slate-700 p-0.5 transition cursor-pointer"
+                            title="Copy phone number"
+                          >
+                            {copiedId === `num_${item.id}` ? (
+                              <Check className="w-3 h-3 text-emerald-600" />
+                            ) : (
+                              <Copy className="w-3 h-3" />
+                            )}
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -661,27 +800,53 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
                     </div>
                   </div>
 
-                  {/* Second Line: Social Brand Logo + Name */}
-                  <div className="flex items-center justify-between gap-2 pt-0.5">
-                    {renderBrandBadge(item.sid)}
+                  {/* Second Line: Social Brand Logo + Name + PROMINENT OTP BADGE (Just like Voltx) */}
+                  <div className="flex items-center justify-between gap-2 pt-0.5 flex-wrap">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {renderBrandBadge(item.sid)}
 
-                    {/* Copy Button */}
+                      {/* Prominent OTP Code Badge with 1-click copy */}
+                      {item.otpCode && (
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(item.otpCode!, `otp_${item.id}`)}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 active:scale-95 border border-emerald-300 text-emerald-900 rounded-md text-xs font-mono font-bold transition cursor-pointer shadow-2xs"
+                          title="Click to copy OTP"
+                        >
+                          <Key className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>🔑 OTP: {item.otpCode}</span>
+                          {copiedId === `otp_${item.id}` ? (
+                            <span className="text-emerald-700 font-extrabold text-[11px]">Copied!</span>
+                          ) : (
+                            <Copy className="w-3 h-3 text-emerald-600/70" />
+                          )}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Copy Full Message Button */}
                     <button
                       type="button"
-                      onClick={() => copyToClipboard(item.message, `item_copy_${idx}`)}
-                      className="text-slate-400 hover:text-slate-800 p-1 transition cursor-pointer"
+                      onClick={() => copyToClipboard(item.message, `msg_${item.id}`)}
+                      className="text-slate-400 hover:text-slate-800 p-1 transition cursor-pointer flex items-center gap-1 text-[11px] font-medium"
                       title="Copy message content"
                     >
-                      {copiedId === `item_copy_${idx}` ? (
-                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      {copiedId === `msg_${item.id}` ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          <span className="text-emerald-700 font-bold">Copied</span>
+                        </>
                       ) : (
-                        <Copy className="w-3.5 h-3.5" />
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>Copy Message</span>
+                        </>
                       )}
                     </button>
                   </div>
 
-                  {/* Third Line: Message Body with XXXX Masked OTP (No border or background box as requested) */}
-                  <div className="text-xs text-slate-700 leading-relaxed font-sans break-words pt-1 font-medium">
+                  {/* Third Line: Real incoming message body with visible OTP */}
+                  <div className="text-xs text-slate-800 leading-relaxed font-mono bg-slate-50/70 border border-slate-200/70 rounded-lg p-2.5 break-words font-medium">
                     {item.message}
                   </div>
 
@@ -758,6 +923,9 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
                   <option value="Apple">Apple</option>
                   <option value="Telegram">Telegram</option>
                   <option value="AUTHMSG">AUTHMSG</option>
+                  <option value="Uber">Uber</option>
+                  <option value="Instagram">Instagram</option>
+                  <option value="Imo">Imo</option>
                 </select>
               </div>
 
@@ -767,25 +935,35 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
                   type="text"
                   value={testCustomOtp}
                   onChange={(e) => setTestCustomOtp(e.target.value)}
-                  placeholder="Auto-generated if empty (e.g. 492810)"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3.5 py-2 text-slate-900 font-mono focus:outline-none focus:border-emerald-500"
+                  placeholder="e.g. 589412 (Leave empty for random OTP)"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3.5 py-2 text-slate-900 font-mono font-medium focus:outline-none focus:border-emerald-500"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
                 <button
                   type="button"
                   onClick={() => setIsTestModalOpen(false)}
-                  className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition cursor-pointer"
+                  className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSendingTest}
-                  className="px-5 py-2 rounded-lg bg-[#2e7d32] hover:bg-[#1b5e20] text-white font-bold transition flex items-center gap-2 cursor-pointer shadow-sm"
+                  className="px-4 py-2 rounded-lg bg-[#2e7d32] hover:bg-[#1b5e20] text-white font-bold transition flex items-center gap-1.5 cursor-pointer shadow-md disabled:opacity-60"
                 >
-                  {isSendingTest ? "Sending..." : "Send Test Packet"}
+                  {isSendingTest ? (
+                    <>
+                      <RotateCw className="w-4 h-4 animate-spin" />
+                      <span>Sending...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      <span>Send Test SMS</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>

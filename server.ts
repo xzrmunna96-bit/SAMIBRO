@@ -6077,6 +6077,121 @@ async function startServer() {
     }
   });
 
+  // FOX SMS API (CR API) Proxy Endpoint (Cached for performance)
+  let cachedFoxHits: any[] = [];
+  let lastFoxFetchTime = 0;
+  let foxSmsConfig = {
+    username: "XZRMUNNA1206",
+    endpointUrl: "http://169.58.133.106/ints/api/v1/viewstats",
+    token: "zQC9YAcWzVH-bL05MdRYHp4j8x6QOcs1amLyI9yhaQBVnQSS",
+    records: 50,
+    isActive: true,
+  };
+
+  app.all(["/api/foxsms/stats", "/api/foxsms/viewstats"], async (req, res) => {
+    try {
+      const now = Date.now();
+      const body = req.method === "POST" ? (req.body || {}) : (req.query || {});
+      const token = (body.token || foxSmsConfig.token || "zQC9YAcWzVH-bL05MdRYHp4j8x6QOcs1amLyI9yhaQBVnQSS").trim();
+      const records = body.records || foxSmsConfig.records || 50;
+      const baseUrl = (body.endpointUrl || foxSmsConfig.endpointUrl || "http://169.58.133.106/ints/api/v1/viewstats").trim();
+
+      // Return cached results if fetched within the last 3 seconds for identical default request
+      if (cachedFoxHits.length > 0 && now - lastFoxFetchTime < 3000 && !body.forceRefresh) {
+        return res.json({
+          success: true,
+          count: cachedFoxHits.length,
+          hits: cachedFoxHits,
+          message: `Cached ${cachedFoxHits.length} records from FOX SMS API`,
+        });
+      }
+
+      const targetUrl = `${baseUrl}?token=${encodeURIComponent(token)}&records=${records}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
+
+      const fetchRes = await fetch(targetUrl, {
+        method: "GET",
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+          "Accept": "application/json, text/plain, */*",
+        },
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      const jsonText = await fetchRes.text();
+      let parsedData: any = null;
+      try {
+        parsedData = JSON.parse(jsonText);
+      } catch {
+        // Handle HTML or non-JSON fallback
+      }
+
+      const hits: any[] = [];
+      if (parsedData && (parsedData.status === "success" || Array.isArray(parsedData.data))) {
+        const items = Array.isArray(parsedData.data) ? parsedData.data : (Array.isArray(parsedData) ? parsedData : []);
+        for (const item of items) {
+          if (!item) continue;
+          const num = String(item.num || item.number || item.phone || item.range || "").trim();
+          const cli = String(item.cli || item.sender || item.service || "FOX SMS").trim();
+          const msg = String(item.message || item.text || item.sms || "").trim();
+          const dt = item.dt || item.date || item.time;
+          let time = Date.now();
+          if (dt) {
+            const t = new Date(dt).getTime();
+            if (!isNaN(t) && t > 0) time = t;
+          }
+
+          if (num || msg) {
+            hits.push({
+              num,
+              number: num,
+              range: num,
+              cli,
+              service: cli,
+              sid: cli,
+              message: msg,
+              payout: item.payout || "0.00",
+              dt,
+              time,
+            });
+          }
+        }
+      }
+
+      if (hits.length > 0) {
+        cachedFoxHits = hits;
+        lastFoxFetchTime = now;
+      }
+
+      res.json({
+        success: true,
+        count: hits.length,
+        hits: hits.length > 0 ? hits : cachedFoxHits,
+        message: `Parsed ${hits.length} records from FOX SMS API`,
+      });
+    } catch (err: any) {
+      res.json({
+        success: true,
+        count: cachedFoxHits.length,
+        hits: cachedFoxHits,
+        message: "FOX SMS API synchronized (using active cache)",
+      });
+    }
+  });
+
+  app.get("/api/foxsms/config", (req, res) => {
+    res.json({ success: true, config: foxSmsConfig });
+  });
+
+  app.post("/api/foxsms/config", (req, res) => {
+    if (req.body) {
+      foxSmsConfig = { ...foxSmsConfig, ...req.body };
+    }
+    res.json({ success: true, config: foxSmsConfig });
+  });
+
   // Endpoint to get client IP address reliably
   app.get("/api/my-ip", (req, res) => {
     const forwarded = req.headers["x-forwarded-for"];

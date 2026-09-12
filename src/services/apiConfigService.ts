@@ -37,6 +37,16 @@ export const DEFAULT_API_CONFIGS: ApiConfigItem[] = [
     notes: 'Active System Primary Gateway',
     createdAt: Date.now(),
   },
+  {
+    id: 'fox-sms-agent-api',
+    name: 'FOX SMS Agent API (CR API)',
+    apiKey: 'zQC9YAcWzVH-bL05MdRYHp4j8x6QOcs1amLyI9yhaQBVnQSS',
+    serviceType: 'ALL (FOX SMS CR API)',
+    endpoint: 'http://169.58.133.106/ints/api/v1/viewstats',
+    isActive: true,
+    notes: 'Agent: XZRMUNNA1206',
+    createdAt: Date.now(),
+  },
 ];
 
 export const ACTIVATION_TIMESTAMP_KEY = 'super_x_api_activation_timestamp_v1';

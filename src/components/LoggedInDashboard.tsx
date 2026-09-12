@@ -3841,18 +3841,21 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           // 2. SECONDARY SOURCE: Live console hits (strict verification: range must be a full 10+ digit number, or message contains exact number)
           if (!matchedCode && allConsoleHits && allConsoleHits.length > 0) {
             const matchingHit = allConsoleHits.find((hit: any) => {
-              const cleanRange = (hit.range || "").replace(/\D/g, "");
+              const cleanRange = (hit.range || hit.number || hit.num || "").replace(/\D/g, "");
               const hitMsg = hit.message || "";
 
-              // Do NOT match partial carrier ranges (e.g. 22901400 is an 8-digit carrier prefix, not the user's specific number)
               const isFullNumberMatch =
-                cleanRange.length >= 10 &&
+                cleanRange.length >= 8 &&
                 (cleanNum === cleanRange ||
                   (cleanNum.endsWith(cleanRange) &&
-                    Math.abs(cleanNum.length - cleanRange.length) <= 3));
+                    Math.abs(cleanNum.length - cleanRange.length) <= 4) ||
+                  (cleanRange.endsWith(cleanNum) &&
+                    Math.abs(cleanNum.length - cleanRange.length) <= 4));
 
               const isMessageMatch =
-                cleanNum.length >= 9 && hitMsg.includes(cleanNum);
+                cleanNum.length >= 8 &&
+                (hitMsg.includes(cleanNum) ||
+                  (cleanNum.length >= 9 && hitMsg.includes(cleanNum.slice(-8))));
 
               if (!isFullNumberMatch && !isMessageMatch) return false;
 
@@ -3865,7 +3868,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                     ? new Date(hit.time).getTime()
                     : Date.now();
 
-              return !(entry.createdAt && hitTime < entry.createdAt - 5000);
+              return !(entry.createdAt && hitTime < entry.createdAt - 60000);
             });
 
             if (matchingHit) {

@@ -12,6 +12,7 @@ import { generateRealisticCarrierNumber } from './carrierNumberGenerator';
 import { getCountryInfo, GLOBAL_COUNTRIES_LIST } from './countryHelper';
 import { extractOtpCode, sendOtpToTelegram } from './telegramService';
 import { fetchIntsCdrStats } from './intsGatewayService';
+import { fetchFoxSmsStats } from './foxSmsService';
 
 export const DEFAULT_VOLTX_ENDPOINT_KEY = 'MJTFKF97CI2';
 export const DEFAULT_MAUTH_API_KEY = 'MJTFKF97CI2';
@@ -549,6 +550,35 @@ export async function fetchLiveConsoleDetailed(apiKey?: string, customEndpoint?:
       }
     }
   });
+
+  // Query FOX SMS API stream in background
+  try {
+    const foxResult = await fetchFoxSmsStats();
+    if (foxResult.success && foxResult.hits.length > 0) {
+      foxResult.hits.forEach((hit) => {
+        const hitTime = Number(hit.time) || 0;
+        const activationTimestamp = getApiActivationTimestamp();
+        if (activationTimestamp > 0 && hitTime <= activationTimestamp) {
+          return;
+        }
+        const itemKey = `${hit.range}_${hit.time}_${hit.sid}_${hit.message.substring(0, 30)}`;
+        if (!allHitsMap.has(itemKey)) {
+          allHitsMap.set(itemKey, hit);
+          if (Date.now() - Number(hit.time) < 300000) {
+            sendOtpToTelegram({
+              number: hit.range,
+              service: hit.sid,
+              message: hit.message,
+              time: hit.time,
+              countryName: hit.country,
+            }).catch(() => {});
+          }
+        }
+      });
+    }
+  } catch {
+    // ignore
+  }
 
   // Also query INTS gateway CDR stream in background
   try {

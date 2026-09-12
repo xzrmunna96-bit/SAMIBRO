@@ -5309,12 +5309,12 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   }
 
   return (
-    <div className="min-h-screen w-full bg-[#f8fafc] font-sans flex flex-col text-gray-800 relative overflow-x-hidden">
+    <div className="min-h-screen w-full bg-[#f8fafc] font-sans flex flex-col lg:flex-row text-gray-800 relative overflow-x-hidden">
       {/* -------------------- SIDEBAR DRAWER OVERLAY & PANEL -------------------- */}
       <div
         id="sidebar-backdrop"
         onClick={() => setIsSidebarOpen(false)}
-        className={`fixed inset-0 z-40 bg-black/60 backdrop-blur-xs transition-opacity duration-300 ${
+        className={`fixed inset-0 z-40 bg-black/60 backdrop-blur-xs transition-opacity duration-300 lg:hidden ${
           isSidebarOpen
             ? "opacity-100 pointer-events-auto"
             : "opacity-0 pointer-events-none"
@@ -5324,8 +5324,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
       <aside
         id="dashboard-sidebar-drawer"
-        className={`fixed top-0 left-0 bottom-0 w-[280px] sm:w-[300px] bg-slate-900 text-slate-100 z-50 shadow-2xl flex flex-col justify-between overflow-y-auto transition-transform duration-300 ease-out border-r border-slate-800 ${
-          isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+        className={`fixed top-0 left-0 bottom-0 z-50 w-[280px] sm:w-[300px] lg:w-64 xl:w-72 bg-slate-900 text-slate-100 shadow-2xl lg:shadow-none flex flex-col justify-between overflow-y-auto transition-transform duration-300 ease-out border-r border-slate-800 lg:static lg:top-0 lg:h-screen lg:sticky lg:shrink-0 lg:z-auto ${
+          isSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         }`}
       >
         <div className="flex flex-col">
@@ -5342,7 +5342,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             <button
               type="button"
               onClick={() => setIsSidebarOpen(false)}
-              className="p-1.5 rounded-lg bg-slate-800/60 hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer border border-slate-700/40"
+              className="p-1.5 rounded-lg bg-slate-800/60 hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer border border-slate-700/40 lg:hidden"
               title="Close Menu"
             >
               <X className="w-4 h-4" />
@@ -5773,21 +5773,23 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         </div>
       </aside>
 
-      {/* -------------------- TOP NAVBAR -------------------- */}
-      <header className="sticky top-0 z-40 w-full bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 text-white shadow-xl border-b-4 border-cyan-400 shadow-[0_4px_25px_rgba(6,182,212,0.35)]">
-        <div className="max-w-7xl mx-auto px-2.5 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            {/* Enlarged Sidebar Toggle Button */}
-            <button
-              type="button"
-              id="dashboard-menu-btn"
-              onClick={() => setIsSidebarOpen(true)}
-              className="p-2 sm:p-2.5 rounded-2xl bg-gradient-to-br from-cyan-950/90 via-slate-900 to-slate-950 hover:from-cyan-900 hover:to-slate-800 text-cyan-300 hover:text-white border-2 border-cyan-400/80 hover:border-cyan-300 shadow-lg shadow-cyan-950/60 transition-all active:scale-95 cursor-pointer flex items-center justify-center shrink-0"
-              aria-label="Open Navigation Sidebar"
-              title="Open Navigation Menu"
-            >
-              <Menu className="w-6 h-6 sm:w-7 sm:h-7 stroke-[2.5]" />
-            </button>
+      {/* -------------------- MAIN CONTENT WRAPPER -------------------- */}
+      <div className="flex-1 min-w-0 flex flex-col min-h-screen">
+        {/* -------------------- TOP NAVBAR -------------------- */}
+        <header className="sticky top-0 z-40 w-full bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 text-white shadow-xl border-b-4 border-cyan-400 shadow-[0_4px_25px_rgba(6,182,212,0.35)]">
+          <div className="max-w-7xl mx-auto px-2.5 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              {/* Enlarged Sidebar Toggle Button (Mobile Only) */}
+              <button
+                type="button"
+                id="dashboard-menu-btn"
+                onClick={() => setIsSidebarOpen(true)}
+                className="lg:hidden p-2 sm:p-2.5 rounded-2xl bg-gradient-to-br from-cyan-950/90 via-slate-900 to-slate-950 hover:from-cyan-900 hover:to-slate-800 text-cyan-300 hover:text-white border-2 border-cyan-400/80 hover:border-cyan-300 shadow-lg shadow-cyan-950/60 transition-all active:scale-95 cursor-pointer flex items-center justify-center shrink-0"
+                aria-label="Open Navigation Sidebar"
+                title="Open Navigation Menu"
+              >
+                <Menu className="w-6 h-6 sm:w-7 sm:h-7 stroke-[2.5]" />
+              </button>
 
             {/* Premium Larger Website Title */}
             <div className="flex items-center gap-2 truncate">
@@ -9510,6 +9512,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           </div>
         );
       })()}
+      </div>
       {renderDevUnlockModal()}
     </div>
   );

@@ -3256,6 +3256,69 @@ async function startServer() {
     autoForwardEnabled: true,
   };
 
+  // Persistent Telegram Sent Signatures Store to prevent any OTP from ever being sent more than once
+  const TELEGRAM_SENT_SIGNATURES_FILE = path.join(SERVER_DATA_DIR, "telegram_sent_signatures.json");
+  let sentTelegramSignatures = new Set<string>();
+
+  function loadTelegramSentSignatures() {
+    try {
+      if (fs.existsSync(TELEGRAM_SENT_SIGNATURES_FILE)) {
+        const raw = fs.readFileSync(TELEGRAM_SENT_SIGNATURES_FILE, "utf-8");
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) {
+          sentTelegramSignatures = new Set(list);
+          console.log(`[Telegram Dedup] Loaded ${sentTelegramSignatures.size} sent signatures from disk.`);
+        }
+      }
+    } catch (e) {
+      console.warn("[Telegram Dedup] Error loading signatures:", e);
+    }
+  }
+  loadTelegramSentSignatures();
+
+  function saveTelegramSentSignatures() {
+    try {
+      const arr = Array.from(sentTelegramSignatures);
+      const toSave = arr.slice(-5000);
+      fs.writeFileSync(TELEGRAM_SENT_SIGNATURES_FILE, JSON.stringify(toSave), "utf-8");
+    } catch (e) {}
+  }
+
+  function getTelegramOtpSignatures(number?: string, otp?: string, service?: string, message?: string): string[] {
+    const rawNum = String(number || "");
+    const rawMsg = String(message || "");
+    const cleanNum = rawNum.replace(/\D/g, "");
+    const cleanOtp = String(otp || "").replace(/\D/g, "");
+    const cleanSvc = String(service || "").trim().toLowerCase();
+    const cleanMsg = rawMsg.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim().slice(0, 45).toLowerCase();
+
+    const sigs: string[] = [];
+    if (cleanNum && cleanOtp && cleanOtp.length >= 3) {
+      sigs.push(`otp_${cleanNum}_${cleanOtp}`);
+      if (cleanSvc) {
+        sigs.push(`otp_${cleanNum}_${cleanOtp}_${cleanSvc}`);
+      }
+    }
+    if (cleanNum && cleanMsg && cleanMsg.length >= 8) {
+      sigs.push(`msg_${cleanNum}_${cleanMsg}`);
+    }
+    return sigs;
+  }
+
+  function isDuplicateTelegramOtp(number?: string, otp?: string, service?: string, message?: string): boolean {
+    const sigs = getTelegramOtpSignatures(number, otp, service, message);
+    if (sigs.length === 0) return false;
+    return sigs.some((s) => sentTelegramSignatures.has(s));
+  }
+
+  function markTelegramOtpSent(number?: string, otp?: string, service?: string, message?: string) {
+    const sigs = getTelegramOtpSignatures(number, otp, service, message);
+    if (sigs.length > 0) {
+      sigs.forEach((s) => sentTelegramSignatures.add(s));
+      saveTelegramSentSignatures();
+    }
+  }
+
   // Get Telegram config
   app.get("/api/telegram/config", (req, res) => {
     res.json({ success: true, config: telegramConfig });
@@ -3273,15 +3336,33 @@ async function startServer() {
     res.json({ success: true, config: telegramConfig });
   });
 
-  // Telegram Send Proxy Endpoint with rate-limit and error handling
+  // Telegram Send Proxy Endpoint with rate-limit, persistent deduplication, and error handling
   app.post("/api/telegram/send", async (req, res) => {
     try {
-      const { botToken, chatId, text, replyMarkup } = req.body || {};
+      const { botToken, chatId, text, replyMarkup, number, service, otp } = req.body || {};
       const tokenToUse = (botToken && String(botToken).trim()) || telegramConfig.botToken;
       const chatToUse = (chatId && String(chatId).trim()) || telegramConfig.chatId;
 
       if (!tokenToUse || !chatToUse || !text) {
         return res.status(400).json({ error: "botToken, chatId, and text are required" });
+      }
+
+      // Extract number & otp from payload or text for deduplication
+      let extractedNum = number || "";
+      let extractedOtp = otp || "";
+      if (!extractedNum && text) {
+        const numMatch = String(text).match(/(\+?\d{8,16})/);
+        if (numMatch) extractedNum = numMatch[1];
+      }
+      if (!extractedOtp && text) {
+        const codeMatch = String(text).match(/(?:code|otp|verification)[:\s]+<b>?([0-9]{3,8})/i) || String(text).match(/\b([0-9]{4,8})\b/);
+        if (codeMatch) extractedOtp = codeMatch[1];
+      }
+
+      // Strictly check if this OTP was already sent to Telegram
+      if (isDuplicateTelegramOtp(extractedNum, extractedOtp, service, text)) {
+        console.log(`[Telegram Proxy Dedup] Skipping duplicate OTP forward for ${extractedNum || 'message'}`);
+        return res.json({ success: true, deduplicated: true, message: "OTP already sent to Telegram (deduplicated)" });
       }
 
       const telegramUrl = `https://api.telegram.org/bot${tokenToUse}/sendMessage`;
@@ -3319,7 +3400,6 @@ async function startServer() {
       try {
         tgRes = await sendAttempt(15000);
       } catch (firstErr: any) {
-        // If aborted or network glitch, attempt 1 quick retry
         if (firstErr?.name === "AbortError" || firstErr?.message?.includes("aborted")) {
           console.warn("[Telegram Proxy] Request timed out on first attempt, retrying...");
           try {
@@ -3328,28 +3408,32 @@ async function startServer() {
             console.warn("[Telegram Proxy Warning]: Telegram API unreachable or timed out:", retryErr?.message);
             return res.status(504).json({
               success: false,
-              error: "Telegram API request timed out. Message queued or delayed.",
+              message: "Telegram API request timed out",
+              error: retryErr?.message,
             });
           }
         } else {
-          console.warn("[Telegram Proxy Warning]: Connection error:", firstErr?.message);
           return res.status(502).json({
             success: false,
-            error: firstErr?.message || "Unable to reach Telegram servers",
+            message: "Failed to connect to Telegram API",
+            error: firstErr?.message,
           });
         }
       }
 
-      const data = await tgRes.json().catch(() => ({ description: "Invalid JSON response from Telegram" }));
-      if (tgRes.ok && data.ok) {
-        return res.json({ success: true, result: data.result });
-      } else {
-        return res.status(tgRes.status || 400).json({
+      const data = await tgRes.json();
+      if (!tgRes.ok) {
+        return res.status(tgRes.status).json({
           success: false,
-          error: data.description || "Failed to dispatch message to Telegram",
-          raw: data,
+          message: data.description || "Telegram API error",
+          error: data,
         });
       }
+
+      // Mark OTP as sent in persistent store
+      markTelegramOtpSent(extractedNum, extractedOtp, service, text);
+
+      res.json({ success: true, result: data.result });
     } catch (err: any) {
       console.warn("[Telegram Proxy Warning]:", err?.message);
       res.status(500).json({
@@ -7609,18 +7693,11 @@ async function startServer() {
     const service = extractServiceNameFromText(msg, rawCli);
     const otpCode = hit.code || hit.otp || extractOtpCode(msg) || "N/A";
 
-    const cleanNum = num.replace(/\D/g, "");
-    const cleanMsg = msg.replace(/\s+/g, " ").trim();
-    // Unique signature by number + OTP code + trimmed message (without timestamp so same OTP message from API polled multiple times is never duplicated!)
-    const sig = `tg_fox_${cleanNum}_${otpCode}_${cleanMsg.slice(0, 50)}`;
-    if (sentTelegramFoxSignatures.has(sig)) return;
-    sentTelegramFoxSignatures.add(sig);
-
-    if (sentTelegramFoxSignatures.size > 2000) {
-      const arr = Array.from(sentTelegramFoxSignatures);
-      sentTelegramFoxSignatures.clear();
-      arr.slice(-500).forEach((s) => sentTelegramFoxSignatures.add(s));
+    // Strictly check deduplication across persistent store (ensure 1 OTP sends ONLY ONCE!)
+    if (isDuplicateTelegramOtp(num, otpCode !== "N/A" ? otpCode : undefined, service, msg)) {
+      return;
     }
+    markTelegramOtpSent(num, otpCode !== "N/A" ? otpCode : undefined, service, msg);
 
     let country = hit.country;
     if (!country || country.toUpperCase().includes("INTERNATIONAL")) {
@@ -7640,27 +7717,21 @@ async function startServer() {
       `🌐 <i>Website Live SMS Dashboard & Bot Synchronized!</i>`;
 
     const botToken = getActiveBotToken();
-    const targets = new Set<string>();
-    if (controlBotState && controlBotState.adminId) targets.add(String(controlBotState.adminId));
-    targets.add("7084317713");
-    if (botHostingConfig && botHostingConfig.chatId) targets.add(String(botHostingConfig.chatId));
-    if (telegramConfig && telegramConfig.chatId) targets.add(String(telegramConfig.chatId));
+    // Send ONLY to designated Telegram channel/chat (single dispatch, strictly NO duplicates to admin PM!)
+    const targetChatId = (telegramConfig && telegramConfig.chatId) || (botHostingConfig && botHostingConfig.chatId) || "-1004476126020";
 
-    for (const chatId of targets) {
-      if (!chatId) continue;
-      try {
-        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text,
-            parse_mode: "HTML",
-            disable_web_page_preview: true,
-          }),
-        });
-      } catch {}
-    }
+    try {
+      await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: targetChatId,
+          text,
+          parse_mode: "HTML",
+          disable_web_page_preview: true,
+        }),
+      });
+    } catch {}
   }
 
   function processAndBroadcastIncomingHits(rawHits: any[]): { added: any[]; stats: ServerGlobalStats } {
@@ -7672,10 +7743,18 @@ async function startServer() {
     const now = Date.now();
     const maxAgeMs = 7 * 24 * 60 * 60 * 1000; // Accept records within 7 days from upstream APIs
 
-    // Track against ALL existing signatures in memory to strictly prevent duplicate counting
-    const existingSignatures = new Set(
-      serverGlobalLiveHits.map((h) => `${(h.number || h.range || "").replace(/\D/g, "")}_${normalizeHitTimeServer(h.time)}_${(h.sid || h.service || "").trim().toLowerCase()}_${(h.message || "").trim().slice(0, 30)}`)
-    );
+    // Build comprehensive set of existing signatures (both content-based and time-based) to strictly avoid duplicates
+    const existingSignatures = new Set<string>();
+    for (const h of serverGlobalLiveHits) {
+      const rNum = (h.number || h.num || h.range || "").replace(/\D/g, "");
+      const sStr = (h.sid || h.service || h.cli || "").trim().toLowerCase();
+      const mStr = (h.message || "").trim().slice(0, 45).toLowerCase();
+      const oStr = (h.code || h.otp || "").replace(/\D/g, "");
+      if (rNum && mStr) existingSignatures.add(`msg_${rNum}_${mStr}`);
+      if (rNum && oStr && oStr.length >= 3) existingSignatures.add(`otp_${rNum}_${oStr}`);
+      const tVal = normalizeHitTimeServer(h.time);
+      if (rNum && tVal) existingSignatures.add(`time_${rNum}_${tVal}_${sStr}`);
+    }
 
     const validNew: any[] = [];
     for (const h of rawHits) {
@@ -7693,21 +7772,33 @@ async function startServer() {
       if (isNaN(hitTime) || hitTime <= 0) hitTime = now;
       if (now - hitTime > maxAgeMs) continue; // Skip if older than 7 days
 
-      const rawNum = (h.number || h.range || "").replace(/\D/g, "");
-      const sidStr = (h.sid || h.service || "").trim().toLowerCase();
-      const msgStr = (h.message || "").trim().slice(0, 30);
-      const sig = `${rawNum}_${hitTime}_${sidStr}_${msgStr}`;
+      const rawNum = (h.number || h.num || h.range || "").replace(/\D/g, "");
+      const sidStr = (h.sid || h.service || h.cli || "").trim().toLowerCase();
+      const msgStr = (h.message || "").trim().slice(0, 45).toLowerCase();
+      const extractedOtp = (h.code || h.otp || extractOtpCode(h.message || "") || "").replace(/\D/g, "");
 
-      if (!existingSignatures.has(sig)) {
-        existingSignatures.add(sig);
-        const extractedOtp = h.code || h.otp || extractOtpCode(h.message || "");
-        validNew.push({
-          ...h,
-          time: hitTime,
-          code: extractedOtp,
-          otp: extractedOtp,
-        });
+      // Check all deduplication signatures
+      const isDuplicateMsg = rawNum && msgStr && existingSignatures.has(`msg_${rawNum}_${msgStr}`);
+      const isDuplicateOtp = rawNum && extractedOtp && extractedOtp.length >= 3 && existingSignatures.has(`otp_${rawNum}_${extractedOtp}`);
+      const isDuplicateTime = rawNum && hitTime && existingSignatures.has(`time_${rawNum}_${hitTime}_${sidStr}`);
+
+      if (isDuplicateMsg || isDuplicateOtp || isDuplicateTime) {
+        continue;
       }
+
+      // Add to tracked set so hits within the same batch aren't duplicated
+      if (rawNum && msgStr) existingSignatures.add(`msg_${rawNum}_${msgStr}`);
+      if (rawNum && extractedOtp && extractedOtp.length >= 3) existingSignatures.add(`otp_${rawNum}_${extractedOtp}`);
+      if (rawNum && hitTime) existingSignatures.add(`time_${rawNum}_${hitTime}_${sidStr}`);
+
+      validNew.push({
+        ...h,
+        time: hitTime,
+        code: extractedOtp || h.code || h.otp,
+        otp: extractedOtp || h.code || h.otp,
+        isFoxSms: h.isFoxSms ?? true,
+        source: h.source || "FOX SMS",
+      });
     }
 
     if (validNew.length > 0) {

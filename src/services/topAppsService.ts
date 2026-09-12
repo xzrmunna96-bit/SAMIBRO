@@ -150,7 +150,7 @@ export function parseHitTimestamp(rawTime: any): number {
  */
 export function detectCanonicalService(hit: { sid?: string; message?: string; service?: string }): string {
   if (!hit) return 'Other';
-  const sid = ((hit as any).service || hit.sid || '').toLowerCase().trim();
+  const sid = ((hit as any).service || hit.sid || (hit as any).cli || '').toLowerCase().trim();
   const msg = (hit.message || '').toLowerCase();
 
   // 1. WhatsApp
@@ -159,7 +159,7 @@ export function detectCanonicalService(hit: { sid?: string; message?: string; se
   }
   // 2. Facebook / Meta
   if (sid.includes('facebook') || sid === 'fb' || sid === 'meta' || msg.includes('facebook') || msg.includes('fb-') || msg.includes('fb code') || msg.includes('meta code')) {
-    return 'FACEBOOK';
+    return 'Facebook';
   }
   // 3. Telegram
   if (sid.includes('telegram') || sid === 'tg' || msg.includes('telegram') || msg.includes('t.me') || msg.includes('tg code')) {

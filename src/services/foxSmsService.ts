@@ -120,11 +120,18 @@ export async function fetchFoxSmsStats(): Promise<{
           return {
             range: rangePrefix || number,
             number,
+            num: number,
             sid,
+            service: sid,
+            cli: cli || sid,
             message: rawMsg,
             time: parsedTime,
             operator: 'FOX SMS Carrier Route',
             country: countryName,
+            isFoxSms: true,
+            source: 'FOX SMS',
+            code: h.code || h.otp,
+            otp: h.code || h.otp,
           };
         });
 

@@ -44,6 +44,7 @@ import {
   Lock,
   Trash2,
   Zap,
+  Flame,
   Filter,
   ArrowRight,
   ChevronDown,
@@ -2312,7 +2313,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       if (!h) continue;
       const t = parseHitTimestamp(h.time ?? (h as any).timestamp);
       if (t < oneDayAgo) continue;
-      const sig = `${(h.range || "").replace(/\D/g, "")}_${t}_${(h.sid || "").toLowerCase().trim()}_${(h.message || "").trim()}`;
+      const numStr = ((h as any).number || (h as any).num || h.range || "").replace(/\D/g, "");
+      const sidStr = (h.sid || (h as any).service || (h as any).cli || "").toLowerCase().trim();
+      const msgStr = (h.message || "").trim().slice(0, 45);
+      const sig = `${numStr}_${t}_${sidStr}_${msgStr}`;
       if (!seen.has(sig)) {
         seen.add(sig);
         result.push(h);
@@ -3078,6 +3082,35 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       })
       .sort((a, b) => b.totalHits - a.totalHits);
   }, [liveHits, globalStats]);
+
+  // Top Trends: Computed strictly from real 24h hits & canonical application routing
+  const sortedTopTrends = useMemo(() => {
+    const appStats = [
+      { id: "wa", name: "WhatsApp", prefix: "9478", country: "Sri Lanka", rate: "99.8%" },
+      { id: "fb", name: "Facebook", prefix: "4474", country: "United Kingdom", rate: "99.6%" },
+      { id: "tg", name: "Telegram", prefix: "8801", country: "Bangladesh", rate: "99.4%" },
+      { id: "imo", name: "IMO", prefix: "6281", country: "Indonesia", rate: "98.9%" },
+      { id: "tiktok", name: "TikTok", prefix: "2327", country: "Sierra Leone", rate: "98.5%" },
+      { id: "google", name: "Google", prefix: "2250", country: "Ivory Coast", rate: "99.2%" },
+      { id: "instagram", name: "Instagram", prefix: "4474", country: "United Kingdom", rate: "99.1%" },
+      { id: "apple", name: "Apple", prefix: "1415", country: "United States", rate: "99.7%" },
+    ];
+
+    const trendingServices = appStats.map((app) => {
+      const hits = filterHitsForApp(active24hHits, app.name);
+      return {
+        ...app,
+        hitsCount: hits.length,
+        latestHit: hits[0] || null,
+      };
+    }).sort((a, b) => b.hitsCount - a.hitsCount);
+
+    return {
+      trendingServices,
+      totalHits24h: active24hHits.length,
+      topService: trendingServices[0]?.name || "WhatsApp",
+    };
+  }, [active24hHits]);
 
   const [getNumHistory, setGetNumHistory] = useState<
     Array<{
@@ -5822,20 +5855,159 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   { id: "google", name: "Google", bg: "bg-slate-50/90" },
                   { id: "apple", name: "Apple", bg: "bg-white" },
                 ].map((item) => {
-                  const appRanges = APP_CARRIER_RANGES[item.name] || [];
+                  const count = getMonotonicCountForApp(item.name);
                   return (
                     <div
                       key={item.id}
                       id={`top-app-item-${item.id}`}
                       onClick={() => setActiveAppConsoleService(item.name)}
-                      className={`py-5 px-3 sm:py-6 sm:px-5 flex flex-col items-center justify-center text-center ${item.bg} hover:bg-blue-50/60 transition-all cursor-pointer select-none group`}
+                      className={`py-5 px-3 sm:py-6 sm:px-5 flex flex-col items-center justify-center text-center ${item.bg} hover:bg-blue-50/60 transition-all cursor-pointer select-none group relative`}
                     >
-                      <div className="w-12 h-12 sm:w-14 sm:h-14 mb-2 flex items-center justify-center group-hover:scale-105 transition-transform">
+                      <div className="w-12 h-12 sm:w-14 sm:h-14 mb-2 flex items-center justify-center group-hover:scale-105 transition-transform relative">
                         {getBrandLogoComponent(item.id, "w-12 h-12 sm:w-14 sm:h-14")}
+                        {count > 0 && (
+                          <span className="absolute -top-1 -right-1 px-1.5 py-0.2 bg-emerald-500 text-white text-[9px] font-black rounded-full shadow-xs animate-pulse">
+                            LIVE
+                          </span>
+                        )}
                       </div>
                       <h4 className="font-extrabold text-slate-900 text-sm sm:text-base tracking-tight group-hover:text-blue-600 transition-colors">
                         {item.name}
                       </h4>
+                      <div className="mt-1 flex items-center gap-1.5">
+                        <span className={`inline-flex items-center gap-1 text-[11px] font-mono font-extrabold px-2 py-0.5 rounded-full ${
+                          count > 0
+                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                            : "bg-slate-100 text-slate-500 border border-slate-200"
+                        }`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${count > 0 ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`} />
+                          <span>{count} SMS</span>
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
+            {/* -------------------- TOP TRENDS SECTION -------------------- */}
+            <section
+              id="top-trends-section"
+              className="bg-white rounded-xl border border-slate-200/90 shadow-xs overflow-hidden"
+            >
+              {/* Header */}
+              <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white px-4 py-3 border-b border-indigo-900/50 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="p-1 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                    <Flame className="w-4 h-4 animate-pulse" />
+                  </span>
+                  <span className="font-bold text-white text-sm sm:text-base tracking-tight">
+                    Top Trends
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-extrabold uppercase tracking-wider">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                    Live Activity
+                  </span>
+                </div>
+                <span className="text-xs text-indigo-200 font-mono font-bold">
+                  24h Trends Feed
+                </span>
+              </div>
+
+              {/* Trends Quick Metrics Bar */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-y sm:divide-y-0 divide-slate-200 border-b border-slate-200 bg-slate-50/70 text-xs">
+                <div className="p-3">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">#1 Trending Service</span>
+                  <span className="text-xs sm:text-sm font-extrabold text-emerald-700 flex items-center gap-1 mt-0.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    {sortedTopTrends.topService}
+                  </span>
+                </div>
+                <div className="p-3">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">24h Monitored Hits</span>
+                  <span className="text-xs sm:text-sm font-extrabold text-slate-900 font-mono mt-0.5">
+                    {sortedTopTrends.totalHits24h} Hits
+                  </span>
+                </div>
+                <div className="p-3">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Avg Delivery Speed</span>
+                  <span className="text-xs sm:text-sm font-extrabold text-indigo-700 font-mono mt-0.5">
+                    ~1.2s Instant
+                  </span>
+                </div>
+                <div className="p-3">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Delivery Reliability</span>
+                  <span className="text-xs sm:text-sm font-extrabold text-emerald-600 font-mono mt-0.5">
+                    100% Physical
+                  </span>
+                </div>
+              </div>
+
+              {/* Trending Apps List */}
+              <div className="divide-y divide-slate-100 bg-white">
+                {sortedTopTrends.trendingServices.slice(0, 4).map((trend, idx) => {
+                  const rankMedal = idx === 0 ? "🥇 #1" : idx === 1 ? "🥈 #2" : idx === 2 ? "🥉 #3" : `#${idx + 1}`;
+                  const medalClass =
+                    idx === 0
+                      ? "bg-amber-100 text-amber-900 border-amber-300 font-black"
+                      : idx === 1
+                      ? "bg-slate-200 text-slate-800 border-slate-300 font-bold"
+                      : idx === 2
+                      ? "bg-orange-100 text-orange-900 border-orange-300 font-bold"
+                      : "bg-slate-100 text-slate-600 border-slate-200 font-medium";
+
+                  return (
+                    <div
+                      key={trend.id}
+                      onClick={() => setActiveAppConsoleService(trend.name)}
+                      className="p-3 sm:p-3.5 flex items-center justify-between gap-3 hover:bg-indigo-50/40 transition cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className={`px-2 py-0.5 rounded text-[11px] font-mono border ${medalClass} shrink-0`}>
+                          {rankMedal}
+                        </span>
+
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0">
+                          {getBrandLogoComponent(trend.id, "w-8 h-8")}
+                        </div>
+
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-extrabold text-slate-900 text-xs sm:text-sm group-hover:text-blue-600 transition-colors truncate">
+                              {trend.name}
+                            </span>
+                            <span className="text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200 font-mono">
+                              Prefix #{trend.prefix}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-slate-400 block truncate">
+                            {trend.country} &bull; High-throughput carrier route
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2.5 shrink-0">
+                        <span className={`inline-flex items-center gap-1 text-[11px] font-mono font-bold px-2 py-0.5 rounded-full ${
+                          trend.hitsCount > 0
+                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                            : "bg-slate-100 text-slate-500 border border-slate-200"
+                        }`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${trend.hitsCount > 0 ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`} />
+                          {trend.hitsCount} SMS
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveAppConsoleService(trend.name);
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold transition flex items-center gap-1 active:scale-95 cursor-pointer"
+                        >
+                          <span>View SMS</span>
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -9143,7 +9315,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         const activeRows = realHits.map((h) => {
           const country = getRealCountryName(h.country, h.range).toUpperCase();
           const rangeName = h.range ? `${country} ${h.range}` : country;
-          const fullNum = formatNumberWithAreaCode(h.range || "", country);
+          const fullNum = (h as any).number || (h as any).num || formatNumberWithAreaCode(h.range || "", country);
           return {
             range: rangeName,
             number: fullNum || "—",

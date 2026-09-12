@@ -7,7 +7,7 @@ import {
   onSnapshot,
 } from 'firebase/firestore';
 import { firestoreDb } from './firebaseConfig';
-import { setMauthApiKey, setVoltxEndpointKey } from './voltxApi';
+import { setMauthApiKey, setVoltxEndpointKey, isVoltxApiActive } from './voltxApi';
 
 export interface ApiConfigItem {
   id: string;
@@ -33,8 +33,8 @@ export const DEFAULT_API_CONFIGS: ApiConfigItem[] = [
     apiKey: 'MJTFKF97CI2',
     serviceType: 'ALL (Global Auto-Detect)',
     endpoint: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
-    isActive: true,
-    notes: 'Active System Primary Gateway',
+    isActive: false,
+    notes: 'System Voltx Gateway (Currently OFF by admin)',
     createdAt: Date.now(),
   },
   {
@@ -44,7 +44,7 @@ export const DEFAULT_API_CONFIGS: ApiConfigItem[] = [
     serviceType: 'ALL (FOX SMS CR API)',
     endpoint: 'http://169.58.133.106/ints/api/v1/viewstats',
     isActive: true,
-    notes: 'Agent: XZRMUNNA1206',
+    notes: 'Agent: XZRMUNNA1206 (Active Real-Time Stream)',
     createdAt: Date.now(),
   },
 ];
@@ -357,10 +357,20 @@ export async function deleteApiConfig(configId: string) {
 
 export function getActiveApiConfigs(): ApiConfigItem[] {
   const all = getAllApiConfigs();
-  return all.filter((c) => c.isActive === true && (c.apiKey || '').trim().length > 3 && c.apiKey.trim() !== 'MOBEKJ8H20I');
+  const isVoltxOn = isVoltxApiActive();
+  return all.filter((c) => {
+    if (!c.isActive) return false;
+    if (!isVoltxOn && (c.id === 'primary-voltx-api' || (c.endpoint && c.endpoint.includes('2oo9.cloud')) || (c.endpoint && c.endpoint.includes('voltx')))) {
+      return false;
+    }
+    return (c.apiKey || '').trim().length > 3 && c.apiKey.trim() !== 'MOBEKJ8H20I';
+  });
 }
 
 export function getActiveApiKeys(): string[] {
+  const isVoltxOn = isVoltxApiActive();
+  if (!isVoltxOn) return [];
+
   const configs = getActiveApiConfigs();
   const keys = new Set<string>();
   configs.forEach((c) => {

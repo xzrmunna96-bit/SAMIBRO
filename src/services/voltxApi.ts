@@ -54,6 +54,9 @@ export async function syncVoltxActiveStatusFromServer(): Promise<boolean> {
 }
 
 export function getVoltxEndpointKey(): string {
+  if (!isVoltxApiActive()) {
+    return '';
+  }
   if (typeof window !== 'undefined') {
     const saved = localStorage.getItem('voltx_endpoint_key');
     if (saved && saved.trim()) {
@@ -87,6 +90,9 @@ export function setVoltxEndpointKey(key: string): void {
 }
 
 export function getMauthApiKey(): string {
+  if (!isVoltxApiActive()) {
+    return '';
+  }
   if (typeof window !== 'undefined') {
     const saved = localStorage.getItem('voltx_mauthapi_key') || localStorage.getItem('voltx_endpoint_key');
     if (saved && saved.trim()) {

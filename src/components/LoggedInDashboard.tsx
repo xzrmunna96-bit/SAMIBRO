@@ -3953,6 +3953,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
   const flattenedAccessRows = React.useMemo(() => {
     const rows: Array<{
+      id?: string;
       sid: string;
       range: string;
       otp?: string;
@@ -3960,44 +3961,112 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       number?: string;
       last_at?: number;
       carrier: { operator: string; country: string };
+      source?: string;
     }> = [];
 
+    const query = accessListFilter.toLowerCase().trim();
+    const processedHitKeys = new Set<string>();
+
+    // 1. Incorporate ALL individual OTP hits from liveHits (which includes FOX SMS and real-time stream hits)
+    if (liveHits && liveHits.length > 0) {
+      liveHits.forEach((hit, idx) => {
+        if (!hit) return;
+        const rawNum = String(hit.number || hit.range || "").trim();
+        const digits = rawNum.replace(/\D/g, "");
+        const rangePrefix = digits.length >= 5 ? digits.slice(0, 5) : (rawNum || "RANGE");
+        const sid = (hit.sid || (hit as any).service || "SMS").trim();
+        const carrier = resolveCarrierDetails(rawNum || rangePrefix);
+        const countryName = getRealCountryName(hit.country || carrier.country, rawNum || rangePrefix);
+        const operatorName = hit.operator || carrier.operator || "Carrier Route";
+        const msg = hit.message || "";
+        const otp = (hit as any).code || extractOtpCode(msg) || "";
+        const hitTime = typeof hit.time === "number" ? hit.time : ((hit as any).timestamp ? new Date((hit as any).timestamp).getTime() : Date.now());
+        const isFox = (hit as any).isFoxSms || (hit as any).source === "FOX SMS" || (hit.operator && hit.operator.includes("FOX SMS"));
+        const source = isFox ? "FOX SMS" : "Live Stream";
+
+        if (query) {
+          const matchSid = sid.toLowerCase().includes(query);
+          const matchRange = rangePrefix.toLowerCase().includes(query) || rawNum.toLowerCase().includes(query) || digits.includes(query);
+          const matchCountry = countryName.toLowerCase().includes(query) || (hit.country && hit.country.toLowerCase().includes(query));
+          const matchOperator = operatorName.toLowerCase().includes(query);
+          const matchOtp = otp.toLowerCase().includes(query);
+          const matchMsg = msg.toLowerCase().includes(query);
+          const matchSource = source.toLowerCase().includes(query);
+
+          if (!matchSid && !matchRange && !matchCountry && !matchOperator && !matchOtp && !matchMsg && !matchSource) {
+            return;
+          }
+        }
+
+        const uniqueKey = `${sid}_${rawNum}_${hitTime}_${msg.substring(0, 15)}`;
+        if (processedHitKeys.has(uniqueKey)) return;
+        processedHitKeys.add(uniqueKey);
+
+        rows.push({
+          id: `hit_${idx}_${hitTime}`,
+          sid,
+          range: rawNum || rangePrefix,
+          otp: otp || undefined,
+          message: msg,
+          number: rawNum,
+          last_at: Math.floor(hitTime / 1000),
+          carrier: {
+            country: countryName,
+            operator: operatorName,
+          },
+          source,
+        });
+      });
+    }
+
+    // 2. Also incorporate range pools from liveAccessList
     liveAccessList.forEach((srv) => {
       (srv.ranges || []).forEach((r) => {
         const cleanRange = (r || "").trim();
         if (!cleanRange) return;
 
-        // Apply search filter if active
-        if (accessListFilter.trim()) {
-          const q = accessListFilter.toLowerCase().trim();
-          const matchSid = srv.sid.toLowerCase().includes(q);
-          const matchRange = cleanRange.toLowerCase().includes(q);
-          if (!matchSid && !matchRange) return;
+        const carrier = resolveCarrierDetails(cleanRange);
+        const countryName = carrier.country;
+
+        if (query) {
+          const matchSid = srv.sid.toLowerCase().includes(query);
+          const matchRange = cleanRange.toLowerCase().includes(query);
+          const matchCountry = countryName.toLowerCase().includes(query);
+          const matchOperator = carrier.operator.toLowerCase().includes(query);
+
+          if (!matchSid && !matchRange && !matchCountry && !matchOperator) return;
         }
 
         const data = srv.rangeOtps?.[cleanRange];
         const otp = data?.otp || extractOtpCode(data?.message || "");
-        const carrier = resolveCarrierDetails(cleanRange);
 
-        rows.push({
-          sid: srv.sid,
-          range: cleanRange,
-          otp: otp || undefined,
-          message: data?.message,
-          number: data?.number,
-          last_at: data?.time ? Math.floor(data.time / 1000) : srv.last_at,
-          carrier,
-        });
+        // When query is active or list built, check if this range already exists in rows with an OTP hit
+        const existsInHits = rows.some(
+          (rw) => rw.sid.toLowerCase() === srv.sid.toLowerCase() && (rw.range.includes(cleanRange) || cleanRange.includes(rw.range.replace(/\D/g, "")))
+        );
+
+        if (!query || !existsInHits) {
+          rows.push({
+            id: `access_${srv.sid}_${cleanRange}`,
+            sid: srv.sid,
+            range: cleanRange,
+            otp: otp || undefined,
+            message: data?.message,
+            number: data?.number,
+            last_at: data?.time ? Math.floor(data.time / 1000) : srv.last_at,
+            carrier,
+          });
+        }
       });
     });
 
-    // Sort: items with OTP first, then by last_at descending
+    // Sort: Items with OTP first, then by last_at timestamp descending (newest on top)
     return rows.sort((a, b) => {
       if (a.otp && !b.otp) return -1;
       if (!a.otp && b.otp) return 1;
       return (b.last_at || 0) - (a.last_at || 0);
     });
-  }, [liveAccessList, accessListFilter]);
+  }, [liveAccessList, liveHits, accessListFilter]);
 
   // Sender / Range View State & Live Aggregation
   const [senderRangeFilter, setSenderRangeFilter] = useState("");
@@ -7215,20 +7284,20 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   <List className="w-5 h-5 text-blue-600" />
                   <span>Access List Pools</span>
                   <span className="text-xs bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-full font-bold">
-                    {flattenedAccessRows.length} Active Ranges
+                    {flattenedAccessRows.length} Matches Found
                   </span>
                 </h2>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Real-time service pools with individual range monitoring. 1 row per active range.
+                  Search by Country name, Range code (e.g. 23762, 22901), Service, Number, or OTP. Serialized live feed.
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 w-full sm:w-auto">
                 <input
                   type="text"
-                  placeholder="Filter Service or Range (e.g. 22901, WhatsApp)..."
+                  placeholder="Search Country, Range, Service (e.g. Benin, 23762, Fox SMS)..."
                   value={accessListFilter}
                   onChange={(e) => setAccessListFilter(e.target.value)}
-                  className="px-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-64"
+                  className="px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-80 shadow-2xs font-medium"
                 />
               </div>
             </div>
@@ -7240,9 +7309,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                     <th className="p-3 border-r border-slate-700 w-12 text-center">#</th>
                     <th className="p-3 border-r border-slate-700">Service Name</th>
                     <th className="p-3 border-r border-slate-700">Country / Carrier</th>
-                    <th className="p-3 border-r border-slate-700">Range Code</th>
+                    <th className="p-3 border-r border-slate-700">Range Code / Number</th>
                     <th className="p-3 border-r border-slate-700">Latest Range OTP &amp; Stream</th>
-                    <th className="p-3 text-right">Last Active</th>
+                    <th className="p-3 text-right">Time Received</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 bg-white">
@@ -7252,43 +7321,48 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         colSpan={6}
                         className="p-8 text-center text-slate-500 font-sans text-xs bg-slate-50"
                       >
-                        No active service access rules found matching your filter.
+                        No active service access rules or OTP hits found matching "{accessListFilter}".
                       </td>
                     </tr>
                   ) : (
                     flattenedAccessRows.map((row, i) => {
                       const isEven = i % 2 === 0;
                       return (
-                        <tr key={`${row.sid}_${row.range}_${i}`} className={`transition ${isEven ? 'bg-white hover:bg-indigo-50/60' : 'bg-slate-50/90 hover:bg-indigo-50/60'}`}>
-                          <td className="p-3 font-mono text-center text-slate-400 border-r border-slate-200">
-                            {i + 1}
+                        <tr key={row.id || `${row.sid}_${row.range}_${i}`} className={`transition ${isEven ? 'bg-white hover:bg-indigo-50/60' : 'bg-slate-50/90 hover:bg-indigo-50/60'}`}>
+                          <td className="p-3 font-mono font-bold text-center text-slate-600 border-r border-slate-200 bg-slate-100/50">
+                            #{i + 1}
                           </td>
                           <td className="p-3 font-bold text-blue-700 border-r border-slate-200 whitespace-nowrap">
                             <span className="inline-flex items-center gap-1.5">
                               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                              {row.sid}
+                              <span>{row.sid}</span>
+                              {row.source === "FOX SMS" && (
+                                <span className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-extrabold">
+                                  🦊 FOX SMS
+                                </span>
+                              )}
                             </span>
                           </td>
                           <td className="p-3 text-slate-700 border-r border-slate-200 whitespace-nowrap">
-                            <span className="font-semibold">{row.carrier.country}</span>
-                            <span className="text-[10px] text-slate-500 block">{row.carrier.operator}</span>
+                            <span className="font-semibold text-slate-900">{row.carrier.country}</span>
+                            <span className="text-[10px] text-slate-500 block font-medium">{row.carrier.operator}</span>
                           </td>
                           <td className="p-3 font-mono font-bold text-slate-900 border-r border-slate-200 whitespace-nowrap">
                             <span className="bg-slate-100 text-slate-800 px-2 py-0.5 rounded border border-slate-300">
-                              {row.range.length <= 6 ? `${row.range}XXX` : row.range}
+                              {row.number || (row.range.length <= 6 ? `${row.range}XXX` : row.range)}
                             </span>
                           </td>
                           <td className="p-3 border-r border-slate-200">
                             {row.otp ? (
                               <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                                <span className="inline-flex items-center gap-1.5 font-bold text-emerald-900 bg-emerald-100 px-2.5 py-1 rounded-md border border-emerald-300 text-xs font-mono">
+                                <span className="inline-flex items-center gap-1.5 font-bold text-emerald-900 bg-emerald-100 px-2.5 py-1 rounded-md border border-emerald-300 text-xs font-mono shrink-0">
                                   🔑 OTP: {row.otp}
                                   <button
                                     type="button"
-                                    onClick={() => copyToClipboard(row.otp!, `acc_flt_${row.sid}_${row.range}`)}
+                                    onClick={() => copyToClipboard(row.otp!, `acc_flt_${row.sid}_${row.range}_${i}`)}
                                     className="ml-1 px-1.5 py-0.5 bg-emerald-700 text-white rounded text-[10px] hover:bg-emerald-800 transition cursor-pointer font-sans"
                                   >
-                                    {copiedText === `acc_flt_${row.sid}_${row.range}` ? "Copied" : "Copy"}
+                                    {copiedText === `acc_flt_${row.sid}_${row.range}_${i}` ? "Copied" : "Copy"}
                                   </button>
                                 </span>
                                 {row.message && (
@@ -7303,7 +7377,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                               </span>
                             )}
                           </td>
-                          <td className="p-3 text-slate-600 font-mono text-right whitespace-nowrap">
+                          <td className="p-3 text-slate-600 font-mono text-right whitespace-nowrap font-medium">
                             {row.last_at
                               ? new Date(row.last_at * 1000).toLocaleTimeString("en-GB")
                               : "Active"}

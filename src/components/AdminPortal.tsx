@@ -50,6 +50,11 @@ import {
   Wrench,
   Megaphone,
   ImageIcon,
+  Power,
+  Radio,
+  ToggleLeft,
+  ToggleRight,
+  Sliders,
 } from 'lucide-react';
 import {
   getAllNotifications,
@@ -418,6 +423,8 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
   });
   const [isApiKeySaved, setIsApiKeySaved] = useState(false);
   const [isTestingApi, setIsTestingApi] = useState(false);
+  const [isVoltxApiActive, setIsVoltxApiActive] = useState<boolean>(false);
+  const [isTogglingVoltxApi, setIsTogglingVoltxApi] = useState<boolean>(false);
   const [testResult, setTestResult] = useState<{
     success: boolean;
     message: string;
@@ -1209,6 +1216,16 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
           }
         }).catch(() => {});
 
+        // 5. Sync Voltx SMS API Switch Status
+        fetch('/api/voltx/status')
+          .then((r) => r.json())
+          .then((d) => {
+            if (d && typeof d.isActive === 'boolean') {
+              setIsVoltxApiActive(d.isActive);
+            }
+          })
+          .catch(() => {});
+
         // 5. Background Firebase sync
         fetchAccountsFromFirebaseDirectly().then(() => {
           setAccountsList(getAllAccounts());
@@ -1681,6 +1698,34 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     setIsApiKeySaved(true);
     showToast('API Turned OFF. All SMS counters reset to 0.');
     setTimeout(() => setIsApiKeySaved(false), 4000);
+  };
+
+  const handleToggleVoltxApi = async (targetState?: boolean) => {
+    const newState = targetState !== undefined ? targetState : !isVoltxApiActive;
+    setIsTogglingVoltxApi(true);
+    try {
+      const res = await fetch('/api/voltx/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: newState }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setIsVoltxApiActive(data.isActive);
+        showToast(
+          data.isActive
+            ? 'Voltx SMS API চালু করা হয়েছে! স্বয়ংক্রিয়ভাবে সবার কাছে মেসেজ যাওয়া শুরু হয়েছে।'
+            : 'Voltx SMS API বন্ধ করা হয়েছে! এখন শুধুমাত্র ফক্স এসএমএস (FOX SMS) থেকে আসা এসএমএস দেখা যাবে।'
+        );
+        fetchIncomingSmsHits();
+      } else {
+        showToast('Failed to toggle Voltx API');
+      }
+    } catch {
+      showToast('Error toggling Voltx API');
+    } finally {
+      setIsTogglingVoltxApi(false);
+    }
   };
 
   // -------------------------------------------------------------------------
@@ -2647,6 +2692,135 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
         {/* ================================================================= */}
         {(activeTab === 'api-management' || activeTab === 'console-api') && (
           <div className="space-y-6">
+            {/* Master Gateway Control Switchboard: Voltx API vs FOX SMS API */}
+            <section className="bg-gradient-to-br from-slate-900 via-slate-900/95 to-slate-950 border border-slate-700/80 rounded-2xl p-5 sm:p-6 shadow-2xl space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-amber-500/15 border border-amber-500/30 rounded-2xl text-amber-400 shrink-0">
+                    <Sliders className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <h2 className="text-lg sm:text-xl font-black text-white tracking-wide">
+                        API Gateway Master Controls & Switchboard
+                      </h2>
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-sky-950 text-sky-300 border border-sky-500/40">
+                        Live Gateway Control
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-1">
+                      ভোলটেক্স (Voltx) এবং ফক্স এসএমএস (FOX SMS) গেটওয়ের সেন্ট্রাল অন/অফ কন্ট্রোল সুইচ
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Grid with 2 Gateway Control Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* 1. Voltx SMS API Gateway Switch Card */}
+                <div className={`p-4 sm:p-5 rounded-2xl border transition-all ${
+                  isVoltxApiActive
+                    ? 'bg-emerald-950/20 border-emerald-500/40 shadow-lg shadow-emerald-950/20'
+                    : 'bg-slate-950/80 border-rose-500/30'
+                }`}>
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className={`p-2 rounded-xl border ${
+                        isVoltxApiActive
+                          ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
+                          : 'bg-rose-500/20 border-rose-500/40 text-rose-400'
+                      }`}>
+                        <Radio className={`w-5 h-5 ${isVoltxApiActive ? 'animate-pulse' : ''}`} />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-black text-white">Voltx SMS API Gateway</h3>
+                        <span className="text-[11px] font-mono text-slate-400">api.2oo9.cloud (m29)</span>
+                      </div>
+                    </div>
+
+                    {/* Status Badge */}
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-black font-mono border flex items-center gap-1.5 ${
+                      isVoltxApiActive
+                        ? 'bg-emerald-950 text-emerald-300 border-emerald-500/40'
+                        : 'bg-rose-950 text-rose-300 border-rose-500/40'
+                    }`}>
+                      <span className={`w-2 h-2 rounded-full ${isVoltxApiActive ? 'bg-emerald-400 animate-ping' : 'bg-rose-500'}`} />
+                      <span>{isVoltxApiActive ? 'STREAMING ACTIVE' : 'OFF / PAUSED'}</span>
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-slate-300 mb-4 leading-relaxed bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+                    {isVoltxApiActive ? (
+                      <span className="text-emerald-300 font-medium">
+                        🟢 বর্তমানে ভোলটেক্স API সক্রিয় রয়েছে এবং সকল ইউজারদের কাছে স্বয়ংক্রিয়ভাবে মেসেজ যাচ্ছে।
+                      </span>
+                    ) : (
+                      <span className="text-rose-300 font-medium">
+                        🔴 ভোলটেক্স API বর্তমানে বন্ধ (OFF) রাখা হয়েছে। অ্যাডমিন ও সাধারণ ইউজারদের কাছে ভোলটেক্স থেকে এসএমএস আসা সম্পূর্ণরূপে বন্ধ রয়েছে।
+                      </span>
+                    )}
+                  </p>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
+                    <span className="text-xs font-bold text-slate-400">Master Switch:</span>
+                    <button
+                      type="button"
+                      disabled={isTogglingVoltxApi}
+                      onClick={() => handleToggleVoltxApi()}
+                      className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition cursor-pointer disabled:opacity-50 ${
+                        isVoltxApiActive
+                          ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-md shadow-rose-900/30'
+                          : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-900/30'
+                      }`}
+                    >
+                      <Power className="w-4 h-4" />
+                      <span>
+                        {isTogglingVoltxApi
+                          ? 'Updating...'
+                          : isVoltxApiActive
+                          ? 'সুইচ অফ করুন (Turn OFF Voltx)'
+                          : 'সুইচ অন করুন (Turn ON Voltx)'}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2. FOX SMS API Gateway Card */}
+                <div className="p-4 sm:p-5 rounded-2xl border bg-slate-950/80 border-sky-500/40 shadow-lg shadow-sky-950/20">
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-xl border bg-sky-500/20 border-sky-500/40 text-sky-400">
+                        <Radio className="w-5 h-5 animate-pulse" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-black text-white">FOX SMS Agent Gateway (CR API)</h3>
+                        <span className="text-[11px] font-mono text-sky-400">169.58.133.106/ints/api</span>
+                      </div>
+                    </div>
+
+                    {/* Status Badge */}
+                    <span className="px-2.5 py-1 rounded-full text-xs font-black font-mono border flex items-center gap-1.5 bg-sky-950 text-sky-300 border-sky-500/40">
+                      <span className="w-2 h-2 rounded-full bg-sky-400 animate-ping" />
+                      <span>OPEN / ALL USERS</span>
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-slate-300 mb-4 leading-relaxed bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+                    <span className="text-sky-300 font-medium">
+                      🔵 ফক্স এসএমএস (FOX SMS) লাইভ স্ট্রিম সম্পূর্ণরূপে ওপেন রয়েছে। সকল সাধারণ ইউজার ও অ্যাডমিন রিয়েল-টাইমে ফক্স এসএমএস থেকে আসা এসএমএসগুলো দেখতে পাচ্ছেন।
+                    </span>
+                  </p>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
+                    <span className="text-xs font-bold text-slate-400">Agent Username:</span>
+                    <span className="px-2.5 py-1 rounded-lg text-xs font-mono font-black text-sky-300 bg-sky-950/90 border border-sky-500/30">
+                      XZRMUNNA1206
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </section>
+
             {/* Single System Main API Gateway Setup */}
             <section className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 space-y-6 shadow-xl">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">

@@ -4188,10 +4188,16 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         if (!sidUpper.includes(catUpper)) return false;
       }
       if (senderRangeFilter.trim()) {
-        const q = senderRangeFilter.toLowerCase();
+        const q = senderRangeFilter.toLowerCase().trim();
+        const cleanQ = q.replace(/\D/g, "");
+        const cleanRange = item.range.replace(/\D/g, "");
+        const rangeMatch =
+          item.range.toLowerCase().includes(q) ||
+          (cleanQ.length > 0 && (cleanRange.includes(cleanQ) || cleanQ.includes(cleanRange) || cleanQ.startsWith(cleanRange)));
+
         return (
           item.sid.toLowerCase().includes(q) ||
-          item.range.toLowerCase().includes(q) ||
+          rangeMatch ||
           item.operator.toLowerCase().includes(q) ||
           item.country.toLowerCase().includes(q) ||
           item.latestMessage.toLowerCase().includes(q)
@@ -4203,13 +4209,29 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
   const consoleFilteredHits = React.useMemo(() => {
     if (!consoleFilter.trim()) return liveHits;
-    const q = consoleFilter.toLowerCase();
+    const q = consoleFilter.toLowerCase().trim();
+    const cleanQ = q.replace(/\D/g, "");
     return liveHits.filter((hit) => {
+      const rawNum = String((hit as any).number || hit.range || "").trim();
+      const cleanNum = rawNum.replace(/\D/g, "");
+      const cleanRange = (hit.range || "").replace(/\D/g, "");
+      const otpCode = (hit as any).code || (hit as any).otp || "";
+
+      const digitsMatch = cleanQ.length > 0 && (
+        cleanNum.includes(cleanQ) ||
+        cleanQ.includes(cleanNum) ||
+        cleanRange.includes(cleanQ) ||
+        cleanQ.startsWith(cleanRange)
+      );
+
       return (
         hit.sid?.toLowerCase().includes(q) ||
         hit.operator?.toLowerCase().includes(q) ||
         hit.country?.toLowerCase().includes(q) ||
         hit.range?.toLowerCase().includes(q) ||
+        rawNum.toLowerCase().includes(q) ||
+        digitsMatch ||
+        otpCode.toLowerCase().includes(q) ||
         hit.message?.toLowerCase().includes(q)
       );
     });

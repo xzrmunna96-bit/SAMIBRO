@@ -1,0 +1,12 @@
+[
+  {
+    "id": "primary-voltx-api",
+    "apiKey": "MJTFKF97CI2",
+    "serviceType": "ALL (Global Auto-Detect)",
+    "endpoint": "https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api",
+    "isActive": false,
+    "notes": "Active System Primary Gateway",
+    "createdAt": 1789060609832,
+    "updatedAt": 1789060619639
+  }
+]

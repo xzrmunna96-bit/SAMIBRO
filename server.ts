@@ -10,7 +10,9 @@ import {
   verifyWithFirebaseAuth,
   registerInFirebaseAuth,
 } from "./src/server/firebaseAdminSync";
-import { GLOBAL_COUNTRIES_LIST } from "./src/services/countryHelper";
+import { GLOBAL_COUNTRIES_LIST, getCountryInfo } from "./src/services/countryHelper";
+import { normalizeServiceId, resolveCarrierDetails, getRealCountryName } from "./src/services/voltxApi";
+import { extractOtpCode } from "./src/services/telegramService";
 
 async function startServer() {
   const app = express();
@@ -66,6 +68,30 @@ async function startServer() {
   const MANUAL_NUMBERS_POOL_FILE = path.join(DATA_DIR, "manual_numbers_pool.json");
   const AUTHORIZED_TELEGRAM_ADMINS_FILE = path.join(DATA_DIR, "authorized_telegram_admins.json");
   const BOT_CUSTOM_BUTTONS_FILE = path.join(DATA_DIR, "bot_custom_buttons.json");
+  const VOLTX_API_STATUS_FILE = path.join(DATA_DIR, "voltx_api_status.json");
+
+  function loadVoltxApiActive(): boolean {
+    try {
+      if (fs.existsSync(VOLTX_API_STATUS_FILE)) {
+        const raw = fs.readFileSync(VOLTX_API_STATUS_FILE, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed.isActive === "boolean") {
+          return parsed.isActive;
+        }
+      }
+    } catch {}
+    return false; // Default OFF per user request so only FOX SMS is active
+  }
+
+  function saveVoltxApiActive(isActive: boolean) {
+    try {
+      fs.writeFileSync(VOLTX_API_STATUS_FILE, JSON.stringify({ isActive, updatedAt: Date.now() }, null, 2), "utf-8");
+    } catch (e) {
+      console.warn("Could not save voltx_api_status.json:", e);
+    }
+  }
+
+  let voltxApiActive = loadVoltxApiActive();
 
   // Secret admin access key
   const ADMIN_SECRET_KEY = "MUNNA12061";
@@ -6108,7 +6134,7 @@ async function startServer() {
 
       const targetUrl = `${baseUrl}?token=${encodeURIComponent(token)}&records=${records}`;
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3500);
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
 
       const fetchRes = await fetch(targetUrl, {
         method: "GET",
@@ -6129,32 +6155,47 @@ async function startServer() {
       }
 
       const hits: any[] = [];
-      if (parsedData && (parsedData.status === "success" || Array.isArray(parsedData.data))) {
+      if (parsedData && (parsedData.status === "success" || Array.isArray(parsedData.data) || Array.isArray(parsedData))) {
         const items = Array.isArray(parsedData.data) ? parsedData.data : (Array.isArray(parsedData) ? parsedData : []);
         for (const item of items) {
           if (!item) continue;
           const num = String(item.num || item.number || item.phone || item.range || "").trim();
           const cli = String(item.cli || item.sender || item.service || "FOX SMS").trim();
-          const msg = String(item.message || item.text || item.sms || "").trim();
-          const dt = item.dt || item.date || item.time;
-          let time = Date.now();
-          if (dt) {
-            const t = new Date(dt).getTime();
-            if (!isNaN(t) && t > 0) time = t;
+          const rawMsg = String(item.message || item.text || item.sms || "").trim();
+          const digits = num.replace(/\D/g, "");
+          const rangePrefix = digits.length >= 5 ? digits.slice(0, 5) : (digits || num);
+          const sid = normalizeServiceId(cli || "FOX SMS", rawMsg);
+          const carrier = resolveCarrierDetails(rangePrefix || num);
+          const countryName = getRealCountryName(carrier.country, num);
+          const operatorName = carrier.operator || "FOX SMS Carrier Route";
+          const otpCode = extractOtpCode(rawMsg);
+
+          let parsedTime = Date.now();
+          if (item.dt) {
+            const dtStr = String(item.dt).trim();
+            const isoStr = dtStr.includes(" ") && !dtStr.includes("T") ? dtStr.replace(" ", "T") + "Z" : dtStr;
+            const t = new Date(isoStr).getTime();
+            if (!isNaN(t) && t > 0) parsedTime = t;
           }
 
-          if (num || msg) {
+          if (num || rawMsg) {
             hits.push({
               num,
               number: num,
-              range: num,
+              range: rangePrefix || num,
               cli,
-              service: cli,
-              sid: cli,
-              message: msg,
-              payout: item.payout || "0.00",
-              dt,
-              time,
+              service: sid,
+              sid,
+              message: rawMsg,
+              payout: item.payout || "0.01",
+              dt: item.dt,
+              time: parsedTime,
+              operator: operatorName,
+              country: countryName,
+              code: otpCode,
+              otp: otpCode,
+              isFoxSms: true,
+              source: "FOX SMS",
             });
           }
         }
@@ -6163,13 +6204,14 @@ async function startServer() {
       if (hits.length > 0) {
         cachedFoxHits = hits;
         lastFoxFetchTime = now;
+        processAndBroadcastIncomingHits(hits);
       }
 
       res.json({
         success: true,
         count: hits.length,
         hits: hits.length > 0 ? hits : cachedFoxHits,
-        message: `Parsed ${hits.length} records from FOX SMS API`,
+        message: `Parsed and synchronized ${hits.length} records from FOX SMS API`,
       });
     } catch (err: any) {
       res.json({
@@ -6207,6 +6249,58 @@ async function startServer() {
     res.json({
       success: true,
       apiKey: activeSystemApiKey,
+    });
+  });
+
+  // Endpoints for Voltx SMS API Gateway Status & Switch Toggle
+  app.get("/api/voltx/status", (req, res) => {
+    res.json({
+      success: true,
+      isActive: voltxApiActive,
+      lastUpdated: Date.now(),
+    });
+  });
+
+  app.post("/api/voltx/toggle", (req, res) => {
+    const { isActive } = req.body || {};
+    voltxApiActive = typeof isActive === "boolean" ? isActive : !voltxApiActive;
+    saveVoltxApiActive(voltxApiActive);
+
+    // Update serverApiConfigs so it reflects the switch
+    serverApiConfigs = serverApiConfigs.map((c: any) => {
+      if (c && c.id === "primary-voltx-api") {
+        return { ...c, isActive: voltxApiActive };
+      }
+      return c;
+    });
+    saveServerApiConfigs(serverApiConfigs);
+
+    // If turned OFF, purge Voltx hits from global in-memory state so ONLY FOX SMS hits remain active
+    if (!voltxApiActive) {
+      serverGlobalLiveHits = serverGlobalLiveHits.filter(
+        (h) => h.isFoxSms || h.source === "FOX SMS" || (h.operator && String(h.operator).includes("FOX SMS"))
+      );
+      recalculateGlobalStats();
+      saveServerGlobalLiveHits(serverGlobalLiveHits);
+      saveServerGlobalStats(serverGlobalStats);
+      broadcastLivePacket({
+        type: "reset",
+        stats: serverGlobalStats,
+        hits: serverGlobalLiveHits,
+      });
+    } else {
+      // If turned ON, immediately trigger upstream sync from Voltx
+      syncFromUpstreamVoltxConsole().catch(() => {});
+    }
+
+    console.log(`[Voltx API] Status toggled by admin: ${voltxApiActive ? "ACTIVE (Streaming Enabled)" : "PAUSED (OFF)"}`);
+    res.json({
+      success: true,
+      isActive: voltxApiActive,
+      message: voltxApiActive
+        ? "Voltx SMS API is now ACTIVE and streaming messages"
+        : "Voltx SMS API is now PAUSED (OFF). Only FOX SMS stream is active for all users.",
+      liveHitsCount: serverGlobalLiveHits.length,
     });
   });
 
@@ -7372,6 +7466,11 @@ async function startServer() {
   }
 
   let serverGlobalLiveHits: any[] = loadServerGlobalLiveHits();
+  if (!voltxApiActive) {
+    serverGlobalLiveHits = serverGlobalLiveHits.filter(
+      (h) => h.isFoxSms || h.source === "FOX SMS" || (h.operator && String(h.operator).includes("FOX SMS"))
+    );
+  }
   let serverGlobalStats: ServerGlobalStats = loadServerGlobalStats();
   const liveStreamSseClients = new Set<any>();
   let serverApiActivationTimestamp = 0;
@@ -7539,11 +7638,11 @@ async function startServer() {
     }
 
     const now = Date.now();
-    const oneDayAgo = now - 24 * 60 * 60 * 1000;
+    const maxAgeMs = 7 * 24 * 60 * 60 * 1000; // Accept records within 7 days from upstream APIs
 
     // Track against ALL existing signatures in memory to strictly prevent duplicate counting
     const existingSignatures = new Set(
-      serverGlobalLiveHits.map((h) => `${(h.range || h.number || "").replace(/\D/g, "")}_${normalizeHitTimeServer(h.time)}_${(h.sid || "").trim().toLowerCase()}_${(h.message || "").trim()}`)
+      serverGlobalLiveHits.map((h) => `${(h.number || h.range || "").replace(/\D/g, "")}_${normalizeHitTimeServer(h.time)}_${(h.sid || h.service || "").trim().toLowerCase()}_${(h.message || "").trim().slice(0, 30)}`)
     );
 
     const validNew: any[] = [];
@@ -7552,13 +7651,21 @@ async function startServer() {
 
       let hitTime = normalizeHitTimeServer(h.time ?? h.timestamp);
       if (isNaN(hitTime) || hitTime <= 0) hitTime = now;
-      if (hitTime < oneDayAgo) continue; // Skip hits older than 24 hours
-      const sig = `${(h.range || h.number || "").replace(/\D/g, "")}_${hitTime}_${(h.sid || "").trim().toLowerCase()}_${(h.message || "").trim()}`;
+      if (now - hitTime > maxAgeMs) continue; // Skip if older than 7 days
+
+      const rawNum = (h.number || h.range || "").replace(/\D/g, "");
+      const sidStr = (h.sid || h.service || "").trim().toLowerCase();
+      const msgStr = (h.message || "").trim().slice(0, 30);
+      const sig = `${rawNum}_${hitTime}_${sidStr}_${msgStr}`;
+
       if (!existingSignatures.has(sig)) {
         existingSignatures.add(sig);
+        const extractedOtp = h.code || h.otp || extractOtpCode(h.message || "");
         validNew.push({
           ...h,
           time: hitTime,
+          code: extractedOtp,
+          otp: extractedOtp,
         });
       }
     }
@@ -7570,8 +7677,8 @@ async function startServer() {
         const tB = typeof b.time === "number" ? b.time : (b.timestamp || new Date(b.time).getTime() || 0);
         return tB - tA;
       });
-      if (serverGlobalLiveHits.length > 2000) {
-        serverGlobalLiveHits = serverGlobalLiveHits.slice(0, 2000);
+      if (serverGlobalLiveHits.length > 3000) {
+        serverGlobalLiveHits = serverGlobalLiveHits.slice(0, 3000);
       }
       recalculateGlobalStats();
       saveServerGlobalLiveHits(serverGlobalLiveHits);
@@ -7699,6 +7806,7 @@ async function startServer() {
 
   // Periodic background sync directly from Voltx upstream /console API
   async function syncFromUpstreamVoltxConsole() {
+    if (!voltxApiActive) return; // Switched OFF by admin: stop polling Voltx
     if (!activeSystemApiKey || !activeSystemApiKey.trim()) return;
     try {
       lastUpstreamSyncTime = Date.now();
@@ -7715,7 +7823,7 @@ async function startServer() {
       if (res.ok) {
         const json: any = await res.json();
         const hits = json?.data?.hits;
-        if (Array.isArray(hits) && hits.length > 0) {
+        if (Array.isArray(hits) && hits.length > 0 && voltxApiActive) {
           processAndBroadcastIncomingHits(hits);
         }
       }
@@ -7736,7 +7844,7 @@ async function startServer() {
       const targetUrl = `${baseUrl}?token=${encodeURIComponent(token)}&records=50`;
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3500);
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
 
       const res = await fetch(targetUrl, {
         method: "GET",
@@ -7764,7 +7872,7 @@ async function startServer() {
             const sid = normalizeServiceId(rawCli, rawMsg);
 
             const digits = num.replace(/\D/g, "");
-            const rangePrefix = digits.length >= 5 ? digits.slice(0, 5) : num;
+            const rangePrefix = digits.length >= 5 ? digits.slice(0, 5) : (digits || num);
 
             let parsedTime = Date.now();
             if (item.dt) {
@@ -7774,11 +7882,10 @@ async function startServer() {
               if (!isNaN(t) && t > 0) parsedTime = t;
             }
 
-            const matchedCountry = GLOBAL_COUNTRIES_LIST.find((c) => {
-              const code = c.dialCode.replace("+", "");
-              return digits.startsWith(code);
-            });
-            const countryName = matchedCountry ? matchedCountry.name : "International";
+            const carrier = resolveCarrierDetails(rangePrefix || num);
+            const countryName = getRealCountryName(carrier.country, num);
+            const operatorName = carrier.operator || "FOX SMS Carrier Route";
+            const otpCode = extractOtpCode(rawMsg);
 
             if (num || rawMsg) {
               hits.push({
@@ -7792,8 +7899,10 @@ async function startServer() {
                 payout: item.payout || "0.01",
                 dt: item.dt,
                 time: parsedTime,
-                operator: "FOX SMS Carrier Route",
+                operator: operatorName,
                 country: countryName,
+                code: otpCode,
+                otp: otpCode,
                 isFoxSms: true,
                 source: "FOX SMS",
               });

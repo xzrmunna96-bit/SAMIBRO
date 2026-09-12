@@ -333,16 +333,20 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  // Filter items based on search query
+  // Filter items based on search query (Country, Range, Full Number, Operator, Service, Message)
   const filteredItems = useMemo(() => {
+    if (!searchQuery.trim()) return itemsList;
+    const q = searchQuery.toLowerCase().trim();
+    const cleanQ = q.replace(/\D/g, "");
     return itemsList.filter((item) => {
-      if (!searchQuery.trim()) return true;
-      const q = searchQuery.toLowerCase();
+      const cleanNum = item.number.replace(/\D/g, "");
+      const cleanRange = item.range.replace(/\D/g, "");
       return (
         item.country.toLowerCase().includes(q) ||
         item.operator.toLowerCase().includes(q) ||
         item.range.toLowerCase().includes(q) ||
         item.number.toLowerCase().includes(q) ||
+        (cleanQ.length > 0 && (cleanNum.includes(cleanQ) || cleanRange.includes(cleanQ))) ||
         item.sid.toLowerCase().includes(q) ||
         item.message.toLowerCase().includes(q)
       );

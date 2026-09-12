@@ -147,6 +147,7 @@ export interface LiveAccessService {
   sid: string;
   last_at: number;
   ranges: string[];
+  rangeOtps?: Record<string, { otp: string; message: string; time: number; number?: string }>;
 }
 
 export interface LiveSuccessOtp {

@@ -112,9 +112,11 @@ export async function fetchFoxSmsStats(): Promise<{
           const sid = normalizeServiceId(cli || 'FOX SMS', rawMsg);
           const countryInfo = getCountryInfo(number);
           const countryName = getRealCountryName(countryInfo.name, number);
+          const digits = number.replace(/\D/g, '');
+          const rangePrefix = digits.length >= 5 ? digits.slice(0, 5) : number;
 
           return {
-            range: number,
+            range: rangePrefix || number,
             number,
             sid,
             message: rawMsg,

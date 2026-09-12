@@ -7656,6 +7656,81 @@ async function startServer() {
   setInterval(syncFromUpstreamVoltxConsole, 3000);
   setTimeout(syncFromUpstreamVoltxConsole, 300);
 
+  // Periodic background sync directly from FOX SMS API (http://169.58.133.106/ints/api/v1/viewstats)
+  async function syncFromFoxSmsApi() {
+    try {
+      const token = foxSmsConfig.token || "zQC9YAcWzVH-bL05MdRYHp4j8x6QOcs1amLyI9yhaQBVnQSS";
+      const baseUrl = foxSmsConfig.endpointUrl || "http://169.58.133.106/ints/api/v1/viewstats";
+      const targetUrl = `${baseUrl}?token=${encodeURIComponent(token)}&records=50`;
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
+
+      const res = await fetch(targetUrl, {
+        method: "GET",
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          "Accept": "application/json, text/plain, */*",
+        },
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const text = await res.text();
+        let json: any = null;
+        try { json = JSON.parse(text); } catch {}
+
+        if (json && (json.status === "success" || Array.isArray(json.data) || Array.isArray(json))) {
+          const items = Array.isArray(json.data) ? json.data : (Array.isArray(json) ? json : []);
+          const hits: any[] = [];
+          for (const item of items) {
+            if (!item) continue;
+            const num = String(item.num || item.number || item.phone || item.range || "").trim();
+            const rawMsg = String(item.message || item.text || item.sms || "").trim();
+            const rawCli = String(item.cli || item.sender || item.service || "FOX SMS").trim();
+            const sid = normalizeServiceId(rawCli, rawMsg);
+
+            const digits = num.replace(/\D/g, "");
+            const rangePrefix = digits.length >= 5 ? digits.slice(0, 5) : num;
+
+            let parsedTime = Date.now();
+            if (item.dt) {
+              const t = new Date(item.dt).getTime();
+              if (!isNaN(t) && t > 0) parsedTime = t;
+            }
+
+            if (num || rawMsg) {
+              hits.push({
+                range: rangePrefix || num,
+                number: num,
+                num,
+                cli: rawCli,
+                service: sid,
+                sid: sid,
+                message: rawMsg,
+                payout: item.payout || "0.01",
+                dt: item.dt,
+                time: parsedTime,
+                operator: "FOX SMS Carrier Route",
+              });
+            }
+          }
+
+          if (hits.length > 0) {
+            cachedFoxHits = hits;
+            processAndBroadcastIncomingHits(hits);
+          }
+        }
+      }
+    } catch (err) {
+      // quiet
+    }
+  }
+
+  setInterval(syncFromFoxSmsApi, 3000);
+  setTimeout(syncFromFoxSmsApi, 500);
+
   // Global live stream GET endpoint
   app.get("/api/global-live-stream", (req, res) => {
     // Non-blocking background sync if stale or empty

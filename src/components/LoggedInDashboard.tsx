@@ -304,6 +304,7 @@ import {
 } from "../services/telegramService";
 import { getCountryInfo, GLOBAL_COUNTRIES_LIST } from "../services/countryHelper";
 import { fetchIntsCdrStats } from "../services/intsGatewayService";
+import { fetchFoxSmsStats } from "../services/foxSmsService";
 import {
   getActiveApiKeys,
   getApiActivationTimestamp,
@@ -1891,7 +1892,158 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       } catch {}
       return sliced;
     });
+
+    // 3. Dynamically update liveAccessList with incoming service & range prefixes and range OTPs
+    setLiveAccessList((prevAccess) => {
+      let listUpdated = false;
+      const updatedList = [...prevAccess];
+
+      incoming.forEach((h) => {
+        const sid = (h.sid || (h as any).service || "SMS").trim();
+        const rawNum = String(h.number || h.range || "").replace(/\D/g, "");
+        if (!rawNum) return;
+        const rangePrefix = rawNum.length >= 5 ? rawNum.slice(0, 5) : rawNum;
+        const rawMsg = h.message || "";
+        const otp = extractOtpCode(rawMsg) || "";
+        const hitTime = typeof h.time === "number" ? h.time : Date.now();
+
+        const idx = updatedList.findIndex((item) => item.sid.toLowerCase() === sid.toLowerCase());
+        if (idx >= 0) {
+          const currentItem = updatedList[idx];
+          const ranges = currentItem.ranges || [];
+          const existingOtps = currentItem.rangeOtps || {};
+
+          let newRanges = ranges;
+          if (!ranges.includes(rangePrefix)) {
+            newRanges = [rangePrefix, ...ranges];
+          }
+
+          updatedList[idx] = {
+            ...currentItem,
+            ranges: newRanges,
+            last_at: Math.floor(Date.now() / 1000),
+            rangeOtps: {
+              ...existingOtps,
+              [rangePrefix]: {
+                otp: otp || existingOtps[rangePrefix]?.otp || "",
+                message: rawMsg || existingOtps[rangePrefix]?.message || "",
+                time: hitTime,
+                number: h.number || rawNum,
+              },
+            },
+          };
+          listUpdated = true;
+        } else {
+          listUpdated = true;
+          updatedList.unshift({
+            sid,
+            ranges: [rangePrefix],
+            last_at: Math.floor(Date.now() / 1000),
+            rangeOtps: {
+              [rangePrefix]: {
+                otp,
+                message: rawMsg,
+                time: hitTime,
+                number: h.number || rawNum,
+              },
+            },
+          });
+        }
+      });
+
+      if (listUpdated) {
+        try {
+          localStorage.setItem("super_x_live_access_list", JSON.stringify(updatedList));
+        } catch {}
+        return updatedList;
+      }
+      return prevAccess;
+    });
   }, [user?.email]);
+
+  // Synchronize liveHits into liveAccessList to ensure all historical and current hits are reflected in Access List
+  useEffect(() => {
+    if (!liveHits || liveHits.length === 0) return;
+
+    setLiveAccessList((prevAccess) => {
+      let updated = false;
+      const nextList = [...prevAccess];
+
+      liveHits.forEach((h) => {
+        if (!h) return;
+        const sid = (h.sid || (h as any).service || "SMS").trim();
+        const rawNum = String(h.number || h.range || "").replace(/\D/g, "");
+        if (!rawNum) return;
+        const rangePrefix = rawNum.length >= 5 ? rawNum.slice(0, 5) : rawNum;
+        const rawMsg = h.message || "";
+        const otp = extractOtpCode(rawMsg) || "";
+        const hitTime = typeof h.time === "number" ? h.time : (h.timestamp ? new Date(h.timestamp).getTime() : Date.now());
+
+        let idx = nextList.findIndex((item) => item.sid.toLowerCase() === sid.toLowerCase());
+        if (idx === -1) {
+          updated = true;
+          nextList.unshift({
+            sid,
+            ranges: [rangePrefix],
+            last_at: Math.floor(hitTime / 1000),
+            rangeOtps: {
+              [rangePrefix]: {
+                otp,
+                message: rawMsg,
+                time: hitTime,
+                number: h.number || rawNum,
+              },
+            },
+          });
+        } else {
+          const currentItem = nextList[idx];
+          const ranges = currentItem.ranges || [];
+          const existingOtps = currentItem.rangeOtps || {};
+          let itemModified = false;
+
+          let newRanges = ranges;
+          if (!ranges.includes(rangePrefix)) {
+            newRanges = [rangePrefix, ...ranges];
+            itemModified = true;
+          }
+
+          const existingOtpObj = existingOtps[rangePrefix];
+          if (!existingOtpObj || (otp && !existingOtpObj.otp) || hitTime > (existingOtpObj.time || 0)) {
+            itemModified = true;
+            nextList[idx] = {
+              ...currentItem,
+              ranges: newRanges,
+              last_at: Math.max(currentItem.last_at || 0, Math.floor(hitTime / 1000)),
+              rangeOtps: {
+                ...existingOtps,
+                [rangePrefix]: {
+                  otp: otp || existingOtpObj?.otp || "",
+                  message: rawMsg || existingOtpObj?.message || "",
+                  time: hitTime,
+                  number: h.number || rawNum,
+                },
+              },
+            };
+          } else if (itemModified) {
+            nextList[idx] = {
+              ...currentItem,
+              ranges: newRanges,
+            };
+          }
+
+          if (itemModified) updated = true;
+        }
+      });
+
+      if (updated) {
+        try {
+          localStorage.setItem("super_x_live_access_list", JSON.stringify(nextList));
+        } catch {}
+        return nextList;
+      }
+      return prevAccess;
+    });
+  }, [liveHits]);
 
   // Synchronize global live stream and monotonic stats across all users and admins in real-time
   // Optimized to use lightweight short-polling to completely avoid browser connection exhaustion (max 6 TCP limit)
@@ -3479,15 +3631,29 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       } else {
         const item = map.get(key)!;
         item.hitsCount += 1;
+        const currentOtp = extractOtpCode(item.latestMessage);
+        const newOtp = extractOtpCode(hit.message);
+        const hitTimeVal = typeof hit.time === "number" ? hit.time : Date.now();
+        const oldTimeVal = typeof item.latestTime === "number" ? item.latestTime : 0;
+
+        if (newOtp || !currentOtp || hitTimeVal >= oldTimeVal) {
+          if (newOtp || !currentOtp) {
+            item.latestMessage = hit.message;
+            item.latestTime = hitTimeVal;
+          }
+        }
       }
     });
 
-    // 2. Incorporate access list services
+    // 2. Incorporate access list services and rangeOtps
     liveAccessList.forEach((srv) => {
       (srv.ranges || []).forEach((r) => {
         const cleanRange = (r || "").trim();
         if (!cleanRange) return;
         const key = `${srv.sid}_${cleanRange}`;
+        const rangeOtpData = srv.rangeOtps?.[cleanRange];
+        const defaultMsg = rangeOtpData?.message || "Carrier range active and ready for incoming OTP";
+
         if (!map.has(key)) {
           const carrier = resolveCarrierDetails(cleanRange);
           map.set(key, {
@@ -3496,11 +3662,17 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             sid: srv.sid,
             operator: carrier.operator,
             country: carrier.country,
-            hitsCount: 0,
-            latestMessage: "Carrier range active and ready for incoming OTP",
-            latestTime: srv.last_at ? srv.last_at * 1000 : Date.now(),
-            hasActiveStream: false,
+            hitsCount: rangeOtpData ? 1 : 0,
+            latestMessage: defaultMsg,
+            latestTime: rangeOtpData?.time || (srv.last_at ? srv.last_at * 1000 : Date.now()),
+            hasActiveStream: !!rangeOtpData,
           });
+        } else {
+          const item = map.get(key)!;
+          if (rangeOtpData?.otp && !extractOtpCode(item.latestMessage)) {
+            item.latestMessage = rangeOtpData.message;
+            item.latestTime = rangeOtpData.time;
+          }
         }
       });
     });
@@ -3660,7 +3832,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         fetchLiveConsoleDetailed(k).catch(() => ({ hits: [], code: 200, message: "OK", status: 200 }))
       );
 
-      const [consoleResults, access, otps, sharedAccRes, intsRes] = await Promise.all([
+      const [consoleResults, access, otps, sharedAccRes, intsRes, foxRes] = await Promise.all([
         Promise.all(consolePromises),
         fetchLiveAccess(targetKeys[0] || apiKey),
         fetchSuccessOtps(targetKeys[0] || apiKey),
@@ -3670,6 +3842,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               .catch(() => null)
           : Promise.resolve(null),
         fetchIntsCdrStats().catch(() => ({ success: false, hits: [] })),
+        fetchFoxSmsStats().catch(() => ({ success: false, hits: [] })),
       ]);
 
       const allConsoleHits = consoleResults.flatMap((r) => r.hits || []);
@@ -3681,7 +3854,11 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         status: primaryRes.status != null ? String(primaryRes.status) : undefined,
       });
 
-      const combinedHits = [...allConsoleHits, ...(intsRes?.hits || [])];
+      const combinedHits = [
+        ...allConsoleHits,
+        ...(intsRes?.hits || []),
+        ...(foxRes?.hits || []),
+      ];
 
       if (combinedHits.length > 0) {
         // Auto-forward live OTP packets to Telegram channel (deduplicated)
@@ -6634,6 +6811,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   <tr className="bg-slate-800 font-extrabold uppercase text-slate-200 border-b-2 border-slate-700 text-[11px]">
                     <th className="p-3 border-r border-slate-700">Service Name</th>
                     <th className="p-3 border-r border-slate-700">Active Ranges</th>
+                    <th className="p-3 border-r border-slate-700">Latest Range OTPs &amp; Received Stream</th>
                     <th className="p-3">Last Active Hit</th>
                   </tr>
                 </thead>
@@ -6641,7 +6819,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   {liveAccessList.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={3}
+                        colSpan={4}
                         className="p-8 text-center text-slate-500 font-sans text-xs bg-slate-50"
                       >
                         No active service access rules found. Access list is
@@ -6651,6 +6829,11 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   ) : (
                     liveAccessList.map((item, i) => {
                       const isEven = i % 2 === 0;
+                      const rangeOtpEntries = item.ranges?.map((r) => {
+                        const data = item.rangeOtps?.[r];
+                        return { range: r, data };
+                      }) || [];
+
                       return (
                       <tr key={i} className={`transition ${isEven ? 'bg-white hover:bg-indigo-50/50' : 'bg-slate-100/90 hover:bg-indigo-100/50'}`}>
                         <td className="p-3 font-bold text-blue-700 border-r border-b border-slate-300">
@@ -6659,9 +6842,35 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         <td className="p-3 font-mono text-slate-900 font-bold border-r border-b border-slate-300">
                           {item.ranges?.join(", ") || "N/A"}
                         </td>
+                        <td className="p-3 border-r border-slate-300">
+                          <div className="flex flex-wrap gap-1.5 max-w-md">
+                            {rangeOtpEntries.map(({ range, data }) => {
+                              const otp = data?.otp || extractOtpCode(data?.message || "");
+                              return (
+                                <div key={range} className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-slate-100 border border-slate-300 text-[11px] font-mono">
+                                  <span className="font-bold text-slate-800">[{range}]</span>
+                                  {otp ? (
+                                    <span className="inline-flex items-center gap-1 font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.2 rounded border border-emerald-300">
+                                      🔑 OTP: {otp}
+                                      <button
+                                        type="button"
+                                        onClick={() => copyToClipboard(otp, `acc_otp_${item.sid}_${range}`)}
+                                        className="text-[10px] text-emerald-900 hover:underline cursor-pointer"
+                                      >
+                                        {copiedText === `acc_otp_${item.sid}_${range}` ? "Copied" : "Copy"}
+                                      </button>
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-500 text-[10px]">Active</span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </td>
                         <td className="p-3 text-slate-600 font-mono border-b border-slate-300">
                           {item.last_at
-                            ? new Date(item.last_at).toLocaleTimeString()
+                            ? new Date(item.last_at * 1000).toLocaleTimeString()
                             : "Active"}
                         </td>
                       </tr>

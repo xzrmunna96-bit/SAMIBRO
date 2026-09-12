@@ -18,6 +18,41 @@ export const DEFAULT_VOLTX_ENDPOINT_KEY = 'MJTFKF97CI2';
 export const DEFAULT_MAUTH_API_KEY = 'MJTFKF97CI2';
 export const VOLTX_BACKEND_SLUG = 'MXS47FLFX0U';
 
+let cachedVoltxActive: boolean = false;
+
+export function isVoltxApiActive(): boolean {
+  if (typeof window !== 'undefined') {
+    const saved = localStorage.getItem('voltx_api_active');
+    if (saved !== null) {
+      return saved === 'true';
+    }
+  }
+  return cachedVoltxActive;
+}
+
+export function setVoltxApiActiveLocal(active: boolean): void {
+  cachedVoltxActive = active;
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('voltx_api_active', active ? 'true' : 'false');
+    window.dispatchEvent(new CustomEvent('voltx_active_toggled', { detail: { isActive: active } }));
+    window.dispatchEvent(new Event('voltx_key_updated'));
+  }
+}
+
+export async function syncVoltxActiveStatusFromServer(): Promise<boolean> {
+  try {
+    const res = await fetch('/api/voltx/status');
+    if (res.ok) {
+      const data = await res.json();
+      if (data && typeof data.isActive === 'boolean') {
+        setVoltxApiActiveLocal(data.isActive);
+        return data.isActive;
+      }
+    }
+  } catch {}
+  return isVoltxApiActive();
+}
+
 export function getVoltxEndpointKey(): string {
   if (typeof window !== 'undefined') {
     const saved = localStorage.getItem('voltx_endpoint_key');
@@ -192,6 +227,17 @@ export async function callVoltxApi<T>(
   const endpointKey = getVoltxEndpointKey();
   const customEndpoint = options.customEndpoint;
 
+  const isVoltxOn = isVoltxApiActive();
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+
+  if (!isVoltxOn && !cleanEndpoint.includes('/getnum') && !customEndpoint) {
+    return {
+      meta: { code: 200, status: 'ok' },
+      data: [] as any,
+      message: 'Voltx SMS API is currently paused by admin (OFF).',
+    };
+  }
+
   if (!apiKey && !endpointKey && !customEndpoint) {
     return { meta: { code: 200, status: 'ok' }, data: [] as any, message: 'API is currently OFF' };
   }
@@ -215,8 +261,6 @@ export async function callVoltxApi<T>(
   if (method === 'POST' && options.body) {
     fetchOptions.body = JSON.stringify(options.body);
   }
-
-  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
 
   const executeFetchWithTimeout = async (url: string, init: RequestInit, timeoutMs = 2500): Promise<Response> => {
     const controller = new AbortController();
@@ -632,6 +676,9 @@ export async function fetchLiveConsole(apiKey?: string, customEndpoint?: string)
  * Aggregates recently-active services and active ranges cache
  */
 export async function fetchLiveAccess(apiKey?: string): Promise<LiveAccessService[]> {
+  if (!isVoltxApiActive()) {
+    return [];
+  }
   if (apiKey) {
     try {
       const res = await callVoltxApi<{ services: LiveAccessService[]; cached: boolean }>('/liveaccess', { apiKey });
@@ -691,6 +738,9 @@ export async function fetchLiveAccess(apiKey?: string): Promise<LiveAccessServic
  * 4. GET success-otp across active APIs
  */
 export async function fetchSuccessOtps(apiKey?: string): Promise<LiveSuccessOtp[]> {
+  if (!isVoltxApiActive()) {
+    return [];
+  }
   if (apiKey) {
     try {
       const res = await callVoltxApi<{ otps: LiveSuccessOtp[]; cached: boolean }>('/success-otp', { apiKey });

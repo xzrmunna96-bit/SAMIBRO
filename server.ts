@@ -7570,6 +7570,34 @@ async function startServer() {
 
   const sentTelegramFoxSignatures = new Set<string>();
 
+  function extractServiceNameFromText(msg: string, defaultCli?: string): string {
+    const raw = String(defaultCli || "").trim();
+    if (raw && !raw.toLowerCase().includes("fox") && raw !== "N/A" && raw !== "SMS") {
+      return raw;
+    }
+    if (!msg) return "SMS Service";
+    const lower = msg.toLowerCase();
+    if (lower.includes("whatsapp")) return "WhatsApp";
+    if (lower.includes("facebook") || lower.includes("fb-") || lower.includes("fb code") || lower.includes("instagram")) return "Facebook";
+    if (lower.includes("telegram")) return "Telegram";
+    if (lower.includes("google") || lower.includes("g-")) return "Google";
+    if (lower.includes("tiktok")) return "TikTok";
+    if (lower.includes("imo")) return "IMO";
+    if (lower.includes("twitter") || lower.includes("x.com")) return "Twitter / X";
+    if (lower.includes("viber")) return "Viber";
+    if (lower.includes("netflix")) return "Netflix";
+    if (lower.includes("paypal")) return "PayPal";
+    if (lower.includes("binance")) return "Binance";
+    if (lower.includes("uber")) return "Uber";
+    if (lower.includes("bolt")) return "Bolt";
+    if (lower.includes("microsoft") || lower.includes("msverify")) return "Microsoft";
+    if (lower.includes("apple")) return "Apple";
+    if (lower.includes("amazon")) return "Amazon";
+    if (lower.includes("bkash")) return "bKash";
+    if (lower.includes("nagad")) return "Nagad";
+    return "SMS Service";
+  }
+
   async function sendFoxHitToTelegram(hit: any) {
     if (!hit) return;
     const num = String(hit.number || hit.num || hit.range || "").trim();
@@ -7577,10 +7605,11 @@ async function startServer() {
     if (!num && !msg) return;
 
     const hitTime = hit.time || Date.now();
-    const service = hit.service || hit.sid || hit.cli || "FOX SMS";
+    const rawCli = hit.service || hit.sid || hit.cli || "";
+    const service = extractServiceNameFromText(msg, rawCli);
     const otpCode = hit.code || extractOtpCode(msg) || "N/A";
 
-    const sig = `fox_tg_${num.replace(/\D/g, "")}_${hitTime}_${otpCode}_${msg.substring(0, 20)}`;
+    const sig = `tg_otp_${num.replace(/\D/g, "")}_${hitTime}_${otpCode}_${msg.substring(0, 20)}`;
     if (sentTelegramFoxSignatures.has(sig)) return;
     sentTelegramFoxSignatures.add(sig);
 
@@ -7598,14 +7627,14 @@ async function startServer() {
     }
 
     const text =
-      `🦊 <b>SUPER X SMS — NEW FOX SMS OTP RECEIVED!</b>\n\n` +
+      `🚀 <b>SUPER X SMS — NEW OTP RECEIVED!</b>\n\n` +
       `🌍 <b>Country:</b> ${country}\n` +
       `📞 <b>Number:</b> <code>${num}</code>\n` +
       `⚡ <b>Service:</b> <b>${service}</b>\n` +
       `🔑 <b>OTP Code:</b> <code>${otpCode}</code>\n` +
       `💬 <b>Message:</b>\n<i>"${msg}"</i>\n\n` +
       `⏰ <b>Time:</b> ${new Date(hitTime).toLocaleTimeString()}\n` +
-      `🌐 <i>Real-time FOX SMS Live Feed Synchronized!</i>`;
+      `🌐 <i>Website Live SMS Dashboard & Bot Synchronized!</i>`;
 
     const botToken = getActiveBotToken();
     const targets = new Set<string>();
@@ -7648,6 +7677,14 @@ async function startServer() {
     const validNew: any[] = [];
     for (const h of rawHits) {
       if (!h || (!h.range && !h.number && !h.sid && !h.message)) continue;
+
+      // If Voltx API is switched OFF by Admin, strictly filter out any hits that do NOT come from FOX SMS!
+      if (!voltxApiActive) {
+        const isFox = h.isFoxSms || h.source === "FOX SMS" || (h.operator && String(h.operator).includes("FOX SMS"));
+        if (!isFox) {
+          continue;
+        }
+      }
 
       let hitTime = normalizeHitTimeServer(h.time ?? h.timestamp);
       if (isNaN(hitTime) || hitTime <= 0) hitTime = now;
@@ -7927,14 +7964,23 @@ async function startServer() {
   app.get("/api/global-live-stream", (req, res) => {
     // Non-blocking background sync if stale or empty
     if (serverGlobalLiveHits.length === 0 || Date.now() - lastUpstreamSyncTime > 3000) {
-      syncFromUpstreamVoltxConsole().catch(() => {});
+      if (voltxApiActive) {
+        syncFromUpstreamVoltxConsole().catch(() => {});
+      }
       syncFromFoxSmsApi().catch(() => {});
     }
 
+    const filteredHits = voltxApiActive
+      ? serverGlobalLiveHits
+      : serverGlobalLiveHits.filter(
+          (h) => h.isFoxSms || h.source === "FOX SMS" || (h.operator && String(h.operator).includes("FOX SMS"))
+        );
+
     res.json({
       success: true,
-      count: serverGlobalLiveHits.length,
-      hits: serverGlobalLiveHits.slice(0, 1000),
+      voltxActive: voltxApiActive,
+      count: filteredHits.length,
+      hits: filteredHits.slice(0, 1000),
       stats: serverGlobalStats,
       lastUpdated: Date.now(),
     });
@@ -8026,9 +8072,19 @@ async function startServer() {
     });
   });
 
-  // Health check endpoint
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok" });
+  // Universal Health Check and Connectivity Ping endpoints
+  app.all(["/api/health", "/health", "/api/ping", "/ping"], (req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    if (req.method === "HEAD") {
+      return res.status(200).end();
+    }
+    res.json({
+      status: "ok",
+      uptime: process.uptime(),
+      timestamp: Date.now(),
+      service: "SUPER X SMS Gateway",
+    });
   });
 
   // Vite middleware for dev / static files for production

@@ -113,6 +113,9 @@ import {
   fetchLiveConsoleDetailed,
   syncSystemApiKeyFromServer,
   broadcastSystemApiKeyToServer,
+  isVoltxApiActive as getIsVoltxApiActiveLocal,
+  setVoltxApiActiveLocal,
+  syncVoltxActiveStatusFromServer,
   LiveConsoleHit,
   DEFAULT_VOLTX_ENDPOINT_KEY,
 } from '../services/voltxApi';
@@ -423,7 +426,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
   });
   const [isApiKeySaved, setIsApiKeySaved] = useState(false);
   const [isTestingApi, setIsTestingApi] = useState(false);
-  const [isVoltxApiActive, setIsVoltxApiActive] = useState<boolean>(false);
+  const [isVoltxApiActive, setIsVoltxApiActive] = useState<boolean>(() => getIsVoltxApiActiveLocal());
   const [isTogglingVoltxApi, setIsTogglingVoltxApi] = useState<boolean>(false);
   const [testResult, setTestResult] = useState<{
     success: boolean;
@@ -1712,6 +1715,14 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
       if (res.ok) {
         const data = await res.json();
         setIsVoltxApiActive(data.isActive);
+        setVoltxApiActiveLocal(data.isActive);
+        if (!data.isActive) {
+          setLiveStreamHits((prev) =>
+            prev.filter(
+              (h: any) => h.isFoxSms || h.source === 'FOX SMS' || (h.operator && String(h.operator).includes('FOX SMS'))
+            )
+          );
+        }
         showToast(
           data.isActive
             ? 'Voltx SMS API চালু করা হয়েছে! স্বয়ংক্রিয়ভাবে সবার কাছে মেসেজ যাওয়া শুরু হয়েছে।'

@@ -3,31 +3,26 @@ import { WifiOff, Wifi, RefreshCw, AlertTriangle, CheckCircle2 } from 'lucide-re
 import { motion, AnimatePresence } from 'motion/react';
 
 export function OfflineDetectorModal() {
-  const [isOffline, setIsOffline] = useState<boolean>(() => {
-    if (typeof navigator !== 'undefined') {
-      return !navigator.onLine;
-    }
-    return false;
-  });
-
+  const [isOffline, setIsOffline] = useState<boolean>(false);
   const [isChecking, setIsChecking] = useState<boolean>(false);
   const [showRestoredToast, setShowRestoredToast] = useState<boolean>(false);
+  const [isDismissed, setIsDismissed] = useState<boolean>(false);
 
   const checkRealConnection = useCallback(async () => {
     setIsChecking(true);
     try {
       // Attempt a lightweight fetch with cache buster to verify real internet connectivity
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3500);
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
 
       const response = await fetch(`/api/health?_t=${Date.now()}`, {
-        method: 'HEAD',
+        method: 'GET',
         cache: 'no-store',
         signal: controller.signal,
       }).catch(async () => {
         // Fallback to fetching root favicon or small asset if api/health is not available
         return await fetch(`/favicon.ico?_t=${Date.now()}`, {
-          method: 'HEAD',
+          method: 'GET',
           cache: 'no-store',
           signal: controller.signal,
         });
@@ -37,14 +32,19 @@ export function OfflineDetectorModal() {
 
       if (response && (response.ok || response.status < 500)) {
         setIsOffline(false);
+        setIsDismissed(false);
         setShowRestoredToast(true);
         setTimeout(() => setShowRestoredToast(false), 3000);
       } else {
         setIsOffline(true);
       }
     } catch {
-      // Network check failed -> genuinely offline
-      setIsOffline(true);
+      // If user navigator explicitly says online, do not force offline
+      if (typeof navigator !== 'undefined' && navigator.onLine) {
+        setIsOffline(false);
+      } else {
+        setIsOffline(true);
+      }
     } finally {
       setIsChecking(false);
     }
@@ -57,17 +57,17 @@ export function OfflineDetectorModal() {
     };
 
     const handleOffline = () => {
-      setIsOffline(true);
-      setShowRestoredToast(false);
+      // Double check before showing modal
+      setTimeout(() => {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          setIsOffline(true);
+          setShowRestoredToast(false);
+        }
+      }, 1000);
     };
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-
-    // Initial check on mount
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      setIsOffline(true);
-    }
 
     return () => {
       window.removeEventListener('online', handleOnline);
@@ -77,16 +77,16 @@ export function OfflineDetectorModal() {
 
   // Periodic low-frequency check only when offline to auto-recover when connection is restored
   useEffect(() => {
-    if (!isOffline) return;
+    if (!isOffline || isDismissed) return;
 
     const interval = setInterval(() => {
       if (typeof navigator !== 'undefined' && navigator.onLine) {
         checkRealConnection();
       }
-    }, 4000);
+    }, 5000);
 
     return () => clearInterval(interval);
-  }, [isOffline, checkRealConnection]);
+  }, [isOffline, isDismissed, checkRealConnection]);
 
   return (
     <>
@@ -108,7 +108,7 @@ export function OfflineDetectorModal() {
 
       {/* 2. No Internet Connection Offline Popup Modal */}
       <AnimatePresence>
-        {isOffline && (
+        {isOffline && !isDismissed && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -145,7 +145,7 @@ export function OfflineDetectorModal() {
                 </div>
               </div>
 
-              {/* Action Buttons: Retry and Status */}
+              {/* Action Buttons: Retry and Dismiss */}
               <div className="space-y-2.5 pt-1">
                 <button
                   type="button"
@@ -157,9 +157,13 @@ export function OfflineDetectorModal() {
                   <span>{isChecking ? 'কানেকশন চেক হচ্ছে...' : 'পুনরায় চেষ্টা করুন (Retry)'}</span>
                 </button>
 
-                <p className="text-[11px] text-slate-400 font-medium">
-                  ইন্টারনেট ফিরে পাওয়ার সাথে সাথে পোর্টাল স্বয়ংক্রিয়ভাবে চালু হয়ে যাবে।
-                </p>
+                <button
+                  type="button"
+                  onClick={() => setIsDismissed(true)}
+                  className="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition cursor-pointer"
+                >
+                  পোর্টালে প্রবেশ করুন (Continue Anyway)
+                </button>
               </div>
             </motion.div>
           </motion.div>

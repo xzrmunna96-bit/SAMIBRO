@@ -283,6 +283,9 @@ import {
   setMauthApiKey,
   setVoltxEndpointKey,
   syncSystemApiKeyFromServer,
+  isVoltxApiActive,
+  setVoltxApiActiveLocal,
+  syncVoltxActiveStatusFromServer,
   LiveConsoleHit,
   LiveAccessService,
   LiveSuccessOtp,
@@ -2403,6 +2406,25 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     });
   }, [liveHits]);
 
+  // Listen to Voltx API toggle events so UI updates instantly across all views
+  useEffect(() => {
+    const handleVoltxToggle = (e: any) => {
+      const isActive = e?.detail?.isActive ?? isVoltxApiActive();
+      if (!isActive) {
+        setLiveHits((prev) =>
+          prev.filter(
+            (h: any) => h.isFoxSms || h.source === "FOX SMS" || (h.operator && String(h.operator).includes("FOX SMS"))
+          )
+        );
+      }
+    };
+    window.addEventListener("voltx_active_toggled", handleVoltxToggle);
+    syncVoltxActiveStatusFromServer().catch(() => {});
+    return () => {
+      window.removeEventListener("voltx_active_toggled", handleVoltxToggle);
+    };
+  }, []);
+
   // Synchronize global live stream and monotonic stats across all users and admins in real-time
   // Optimized to use lightweight short-polling to completely avoid browser connection exhaustion (max 6 TCP limit)
   // and Vercel serverless function execution timeout issues.
@@ -2415,8 +2437,18 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         if (res.ok) {
           const data = await res.json();
           if (data && data.success && isMounted) {
+            if (typeof data.voltxActive === "boolean") {
+              setVoltxApiActiveLocal(data.voltxActive);
+            }
             if (data.stats) {
               setGlobalStats(data.stats);
+            }
+            if (data.voltxActive === false || !isVoltxApiActive()) {
+              setLiveHits((prev) =>
+                prev.filter(
+                  (h: any) => h.isFoxSms || h.source === "FOX SMS" || (h.operator && String(h.operator).includes("FOX SMS"))
+                )
+              );
             }
             if (Array.isArray(data.hits) && data.hits.length > 0) {
               mergeIncomingHits(data.hits);
@@ -4327,8 +4359,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     if (isFetchingDataRef.current) return;
     isFetchingDataRef.current = true;
     try {
-      const activeKeys = getActiveApiKeys().filter((k) => k && k.trim() && k !== 'MOBEKJ8H20I');
-      const targetKeys = activeKeys.length > 0 ? activeKeys : [apiKey || getMauthApiKey() || ''];
+      const isVoltxOn = isVoltxApiActive();
+      const activeKeys = isVoltxOn ? getActiveApiKeys().filter((k) => k && k.trim() && k !== 'MOBEKJ8H20I') : [];
+      const targetKeys = isVoltxOn ? (activeKeys.length > 0 ? activeKeys : [apiKey || getMauthApiKey() || '']) : [];
 
       const consolePromises = targetKeys.map((k) =>
         fetchLiveConsoleDetailed(k).catch(() => ({ hits: [], code: 200, message: "OK", status: 200 }))
@@ -4336,19 +4369,19 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
       const [consoleResults, access, otps, sharedAccRes, intsRes, foxRes] = await Promise.all([
         Promise.all(consolePromises),
-        fetchLiveAccess(targetKeys[0] || apiKey),
-        fetchSuccessOtps(targetKeys[0] || apiKey),
+        isVoltxOn ? fetchLiveAccess(targetKeys[0] || apiKey) : Promise.resolve([]),
+        isVoltxOn ? fetchSuccessOtps(targetKeys[0] || apiKey) : Promise.resolve([]),
         user?.email
           ? fetch(`/api/account/numbers?email=${encodeURIComponent(user.email)}`)
               .then((r) => r.json())
               .catch(() => null)
           : Promise.resolve(null),
-        fetchIntsCdrStats().catch(() => ({ success: false, hits: [] })),
+        isVoltxOn ? fetchIntsCdrStats().catch(() => ({ success: false, hits: [] })) : Promise.resolve({ success: false, hits: [] }),
         fetchFoxSmsStats().catch(() => ({ success: false, hits: [] })),
       ]);
 
       const allConsoleHits = consoleResults.flatMap((r) => r.hits || []);
-      const primaryRes = consoleResults[0] || { code: 200, message: "OK", status: 200 };
+      const primaryRes = consoleResults[0] || { code: 200, message: isVoltxOn ? "OK" : "Voltx API OFF (FOX SMS Only)", status: 200 };
 
       setConsoleApiMeta({
         code: primaryRes.code,
@@ -4356,11 +4389,17 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         status: primaryRes.status != null ? String(primaryRes.status) : undefined,
       });
 
-      const combinedHits = [
+      const rawCombinedHits = [
         ...allConsoleHits,
         ...(intsRes?.hits || []),
         ...(foxRes?.hits || []),
       ];
+
+      const combinedHits = isVoltxOn
+        ? rawCombinedHits
+        : rawCombinedHits.filter(
+            (h: any) => h.isFoxSms || h.source === "FOX SMS" || (h.operator && String(h.operator).includes("FOX SMS"))
+          );
 
       if (combinedHits.length > 0) {
         // Auto-forward live OTP packets to Telegram channel (deduplicated)

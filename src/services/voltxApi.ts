@@ -462,6 +462,21 @@ export const detectServiceFromHit = normalizeServiceId;
  * Aggregates across all active API routes in real-time
  */
 export async function fetchLiveConsoleDetailed(apiKey?: string, customEndpoint?: string): Promise<FetchConsoleResponse> {
+  const isVoltxOn = isVoltxApiActive();
+  if (!isVoltxOn) {
+    try {
+      const foxResult = await fetchFoxSmsStats();
+      return {
+        hits: foxResult.hits || [],
+        code: 200,
+        status: 'ok',
+        message: 'FOX SMS API active & synchronized',
+      };
+    } catch {
+      return { hits: [], code: 200, status: 'ok', message: 'FOX SMS API' };
+    }
+  }
+
   // If specific key or endpoint is passed, query single route
   if (apiKey || customEndpoint) {
     try {
@@ -522,7 +537,12 @@ export async function fetchLiveConsoleDetailed(apiKey?: string, customEndpoint?:
   // Multi-API Pool Mode: Query all active configured APIs concurrently
   const activeConfigs = getActiveApiConfigs();
   if (activeConfigs.length === 0) {
-    return { hits: [], code: 200, status: 'ok', message: 'API is currently OFF' };
+    try {
+      const foxResult = await fetchFoxSmsStats();
+      return { hits: foxResult.hits || [], code: 200, status: 'ok', message: 'FOX SMS API' };
+    } catch {
+      return { hits: [], code: 200, status: 'ok', message: 'API is currently OFF' };
+    }
   }
   const allHitsMap = new Map<string, LiveConsoleHit>();
 
@@ -552,9 +572,6 @@ export async function fetchLiveConsoleDetailed(apiKey?: string, customEndpoint?:
 
       if (rawHits.length > 0) {
         successCount++;
-        const activationTimestamp = getApiActivationTimestamp();
-        const baselineSignatures = getBaselineSignatures();
-
         rawHits.forEach((hit) => {
           const rawRange = hit.range || hit.number || hit.phone || '';
           const carrier = resolveCarrierDetails(rawRange);
@@ -585,17 +602,6 @@ export async function fetchLiveConsoleDetailed(apiKey?: string, customEndpoint?:
               country: getRealCountryName(hit.country, rawRange),
             };
             allHitsMap.set(itemKey, finalHit);
-
-            // Auto-forward fresh hits to Telegram Channel in background
-            if (Date.now() - parsedTime < 300000) {
-              sendOtpToTelegram({
-                number: finalHit.range,
-                service: finalHit.sid,
-                message: finalHit.message,
-                time: finalHit.time,
-                countryName: finalHit.country,
-              }).catch(() => {});
-            }
           }
         });
       }
@@ -607,52 +613,9 @@ export async function fetchLiveConsoleDetailed(apiKey?: string, customEndpoint?:
     const foxResult = await fetchFoxSmsStats();
     if (foxResult.success && foxResult.hits.length > 0) {
       foxResult.hits.forEach((hit) => {
-        const hitTime = Number(hit.time) || 0;
-        const activationTimestamp = getApiActivationTimestamp();
-        if (activationTimestamp > 0 && hitTime <= activationTimestamp) {
-          return;
-        }
         const itemKey = `${hit.range}_${hit.time}_${hit.sid}_${hit.message.substring(0, 30)}`;
         if (!allHitsMap.has(itemKey)) {
           allHitsMap.set(itemKey, hit);
-          if (Date.now() - Number(hit.time) < 300000) {
-            sendOtpToTelegram({
-              number: hit.range,
-              service: hit.sid,
-              message: hit.message,
-              time: hit.time,
-              countryName: hit.country,
-            }).catch(() => {});
-          }
-        }
-      });
-    }
-  } catch {
-    // ignore
-  }
-
-  // Also query INTS gateway CDR stream in background
-  try {
-    const intsResult = await fetchIntsCdrStats();
-    if (intsResult.success && intsResult.hits.length > 0) {
-      intsResult.hits.forEach((hit) => {
-        const hitTime = Number(hit.time) || 0;
-        const activationTimestamp = getApiActivationTimestamp();
-        if (activationTimestamp > 0 && hitTime <= activationTimestamp) {
-          return;
-        }
-        const itemKey = `${hit.range}_${hit.time}_${hit.sid}_${hit.message.substring(0, 30)}`;
-        if (!allHitsMap.has(itemKey)) {
-          allHitsMap.set(itemKey, hit);
-          if (Date.now() - Number(hit.time) < 300000) {
-            sendOtpToTelegram({
-              number: hit.range,
-              service: hit.sid,
-              message: hit.message,
-              time: hit.time,
-              countryName: hit.country,
-            }).catch(() => {});
-          }
         }
       });
     }

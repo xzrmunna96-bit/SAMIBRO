@@ -7607,9 +7607,12 @@ async function startServer() {
     const hitTime = hit.time || Date.now();
     const rawCli = hit.service || hit.sid || hit.cli || "";
     const service = extractServiceNameFromText(msg, rawCli);
-    const otpCode = hit.code || extractOtpCode(msg) || "N/A";
+    const otpCode = hit.code || hit.otp || extractOtpCode(msg) || "N/A";
 
-    const sig = `tg_otp_${num.replace(/\D/g, "")}_${hitTime}_${otpCode}_${msg.substring(0, 20)}`;
+    const cleanNum = num.replace(/\D/g, "");
+    const cleanMsg = msg.replace(/\s+/g, " ").trim();
+    // Unique signature by number + OTP code + trimmed message (without timestamp so same OTP message from API polled multiple times is never duplicated!)
+    const sig = `tg_fox_${cleanNum}_${otpCode}_${cleanMsg.slice(0, 50)}`;
     if (sentTelegramFoxSignatures.has(sig)) return;
     sentTelegramFoxSignatures.add(sig);
 

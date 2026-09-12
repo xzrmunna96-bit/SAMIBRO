@@ -128,86 +128,7 @@ export function maskOtpInMessage(msg: string): string {
   return masked;
 }
 
-const INITIAL_SAMPLE_HITS: TestSmsCardItem[] = [
-  {
-    id: "hit_01",
-    country: "CAMBODIA",
-    operator: "Metfone 12",
-    range: "85567464345",
-    number: "85567464345",
-    sid: "AUTHMSG",
-    message: "Your foodpanda verification code is: XXXX",
-    payout: "0.0102 USD",
-    elapsed: "1m",
-    timeStr: "15:29:26",
-    timestamp: Date.now() - 60000,
-  },
-  {
-    id: "hit_02",
-    country: "UZBEKISTAN",
-    operator: "Daewoo Unitel 32",
-    range: "998918617252",
-    number: "998918617252",
-    sid: "Facebook",
-    message: "<#> XXX XXX— ваш код Instagram. Никому не показывайте его. GdDGCwrWHVm",
-    payout: "-",
-    elapsed: "48s",
-    timeStr: "15:30:07",
-    timestamp: Date.now() - 48000,
-  },
-  {
-    id: "hit_03",
-    country: "TOGO",
-    operator: "Moov 34",
-    range: "22897437931",
-    number: "22897437931",
-    sid: "Facebook",
-    message: "Tap to reset your Instagram password: https://ig.me/XXyXuSQUXosAXTG",
-    payout: "-",
-    elapsed: "49s",
-    timeStr: "15:30:06",
-    timestamp: Date.now() - 49000,
-  },
-  {
-    id: "hit_04",
-    country: "IVORY COAST",
-    operator: "Orange 111",
-    range: "2250767490303",
-    number: "2250767490303",
-    sid: "Apple",
-    message: "REG-RESP?v=X;r=XXXXXXXXX;n=+XXXXXXXXXXXXX;s=XXXAAXXBXXFFFFFFFFXXX",
-    payout: "0.0102 USD",
-    elapsed: "50s",
-    timeStr: "15:30:05",
-    timestamp: Date.now() - 50000,
-  },
-  {
-    id: "hit_05",
-    country: "SIERRA LEONE",
-    operator: "Lintel 8",
-    range: "23277595046",
-    number: "23277595046",
-    sid: "Uber",
-    message: "HAKAN KHAGAN is arriving now in a Silver MG ZS EV HKXXCVM. Need help? Contact Support: XXXX XXX XXXX",
-    payout: "0.0102 USD",
-    elapsed: "51s",
-    timeStr: "15:30:04",
-    timestamp: Date.now() - 51000,
-  },
-  {
-    id: "hit_06",
-    country: "IVORY COAST",
-    operator: "Moov 136",
-    range: "2250140426646",
-    number: "2250140426646",
-    sid: "WhatsApp",
-    message: "Your WhatsApp code is: XXXX. Do not share this code with anyone.",
-    payout: "0.0102 USD",
-    elapsed: "53s",
-    timeStr: "15:30:02",
-    timestamp: Date.now() - 53000,
-  },
-];
+const INITIAL_SAMPLE_HITS: TestSmsCardItem[] = [];
 
 export const LiveTestSmsView = React.memo(function LiveTestSmsView({
   userEmail,
@@ -301,6 +222,8 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
       // Strictly sort newest hits on top
       converted.sort((a, b) => b.timestamp - a.timestamp);
       setItemsList(converted);
+    } else {
+      setItemsList([]);
     }
   }, [liveHits]);
 

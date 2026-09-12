@@ -1829,234 +1829,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const [isEditingKey, setIsEditingKey] = useState(false);
   const [keyInput, setKeyInput] = useState("");
 
-  // Initial default seed hits for instant load without 2-3s delay with active FOX SMS hits
-  const DEFAULT_INITIAL_HITS: LiveConsoleHit[] = [
-    {
-      range: "22901",
-      number: "2290155011429",
-      sid: "WhatsApp",
-      message: "<#> Votre compte WhatsApp Business sera enregistré sur un nouvel appareil\n\nNe donnez ce code à personne\nVotre code WhatsApp Business: 931-786\nrJbA/XP1K+V",
-      time: Date.now() - 30000,
-      operator: "Moov / MTN",
-      country: "BENIN",
-    },
-    {
-      range: "94740",
-      number: "94740729629",
-      sid: "Apple",
-      message: "Your Apple Account Code is: 770661. Don't share it with anyone.",
-      time: Date.now() - 60000,
-      operator: "Dialog",
-      country: "SRI LANKA",
-    },
-    {
-      range: "22901",
-      number: "2290155260259",
-      sid: "WhatsApp",
-      message: "<#> Your WhatsApp Business code 853-228\nDon't share this code with others\nrJbA/XP1K+V",
-      time: Date.now() - 90000,
-      operator: "Moov / MTN",
-      country: "BENIN",
-    },
-    {
-      range: "94743",
-      number: "94743665198",
-      sid: "Apple",
-      message: "Your Apple Account code is: 676123. Do not share it with anyone.",
-      time: Date.now() - 120000,
-      operator: "Dialog",
-      country: "SRI LANKA",
-    },
-    {
-      range: "94743",
-      number: "94743665198",
-      sid: "Apple",
-      message: "Your Apple Account code is: 308521. Do not share it with anyone.",
-      time: Date.now() - 150000,
-      operator: "Dialog",
-      country: "SRI LANKA",
-    },
-    {
-      range: "94743",
-      number: "94743665198",
-      sid: "Apple",
-      message: "Your Apple Account code is: 912919. Do not share it with anyone.",
-      time: Date.now() - 180000,
-      operator: "Dialog",
-      country: "SRI LANKA",
-    },
-    {
-      range: "94743",
-      number: "94743665198",
-      sid: "Apple",
-      message: "Your Apple Account code is: 515411. Do not share it with anyone.",
-      time: Date.now() - 210000,
-      operator: "Dialog",
-      country: "SRI LANKA",
-    },
-    {
-      range: "22901",
-      number: "2290164131359",
-      sid: "DLS",
-      message: "Ne partagez votre code de confirmation avec personne: 77771",
-      time: Date.now() - 240000,
-      operator: "Moov / MTN",
-      country: "BENIN",
-    },
-    {
-      range: "22901",
-      number: "2290198181998",
-      sid: "Facebook",
-      message: "108 697 is your Instagram code. Don't share it. #ig",
-      time: Date.now() - 270000,
-      operator: "Moov / MTN",
-      country: "BENIN",
-    },
-    {
-      range: "25882",
-      number: "258820046884",
-      sid: "Authentify",
-      message: "Your Schoolena verification code is: 369410",
-      time: Date.now() - 300000,
-      operator: "mcel",
-      country: "MOZAMBIQUE",
-    },
-    {
-      range: "25882",
-      number: "258820046486",
-      sid: "Authentify",
-      message: "Your Schoolena verification code is: 618834",
-      time: Date.now() - 330000,
-      operator: "mcel",
-      country: "MOZAMBIQUE",
-    },
-    {
-      range: "25882",
-      number: "258826037078",
-      sid: "Airbnb",
-      message: "Airbnb: Akila quer fazer check-in hoje. Toque para responder.",
-      time: Date.now() - 360000,
-      operator: "mcel",
-      country: "MOZAMBIQUE",
-    },
-    {
-      range: "25883",
-      number: "258834464785",
-      sid: "WhatsApp",
-      message: "<#> Your WhatsApp code: 594-198\nDon't share this code with others\n4sgLq1p5sV6",
-      time: Date.now() - 390000,
-      operator: "Vodacom",
-      country: "MOZAMBIQUE",
-    },
-    {
-      range: "25883",
-      number: "258835261731",
-      sid: "Yandex Taxi",
-      message: "Vreme dolaska: 7 min Vozilo: Ford BG26830TX Lokacija vozila: ya.cc/t/JEMTmGrI9EM5xd",
-      time: Date.now() - 420000,
-      operator: "Vodacom",
-      country: "MOZAMBIQUE",
-    },
-    {
-      range: "25883",
-      number: "258835638065",
-      sid: "WhatsApp",
-      message: "<#> Your WhatsApp Business code 574-474\nDon't share this code with others\nrJbA/XP1K+V",
-      time: Date.now() - 450000,
-      operator: "Vodacom",
-      country: "MOZAMBIQUE",
-    },
-    {
-      range: "94769",
-      number: "94769711088",
-      sid: "Apple",
-      message: "Your Apple Account Code is: 4071. Don't share it with anyone.",
-      time: Date.now() - 480000,
-      operator: "Airtel",
-      country: "SRI LANKA",
-    },
-    {
-      range: "94768",
-      number: "94768925647",
-      sid: "AfrAsiaBank",
-      message: "077888 is your verification code. For your security, do not share this code.",
-      time: Date.now() - 510000,
-      operator: "Airtel",
-      country: "SRI LANKA",
-    },
-    {
-      range: "21354",
-      number: "213541295176",
-      sid: "DPT Pay",
-      message: "Your DPT verification code is: 877279",
-      time: Date.now() - 540000,
-      operator: "Djezzy",
-      country: "ALGERIA",
-    },
-    {
-      range: "25883",
-      number: "258835400909",
-      sid: "HONOR",
-      message: "Your code is  96494",
-      time: Date.now() - 570000,
-      operator: "Vodacom",
-      country: "MOZAMBIQUE",
-    },
-    {
-      range: "25883",
-      number: "258835131541",
-      sid: "WhatsApp",
-      message: "<#> Your WhatsApp code: 167-648\nDon't share this code with others\n4sgLq1p5sV6",
-      time: Date.now() - 600000,
-      operator: "Vodacom",
-      country: "MOZAMBIQUE",
-    },
-    {
-      range: "25883",
-      number: "258833900619",
-      sid: "WhatsApp",
-      message: "<#> Codigo de confirmacao do WhatsApp: 574-584\nNao partilhe este codigo com terceiros\n4sgLq1p5sV6",
-      time: Date.now() - 630000,
-      operator: "Vodacom",
-      country: "MOZAMBIQUE",
-    },
-    {
-      range: "94766",
-      number: "94766232330",
-      sid: "GoDaddy",
-      message: "Your GoDaddy verification code is 615285.",
-      time: Date.now() - 660000,
-      operator: "Airtel",
-      country: "SRI LANKA",
-    },
-    {
-      range: "94766",
-      number: "94766232330",
-      sid: "GoDaddy",
-      message: "Your GoDaddy verification code is 814535.",
-      time: Date.now() - 690000,
-      operator: "Airtel",
-      country: "SRI LANKA",
-    },
-    {
-      range: "94766",
-      number: "94766232330",
-      sid: "GoDaddy",
-      message: "Your GoDaddy verification code is 117216.",
-      time: Date.now() - 720000,
-      operator: "Airtel",
-      country: "SRI LANKA",
-    },
-    {
-      range: "94766",
-      number: "94766232330",
-      sid: "GoDaddy",
-      message: "Your GoDaddy verification code is 297060.",
-      time: Date.now() - 750000,
-      operator: "Airtel",
-      country: "SRI LANKA",
-    },
-  ];
+  // Initial default seed hits - strictly empty when Voltx is OFF
+  const DEFAULT_INITIAL_HITS: LiveConsoleHit[] = [];
 
   // Live Real Data State with 24-Hour Persistence & Automatic Reset
   // Synchronized across all users & admins in real-time from server
@@ -2065,10 +1839,17 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       const saved = localStorage.getItem("super_x_live_console_hits_24h");
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          if (!isVoltxApiActive()) {
+            return parsed.filter(
+              (h: any) => h.isFoxSms || h.source === "FOX SMS" || (h.operator && String(h.operator).includes("FOX SMS"))
+            );
+          }
+          return parsed;
+        }
       }
     } catch {}
-    return DEFAULT_INITIAL_HITS;
+    return [];
   });
 
   const [globalStats, setGlobalStats] = useState<{
@@ -2580,16 +2361,12 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     };
   }, [user?.email]);
 
-  const DEFAULT_INITIAL_ACCESS_SERVICES: LiveAccessService[] = [
-    { sid: "WhatsApp", ranges: ["88017", "88018", "88019", "22501", "22897", "85567"], last_at: Date.now() },
-    { sid: "Telegram", ranges: ["88017", "88018", "88019", "99891", "23277"], last_at: Date.now() },
-    { sid: "Facebook", ranges: ["88013", "88014", "99891", "22897"], last_at: Date.now() },
-    { sid: "Google", ranges: ["88017", "88018", "88019", "85567", "22507"], last_at: Date.now() },
-    { sid: "IMO", ranges: ["88017", "88018", "88019"], last_at: Date.now() },
-    { sid: "TikTok", ranges: ["88017", "88018", "88019"], last_at: Date.now() },
-  ];
+  const DEFAULT_INITIAL_ACCESS_SERVICES: LiveAccessService[] = [];
 
   const [liveAccessList, setLiveAccessList] = useState<LiveAccessService[]>(() => {
+    if (!isVoltxApiActive()) {
+      return [];
+    }
     try {
       const saved = localStorage.getItem("super_x_live_access_list");
       if (saved) {
@@ -2597,7 +2374,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch {}
-    return DEFAULT_INITIAL_ACCESS_SERVICES;
+    return [];
   });
   const [liveSuccessOtps, setLiveSuccessOtps] = useState<LiveSuccessOtp[]>([]);
   const [allocatedNumbers, setAllocatedNumbers] = useState<
@@ -4402,26 +4179,6 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           );
 
       if (combinedHits.length > 0) {
-        // Auto-forward live OTP packets to Telegram channel (deduplicated)
-        combinedHits.forEach((h) => {
-          if (h.message) {
-            const extracted = extractOtpCode(h.message);
-            const key = `${h.range}_${h.time}_${extracted || ''}`;
-            if (extracted && !forwardedOtpKeysRef.current.has(key)) {
-              forwardedOtpKeysRef.current.add(key);
-              if (forwardedOtpKeysRef.current.size > 200) {
-                forwardedOtpKeysRef.current.clear();
-              }
-              sendOtpToTelegram({
-                number: (h as any).number || h.range || "Live Gateway",
-                service: h.sid || "Live Console",
-                message: h.message,
-                time: h.time,
-              }).catch(() => {});
-            }
-          }
-        });
-
         mergeIncomingHits(combinedHits);
 
         // Broadcast to global server pool so all other connected users & admins receive them
@@ -4431,7 +4188,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           body: JSON.stringify({ hits: combinedHits }),
         }).catch(() => {});
       }
-      if (access && access.length > 0) {
+      if (isVoltxOn && access && access.length > 0) {
         setLiveAccessList((prev) => {
           if (
             prev.length === access.length &&
@@ -4442,20 +4199,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           }
           return access;
         });
+      } else if (!isVoltxOn) {
+        setLiveAccessList([]);
       }
-      if (otps && otps.length > 0) {
-        // Auto-forward verified OTPs to Telegram
-        otps.forEach((o) => {
-          if (o.message) {
-            sendOtpToTelegram({
-              number: o.number || "Direct Route",
-              service: "Verified Carrier SMS",
-              message: o.message,
-              time: o.time,
-            }).catch(() => {});
-          }
-        });
-
+      if (isVoltxOn && otps && otps.length > 0) {
         setLiveSuccessOtps((prev) => {
           if (
             prev.length === otps.length &&
@@ -4466,6 +4213,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           }
           return otps;
         });
+      } else if (!isVoltxOn) {
+        setLiveSuccessOtps([]);
       }
 
       // Real-time live OTP matching and collaborative multi-session sync for allocated numbers

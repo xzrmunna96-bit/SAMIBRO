@@ -1693,55 +1693,232 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const [isEditingKey, setIsEditingKey] = useState(false);
   const [keyInput, setKeyInput] = useState("");
 
-  // Initial default seed hits for instant load without 2-3s delay
+  // Initial default seed hits for instant load without 2-3s delay with active FOX SMS hits
   const DEFAULT_INITIAL_HITS: LiveConsoleHit[] = [
     {
-      range: "85567464345",
-      sid: "AUTHMSG",
-      message: "Your foodpanda verification code is: XXXX",
-      time: Date.now() - 30000,
-      operator: "Metfone 12",
-      country: "CAMBODIA",
-    },
-    {
-      range: "998918617252",
-      sid: "Facebook",
-      message: "<#> XXX XXX— ваш код Instagram. Никому не показывайте его. GdDGCwrWHVm",
-      time: Date.now() - 48000,
-      operator: "Daewoo Unitel 32",
-      country: "UZBEKISTAN",
-    },
-    {
-      range: "22897437931",
-      sid: "Facebook",
-      message: "Tap to reset your Instagram password: https://ig.me/XXyXuSQUXosAXTG",
-      time: Date.now() - 65000,
-      operator: "Moov 34",
-      country: "TOGO",
-    },
-    {
-      range: "2250767490303",
-      sid: "Apple",
-      message: "REG-RESP?v=X;r=XXXXXXXXX;n=+XXXXXXXXXXXXX;s=XXXAAXXBXXFFFFFFFFXXX",
-      time: Date.now() - 90000,
-      operator: "Orange 111",
-      country: "IVORY COAST",
-    },
-    {
-      range: "23277595046",
-      sid: "Uber",
-      message: "HAKAN KHAGAN is arriving now in a Silver MG ZS EV HKXXCVM. Need help? Contact Support",
-      time: Date.now() - 120000,
-      operator: "Lintel 8",
-      country: "SIERRA LEONE",
-    },
-    {
-      range: "2250140426646",
+      range: "22901",
+      number: "2290155011429",
       sid: "WhatsApp",
-      message: "Your WhatsApp code is: XXXX. Do not share this code with anyone.",
+      message: "<#> Votre compte WhatsApp Business sera enregistré sur un nouvel appareil\n\nNe donnez ce code à personne\nVotre code WhatsApp Business: 931-786\nrJbA/XP1K+V",
+      time: Date.now() - 30000,
+      operator: "Moov / MTN",
+      country: "BENIN",
+    },
+    {
+      range: "94740",
+      number: "94740729629",
+      sid: "Apple",
+      message: "Your Apple Account Code is: 770661. Don't share it with anyone.",
+      time: Date.now() - 60000,
+      operator: "Dialog",
+      country: "SRI LANKA",
+    },
+    {
+      range: "22901",
+      number: "2290155260259",
+      sid: "WhatsApp",
+      message: "<#> Your WhatsApp Business code 853-228\nDon't share this code with others\nrJbA/XP1K+V",
+      time: Date.now() - 90000,
+      operator: "Moov / MTN",
+      country: "BENIN",
+    },
+    {
+      range: "94743",
+      number: "94743665198",
+      sid: "Apple",
+      message: "Your Apple Account code is: 676123. Do not share it with anyone.",
+      time: Date.now() - 120000,
+      operator: "Dialog",
+      country: "SRI LANKA",
+    },
+    {
+      range: "94743",
+      number: "94743665198",
+      sid: "Apple",
+      message: "Your Apple Account code is: 308521. Do not share it with anyone.",
       time: Date.now() - 150000,
-      operator: "Moov 136",
-      country: "IVORY COAST",
+      operator: "Dialog",
+      country: "SRI LANKA",
+    },
+    {
+      range: "94743",
+      number: "94743665198",
+      sid: "Apple",
+      message: "Your Apple Account code is: 912919. Do not share it with anyone.",
+      time: Date.now() - 180000,
+      operator: "Dialog",
+      country: "SRI LANKA",
+    },
+    {
+      range: "94743",
+      number: "94743665198",
+      sid: "Apple",
+      message: "Your Apple Account code is: 515411. Do not share it with anyone.",
+      time: Date.now() - 210000,
+      operator: "Dialog",
+      country: "SRI LANKA",
+    },
+    {
+      range: "22901",
+      number: "2290164131359",
+      sid: "DLS",
+      message: "Ne partagez votre code de confirmation avec personne: 77771",
+      time: Date.now() - 240000,
+      operator: "Moov / MTN",
+      country: "BENIN",
+    },
+    {
+      range: "22901",
+      number: "2290198181998",
+      sid: "Facebook",
+      message: "108 697 is your Instagram code. Don't share it. #ig",
+      time: Date.now() - 270000,
+      operator: "Moov / MTN",
+      country: "BENIN",
+    },
+    {
+      range: "25882",
+      number: "258820046884",
+      sid: "Authentify",
+      message: "Your Schoolena verification code is: 369410",
+      time: Date.now() - 300000,
+      operator: "mcel",
+      country: "MOZAMBIQUE",
+    },
+    {
+      range: "25882",
+      number: "258820046486",
+      sid: "Authentify",
+      message: "Your Schoolena verification code is: 618834",
+      time: Date.now() - 330000,
+      operator: "mcel",
+      country: "MOZAMBIQUE",
+    },
+    {
+      range: "25882",
+      number: "258826037078",
+      sid: "Airbnb",
+      message: "Airbnb: Akila quer fazer check-in hoje. Toque para responder.",
+      time: Date.now() - 360000,
+      operator: "mcel",
+      country: "MOZAMBIQUE",
+    },
+    {
+      range: "25883",
+      number: "258834464785",
+      sid: "WhatsApp",
+      message: "<#> Your WhatsApp code: 594-198\nDon't share this code with others\n4sgLq1p5sV6",
+      time: Date.now() - 390000,
+      operator: "Vodacom",
+      country: "MOZAMBIQUE",
+    },
+    {
+      range: "25883",
+      number: "258835261731",
+      sid: "Yandex Taxi",
+      message: "Vreme dolaska: 7 min Vozilo: Ford BG26830TX Lokacija vozila: ya.cc/t/JEMTmGrI9EM5xd",
+      time: Date.now() - 420000,
+      operator: "Vodacom",
+      country: "MOZAMBIQUE",
+    },
+    {
+      range: "25883",
+      number: "258835638065",
+      sid: "WhatsApp",
+      message: "<#> Your WhatsApp Business code 574-474\nDon't share this code with others\nrJbA/XP1K+V",
+      time: Date.now() - 450000,
+      operator: "Vodacom",
+      country: "MOZAMBIQUE",
+    },
+    {
+      range: "94769",
+      number: "94769711088",
+      sid: "Apple",
+      message: "Your Apple Account Code is: 4071. Don't share it with anyone.",
+      time: Date.now() - 480000,
+      operator: "Airtel",
+      country: "SRI LANKA",
+    },
+    {
+      range: "94768",
+      number: "94768925647",
+      sid: "AfrAsiaBank",
+      message: "077888 is your verification code. For your security, do not share this code.",
+      time: Date.now() - 510000,
+      operator: "Airtel",
+      country: "SRI LANKA",
+    },
+    {
+      range: "21354",
+      number: "213541295176",
+      sid: "DPT Pay",
+      message: "Your DPT verification code is: 877279",
+      time: Date.now() - 540000,
+      operator: "Djezzy",
+      country: "ALGERIA",
+    },
+    {
+      range: "25883",
+      number: "258835400909",
+      sid: "HONOR",
+      message: "Your code is  96494",
+      time: Date.now() - 570000,
+      operator: "Vodacom",
+      country: "MOZAMBIQUE",
+    },
+    {
+      range: "25883",
+      number: "258835131541",
+      sid: "WhatsApp",
+      message: "<#> Your WhatsApp code: 167-648\nDon't share this code with others\n4sgLq1p5sV6",
+      time: Date.now() - 600000,
+      operator: "Vodacom",
+      country: "MOZAMBIQUE",
+    },
+    {
+      range: "25883",
+      number: "258833900619",
+      sid: "WhatsApp",
+      message: "<#> Codigo de confirmacao do WhatsApp: 574-584\nNao partilhe este codigo com terceiros\n4sgLq1p5sV6",
+      time: Date.now() - 630000,
+      operator: "Vodacom",
+      country: "MOZAMBIQUE",
+    },
+    {
+      range: "94766",
+      number: "94766232330",
+      sid: "GoDaddy",
+      message: "Your GoDaddy verification code is 615285.",
+      time: Date.now() - 660000,
+      operator: "Airtel",
+      country: "SRI LANKA",
+    },
+    {
+      range: "94766",
+      number: "94766232330",
+      sid: "GoDaddy",
+      message: "Your GoDaddy verification code is 814535.",
+      time: Date.now() - 690000,
+      operator: "Airtel",
+      country: "SRI LANKA",
+    },
+    {
+      range: "94766",
+      number: "94766232330",
+      sid: "GoDaddy",
+      message: "Your GoDaddy verification code is 117216.",
+      time: Date.now() - 720000,
+      operator: "Airtel",
+      country: "SRI LANKA",
+    },
+    {
+      range: "94766",
+      number: "94766232330",
+      sid: "GoDaddy",
+      message: "Your GoDaddy verification code is 297060.",
+      time: Date.now() - 750000,
+      operator: "Airtel",
+      country: "SRI LANKA",
     },
   ];
 
@@ -3589,6 +3766,57 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       badge: "bg-indigo-50 text-indigo-700 border-indigo-200",
     };
   };
+
+  // Access List Filter & Flattened 1-row-per-range memo
+  const [accessListFilter, setAccessListFilter] = useState("");
+
+  const flattenedAccessRows = React.useMemo(() => {
+    const rows: Array<{
+      sid: string;
+      range: string;
+      otp?: string;
+      message?: string;
+      number?: string;
+      last_at?: number;
+      carrier: { operator: string; country: string };
+    }> = [];
+
+    liveAccessList.forEach((srv) => {
+      (srv.ranges || []).forEach((r) => {
+        const cleanRange = (r || "").trim();
+        if (!cleanRange) return;
+
+        // Apply search filter if active
+        if (accessListFilter.trim()) {
+          const q = accessListFilter.toLowerCase().trim();
+          const matchSid = srv.sid.toLowerCase().includes(q);
+          const matchRange = cleanRange.toLowerCase().includes(q);
+          if (!matchSid && !matchRange) return;
+        }
+
+        const data = srv.rangeOtps?.[cleanRange];
+        const otp = data?.otp || extractOtpCode(data?.message || "");
+        const carrier = resolveCarrierDetails(cleanRange);
+
+        rows.push({
+          sid: srv.sid,
+          range: cleanRange,
+          otp: otp || undefined,
+          message: data?.message,
+          number: data?.number,
+          last_at: data?.time ? Math.floor(data.time / 1000) : srv.last_at,
+          carrier,
+        });
+      });
+    });
+
+    // Sort: items with OTP first, then by last_at descending
+    return rows.sort((a, b) => {
+      if (a.otp && !b.otp) return -1;
+      if (!a.otp && b.otp) return 1;
+      return (b.last_at || 0) - (a.last_at || 0);
+    });
+  }, [liveAccessList, accessListFilter]);
 
   // Sender / Range View State & Live Aggregation
   const [senderRangeFilter, setSenderRangeFilter] = useState("");
@@ -6795,86 +7023,108 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         {/* -------------------- 4. ACCESS LIST VIEW -------------------- */}
         {currentView === "accessList" && (
           <div className="bg-white rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-300 space-y-4">
-            <div className="border-b pb-3 border-slate-200">
-              <h2 className="text-xl font-extrabold text-slate-900 flex items-center gap-2">
-                <List className="w-5 h-5 text-blue-600" />
-                <span>Access List</span>
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Active services and supported range pools.
-              </p>
+            {/* Access List Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3 border-slate-200">
+              <div>
+                <h2 className="text-xl font-extrabold text-slate-900 flex items-center gap-2">
+                  <List className="w-5 h-5 text-blue-600" />
+                  <span>Access List Pools</span>
+                  <span className="text-xs bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-full font-bold">
+                    {flattenedAccessRows.length} Active Ranges
+                  </span>
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Real-time service pools with individual range monitoring. 1 row per active range.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Filter Service or Range (e.g. 22901, WhatsApp)..."
+                  value={accessListFilter}
+                  onChange={(e) => setAccessListFilter(e.target.value)}
+                  className="px-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-64"
+                />
+              </div>
             </div>
 
             <div className="overflow-x-auto bg-white border border-slate-300 rounded-xl">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="bg-slate-800 font-extrabold uppercase text-slate-200 border-b-2 border-slate-700 text-[11px]">
+                    <th className="p-3 border-r border-slate-700 w-12 text-center">#</th>
                     <th className="p-3 border-r border-slate-700">Service Name</th>
-                    <th className="p-3 border-r border-slate-700">Active Ranges</th>
-                    <th className="p-3 border-r border-slate-700">Latest Range OTPs &amp; Received Stream</th>
-                    <th className="p-3">Last Active Hit</th>
+                    <th className="p-3 border-r border-slate-700">Country / Carrier</th>
+                    <th className="p-3 border-r border-slate-700">Range Code</th>
+                    <th className="p-3 border-r border-slate-700">Latest Range OTP &amp; Stream</th>
+                    <th className="p-3 text-right">Last Active</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-300 bg-white">
-                  {liveAccessList.length === 0 ? (
+                <tbody className="divide-y divide-slate-200 bg-white">
+                  {flattenedAccessRows.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={4}
+                        colSpan={6}
                         className="p-8 text-center text-slate-500 font-sans text-xs bg-slate-50"
                       >
-                        No active service access rules found. Access list is
-                        currently empty.
+                        No active service access rules found matching your filter.
                       </td>
                     </tr>
                   ) : (
-                    liveAccessList.map((item, i) => {
+                    flattenedAccessRows.map((row, i) => {
                       const isEven = i % 2 === 0;
-                      const rangeOtpEntries = item.ranges?.map((r) => {
-                        const data = item.rangeOtps?.[r];
-                        return { range: r, data };
-                      }) || [];
-
                       return (
-                      <tr key={i} className={`transition ${isEven ? 'bg-white hover:bg-indigo-50/50' : 'bg-slate-100/90 hover:bg-indigo-100/50'}`}>
-                        <td className="p-3 font-bold text-blue-700 border-r border-b border-slate-300">
-                          {item.sid}
-                        </td>
-                        <td className="p-3 font-mono text-slate-900 font-bold border-r border-b border-slate-300">
-                          {item.ranges?.join(", ") || "N/A"}
-                        </td>
-                        <td className="p-3 border-r border-slate-300">
-                          <div className="flex flex-wrap gap-1.5 max-w-md">
-                            {rangeOtpEntries.map(({ range, data }) => {
-                              const otp = data?.otp || extractOtpCode(data?.message || "");
-                              return (
-                                <div key={range} className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-slate-100 border border-slate-300 text-[11px] font-mono">
-                                  <span className="font-bold text-slate-800">[{range}]</span>
-                                  {otp ? (
-                                    <span className="inline-flex items-center gap-1 font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.2 rounded border border-emerald-300">
-                                      🔑 OTP: {otp}
-                                      <button
-                                        type="button"
-                                        onClick={() => copyToClipboard(otp, `acc_otp_${item.sid}_${range}`)}
-                                        className="text-[10px] text-emerald-900 hover:underline cursor-pointer"
-                                      >
-                                        {copiedText === `acc_otp_${item.sid}_${range}` ? "Copied" : "Copy"}
-                                      </button>
-                                    </span>
-                                  ) : (
-                                    <span className="text-slate-500 text-[10px]">Active</span>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </td>
-                        <td className="p-3 text-slate-600 font-mono border-b border-slate-300">
-                          {item.last_at
-                            ? new Date(item.last_at * 1000).toLocaleTimeString()
-                            : "Active"}
-                        </td>
-                      </tr>
-                    );
+                        <tr key={`${row.sid}_${row.range}_${i}`} className={`transition ${isEven ? 'bg-white hover:bg-indigo-50/60' : 'bg-slate-50/90 hover:bg-indigo-50/60'}`}>
+                          <td className="p-3 font-mono text-center text-slate-400 border-r border-slate-200">
+                            {i + 1}
+                          </td>
+                          <td className="p-3 font-bold text-blue-700 border-r border-slate-200 whitespace-nowrap">
+                            <span className="inline-flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                              {row.sid}
+                            </span>
+                          </td>
+                          <td className="p-3 text-slate-700 border-r border-slate-200 whitespace-nowrap">
+                            <span className="font-semibold">{row.carrier.country}</span>
+                            <span className="text-[10px] text-slate-500 block">{row.carrier.operator}</span>
+                          </td>
+                          <td className="p-3 font-mono font-bold text-slate-900 border-r border-slate-200 whitespace-nowrap">
+                            <span className="bg-slate-100 text-slate-800 px-2 py-0.5 rounded border border-slate-300">
+                              {row.range.length <= 6 ? `${row.range}XXX` : row.range}
+                            </span>
+                          </td>
+                          <td className="p-3 border-r border-slate-200">
+                            {row.otp ? (
+                              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                                <span className="inline-flex items-center gap-1.5 font-bold text-emerald-900 bg-emerald-100 px-2.5 py-1 rounded-md border border-emerald-300 text-xs font-mono">
+                                  🔑 OTP: {row.otp}
+                                  <button
+                                    type="button"
+                                    onClick={() => copyToClipboard(row.otp!, `acc_flt_${row.sid}_${row.range}`)}
+                                    className="ml-1 px-1.5 py-0.5 bg-emerald-700 text-white rounded text-[10px] hover:bg-emerald-800 transition cursor-pointer font-sans"
+                                  >
+                                    {copiedText === `acc_flt_${row.sid}_${row.range}` ? "Copied" : "Copy"}
+                                  </button>
+                                </span>
+                                {row.message && (
+                                  <span className="text-[11px] text-slate-600 line-clamp-1 italic max-w-xs" title={row.message}>
+                                    "{row.message}"
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 text-[11px] italic">
+                                Active route ready
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3 text-slate-600 font-mono text-right whitespace-nowrap">
+                            {row.last_at
+                              ? new Date(row.last_at * 1000).toLocaleTimeString("en-GB")
+                              : "Active"}
+                          </td>
+                        </tr>
+                      );
                     })
                   )}
                 </tbody>

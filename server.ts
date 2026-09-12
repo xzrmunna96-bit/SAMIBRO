@@ -7736,6 +7736,7 @@ async function startServer() {
     // Non-blocking background sync if stale or empty
     if (serverGlobalLiveHits.length === 0 || Date.now() - lastUpstreamSyncTime > 3000) {
       syncFromUpstreamVoltxConsole().catch(() => {});
+      syncFromFoxSmsApi().catch(() => {});
     }
 
     res.json({

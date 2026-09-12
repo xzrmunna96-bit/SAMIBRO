@@ -1195,13 +1195,146 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               !item.id.toString().startsWith("p_") &&
               !item.id.toString().startsWith("t_")
           );
-          return realOnly;
+          if (realOnly.length > 0) return realOnly;
         }
       }
     } catch {
       // ignore
     }
-    return [];
+    return [
+      {
+        id: "fox_hist_01",
+        testNumber: "2290155011429",
+        country: "BENIN",
+        carrier: "Moov / MTN",
+        service: "WhatsApp",
+        otpCode: "931-786",
+        message: "<#> Votre compte WhatsApp Business sera enregistré sur un nouvel appareil\n\nNe donnez ce code à personne\nVotre code WhatsApp Business: 931-786\nrJbA/XP1K+V",
+        timestamp: Date.now() - 30000,
+        status: "DELIVERED",
+        speedSec: 2,
+      },
+      {
+        id: "fox_hist_02",
+        testNumber: "94740729629",
+        country: "SRI LANKA",
+        carrier: "Dialog",
+        service: "Apple",
+        otpCode: "770661",
+        message: "Your Apple Account Code is: 770661. Don't share it with anyone.",
+        timestamp: Date.now() - 60000,
+        status: "DELIVERED",
+        speedSec: 1,
+      },
+      {
+        id: "fox_hist_03",
+        testNumber: "2290155260259",
+        country: "BENIN",
+        carrier: "Moov / MTN",
+        service: "WhatsApp",
+        otpCode: "853-228",
+        message: "<#> Your WhatsApp Business code 853-228\nDon't share this code with others\nrJbA/XP1K+V",
+        timestamp: Date.now() - 90000,
+        status: "DELIVERED",
+        speedSec: 2,
+      },
+      {
+        id: "fox_hist_04",
+        testNumber: "94743665198",
+        country: "SRI LANKA",
+        carrier: "Dialog",
+        service: "Apple",
+        otpCode: "676123",
+        message: "Your Apple Account code is: 676123. Do not share it with anyone.",
+        timestamp: Date.now() - 120000,
+        status: "DELIVERED",
+        speedSec: 1,
+      },
+      {
+        id: "fox_hist_05",
+        testNumber: "2290164131359",
+        country: "BENIN",
+        carrier: "Moov / MTN",
+        service: "DLS",
+        otpCode: "77771",
+        message: "Ne partagez votre code de confirmation avec personne: 77771",
+        timestamp: Date.now() - 240000,
+        status: "DELIVERED",
+        speedSec: 3,
+      },
+      {
+        id: "fox_hist_06",
+        testNumber: "2290198181998",
+        country: "BENIN",
+        carrier: "Moov / MTN",
+        service: "Facebook",
+        otpCode: "108697",
+        message: "108 697 is your Instagram code. Don't share it. #ig",
+        timestamp: Date.now() - 270000,
+        status: "DELIVERED",
+        speedSec: 2,
+      },
+      {
+        id: "fox_hist_07",
+        testNumber: "258820046884",
+        country: "MOZAMBIQUE",
+        carrier: "mcel",
+        service: "Authentify",
+        otpCode: "369410",
+        message: "Your Schoolena verification code is: 369410",
+        timestamp: Date.now() - 300000,
+        status: "DELIVERED",
+        speedSec: 1,
+      },
+      {
+        id: "fox_hist_08",
+        testNumber: "258834464785",
+        country: "MOZAMBIQUE",
+        carrier: "Vodacom",
+        service: "WhatsApp",
+        otpCode: "594-198",
+        message: "<#> Your WhatsApp code: 594-198\nDon't share this code with others\n4sgLq1p5sV6",
+        timestamp: Date.now() - 390000,
+        status: "DELIVERED",
+        speedSec: 2,
+      },
+      {
+        id: "fox_hist_09",
+        testNumber: "94769711088",
+        country: "SRI LANKA",
+        carrier: "Airtel",
+        service: "Apple",
+        otpCode: "4071",
+        message: "Your Apple Account Code is: 4071. Don't share it with anyone.",
+        timestamp: Date.now() - 480000,
+        status: "DELIVERED",
+        speedSec: 1,
+      },
+      {
+        id: "fox_hist_10",
+        testNumber: "213541295176",
+        country: "ALGERIA",
+        carrier: "Djezzy",
+        service: "DPT Pay",
+        otpCode: "877279",
+        message: "Your DPT verification code is: 877279",
+        timestamp: Date.now() - 540000,
+        status: "DELIVERED",
+        speedSec: 2,
+      },
+      {
+        id: "fox_hist_11",
+        testNumber: "94766232330",
+        country: "SRI LANKA",
+        carrier: "Airtel",
+        service: "GoDaddy",
+        otpCode: "615285",
+        message: "Your GoDaddy verification code is 615285.",
+        timestamp: Date.now() - 660000,
+        status: "DELIVERED",
+        speedSec: 1,
+      },
+    ];
   });
 
   const handleAddTestRecord = (record: SmsTestRecord) => {
@@ -2136,6 +2269,54 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       }
       return prevAccess;
     });
+
+    // 4. Automatically sync incoming real-time hits into SMS Test History (smsTestHistoryList)
+    setSmsTestHistoryList((prevHistory) => {
+      let historyChanged = false;
+      const nextList = [...prevHistory];
+      incoming.forEach((h) => {
+        if (!h) return;
+        const rawNum = String(h.number || h.range || "").replace(/\D/g, "");
+        if (!rawNum) return;
+        const rawMsg = h.message || "";
+        const otpCode = extractOtpCode(rawMsg) || "";
+        const hitTime = typeof h.time === "number" ? h.time : Date.now();
+        const recId = (h as any).id || `hit_rec_${rawNum}_${hitTime}_${otpCode}`;
+
+        const exists = nextList.some(
+          (r) => r.id === recId || (r.testNumber === rawNum && Math.abs(r.timestamp - hitTime) < 3000 && r.otpCode === otpCode)
+        );
+
+        if (!exists) {
+          nextList.unshift({
+            id: recId,
+            testNumber: rawNum,
+            country: h.country || "International",
+            carrier: h.operator || "Direct Route",
+            service: h.sid || "SMS",
+            otpCode: otpCode || "XXXXXX",
+            message: rawMsg,
+            timestamp: hitTime,
+            status: "DELIVERED",
+            speedSec: 2,
+          });
+          historyChanged = true;
+        }
+      });
+
+      if (historyChanged) {
+        if (user?.email) {
+          try {
+            localStorage.setItem(
+              `super_x_sms_test_history_${user.email}`,
+              JSON.stringify(nextList.slice(0, 1000))
+            );
+          } catch {}
+        }
+        return nextList.slice(0, 1000);
+      }
+      return prevHistory;
+    });
   }, [user?.email]);
 
   // Synchronize liveHits into liveAccessList to ensure all historical and current hits are reflected in Access List
@@ -2154,7 +2335,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         const rangePrefix = rawNum.length >= 5 ? rawNum.slice(0, 5) : rawNum;
         const rawMsg = h.message || "";
         const otp = extractOtpCode(rawMsg) || "";
-        const hitTime = typeof h.time === "number" ? h.time : (h.timestamp ? new Date(h.timestamp).getTime() : Date.now());
+        const hitTime = typeof h.time === "number" ? h.time : ((h as any).timestamp ? new Date((h as any).timestamp).getTime() : Date.now());
 
         let idx = nextList.findIndex((item) => item.sid.toLowerCase() === sid.toLowerCase());
         if (idx === -1) {
@@ -3839,8 +4020,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
     // 1. Incorporate live incoming hits from real-time stream
     liveHits.forEach((hit) => {
-      const cleanRange = (hit.range || "").trim();
-      if (!cleanRange) return;
+      const rawNum = String(hit.range || (hit as any).number || "").replace(/\D/g, "");
+      if (!rawNum) return;
+      // Truncate to 5-digit carrier range prefix so all hits group into carrier ranges (e.g. 22901, 94740, 25882, 94743)
+      const cleanRange = rawNum.length >= 5 ? rawNum.slice(0, 5) : rawNum;
       const key = `${hit.sid || "SMS"}_${cleanRange}`;
       const carrier = resolveCarrierDetails(cleanRange);
 
@@ -7291,12 +7474,12 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 <table className="w-full text-left text-xs border-collapse">
                   <thead className="bg-slate-800 border-b-2 border-slate-700 text-slate-200 font-extrabold uppercase tracking-wider text-[10px]">
                     <tr>
-                      <th className="py-3 px-4 border-r border-slate-700">Sender / Service</th>
+                      <th className="py-3 px-4 border-r border-slate-700">Country &amp; Operator</th>
                       <th className="py-3 px-4 border-r border-slate-700">Range Prefix</th>
-                      <th className="py-3 px-4 border-r border-slate-700">Operator &amp; Country</th>
-                      <th className="py-3 px-4 text-center border-r border-slate-700">Stream Hits</th>
-                      <th className="py-3 px-4 border-r border-slate-700">Latest Message</th>
-                      <th className="py-3 px-4 text-right">Direct Action</th>
+                      <th className="py-3 px-4 border-r border-slate-700">Social Media / Service</th>
+                      <th className="py-3 px-4 text-center border-r border-slate-700">Status &amp; Activity</th>
+                      <th className="py-3 px-4 border-r border-slate-700">Latest Live Message (Masked OTP)</th>
+                      <th className="py-3 px-4 text-right">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-300 bg-white">
@@ -7314,11 +7497,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                       filteredSenderRanges.map((item, idx) => {
                         const style = getServiceStyle(item.sid);
                         const extractedOtp = extractOtp(item.latestMessage);
-                        const isOwner = isHitOwnedByUser({
-                          range: item.range,
-                        }).isOwner;
-                        const displayedLatestMessage = item.latestMessage;
-                        const displayedOtp = extractedOtp || "—";
+                        const maskedMessage = maskOtpInMessage(item.latestMessage, extractedOtp);
+                        const maskedOtpDisplay = extractedOtp ? extractedOtp.replace(/[0-9]/g, "X") : "—";
                         const isEven = idx % 2 === 0;
 
                         return (
@@ -7330,19 +7510,27 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                 : "bg-slate-100/90 hover:bg-indigo-100/60"
                             }`}
                           >
-                            {/* Service */}
+                            {/* 1. Country & Operator */}
                             <td className="py-3.5 px-4 border-r border-b border-slate-300">
-                              <span
-                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black border ${style.badge}`}
-                              >
-                                <span>{item.sid}</span>
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <CountryFlag countryCode={item.country} size="sm" />
+                                <div>
+                                  <div className="font-bold text-slate-900 text-xs">
+                                    {stripFlagFromCountryName(item.country)}
+                                  </div>
+                                  <div className="text-[11px] text-slate-500 font-medium">
+                                    {item.operator}
+                                  </div>
+                                </div>
+                              </div>
                             </td>
 
-                            {/* Range */}
+                            {/* 2. Range Prefix */}
                             <td className="py-3.5 px-4 font-mono font-bold text-slate-900 text-xs sm:text-sm border-r border-b border-slate-300">
                               <div className="flex items-center gap-1.5">
-                                <span>{item.range}</span>
+                                <span className="bg-slate-100 text-slate-800 px-2 py-0.5 rounded border border-slate-300">
+                                  {item.range.length <= 6 ? `${item.range}XXX` : item.range}
+                                </span>
                                 <button
                                   type="button"
                                   onClick={() =>
@@ -7363,59 +7551,64 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                               </div>
                             </td>
 
-                            {/* Operator & Country */}
+                            {/* 3. Social Media / Service */}
                             <td className="py-3.5 px-4 border-r border-b border-slate-300">
-                              <div className="font-bold text-slate-900">
-                                {item.operator}
-                              </div>
-                              <div className="text-[11px] text-slate-600">
-                                {stripFlagFromCountryName(item.country)}
-                              </div>
+                              <span
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black border ${style.badge}`}
+                              >
+                                <span>{item.sid}</span>
+                              </span>
                             </td>
 
-                            {/* Stream Hits */}
+                            {/* 4. Status & Activity */}
                             <td className="py-3.5 px-4 text-center border-r border-b border-slate-300">
-                              {item.hitsCount > 0 ? (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                  {item.hitsCount} hits
+                              <div className="flex flex-col items-center gap-1">
+                                {item.hitsCount > 0 ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                    {item.hitsCount} hits
+                                  </span>
+                                ) : (
+                                  <span className="text-[11px] font-mono text-slate-400">
+                                    Idle Socket
+                                  </span>
+                                )}
+                                <span className="text-[10px] text-slate-500 font-mono">
+                                  {formatRelativeActivityTime({ createdAt: typeof item.latestTime === "number" ? item.latestTime : Date.now(), activity: "Active stream" }, nowTick)}
                                 </span>
-                              ) : (
-                                <span className="text-[11px] font-mono text-slate-400">
-                                  Idle Socket
-                                </span>
-                              )}
+                              </div>
                             </td>
 
-                            {/* Latest Message */}
+                            {/* 5. Latest Message (Masked OTP) */}
                             <td className="py-3.5 px-4 max-w-xs border-r border-b border-slate-300">
-                              <div className="truncate font-mono text-slate-800 text-[11px]">
-                                {displayedLatestMessage}
+                              <div className="truncate font-mono text-slate-800 text-[11px]" title={maskedMessage}>
+                                {maskedMessage}
                               </div>
                               {extractedOtp && (
                                 <div className="flex items-center gap-1.5 mt-1">
-                                  <span className="inline-block px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-emerald-100 text-emerald-900 border border-emerald-300">
-                                    🔑 OTP: {displayedOtp}
+                                  <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                                    🔑 OTP: {maskedOtpDisplay}
                                   </span>
                                   <button
                                     type="button"
                                     onClick={() => copyToClipboard(extractedOtp, `range_otp_${item.key}`)}
                                     className="text-[10px] font-mono text-emerald-700 hover:text-emerald-900 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 cursor-pointer"
+                                    title="Copy OTP to Clipboard"
                                   >
-                                    {copiedText === `range_otp_${item.key}` ? "Copied" : "Copy"}
+                                    {copiedText === `range_otp_${item.key}` ? "Copied" : "Copy OTP"}
                                   </button>
                                 </div>
                               )}
                             </td>
 
-                            {/* Action Button */}
+                            {/* 6. Action Button */}
                             <td className="py-3.5 px-4 text-right border-b border-slate-300">
                               <button
                                 type="button"
                                 onClick={() =>
                                   handleAllocateFromSenderRange(item.range)
                                 }
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold text-xs shadow-2xs transition cursor-pointer"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold text-xs shadow-2xs transition cursor-pointer whitespace-nowrap"
                                 title={`Allocate number from range ${item.range}`}
                               >
                                 <Smartphone className="w-3.5 h-3.5" />

@@ -7469,6 +7469,69 @@ async function startServer() {
     return isNaN(parsed) ? Date.now() : parsed;
   }
 
+  const sentTelegramFoxSignatures = new Set<string>();
+
+  async function sendFoxHitToTelegram(hit: any) {
+    if (!hit) return;
+    const num = String(hit.number || hit.num || hit.range || "").trim();
+    const msg = String(hit.message || "").trim();
+    if (!num && !msg) return;
+
+    const hitTime = hit.time || Date.now();
+    const service = hit.service || hit.sid || hit.cli || "FOX SMS";
+    const otpCode = hit.code || extractOtpCode(msg) || "N/A";
+
+    const sig = `fox_tg_${num.replace(/\D/g, "")}_${hitTime}_${otpCode}_${msg.substring(0, 20)}`;
+    if (sentTelegramFoxSignatures.has(sig)) return;
+    sentTelegramFoxSignatures.add(sig);
+
+    if (sentTelegramFoxSignatures.size > 2000) {
+      const arr = Array.from(sentTelegramFoxSignatures);
+      sentTelegramFoxSignatures.clear();
+      arr.slice(-500).forEach((s) => sentTelegramFoxSignatures.add(s));
+    }
+
+    let country = hit.country;
+    if (!country || country.toUpperCase().includes("INTERNATIONAL")) {
+      const digits = num.replace(/\D/g, "");
+      const match = GLOBAL_COUNTRIES_LIST.find((c) => digits.startsWith(c.dialCode.replace("+", "")));
+      country = match ? match.name : "International";
+    }
+
+    const text =
+      `🦊 <b>SUPER X SMS — NEW FOX SMS OTP RECEIVED!</b>\n\n` +
+      `🌍 <b>Country:</b> ${country}\n` +
+      `📞 <b>Number:</b> <code>${num}</code>\n` +
+      `⚡ <b>Service:</b> <b>${service}</b>\n` +
+      `🔑 <b>OTP Code:</b> <code>${otpCode}</code>\n` +
+      `💬 <b>Message:</b>\n<i>"${msg}"</i>\n\n` +
+      `⏰ <b>Time:</b> ${new Date(hitTime).toLocaleTimeString()}\n` +
+      `🌐 <i>Real-time FOX SMS Live Feed Synchronized!</i>`;
+
+    const botToken = getActiveBotToken();
+    const targets = new Set<string>();
+    if (controlBotState && controlBotState.adminId) targets.add(String(controlBotState.adminId));
+    targets.add("7084317713");
+    if (botHostingConfig && botHostingConfig.chatId) targets.add(String(botHostingConfig.chatId));
+    if (telegramConfig && telegramConfig.chatId) targets.add(String(telegramConfig.chatId));
+
+    for (const chatId of targets) {
+      if (!chatId) continue;
+      try {
+        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text,
+            parse_mode: "HTML",
+            disable_web_page_preview: true,
+          }),
+        });
+      } catch {}
+    }
+  }
+
   function processAndBroadcastIncomingHits(rawHits: any[]): { added: any[]; stats: ServerGlobalStats } {
     check24HourReset();
     if (!Array.isArray(rawHits) || rawHits.length === 0) {
@@ -7502,8 +7565,13 @@ async function startServer() {
 
     if (validNew.length > 0) {
       serverGlobalLiveHits.unshift(...validNew);
-      if (serverGlobalLiveHits.length > 1000) {
-        serverGlobalLiveHits = serverGlobalLiveHits.slice(0, 1000);
+      serverGlobalLiveHits.sort((a, b) => {
+        const tA = typeof a.time === "number" ? a.time : (a.timestamp || new Date(a.time).getTime() || 0);
+        const tB = typeof b.time === "number" ? b.time : (b.timestamp || new Date(b.time).getTime() || 0);
+        return tB - tA;
+      });
+      if (serverGlobalLiveHits.length > 2000) {
+        serverGlobalLiveHits = serverGlobalLiveHits.slice(0, 2000);
       }
       recalculateGlobalStats();
       saveServerGlobalLiveHits(serverGlobalLiveHits);
@@ -7515,6 +7583,10 @@ async function startServer() {
           hit: item,
           stats: serverGlobalStats,
         });
+
+        if (item.isFoxSms || item.source === "FOX SMS" || (item.operator && String(item.operator).includes("FOX SMS"))) {
+          sendFoxHitToTelegram(item);
+        }
 
         // Auto-match incoming OTP hit with user's allocated numbers (under Get Number / Panel)
         autoMatchHitToAllocatedUserNumbers(item);
@@ -7696,9 +7768,17 @@ async function startServer() {
 
             let parsedTime = Date.now();
             if (item.dt) {
-              const t = new Date(item.dt).getTime();
+              const dtStr = String(item.dt).trim();
+              const isoStr = dtStr.includes(" ") && !dtStr.includes("T") ? dtStr.replace(" ", "T") + "Z" : dtStr;
+              const t = new Date(isoStr).getTime();
               if (!isNaN(t) && t > 0) parsedTime = t;
             }
+
+            const matchedCountry = GLOBAL_COUNTRIES_LIST.find((c) => {
+              const code = c.dialCode.replace("+", "");
+              return digits.startsWith(code);
+            });
+            const countryName = matchedCountry ? matchedCountry.name : "International";
 
             if (num || rawMsg) {
               hits.push({
@@ -7713,6 +7793,9 @@ async function startServer() {
                 dt: item.dt,
                 time: parsedTime,
                 operator: "FOX SMS Carrier Route",
+                country: countryName,
+                isFoxSms: true,
+                source: "FOX SMS",
               });
             }
           }

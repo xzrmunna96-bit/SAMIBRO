@@ -234,6 +234,12 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
 
   // Sync real liveHits when prop changes
   useEffect(() => {
+    if (onRefreshHits) {
+      onRefreshHits();
+    }
+  }, []);
+
+  useEffect(() => {
     if (liveHits && liveHits.length > 0) {
       const converted: TestSmsCardItem[] = liveHits.map((h, i) => {
         const rawRange = (h.range || (h as any).rangeCode || "").trim();
@@ -267,7 +273,13 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
         }
 
         const now = Date.now();
-        const tVal = typeof h.time === "number" ? (h.time < 1e10 ? h.time * 1000 : h.time) : now;
+        let tVal = typeof h.time === "number" ? (h.time < 1e10 ? h.time * 1000 : h.time) : now;
+        if ((h as any).dt) {
+          const dtStr = String((h as any).dt).trim();
+          const isoStr = dtStr.includes(" ") && !dtStr.includes("T") ? dtStr.replace(" ", "T") + "Z" : dtStr;
+          const parsedDt = new Date(isoStr).getTime();
+          if (!isNaN(parsedDt) && parsedDt > 0) tVal = parsedDt;
+        }
         const elapsedSec = Math.max(1, Math.floor((now - tVal) / 1000));
         const elapsedStr = elapsedSec < 60 ? `${elapsedSec}s` : `${Math.floor(elapsedSec / 60)}m`;
 
@@ -286,6 +298,8 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
         };
       });
 
+      // Strictly sort newest hits on top
+      converted.sort((a, b) => b.timestamp - a.timestamp);
       setItemsList(converted);
     }
   }, [liveHits]);

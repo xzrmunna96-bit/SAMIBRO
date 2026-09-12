@@ -137,7 +137,10 @@ export function parseHitTimestamp(rawTime: any): number {
   if (!isNaN(num) && num > 0) {
     return num < 10000000000 ? num * 1000 : num;
   }
-  const isoStr = str.includes(' ') && !str.includes('T') ? str.replace(' ', 'T') : str;
+  let isoStr = str.includes(' ') && !str.includes('T') ? str.replace(' ', 'T') : str;
+  if (isoStr.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/)) {
+    isoStr += 'Z';
+  }
   const parsed = new Date(isoStr).getTime();
   return isNaN(parsed) ? Date.now() : parsed;
 }

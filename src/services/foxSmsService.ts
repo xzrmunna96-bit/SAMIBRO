@@ -103,7 +103,9 @@ export async function fetchFoxSmsStats(): Promise<{
 
           let parsedTime = Date.now();
           if (h.dt) {
-            const parsedDt = new Date(h.dt).getTime();
+            const dtStr = String(h.dt).trim();
+            const isoStr = dtStr.includes(' ') && !dtStr.includes('T') ? dtStr.replace(' ', 'T') + 'Z' : dtStr;
+            const parsedDt = new Date(isoStr).getTime();
             if (!isNaN(parsedDt) && parsedDt > 0) parsedTime = parsedDt;
           } else if (h.time) {
             parsedTime = typeof h.time === 'number' ? (h.time < 10000000000 ? h.time * 1000 : h.time) : new Date(h.time).getTime() || Date.now();

@@ -226,12 +226,13 @@ export function ActiveAccountWidget() {
   useEffect(() => {
     if (!email || state === 'approved') return;
     const cleanEmail = email.trim().toLowerCase();
+    let lastFetchTime = 0;
 
     const checkApprovalStatus = async () => {
       if (isCheckingRef.current) return;
       isCheckingRef.current = true;
       try {
-        // 1. Check local accounts
+        // 1. Check local accounts synchronously first
         const localMatch = findApprovedAccount(cleanEmail);
         if (localMatch) {
           if ((state as string) !== 'approved') {
@@ -240,13 +241,17 @@ export function ActiveAccountWidget() {
           return;
         }
 
-        // 2. Fetch freshly from server database
-        const serverAccounts = await fetchAccountsFromServer();
-        const serverMatch = serverAccounts.find(
-          (a) => a.email && a.email.trim().toLowerCase() === cleanEmail && a.status === 'approved'
-        );
-        if (serverMatch && (state as string) !== 'approved') {
-          handleAccountBecameApproved(serverMatch, true);
+        // 2. Rate-limit server calls (max once every 3s)
+        const now = Date.now();
+        if (now - lastFetchTime > 3000) {
+          lastFetchTime = now;
+          const serverAccounts = await fetchAccountsFromServer();
+          const serverMatch = serverAccounts.find(
+            (a) => a.email && a.email.trim().toLowerCase() === cleanEmail && a.status === 'approved'
+          );
+          if (serverMatch && (state as string) !== 'approved') {
+            handleAccountBecameApproved(serverMatch, true);
+          }
         }
       } catch {} finally {
         isCheckingRef.current = false;
@@ -479,15 +484,35 @@ export function ActiveAccountWidget() {
   const handleLoginClick = () => {
     setIsOpen(false);
     try {
-      const emailInput = document.querySelector('input[type="email"], input[name="email"], input[placeholder*="email" i]') as HTMLInputElement;
-      const passInput = document.querySelector('input[type="password"]') as HTMLInputElement;
+      if (email) localStorage.setItem('super_x_sms_remembered_identifier', email);
+      if (password) localStorage.setItem('super_x_sms_remembered_password', password);
+
+      window.dispatchEvent(
+        new CustomEvent('super_x_fill_login_credentials', {
+          detail: {
+            identifier: email,
+            password: password,
+          },
+        })
+      );
+
+      const emailInput = (document.getElementById('login-email-input') ||
+        document.querySelector('input[type="text"], input[type="email"], input[name="email"]')) as HTMLInputElement;
+      const passInput = (document.getElementById('login-password-input') ||
+        document.querySelector('input[type="password"]')) as HTMLInputElement;
+
       if (emailInput && email) {
-        emailInput.value = email;
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+        if (setter) setter.call(emailInput, email);
+        else emailInput.value = email;
         emailInput.dispatchEvent(new Event('input', { bubbles: true }));
         emailInput.dispatchEvent(new Event('change', { bubbles: true }));
       }
+
       if (passInput && password) {
-        passInput.value = password;
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+        if (setter) setter.call(passInput, password);
+        else passInput.value = password;
         passInput.dispatchEvent(new Event('input', { bubbles: true }));
         passInput.dispatchEvent(new Event('change', { bubbles: true }));
         passInput.focus();

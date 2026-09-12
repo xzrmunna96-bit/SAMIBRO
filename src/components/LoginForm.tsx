@@ -74,10 +74,12 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
   });
   const [password, setPassword] = useState(() => {
     try {
+      const rememberedPass = localStorage.getItem('super_x_sms_remembered_password');
+      if (rememberedPass) return rememberedPass;
       const deviceAcc = localStorage.getItem('super_x_device_registered_account_v1');
       if (deviceAcc) {
         const parsed = JSON.parse(deviceAcc);
-        if (parsed.password && parsed.state === 'approved') return parsed.password;
+        if (parsed.password && (parsed.state === 'approved' || parsed.password)) return parsed.password;
       }
       return '';
     } catch {
@@ -105,6 +107,18 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
     // Instant verification to maintain zero UI lag
     setAutoCaptchaState('verified');
     setAutoCaptchaProgress(100);
+
+    const handleFillCredentials = (e: any) => {
+      if (e?.detail) {
+        if (e.detail.identifier !== undefined) setIdentifier(e.detail.identifier);
+        if (e.detail.password !== undefined) setPassword(e.detail.password);
+        setErrorMessage('');
+        setPendingAccountNotice(null);
+        setSuspendedNotice(null);
+      }
+    };
+    window.addEventListener('super_x_fill_login_credentials', handleFillCredentials);
+    return () => window.removeEventListener('super_x_fill_login_credentials', handleFillCredentials);
   }, []);
 
   const handleQuickPreset = (emailVal: string, passVal: string, isAdminTab = false) => {
@@ -155,8 +169,10 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
     try {
       if (rememberMe) {
         localStorage.setItem('super_x_sms_remembered_identifier', cleanIdentifier);
+        localStorage.setItem('super_x_sms_remembered_password', cleanPassword);
       } else {
         localStorage.removeItem('super_x_sms_remembered_identifier');
+        localStorage.removeItem('super_x_sms_remembered_password');
       }
     } catch {}
 

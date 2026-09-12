@@ -127,13 +127,20 @@ export async function fetchAccountsFromServer(force = false): Promise<UserAccoun
         } catch {}
 
         const merged = Array.from(mergedMap.values());
+        const previousStr = cachedAccountsList ? JSON.stringify(cachedAccountsList) : '';
+        const currentStr = JSON.stringify(merged);
+        const hasContentChanged = previousStr !== currentStr;
+
         cachedAccountsList = merged;
         lastAccountsFetchTime = Date.now();
-        try {
-          localStorage.setItem('super_x_all_user_accounts', JSON.stringify(merged));
-          localStorage.setItem('super_x_sms_backup_accounts', JSON.stringify(merged));
-          window.dispatchEvent(new Event('super_x_accounts_updated'));
-        } catch {}
+
+        if (hasContentChanged) {
+          try {
+            localStorage.setItem('super_x_all_user_accounts', currentStr);
+            localStorage.setItem('super_x_sms_backup_accounts', currentStr);
+            window.dispatchEvent(new Event('super_x_accounts_updated'));
+          } catch {}
+        }
         return merged;
       }
     } catch (err) {
@@ -193,14 +200,21 @@ export async function fetchSubAdminsFromServer(force = false): Promise<SubAdminA
         });
 
         const merged = Array.from(subMap.values());
+        const previousStr = cachedSubAdminsList ? JSON.stringify(cachedSubAdminsList) : '';
+        const currentStr = JSON.stringify(merged);
+        const hasSubChanged = previousStr !== currentStr;
+
         cachedSubAdminsList = merged;
         lastSubAdminsFetchTime = Date.now();
-        try {
-          localStorage.setItem('super_x_sub_admin_accounts', JSON.stringify(merged));
-          localStorage.setItem('super_x_all_sub_admins', JSON.stringify(merged));
-          localStorage.setItem('super_x_all_sub_admins_backup', JSON.stringify(merged));
-          window.dispatchEvent(new Event('super_x_sub_admins_updated'));
-        } catch {}
+
+        if (hasSubChanged) {
+          try {
+            localStorage.setItem('super_x_sub_admin_accounts', currentStr);
+            localStorage.setItem('super_x_all_sub_admins', currentStr);
+            localStorage.setItem('super_x_all_sub_admins_backup', currentStr);
+            window.dispatchEvent(new Event('super_x_sub_admins_updated'));
+          } catch {}
+        }
         return merged;
       }
     } catch {} finally {
@@ -479,7 +493,7 @@ export function initServerRealtimeSync() {
       sse.onmessage = (evt) => {
         try {
           const data = JSON.parse(evt.data);
-          if (data && (data.type === 'accounts_updated' || data.type === 'connected')) {
+          if (data && data.type === 'accounts_updated') {
             fetchAccountsFromServer(true).catch(() => {});
             fetchSubAdminsFromServer(true).catch(() => {});
           }

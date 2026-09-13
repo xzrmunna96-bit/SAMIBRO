@@ -7917,45 +7917,52 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             {/* Workspace Control Bar (Select All, Bulk Delete, Clear All, Search & Platforms) */}
             <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
-                <div className="flex items-center gap-3 flex-wrap">
-                  <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={
-                        filteredManualRangesList.length > 0 &&
-                        selectedRangesForDelete.size === filteredManualRangesList.length
-                      }
-                      onChange={() =>
-                        handleToggleSelectAll(filteredManualRangesList.map((r) => r.rangePrefix))
-                      }
-                      className="w-4 h-4 rounded text-indigo-600 border-slate-300 focus:ring-indigo-500 cursor-pointer accent-indigo-600"
-                    />
-                    <span>Select All ({selectedRangesForDelete.size} of {filteredManualRangesList.length})</span>
-                  </label>
+                {isAdminUser ? (
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={
+                          filteredManualRangesList.length > 0 &&
+                          selectedRangesForDelete.size === filteredManualRangesList.length
+                        }
+                        onChange={() =>
+                          handleToggleSelectAll(filteredManualRangesList.map((r) => r.rangePrefix))
+                        }
+                        className="w-4 h-4 rounded text-indigo-600 border-slate-300 focus:ring-indigo-500 cursor-pointer accent-indigo-600"
+                      />
+                      <span>Select All ({selectedRangesForDelete.size} of {filteredManualRangesList.length})</span>
+                    </label>
 
-                  {selectedRangesForDelete.size > 0 && (
-                    <button
-                      type="button"
-                      onClick={handleDeleteSelectedRanges}
-                      className="px-3 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer shadow-2xs"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Delete Selected ({selectedRangesForDelete.size})</span>
-                    </button>
-                  )}
+                    {selectedRangesForDelete.size > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleDeleteSelectedRanges}
+                        className="px-3 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer shadow-2xs"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete Selected ({selectedRangesForDelete.size})</span>
+                      </button>
+                    )}
 
-                  {userWorkspaceRangePrefixes.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={handleClearAllWorkspaceRanges}
-                      className="px-3 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer shadow-2xs"
-                      title="একবারে সব নাম্বার ডিলিট করুন"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Delete All Numbers (একবারে সব মুছুন)</span>
-                    </button>
-                  )}
-                </div>
+                    {userWorkspaceRangePrefixes.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleClearAllWorkspaceRanges}
+                        className="px-3 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer shadow-2xs"
+                        title="একবারে সব নাম্বার ডিলিট করুন"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete All Numbers</span>
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>SUPER XTREME SMS Carrier Ranges</span>
+                  </div>
+                )}
 
                 <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
                   <span>Workspace items: <strong className="text-slate-800">{userWorkspaceRangePrefixes.length}</strong></span>
@@ -8021,14 +8028,25 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                     <button
                       type="button"
                       onClick={() => {
-                        setSelectedTerminationPrefix("");
-                        setIsTerminationDropdownOpen(true);
-                        setIsAddNumbersModalOpen(true);
+                        if (isAdminUser) {
+                          setSelectedTerminationPrefix("");
+                          setIsTerminationDropdownOpen(true);
+                          setIsAddNumbersModalOpen(true);
+                        } else {
+                          // For regular users, sync/reset active workspace ranges
+                          setHasInitializedWorkspaceRanges(false);
+                          const allPrefixes = manualRanges.map((r) => r.rangePrefix);
+                          setUserWorkspaceRangePrefixes(allPrefixes);
+                          try {
+                            localStorage.setItem(userRangesStorageKey, JSON.stringify(allPrefixes));
+                          } catch {}
+                          showDashboardToast("Range list refreshed from active carrier streams.", "success", 2000);
+                        }
                       }}
                       className="px-5 py-2.5 rounded-xl bg-[#65a30d] hover:bg-[#58910b] text-white text-xs font-bold flex items-center gap-2 transition active:scale-95 shadow-xs cursor-pointer"
                     >
-                      <Plus className="w-4 h-4" />
-                      <span>Choice this termination / Add numbers</span>
+                      <RefreshCw className="w-4 h-4" />
+                      <span>{isAdminUser ? "Choice this termination / Add numbers" : "Sync Active Carrier Ranges"}</span>
                     </button>
                   </div>
                 );
@@ -8126,31 +8144,39 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                   isSelectedForDelete ? "bg-red-50/10" : ""
                                 }`}
                               >
-                                {/* Left Side: Checkbox, Serial #, Masked Number (First 5 digits + crosses) */}
+                                {/* Left Side: Checkbox (admin only), Serial #, Masked Number (88016477xxxx format) */}
                                 <div className="flex items-center gap-3.5 min-w-0">
-                                  <input
-                                    type="checkbox"
-                                    checked={isSelectedForDelete}
-                                    onChange={() => {
-                                      setSelectedRangesForDelete((prev) => {
-                                        const next = new Set(prev);
-                                        if (next.has(range.rangePrefix)) next.delete(range.rangePrefix);
-                                        else next.add(range.rangePrefix);
-                                        return next;
-                                      });
-                                    }}
-                                    className="w-4.5 h-4.5 rounded text-indigo-600 border-slate-300 focus:ring-indigo-500 cursor-pointer accent-indigo-600 shrink-0"
-                                    title="Mark for deletion"
-                                  />
+                                  {isAdminUser && (
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelectedForDelete}
+                                      onChange={() => {
+                                        setSelectedRangesForDelete((prev) => {
+                                          const next = new Set(prev);
+                                          if (next.has(range.rangePrefix)) next.delete(range.rangePrefix);
+                                          else next.add(range.rangePrefix);
+                                          return next;
+                                        });
+                                      }}
+                                      className="w-4.5 h-4.5 rounded text-indigo-600 border-slate-300 focus:ring-indigo-500 cursor-pointer accent-indigo-600 shrink-0"
+                                      title="Mark for deletion"
+                                    />
+                                  )}
 
-                                  <span className="text-[10px] font-black text-slate-400 bg-slate-50 border border-slate-150 px-2 py-0.5 rounded-md font-mono shrink-0">
-                                    Serial #{index + 1}
+                                  <span className="text-[10px] font-black text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md font-mono shrink-0">
+                                    #{index + 1}
                                   </span>
 
                                   <div className="min-w-0">
-                                    {/* 5 Digits + Crosses display as requested */}
-                                    <span className="text-base font-black font-mono text-slate-800 tracking-wide">
-                                      {range.rangePrefix}XXXXXX
+                                    {/* 88016477xxxx display format */}
+                                    <span className="text-base font-black font-mono text-slate-900 tracking-wide">
+                                      {(() => {
+                                        const cleanDigits = (range.rangePrefix || "").replace(/\D/g, "");
+                                        if (cleanDigits.length >= 7) {
+                                          return `${cleanDigits}xxxx`;
+                                        }
+                                        return `${cleanDigits}XXXX`;
+                                      })()}
                                     </span>
                                     <div className="flex items-center gap-2 mt-0.5">
                                       <span className="text-[10px] font-bold text-slate-400 font-mono">
@@ -8164,23 +8190,30 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                       ) : (
                                         <span className="text-[10px] font-bold text-rose-500 flex items-center gap-1">
                                           <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
-                                          <span>Sold out</span>
+                                          <span>Active stream</span>
                                         </span>
                                       )}
                                     </div>
                                   </div>
                                 </div>
 
-                                {/* Right Side actions (Copy, Get, Delete) */}
+                                {/* Right Side actions (Copy, Get, Delete if admin) */}
                                 <div className="flex items-center justify-end gap-2.5 shrink-0 ml-auto sm:ml-0">
+                                  {/* Service Tag */}
+                                  <RangeSocialBadge
+                                    platform={range.platform || range.socialMedia || group.platform}
+                                    country={range.country || group.country}
+                                    size="sm"
+                                  />
+
                                   {/* Copy Button */}
                                   <button
                                     type="button"
                                     onClick={handleCopy}
-                                    className="px-3 py-1.5 rounded-xl border text-xs font-bold transition flex items-center gap-1.5 cursor-pointer select-none bg-white hover:bg-slate-50 border-slate-200 text-slate-700 active:scale-95"
+                                    className="px-3 py-1.5 rounded-xl border text-xs font-bold transition flex items-center gap-1.5 cursor-pointer select-none bg-white hover:bg-slate-50 border-slate-200 text-slate-700 active:scale-95 shadow-2xs"
                                   >
                                     <Copy className="w-3.5 h-3.5" />
-                                    <span>Copy Prefix</span>
+                                    <span>Copy Range</span>
                                   </button>
 
                                   {/* Get Number Button */}
@@ -8201,15 +8234,17 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                     </button>
                                   )}
 
-                                  {/* Single Trash Action */}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRemoveSingleRange(range.rangePrefix)}
-                                    className="p-1.5 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-100 transition cursor-pointer"
-                                    title="Remove this range"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
+                                  {/* Single Trash Action (admin only) */}
+                                  {isAdminUser && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveSingleRange(range.rangePrefix)}
+                                      className="p-1.5 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-100 transition cursor-pointer"
+                                      title="Remove this range"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                             );

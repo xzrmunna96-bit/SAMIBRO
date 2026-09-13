@@ -155,6 +155,25 @@ export function App() {
     };
   }, [currentUser]);
 
+  // Automatically sync logged-in URL to show 'agent' in browser path hash (Chrome, Via Browser, etc.)
+  useEffect(() => {
+    if (currentUser) {
+      try {
+        const hash = window.location.hash;
+        if (!hash.includes('/agent') && !hash.includes('#agent') && !isAdminRoute) {
+          window.location.hash = '#/agent';
+        }
+      } catch {}
+    } else {
+      try {
+        const hash = window.location.hash;
+        if (hash.includes('/agent') || hash.includes('#agent')) {
+          window.location.hash = '';
+        }
+      } catch {}
+    }
+  }, [currentUser, isAdminRoute]);
+
   const handleLoginSuccess = (user: UserData) => {
     setCurrentUser(user);
     try {
@@ -170,6 +189,7 @@ export function App() {
     setCurrentUser(null);
     try {
       localStorage.removeItem('super_x_sms_logged_in_user');
+      window.location.hash = '';
     } catch {
       // ignore
     }

@@ -1850,7 +1850,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         }
       }
     } catch {}
-    return [];
+    return generateBaselineLiveHits();
   });
 
   const [globalStats, setGlobalStats] = useState<{
@@ -8019,137 +8019,186 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 );
               }
 
-              return (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {filtered.map((range, index) => {
-                    const termInfo = formatTerminationInfo(range);
-                    const isSelectedForDelete = selectedRangesForDelete.has(range.rangePrefix);
+              // Group filtered ranges by country and platform combo
+              const grouped: {
+                [key: string]: {
+                  country: string;
+                  platform: string;
+                  flag: string;
+                  dialCode: string;
+                  items: typeof filtered;
+                };
+              } = {};
 
+              filtered.forEach((range) => {
+                const termInfo = formatTerminationInfo(range);
+                const country = range.country || "Global";
+                const platform = termInfo.resolvedPlatform || "All Social (WhatsApp/TG)";
+                const groupKey = `${country}_${platform}`;
+
+                if (!grouped[groupKey]) {
+                  grouped[groupKey] = {
+                    country,
+                    platform,
+                    flag: range.flag || "🌐",
+                    dialCode: range.dialCode || "",
+                    items: [],
+                  };
+                }
+                grouped[groupKey].items.push(range);
+              });
+
+              return (
+                <div className="flex flex-col gap-6 w-full">
+                  {Object.values(grouped).map((group, gIndex) => {
                     return (
                       <div
-                        key={range.rangePrefix}
-                        className={`bg-white hover:bg-slate-50/60 rounded-2xl border p-5 shadow-xs transition hover:shadow-md flex flex-col justify-between relative group overflow-hidden ${
-                          isSelectedForDelete
-                            ? "border-red-300 ring-2 ring-red-200 bg-red-50/10"
-                            : "border-slate-200"
-                        }`}
+                        key={gIndex}
+                        className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden flex flex-col"
                       >
-                        {/* Interactive decorative line tag */}
-                        <div
-                          className={`absolute top-0 left-0 right-0 h-1 ${
-                            termInfo.resolvedPlatform.toUpperCase().includes("WHATSAPP")
-                              ? "bg-emerald-500"
-                              : "bg-sky-500"
-                          }`}
-                        />
-
-                        <div>
-                          {/* Card Top row: Serial #, Checkbox, Flag, Country, Platform Logo, and Corner Delete Button */}
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <input
-                                type="checkbox"
-                                checked={isSelectedForDelete}
-                                onChange={() => {
-                                  setSelectedRangesForDelete((prev) => {
-                                    const next = new Set(prev);
-                                    if (next.has(range.rangePrefix)) next.delete(range.rangePrefix);
-                                    else next.add(range.rangePrefix);
-                                    return next;
-                                  });
-                                }}
-                                className="w-4 h-4 rounded text-indigo-600 border-slate-300 focus:ring-indigo-500 cursor-pointer accent-indigo-600 shrink-0"
-                                title="Mark for deletion"
-                              />
-                              <span className="text-[10px] font-black text-slate-500 bg-slate-100 border border-slate-200/80 px-1.5 py-0.5 rounded-md font-mono shrink-0" title={`Serial #${index + 1}`}>
-                                #{index + 1}
-                              </span>
-                              <div className="shrink-0 p-0.5 bg-slate-50 rounded border border-slate-200/80 shadow-2xs flex items-center justify-center">
-                                <CountryFlag
-                                  countryCode={range.country}
-                                  size="md"
-                                  className="w-8 h-5.5 rounded border border-slate-300/80 shadow-2xs shrink-0"
-                                />
-                              </div>
-                              <div className="min-w-0">
-                                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider truncate">
-                                  {range.country}
-                                </h3>
-                                <p className="text-[10px] font-bold text-slate-400 font-mono mt-0.5 truncate">
-                                  {range.dialCode || "+94"} &bull; {termInfo.operator}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-2 shrink-0">
-                              {/* Official Social Platform Logo + Name Badge */}
-                              <RangeSocialBadge
-                                platform={termInfo.resolvedPlatform}
-                                country={range.country}
+                        {/* Box Header */}
+                        <div className="bg-slate-50/80 px-5 py-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className="shrink-0 p-0.5 bg-white rounded border border-slate-200/80 shadow-2xs flex items-center justify-center">
+                              <CountryFlag
+                                countryCode={group.country}
                                 size="md"
+                                className="w-8 h-5.5 rounded border border-slate-300/80 shadow-2xs shrink-0"
                               />
-
-                              {/* Corner Delete Button (User requested: "কোনায় ডিলিট অপশন থাকবে") */}
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveSingleRange(range.rangePrefix)}
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition cursor-pointer"
-                                title="Remove range from workspace"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-black text-slate-800 uppercase tracking-wide flex items-center gap-2">
+                                <span>{group.country}</span>
+                                {group.dialCode && (
+                                  <span className="text-xs font-bold text-slate-400 font-mono">({group.dialCode})</span>
+                                )}
+                              </h3>
+                              <p className="text-[10px] font-bold text-slate-400 tracking-wider uppercase mt-0.5">
+                                Country Termination Route
+                              </p>
                             </div>
                           </div>
 
-                          {/* Central Prefix Display: First 5 numbers visible, rest hidden, Unlimited available */}
-                          <div className="my-4 bg-slate-50/80 rounded-xl p-3 border border-slate-100 flex flex-col">
-                            <div className="flex items-center justify-between">
-                              <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">
-                                Masked Range Prefix
-                              </span>
-                              <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                                Unlimited available
-                              </span>
-                            </div>
-                            <span className="text-lg font-black font-mono text-slate-900 tracking-wide mt-1">
-                              {termInfo.masked}
+                          <div className="flex items-center gap-3">
+                            {/* Platform Badge */}
+                            <RangeSocialBadge
+                              platform={group.platform}
+                              country={group.country}
+                              size="md"
+                            />
+                            <span className="text-xs font-bold text-slate-500 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-lg">
+                              {group.items.length} {group.items.length === 1 ? "Range" : "Ranges"}
                             </span>
                           </div>
                         </div>
 
-                        {/* Bottom stock row */}
-                        <div className="flex items-center justify-between border-t border-slate-100 pt-3 mt-1 text-xs">
-                          <div className="flex flex-col">
-                            <span className="text-[10px] text-slate-400 font-bold">AVAILABLE STOCK</span>
-                            {range.availableCount > 0 ? (
-                              <span className="text-emerald-600 font-extrabold flex items-center gap-1 mt-0.5">
-                                <Zap className="w-3.5 h-3.5 fill-emerald-500/20" />
-                                <span>{range.availableCount.toLocaleString()} numbers</span>
-                              </span>
-                            ) : (
-                              <span className="text-rose-500 font-extrabold flex items-center gap-1 mt-0.5">
-                                <Lock className="w-3 h-3" />
-                                <span>Sold out</span>
-                              </span>
-                            )}
-                          </div>
+                        {/* List of Ranges inside the Box */}
+                        <div className="divide-y divide-slate-100 bg-white">
+                          {group.items.map((range, index) => {
+                            const isSelectedForDelete = selectedRangesForDelete.has(range.rangePrefix);
 
-                          {/* Purchase direct circle action */}
-                          {range.availableCount > 0 && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setRangeCustomInput(range.rangePrefix);
-                                setGetNumTab("RANGE");
-                                setCurrentView("getNumber");
-                                playOtpChime();
-                              }}
-                              className="w-9 h-9 rounded-full bg-slate-900 hover:bg-indigo-600 text-white flex items-center justify-center transition shadow-md hover:shadow-indigo-500/20 active:scale-95 cursor-pointer"
-                              title="Get dynamic number from this range"
-                            >
-                              <Plus className="w-4 h-4" />
-                            </button>
-                          )}
+                            const handleCopy = () => {
+                              if (typeof navigator !== "undefined" && navigator.clipboard) {
+                                navigator.clipboard.writeText(range.rangePrefix);
+                                showDashboardToast(`Copied Range Prefix: ${range.rangePrefix}`, "success", 1000);
+                              }
+                            };
+
+                            return (
+                              <div
+                                key={range.rangePrefix}
+                                className={`px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition hover:bg-slate-50/50 ${
+                                  isSelectedForDelete ? "bg-red-50/10" : ""
+                                }`}
+                              >
+                                {/* Left Side: Checkbox, Serial #, Masked Number (First 5 digits + crosses) */}
+                                <div className="flex items-center gap-3.5 min-w-0">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelectedForDelete}
+                                    onChange={() => {
+                                      setSelectedRangesForDelete((prev) => {
+                                        const next = new Set(prev);
+                                        if (next.has(range.rangePrefix)) next.delete(range.rangePrefix);
+                                        else next.add(range.rangePrefix);
+                                        return next;
+                                      });
+                                    }}
+                                    className="w-4.5 h-4.5 rounded text-indigo-600 border-slate-300 focus:ring-indigo-500 cursor-pointer accent-indigo-600 shrink-0"
+                                    title="Mark for deletion"
+                                  />
+
+                                  <span className="text-[10px] font-black text-slate-400 bg-slate-50 border border-slate-150 px-2 py-0.5 rounded-md font-mono shrink-0">
+                                    Serial #{index + 1}
+                                  </span>
+
+                                  <div className="min-w-0">
+                                    {/* 5 Digits + Crosses display as requested */}
+                                    <span className="text-base font-black font-mono text-slate-800 tracking-wide">
+                                      {range.rangePrefix}XXXXXX
+                                    </span>
+                                    <div className="flex items-center gap-2 mt-0.5">
+                                      <span className="text-[10px] font-bold text-slate-400 font-mono">
+                                        Prefix: {range.rangePrefix}
+                                      </span>
+                                      {range.availableCount > 0 ? (
+                                        <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
+                                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                                          <span>{range.availableCount.toLocaleString()} numbers</span>
+                                        </span>
+                                      ) : (
+                                        <span className="text-[10px] font-bold text-rose-500 flex items-center gap-1">
+                                          <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
+                                          <span>Sold out</span>
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Right Side actions (Copy, Get, Delete) */}
+                                <div className="flex items-center justify-end gap-2.5 shrink-0 ml-auto sm:ml-0">
+                                  {/* Copy Button */}
+                                  <button
+                                    type="button"
+                                    onClick={handleCopy}
+                                    className="px-3 py-1.5 rounded-xl border text-xs font-bold transition flex items-center gap-1.5 cursor-pointer select-none bg-white hover:bg-slate-50 border-slate-200 text-slate-700 active:scale-95"
+                                  >
+                                    <Copy className="w-3.5 h-3.5" />
+                                    <span>Copy Prefix</span>
+                                  </button>
+
+                                  {/* Get Number Button */}
+                                  {range.availableCount > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setRangeCustomInput(range.rangePrefix);
+                                        setGetNumTab("RANGE");
+                                        setCurrentView("getNumber");
+                                        playOtpChime();
+                                      }}
+                                      className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-indigo-600 text-white border border-transparent text-xs font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer shadow-2xs"
+                                      title="Get dynamic number from this range"
+                                    >
+                                      <Zap className="w-3.5 h-3.5 fill-white/20" />
+                                      <span>Get Number</span>
+                                    </button>
+                                  )}
+
+                                  {/* Single Trash Action */}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveSingleRange(range.rangePrefix)}
+                                    className="p-1.5 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-100 transition cursor-pointer"
+                                    title="Remove this range"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     );
@@ -8570,137 +8619,167 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 );
               }
 
+              // Group filtered raw inventory numbers by country, platform, and rangePrefix to prevent displaying raw numbers
+              const groupedInventory: {
+                [country: string]: {
+                  flag: string;
+                  dialCode: string;
+                  platforms: {
+                    [platform: string]: {
+                      rangePrefix: string;
+                      availableCount: number;
+                      totalCount: number;
+                      allocatedCount: number;
+                    }[];
+                  };
+                };
+              } = {};
+
+              filtered.forEach((num) => {
+                const country = num.country || "Global";
+                const platform = num.platform || num.socialMedia || "All Social (WhatsApp/TG)";
+                const prefix = num.rangePrefix || num.cleanDigits.slice(0, 5);
+
+                if (!groupedInventory[country]) {
+                  groupedInventory[country] = {
+                    flag: num.flag || "🌐",
+                    dialCode: num.dialCode || "",
+                    platforms: {},
+                  };
+                }
+                if (!groupedInventory[country].platforms[platform]) {
+                  groupedInventory[country].platforms[platform] = [];
+                }
+
+                let rangeObj = groupedInventory[country].platforms[platform].find((r) => r.rangePrefix === prefix);
+                if (!rangeObj) {
+                  rangeObj = {
+                    rangePrefix: prefix,
+                    availableCount: 0,
+                    totalCount: 0,
+                    allocatedCount: 0,
+                  };
+                  groupedInventory[country].platforms[platform].push(rangeObj);
+                }
+
+                rangeObj.totalCount++;
+                if (num.allocated) {
+                  rangeObj.allocatedCount++;
+                } else {
+                  rangeObj.availableCount++;
+                }
+              });
+
               return (
-                <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                          <th className="px-5 py-3.5"># Index</th>
-                          <th className="px-5 py-3.5">Country / Code</th>
-                          <th className="px-5 py-3.5">Phone Number</th>
-                          <th className="px-5 py-3.5">Service Platform</th>
-                          <th className="px-5 py-3.5">Allocation Status</th>
-                          <th className="px-5 py-3.5 text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
-                        {filtered.slice(0, 200).map((num, idx) => {
-                          const canonicalPlat = num.platform || num.socialMedia || "Telegram";
-                          const isTelegram = canonicalPlat.toUpperCase() === "TELEGRAM";
-                          const isWhatsApp = canonicalPlat.toUpperCase() === "WHATSAPP";
+                <div className="flex flex-col gap-6 w-full">
+                  {Object.entries(groupedInventory).map(([countryName, countryData], idx) => {
+                    return (
+                      <div
+                        key={countryName}
+                        className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden flex flex-col"
+                      >
+                        {/* Country Box Header */}
+                        <div className="bg-slate-50/80 px-5 py-4 border-b border-slate-200 flex items-center gap-3">
+                          <span className="text-2xl">{countryData.flag}</span>
+                          <div>
+                            <h2 className="text-sm font-black text-slate-800 uppercase tracking-wide">
+                              {countryName}
+                            </h2>
+                            <p className="text-[10px] font-bold text-slate-400 font-mono">
+                              Dial Code: {countryData.dialCode || "N/A"}
+                            </p>
+                          </div>
+                        </div>
 
-                          return (
-                            <tr key={num.id} className="hover:bg-slate-50/50 transition-colors">
-                              <td className="px-5 py-4 font-mono font-bold text-slate-400">
-                                {idx + 1}
-                              </td>
-                              <td className="px-5 py-4">
+                        {/* Country Box Body containing Platform and Ranges horizontally ("আরে আরে") */}
+                        <div className="p-5 space-y-4">
+                          {Object.entries(countryData.platforms).map(([platformName, ranges]) => {
+                            return (
+                              <div key={platformName} className="space-y-2">
                                 <div className="flex items-center gap-2">
-                                  <span className="text-lg">{num.flag || "🇧🇩"}</span>
-                                  <div>
-                                    <div className="font-extrabold text-slate-800">{num.country}</div>
-                                    <div className="text-[10px] font-bold text-slate-400 font-mono">{num.dialCode}</div>
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="px-5 py-4">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-mono font-extrabold text-slate-950 text-sm">
-                                    {num.number}
+                                  <RangeSocialBadge
+                                    platform={platformName}
+                                    country={countryName}
+                                    size="sm"
+                                  />
+                                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                    Active Ranges
                                   </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => copyToClipboard(num.number, `num_inv_${idx}`)}
-                                    className="p-1 text-slate-400 hover:text-slate-600 rounded hover:bg-slate-100 transition"
-                                    title="Copy raw phone number"
-                                  >
-                                    {copiedText === `num_inv_${idx}` ? (
-                                      <Check className="w-3.5 h-3.5 text-emerald-500" />
-                                    ) : (
-                                      <Copy className="w-3.5 h-3.5" />
-                                    )}
-                                  </button>
                                 </div>
-                              </td>
-                              <td className="px-5 py-4">
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${
-                                  isTelegram
-                                    ? "bg-sky-500/10 text-sky-600 border-sky-500/20"
-                                    : isWhatsApp
-                                    ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
-                                    : "bg-slate-500/10 text-slate-600 border-slate-500/20"
-                                }`}>
-                                  {canonicalPlat}
-                                </span>
-                              </td>
-                              <td className="px-5 py-4">
-                                {num.allocated ? (
-                                  <div className="flex flex-col gap-0.5">
-                                    <span className="inline-flex items-center gap-1 text-slate-500 font-semibold">
-                                      <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                                      <span>Allocated</span>
-                                    </span>
-                                    <span className="text-[10px] text-slate-400 font-mono truncate max-w-[140px]" title={num.allocatedTo}>
-                                      by {num.allocatedTo}
-                                    </span>
-                                  </div>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 text-emerald-600 font-bold bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-md animate-pulse">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                    <span>Available</span>
-                                  </span>
-                                )}
-                              </td>
-                              <td className="px-5 py-4 text-right">
-                                <div className="flex items-center justify-end gap-2">
-                                  {/* Test OTP play button */}
-                                  {!num.allocated && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleTestOtpSend(num.number)}
-                                      className={`px-3 py-1 rounded-lg text-[10px] font-black transition active:scale-95 cursor-pointer flex items-center gap-1 ${
-                                        testOtpStatus[num.number]
-                                          ? "bg-slate-900 text-amber-400"
-                                          : "bg-slate-900 hover:bg-slate-800 text-white"
-                                      }`}
-                                      disabled={testOtpStatus[num.number] === "Sending..."}
-                                    >
-                                      <Zap className="w-3 h-3 text-amber-400" />
-                                      <span>{testOtpStatus[num.number] || "Send Test OTP"}</span>
-                                    </button>
-                                  )}
 
-                                  {/* Direct select redirect */}
-                                  {!num.allocated && (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setRangeCustomInput(num.rangePrefix);
-                                        setGetNumTab("RANGE");
-                                        setCurrentView("getNumber");
-                                        playOtpChime();
-                                      }}
-                                      className="p-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 rounded-lg transition"
-                                      title="Purchase dynamic number"
-                                    >
-                                      <Plus className="w-3.5 h-3.5" />
-                                    </button>
-                                  )}
+                                {/* Horizontal Flex Grid of Range blocks ("আরে আরে থাকবে") */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                  {ranges.map((r, rIdx) => {
+                                    const handleCopy = () => {
+                                      if (typeof navigator !== "undefined" && navigator.clipboard) {
+                                        navigator.clipboard.writeText(r.rangePrefix);
+                                        showDashboardToast(`Copied Range: ${r.rangePrefix}`, "success", 1000);
+                                      }
+                                    };
+
+                                    return (
+                                      <div
+                                        key={rIdx}
+                                        className="bg-slate-50 border border-slate-150 rounded-xl p-3 flex flex-col justify-between hover:bg-slate-100/50 transition-colors"
+                                      >
+                                        <div className="flex items-start justify-between gap-2">
+                                          <div className="min-w-0">
+                                            {/* Masked display, no raw phone number shown */}
+                                            <span className="text-sm font-extrabold font-mono text-slate-800 tracking-wide block">
+                                              {r.rangePrefix}XXXXXX
+                                            </span>
+                                            <span className="text-[10px] font-bold text-slate-400 font-mono block mt-0.5">
+                                              Prefix: {r.rangePrefix}
+                                            </span>
+                                          </div>
+
+                                          <div className="flex items-center gap-1.5 shrink-0">
+                                            <button
+                                              type="button"
+                                              onClick={handleCopy}
+                                              className="p-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-500 transition cursor-pointer"
+                                              title="Copy Range Prefix"
+                                            >
+                                              <Copy className="w-3.5 h-3.5" />
+                                            </button>
+
+                                            {r.availableCount > 0 && (
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setRangeCustomInput(r.rangePrefix);
+                                                  setGetNumTab("RANGE");
+                                                  setCurrentView("getNumber");
+                                                  playOtpChime();
+                                                }}
+                                                className="p-1.5 rounded-lg bg-slate-900 hover:bg-indigo-600 text-white transition cursor-pointer"
+                                                title="Get number from this range"
+                                              >
+                                                <Plus className="w-3.5 h-3.5" />
+                                              </button>
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        <div className="border-t border-slate-150 pt-2 mt-2 flex items-center justify-between text-[10px] font-bold">
+                                          <span className="text-emerald-600">
+                                            Available: {r.availableCount}
+                                          </span>
+                                          <span className="text-slate-400">
+                                            Allocated: {r.allocatedCount}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {filtered.length > 200 && (
-                    <div className="bg-slate-50 border-t border-slate-100 px-5 py-3 text-center text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                      Showing first 200 numbers of {filtered.length} matching pool items.
-                    </div>
-                  )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })()}

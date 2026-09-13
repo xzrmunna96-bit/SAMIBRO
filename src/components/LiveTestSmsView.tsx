@@ -761,29 +761,6 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
         </div>
 
         {/* 4. SMS Feed Cards List matching Screenshots 1 & 2 */}
-        {apiAuthBlocked && (
-          <div className="m-4 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 space-y-3 shadow-sm">
-            <div className="flex gap-2.5 items-start">
-              <span className="text-xl">⚠️</span>
-              <div>
-                <h4 className="font-bold text-sm text-amber-950">Vercel Proxy Authentication Warning (ভার্সেল প্রিভিউ ইস্যু)</h4>
-                <p className="text-xs text-amber-800 leading-relaxed mt-1 font-sans">
-                  আপনার এই ওয়েবসাইটটি <b>ভার্সেল (Vercel)</b>-এ হোস্ট করা এবং এটি AI Studio-র একটি সুরক্ষিত প্রিভিউ ইউআরএল (<code>ais-pre-...</code>) থেকে ওটিপি ডেটা টানার চেষ্টা করছে। 
-                  AI Studio-র প্রিভিউ ইউআরএলগুলোর জন্য গুগলে লগইন থাকা আবশ্যক, যার কারণে ভার্সেলের ব্যাকগ্রাউন্ড রিকোয়েস্টগুলো ব্লক হয়ে যাচ্ছে এবং ওটিপি দেখাচ্ছে না।
-                </p>
-              </div>
-            </div>
-            <div className="p-3 bg-white/60 rounded-lg text-xs text-slate-800 space-y-1.5 border border-amber-100">
-              <span className="font-bold block text-amber-950">কিভাবে দ্রুত ফিক্স করবেন (How to Solve Quickly):</span>
-              <ul className="list-decimal pl-4 space-y-1 text-slate-700 leading-relaxed">
-                <li>AI Studio থেকে আপনার অ্যাপটি <b>Cloud Run</b> এ ডেপ্লয় (Deploy) করুন।</li>
-                <li>ডেপ্লয় করা Cloud Run ব্যাকএন্ডটি সম্পূর্ণ পাবলিক থাকে এবং এতে কোনো গুগল লগইন কুকি বা প্রিভিউ লিমিটেশন থাকে না।</li>
-                <li>ডেপ্লয় শেষ হলে আপনার <code>vercel.json</code> ফাইলের রিরাইট রুলস (Rewrite Rules) এর <code>destination</code> প্রিভিউ ইউআরএলের বদলে আপনার পাবলিক <b>Cloud Run URL</b> এ পরিবর্তন করে দিন।</li>
-              </ul>
-            </div>
-          </div>
-        )}
-
         <div className="divide-y divide-slate-100">
           {paginatedItems.length === 0 ? (
             <div className="py-12 text-center text-slate-400 text-xs font-medium">

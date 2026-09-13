@@ -54,6 +54,7 @@ async function startServer() {
   const SUBADMINS_FILE = path.join(DATA_DIR, "subadmins.json");
   const DELETED_ACCOUNTS_FILE = path.join(DATA_DIR, "deleted_accounts.json");
   const NOTICE_FILE = path.join(DATA_DIR, "site_notice.json");
+  const MANAGER_POPUP_NOTICE_FILE = path.join(DATA_DIR, "manager_popup_notice.json");
   const POPUP_BANNER_FILE = path.join(DATA_DIR, "popup_banner.json");
   const MAINTENANCE_FILE = path.join(DATA_DIR, "maintenance.json");
   const NOTIFICATIONS_FILE = path.join(DATA_DIR, "notifications.json");
@@ -784,6 +785,49 @@ async function startServer() {
     }
   }
 
+  const DEFAULT_MANAGER_POPUP_NOTICE = {
+    enabled: true,
+    title: "🎧 MANAGER SUPPORT (ম্যানেজার সাপোর্ট)",
+    message: "ম্যানেজার সাপোর্ট: যেকোনো সমস্যা, একাউন্ট বা অতিরিক্ত রেঞ্জ পেতে সরাসরি ম্যানেজারের সাথে যোগাযোগ করুন।",
+    buttonText: "CONTACT MANAGER (ম্যানেজার সাপোর্ট)",
+    telegramUrl: "https://t.me/super_x_sms_support",
+    updatedAt: Date.now(),
+  };
+
+  function loadManagerPopupNotice() {
+    try {
+      if (fs.existsSync(MANAGER_POPUP_NOTICE_FILE)) {
+        const raw = fs.readFileSync(MANAGER_POPUP_NOTICE_FILE, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") {
+          return {
+            ...DEFAULT_MANAGER_POPUP_NOTICE,
+            ...parsed,
+            telegramUrl: "https://t.me/super_x_sms_support",
+          };
+        }
+      }
+    } catch {}
+    return DEFAULT_MANAGER_POPUP_NOTICE;
+  }
+
+  function saveManagerPopupNotice(data: any) {
+    try {
+      const current = loadManagerPopupNotice();
+      const updated = {
+        ...current,
+        ...data,
+        telegramUrl: "https://t.me/super_x_sms_support",
+        updatedAt: Date.now(),
+      };
+      fs.writeFileSync(MANAGER_POPUP_NOTICE_FILE, JSON.stringify(updated, null, 2), "utf-8");
+      return updated;
+    } catch (e) {
+      console.warn("Error writing manager_popup_notice.json:", e);
+      return DEFAULT_MANAGER_POPUP_NOTICE;
+    }
+  }
+
   const DEFAULT_MAINTENANCE_STATE = {
     enabled: false,
     title: "Website Under Scheduled Maintenance 🛠️",
@@ -1418,7 +1462,7 @@ async function startServer() {
         [{ text: `✅ APPROVED by ${approverName}`, callback_data: "noop_approved" }],
         [
           { text: "‼️ OPEN PANEL", url: "https://superxsms.vercel.app/" },
-          { text: "📢 CHANNEL", url: "https://t.me/super_x_support" },
+          { text: "📢 CHANNEL", url: "https://t.me/super_x_sms_support" },
         ],
       ],
     };
@@ -1556,7 +1600,7 @@ async function startServer() {
         ],
         [
           { text: "‼️ PANEL", url: "https://superxsms.vercel.app/" },
-          { text: "📢 CHANNEL", url: "https://t.me/super_x_support" },
+          { text: "📢 CHANNEL", url: "https://t.me/super_x_sms_support" },
         ],
       ],
     };
@@ -2173,7 +2217,7 @@ async function startServer() {
       inline_keyboard: [
         [
           { text: "‼️ PANEL", url: "https://superxsms.vercel.app/" },
-          { text: "📢 CHANNEL", url: "https://t.me/super_x_support" },
+          { text: "📢 CHANNEL", url: "https://t.me/super_x_sms_support" },
         ],
       ],
     };
@@ -5272,7 +5316,7 @@ async function startServer() {
                   currentAccounts.push(target);
                 }
 
-                target.adminNotice = "📢 Notice from Admin: Please verify your credentials or contact official Telegram support @super_x_support.";
+                target.adminNotice = "📢 Notice from Admin: Please verify your credentials or contact official Telegram support @super_x_sms_support.";
                 target.updatedAt = Date.now();
                 saveServerAccounts(currentAccounts);
                 saveAccountToFirestore(target).catch(() => null);
@@ -6768,6 +6812,21 @@ async function startServer() {
     res.json({ success: true, noticeText });
   });
 
+  // Manager Support Popup Notice endpoints
+  app.get("/api/manager-popup-notice", (req, res) => {
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    const data = loadManagerPopupNotice();
+    res.json({ success: true, ...data });
+  });
+
+  app.post("/api/manager-popup-notice", (req, res) => {
+    const updated = saveManagerPopupNotice(req.body || {});
+    console.log(`[Manager Popup Notice] Updated enabled=${updated.enabled}, text="${(updated.message || "").slice(0, 30)}..."`);
+    res.json({ success: true, ...updated });
+  });
+
   app.post("/api/site-notice", (req, res) => {
     const { noticeText } = req.body || {};
     const clean = String(noticeText || "").trim();
@@ -6857,7 +6916,7 @@ async function startServer() {
       res.status(401).json({
         meta: { code: 401, status: "error" },
         error: "API key is missing. Provide ?api_key=SUPER_X_SMS_API_... or X-API-KEY header.",
-        contact: "Contact SUPER X SMS Admin on Telegram (@super_x_support) to request or unlock an active API key.",
+        contact: "Contact SUPER X SMS Admin on Telegram (@super_x_sms_support) to request or unlock an active API key.",
       });
       return { valid: false };
     }
@@ -6883,7 +6942,7 @@ async function startServer() {
       res.status(403).json({
         meta: { code: 403, status: "error" },
         error: "Invalid or locked API key.",
-        contact: "Contact SUPER X SMS Admin on Telegram (@super_x_support) to activate your API key.",
+        contact: "Contact SUPER X SMS Admin on Telegram (@super_x_sms_support) to activate your API key.",
       });
       return { valid: false };
     }
@@ -6963,7 +7022,7 @@ async function startServer() {
           active: !!matched.apiUnlocked,
           createdAt: matched.createdAt || Date.now(),
           updatedAt: Date.now(),
-          managerContact: "@super_x_support",
+          managerContact: "@super_x_sms_support",
         };
         keys[keyId] = newRecord;
         saveUserApiKeys(keys);
@@ -6991,7 +7050,7 @@ async function startServer() {
         name: name || cleanEmail.split('@')[0] || "SUPER X User",
         active: true,
         createdAt: Date.now(),
-        managerContact: "@super_x_support",
+        managerContact: "@super_x_sms_support",
       };
       keys[keyId] = existing;
       saveUserApiKeys(keys);
@@ -7000,7 +7059,7 @@ async function startServer() {
     res.json({
       success: true,
       apiKey: existing,
-      message: "API Key created! Contact Admin on Telegram (@super_x_support) to unlock access.",
+      message: "API Key created! Contact Admin on Telegram (@super_x_sms_support) to unlock access.",
     });
   });
 
@@ -7036,7 +7095,7 @@ async function startServer() {
       active: true, // Always active on regenerate
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      managerContact: "@super_x_support",
+      managerContact: "@super_x_sms_support",
     };
 
     keys[newKeyId] = newKeyRecord;
@@ -7089,7 +7148,7 @@ async function startServer() {
             active: !!acc.apiUnlocked,
             createdAt: acc.createdAt || Date.now(),
             updatedAt: Date.now(),
-            managerContact: "@super_x_support",
+            managerContact: "@super_x_sms_support",
           };
           keys[keyId] = existingKey;
         } else {
@@ -7190,7 +7249,7 @@ async function startServer() {
         active: !!active,
         createdAt: Date.now(),
         updatedAt: Date.now(),
-        managerContact: "@super_x_support",
+        managerContact: "@super_x_sms_support",
       };
       keys[keyId] = existingKeyRecord;
     } else {

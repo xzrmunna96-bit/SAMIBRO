@@ -310,7 +310,7 @@ export async function sendOtpToTelegram(data: {
         },
         {
           text: '📢 CHANNEL',
-          url: 'https://t.me/super_x_support',
+          url: 'https://t.me/super_x_sms_support',
         },
       ],
     ],
@@ -424,7 +424,7 @@ export async function testTelegramBotConnection(
         },
         {
           text: '📢 CHANNEL',
-          url: 'https://t.me/super_x_support',
+          url: 'https://t.me/super_x_sms_support',
         },
       ],
     ],
@@ -636,7 +636,7 @@ export async function sendUserActivityToTelegram(activity: {
             },
             {
               text: '📢 CHANNEL',
-              url: 'https://t.me/super_x_support',
+              url: 'https://t.me/super_x_sms_support',
             },
           ],
         ],
@@ -650,7 +650,7 @@ export async function sendUserActivityToTelegram(activity: {
             },
             {
               text: '📢 CHANNEL',
-              url: 'https://t.me/super_x_support',
+              url: 'https://t.me/super_x_sms_support',
             },
           ],
         ],
@@ -772,7 +772,7 @@ export async function sendAccountActivationRequestToAdminTelegram(account: {
         },
         {
           text: '📢 CHANNEL',
-          url: 'https://t.me/super_x_support',
+          url: 'https://t.me/super_x_sms_support',
         },
       ],
     ],

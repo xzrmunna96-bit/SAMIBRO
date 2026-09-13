@@ -87,7 +87,7 @@ export function getUserApiKeyData(accountCodeOrEmail: string): UserApiKeyRecord 
       active: !!user.apiUnlocked,
       createdAt: user.createdAt || Date.now(),
       updatedAt: Date.now(),
-      managerContact: '@super_x_support',
+      managerContact: '@super_x_sms_support',
     };
     allKeys[generatedKey] = rec;
     saveAllUserApiKeys(allKeys);
@@ -158,7 +158,7 @@ export async function unlockUserApiKey(
     active: activeStatus,
     createdAt: existingKeyRec?.createdAt || Date.now(),
     updatedAt: Date.now(),
-    managerContact: '@super_x_support',
+    managerContact: '@super_x_sms_support',
   };
 
   allKeys[resolvedKey] = updatedRec;

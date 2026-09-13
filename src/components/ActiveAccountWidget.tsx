@@ -671,7 +671,7 @@ export function ActiveAccountWidget() {
                     </p>
 
                     <a
-                      href="https://t.me/super_x_support"
+                      href="https://t.me/super_x_sms_support"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="w-full py-2.5 px-3 rounded-xl font-extrabold text-[11px] flex items-center justify-center gap-2 border border-cyan-300/40 bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-[0_0_20px_rgba(6,182,212,0.5)] transition transform hover:scale-[1.01] active:scale-98 cursor-pointer"

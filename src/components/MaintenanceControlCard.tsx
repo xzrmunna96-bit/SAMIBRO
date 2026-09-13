@@ -74,7 +74,7 @@ export const MaintenanceControlCard: React.FC<MaintenanceControlCardProps> = ({
           imageUrl: maintenance.imageUrl?.trim() || "",
           buttonText: maintenance.buttonText?.trim() || "অ্যাক্টিভেশন ফর্ম পূরণ করুন",
           buttonAction: maintenance.buttonAction || "activation_modal",
-          buttonUrl: maintenance.buttonUrl?.trim() || "https://t.me/super_x_support",
+          buttonUrl: maintenance.buttonUrl?.trim() || "https://t.me/super_x_sms_support",
         },
         currentAdminEmail || "Admin"
       );

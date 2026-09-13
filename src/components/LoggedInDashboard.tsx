@@ -8954,7 +8954,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 )}
 
                 <a
-                  href="https://t.me/super_x_support"
+                  href="https://t.me/super_x_sms_support"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-sky-600 to-teal-600 hover:from-sky-500 hover:to-teal-500 text-white font-extrabold text-xs uppercase tracking-wider shadow-md flex items-center gap-2 border border-sky-400/40 transition hover:scale-105 active:scale-95 cursor-pointer"

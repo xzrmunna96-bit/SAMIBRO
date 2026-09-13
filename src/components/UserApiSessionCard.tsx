@@ -24,7 +24,7 @@ export function UserApiSessionCard({ userEmail, userName, accountCode, apiUnlock
         email: userEmail,
         accountCode: accountCode,
         active: true,
-        managerContact: '@super_x_support',
+        managerContact: '@super_x_sms_support',
       };
     }
     return null;
@@ -59,7 +59,7 @@ export function UserApiSessionCard({ userEmail, userName, accountCode, apiUnlock
         email: userEmail,
         accountCode: resolvedAccountCode,
         active: true,
-        managerContact: '@super_x_support',
+        managerContact: '@super_x_sms_support',
       }));
     }
 
@@ -309,12 +309,12 @@ export function UserApiSessionCard({ userEmail, userName, accountCode, apiUnlock
 
             <div className="p-2.5 bg-slate-950 border border-slate-800 rounded-2xl text-xs space-y-1 font-mono text-emerald-300">
               <span className="text-slate-400 font-sans block text-[11px]">Telegram Manager:</span>
-              <span className="font-bold text-sm">@super_x_support</span>
+              <span className="font-bold text-sm">@super_x_sms_support</span>
             </div>
 
             <div className="flex items-center gap-2 pt-2">
               <a
-                href="https://t.me/super_x_support"
+                href="https://t.me/super_x_sms_support"
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => setSupportModalOpen(false)}

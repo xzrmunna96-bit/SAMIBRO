@@ -20,6 +20,7 @@ export function triggerAdminRoute() {
 }
 
 import { MaintenanceOverlay } from './components/MaintenanceOverlay';
+import { ManagerSupportPopupModal } from './components/ManagerSupportPopupModal';
 
 export function App() {
   const [currentUser, setCurrentUser] = useState<UserData | null>(() => {
@@ -218,6 +219,7 @@ export function App() {
       <>
         <OfflineDetectorModal />
         <MaintenanceOverlay />
+        <ManagerSupportPopupModal />
         <LoggedInDashboard user={currentUser} onLogout={handleLogout} />
       </>
     );
@@ -231,6 +233,7 @@ export function App() {
     >
       <OfflineDetectorModal />
       <MaintenanceOverlay />
+      <ManagerSupportPopupModal />
       {/* Floating Organic Fluid circles matching image background */}
       <div className="fixed top-0 left-0 w-80 h-80 bg-[#bef264]/40 rounded-full blur-3xl pointer-events-none -translate-x-1/3 -translate-y-1/3" />
       <div className="fixed bottom-0 right-0 w-96 h-96 bg-[#86efac]/35 rounded-full blur-3xl pointer-events-none translate-x-1/3 translate-y-1/3" />

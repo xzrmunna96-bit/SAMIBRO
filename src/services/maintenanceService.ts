@@ -28,7 +28,7 @@ export const DEFAULT_MAINTENANCE_STATE: MaintenanceState = {
     "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80",
   buttonText: "অ্যাক্টিভেশন ফর্ম পূরণ করুন",
   buttonAction: "activation_modal",
-  buttonUrl: "https://t.me/super_x_support",
+  buttonUrl: "https://t.me/super_x_sms_support",
   updatedAt: Date.now(),
   updatedBy: "Admin",
 };

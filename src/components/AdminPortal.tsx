@@ -913,6 +913,13 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
   });
   const [isNoticeSaved, setIsNoticeSaved] = useState(false);
 
+  // Manager Support Popup Notice State
+  const [managerNoticeEnabled, setManagerNoticeEnabled] = useState(true);
+  const [managerNoticeText, setManagerNoticeText] = useState(
+    "ম্যানেজার সাপোর্ট: যেকোনো সমস্যা, একাউন্ট বা অতিরিক্ত রেঞ্জ পেতে সরাসরি ম্যানেজারের সাথে যোগাযোগ করুন।"
+  );
+  const [isManagerNoticeSaved, setIsManagerNoticeSaved] = useState(false);
+
   useEffect(() => {
     fetch('/api/site-notice')
       .then((res) => res.json())
@@ -926,7 +933,44 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
         }
       })
       .catch(() => {});
+
+    fetch('/api/manager-popup-notice')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.success) {
+          if (typeof data.enabled === 'boolean') setManagerNoticeEnabled(data.enabled);
+          if (data.message) setManagerNoticeText(data.message);
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  const handleSaveManagerNotice = async (newEnabledStatus?: boolean, e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const activeStatus = typeof newEnabledStatus === 'boolean' ? newEnabledStatus : managerNoticeEnabled;
+    try {
+      const payload = {
+        enabled: activeStatus,
+        message: managerNoticeText,
+        title: "🎧 MANAGER SUPPORT (ম্যানেজার সাপোর্ট)",
+        buttonText: "CONTACT MANAGER (ম্যানেজার সাপোর্ট)",
+        telegramUrl: "https://t.me/super_x_sms_support",
+      };
+      const res = await fetch('/api/manager-popup-notice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        setIsManagerNoticeSaved(true);
+        showToast(`Manager Support Popup updated! Status: ${activeStatus ? 'ENABLED (ON)' : 'DISABLED (OFF)'}`);
+        setTimeout(() => setIsManagerNoticeSaved(false), 3000);
+        window.dispatchEvent(new Event("super_x_manager_popup_updated"));
+      }
+    } catch {
+      showToast("Failed to update Manager Support Popup.");
+    }
+  };
 
   const handleSaveMarqueeNotice = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -5096,6 +5140,100 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                   >
                     <Sparkles className="w-4 h-4" />
                     <span>Save &amp; Publish Notice Banner</span>
+                  </button>
+                </div>
+              </form>
+            </section>
+
+            {/* Manager Support Popup Notice Card */}
+            <section className="bg-slate-900 border border-emerald-500/30 rounded-2xl p-5 sm:p-6 space-y-5 shadow-xl relative overflow-hidden">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-emerald-500/15 border border-emerald-500/30 rounded-xl text-emerald-400">
+                    <Send className="w-5 h-5 animate-bounce" />
+                  </div>
+                  <div>
+                    <h2 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
+                      <span>Manager Support Popup Notice</span>
+                      <span className="text-xs font-bold text-emerald-400 bg-emerald-950 border border-emerald-500/40 px-2 py-0.5 rounded-md font-mono">
+                        (ম্যানেজার সাপোর্ট পপআপ)
+                      </span>
+                    </h2>
+                    <p className="text-xs text-slate-400">
+                      যেকোনো ইউজার সাইটে প্রবেশ করলে উপরের থেকে চলে আসা ম্যানেজার সাপোর্ট নোটিশ পপআপ নিয়ন্ত্রণ করুন।
+                    </p>
+                  </div>
+                </div>
+
+                {/* Switch ON/OFF */}
+                <div className="flex items-center gap-3 shrink-0 bg-slate-950 border border-slate-800 p-2 rounded-xl">
+                  <span className={`text-xs font-black ${managerNoticeEnabled ? 'text-emerald-400' : 'text-slate-500'}`}>
+                    {managerNoticeEnabled ? 'POPUP ENABLED (ON)' : 'POPUP DISABLED (OFF)'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextState = !managerNoticeEnabled;
+                      setManagerNoticeEnabled(nextState);
+                      handleSaveManagerNotice(nextState);
+                    }}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+                      managerNoticeEnabled ? 'bg-emerald-600' : 'bg-slate-700'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        managerNoticeEnabled ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              {isManagerNoticeSaved && (
+                <div className="p-3 rounded-xl bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center justify-between">
+                  <span>✓ Manager Support Popup notice saved &amp; live across all user sessions!</span>
+                </div>
+              )}
+
+              <form onSubmit={(e) => handleSaveManagerNotice(managerNoticeEnabled, e)} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
+                    Popup Notice Message (নোটিশ মেসেজ)
+                  </label>
+                  <textarea
+                    rows={3}
+                    required
+                    value={managerNoticeText}
+                    onChange={(e) => {
+                      setManagerNoticeText(e.target.value);
+                      setIsManagerNoticeSaved(false);
+                    }}
+                    placeholder="ম্যানেজার সাপোর্ট: যেকোনো সমস্যা, একাউন্ট বা অতিরিক্ত রেঞ্জ পেতে সরাসরি ম্যানেজারের সাথে যোগাযোগ করুন।"
+                    className="w-full p-3.5 text-xs sm:text-sm bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 font-sans"
+                  />
+                </div>
+
+                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between text-xs text-slate-300 font-mono">
+                  <span>Manager Telegram Link:</span>
+                  <a
+                    href="https://t.me/super_x_sms_support"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-emerald-400 font-bold hover:underline flex items-center gap-1"
+                  >
+                    <span>t.me/super_x_sms_support</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="submit"
+                    className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md transition cursor-pointer flex items-center gap-2"
+                  >
+                    <Send className="w-4 h-4" />
+                    <span>Save &amp; Publish Popup Notice</span>
                   </button>
                 </div>
               </form>

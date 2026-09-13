@@ -111,7 +111,7 @@ export function MaintenanceOverlay() {
       handleClosePopup();
       window.dispatchEvent(new CustomEvent('open_active_account_modal'));
     } else if (maintenance.buttonAction === 'telegram') {
-      window.open(maintenance.buttonUrl || 'https://t.me/super_x_support', '_blank');
+      window.open(maintenance.buttonUrl || 'https://t.me/super_x_sms_support', '_blank');
     } else if (maintenance.buttonAction === 'custom_url' && maintenance.buttonUrl) {
       window.open(maintenance.buttonUrl, '_blank');
     } else {
@@ -304,7 +304,7 @@ export function MaintenanceOverlay() {
         {/* Live Status Indicator & Action Button */}
         <div className="space-y-3 pt-2">
           <a
-            href={maintenance.buttonUrl || 'https://t.me/super_x_support'}
+            href={maintenance.buttonUrl || 'https://t.me/super_x_sms_support'}
             target="_blank"
             rel="noopener noreferrer"
             className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-2 shadow-[0_0_30px_rgba(6,182,212,0.4)] border border-cyan-300/40 transition transform hover:scale-[1.02] active:scale-98 cursor-pointer"

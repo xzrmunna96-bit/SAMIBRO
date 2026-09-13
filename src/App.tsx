@@ -157,18 +157,11 @@ export function App() {
 
   // Automatically sync logged-in URL to default 'agent' when entering dashboard without overwriting sub-views
   useEffect(() => {
-    if (currentUser) {
+    if (currentUser && !isAdminRoute) {
       try {
         const hash = window.location.hash;
-        if ((!hash || hash === '#' || hash === '#/') && !isAdminRoute) {
+        if (!hash || hash === '#' || hash === '#/') {
           window.location.hash = '#/agent';
-        }
-      } catch {}
-    } else {
-      try {
-        const hash = window.location.hash;
-        if (hash && hash.length > 1 && !isAdminRoute) {
-          window.location.hash = '';
         }
       } catch {}
     }

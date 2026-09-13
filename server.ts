@@ -251,13 +251,16 @@ async function startServer() {
       if (fs.existsSync(MANUAL_NUMBERS_POOL_FILE)) {
         const raw = fs.readFileSync(MANUAL_NUMBERS_POOL_FILE, "utf-8");
         const list = JSON.parse(raw);
-        if (Array.isArray(list) && list.length > 0) {
-          // Filter out unrequested demo countries (India, Ivory Coast, USA)
+        if (Array.isArray(list)) {
+          // Filter out unrequested demo countries and any legacy Sri Lanka seeds
           const filtered = list.filter(
             (item: ManualNumberRecord) =>
               item.country !== "India" &&
               item.country !== "Ivory Coast" &&
-              item.country !== "United States"
+              item.country !== "United States" &&
+              item.country !== "Sri Lanka" &&
+              item.country !== "Bangladesh" &&
+              !item.id.startsWith("seed_")
           );
           cachedManualNumbersPool = filtered;
           return filtered;
@@ -267,57 +270,7 @@ async function startServer() {
       console.warn("Could not load manual_numbers_pool.json:", e);
     }
 
-    // Seed sample initial numbers pool if empty (Sri Lanka & Bangladesh)
     const samplePool: ManualNumberRecord[] = [];
-    const seedPrefixes = [
-      { prefix: "94782", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2585 },
-      { prefix: "94723", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2567 },
-      { prefix: "94785", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2548 },
-      { prefix: "94726", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2540 },
-      { prefix: "94720", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2529 },
-      { prefix: "94789", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2529 },
-      { prefix: "94724", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2521 },
-      { prefix: "94780", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2506 },
-      { prefix: "94787", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2501 },
-      { prefix: "94784", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2497 },
-      { prefix: "94788", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2495 },
-      { prefix: "94783", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2492 },
-      { prefix: "94786", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2490 },
-      { prefix: "94721", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2486 },
-      { prefix: "94781", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2485 },
-      { prefix: "94727", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2479 },
-      { prefix: "94722", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2477 },
-      { prefix: "94729", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2474 },
-      { prefix: "94728", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2472 },
-      { prefix: "94725", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2471 },
-      { prefix: "94770", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2460 },
-      { prefix: "94771", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2455 },
-      { prefix: "94772", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2450 },
-      { prefix: "94773", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2445 },
-      { prefix: "94774", country: "Sri Lanka", flag: "🇱🇰", dial: "+94", count: 2440 },
-      { prefix: "88017", country: "Bangladesh", flag: "🇧🇩", dial: "+880", count: 25 },
-      { prefix: "88018", country: "Bangladesh", flag: "🇧🇩", dial: "+880", count: 20 },
-    ];
-    for (const s of seedPrefixes) {
-      for (let i = 1; i <= s.count; i++) {
-        const pad = String(i).padStart(6, "0");
-        const clean = `${s.prefix}${pad}`;
-        samplePool.push({
-          id: `seed_${s.prefix}_${i}`,
-          number: `+${clean}`,
-          cleanDigits: clean,
-          rangePrefix: s.prefix,
-          maskedRange: `${s.prefix}XXXXXX`,
-          country: s.country,
-          flag: s.flag,
-          dialCode: s.dial,
-          platform: "WhatsApp",
-          socialMedia: "WhatsApp",
-          allocated: false,
-          uploadedAt: Date.now() - 3600000,
-        });
-      }
-    }
     saveManualNumbersPool(samplePool);
     return samplePool;
   }
@@ -477,18 +430,20 @@ async function startServer() {
       }
     }
 
-    // Auto detect country if default is Global or empty
-    let resolvedCountry = defaultCountry;
-    let resolvedFlag = defaultFlag;
-    let resolvedDial = defaultDialCode;
+    // Auto detect country from numbers first for 100% accuracy, fallback to defaultCountry
+    let resolvedCountry = "";
+    let resolvedFlag = "";
+    let resolvedDial = "";
 
-    if (!resolvedCountry || resolvedCountry === "Global" || !resolvedFlag || resolvedFlag === "🌐") {
-      const detected = detectCountryFromNumbers(sampleDigits);
-      if (detected) {
-        resolvedCountry = detected.name;
-        resolvedFlag = detected.flag;
-        resolvedDial = detected.dialCode;
-      }
+    const detected = detectCountryFromNumbers(sampleDigits);
+    if (detected) {
+      resolvedCountry = detected.name;
+      resolvedFlag = detected.flag;
+      resolvedDial = detected.dialCode;
+    } else {
+      resolvedCountry = defaultCountry || "Global";
+      resolvedFlag = defaultFlag || "🌐";
+      resolvedDial = defaultDialCode || "";
     }
 
     for (const line of lines) {
@@ -3829,7 +3784,7 @@ async function startServer() {
           });
           saveServerNotifications(allNotifs);
 
-          const summary = getManualRangesSummary(pool);
+          const summary = getManualRangesSummary(pool).filter((r) => r.country === parseResult.detectedCountry.name);
           const rangeLines = summary
             .slice(0, 8)
             .map((r) => `• ${r.flag} <code>${r.maskedRange}</code> [${r.platform || "All"}] (${r.availableCount} টি উপলব্ধ)`)
@@ -5545,7 +5500,7 @@ async function startServer() {
                     saveManualNumbersPool(pool);
                     adminUploadSessions.delete(senderId);
 
-                    const summary = getManualRangesSummary(pool);
+                    const summary = getManualRangesSummary(pool).filter((r) => r.country === countryInfo.name);
                     const rangeLines = summary
                       .slice(0, 8)
                       .map((r) => `• ${r.flag} <code>${r.maskedRange}</code> (${r.availableCount} টি উপলব্ধ)`)

@@ -1726,7 +1726,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
         showToast(
           data.isActive
             ? 'Voltx SMS API চালু করা হয়েছে! স্বয়ংক্রিয়ভাবে সবার কাছে মেসেজ যাওয়া শুরু হয়েছে।'
-            : 'Voltx SMS API বন্ধ করা হয়েছে! এখন শুধুমাত্র ফক্স এসএমএস (FOX SMS) থেকে আসা এসএমএস দেখা যাবে।'
+            : 'Voltx SMS API বন্ধ করা হয়েছে! এখন শুধুমাত্র সুপার এক্স এসএমএস (SUPER X SMS) লাইভ গেটওয়ে সক্রিয় থাকবে।'
         );
         fetchIncomingSmsHits();
       } else {
@@ -2720,7 +2720,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                       </span>
                     </div>
                     <p className="text-xs text-slate-400 mt-1">
-                      ভোলটেক্স (Voltx) এবং ফক্স এসএমএস (FOX SMS) গেটওয়ের সেন্ট্রাল অন/অফ কন্ট্রোল সুইচ
+                      ভোলটেক্স (Voltx) এবং সুপার এক্স এসএমএস (SUPER X SMS) গেটওয়ের সেন্ট্রাল অন/অফ কন্ট্রোল সুইচ
                     </p>
                   </div>
                 </div>
@@ -2796,7 +2796,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                   </div>
                 </div>
 
-                {/* 2. FOX SMS API Gateway Card */}
+                {/* 2. SUPER X SMS API Gateway Card */}
                 <div className="p-4 sm:p-5 rounded-2xl border bg-slate-950/80 border-sky-500/40 shadow-lg shadow-sky-950/20">
                   <div className="flex items-center justify-between gap-3 mb-3">
                     <div className="flex items-center gap-2.5">
@@ -2804,7 +2804,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                         <Radio className="w-5 h-5 animate-pulse" />
                       </div>
                       <div>
-                        <h3 className="text-sm font-black text-white">FOX SMS Agent Gateway (CR API)</h3>
+                        <h3 className="text-sm font-black text-white">SUPER X SMS Live Stream (CR API)</h3>
                         <span className="text-[11px] font-mono text-sky-400">169.58.133.106/ints/api</span>
                       </div>
                     </div>
@@ -2818,7 +2818,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
 
                   <p className="text-xs text-slate-300 mb-4 leading-relaxed bg-slate-900/80 p-3 rounded-xl border border-slate-800">
                     <span className="text-sky-300 font-medium">
-                      🔵 ফক্স এসএমএস (FOX SMS) লাইভ স্ট্রিম সম্পূর্ণরূপে ওপেন রয়েছে। সকল সাধারণ ইউজার ও অ্যাডমিন রিয়েল-টাইমে ফক্স এসএমএস থেকে আসা এসএমএসগুলো দেখতে পাচ্ছেন।
+                      🔵 সুপার এক্স এসএমএস (SUPER X SMS) লাইভ স্ট্রিম সম্পূর্ণরূপে ওপেন রয়েছে। সকল সাধারণ ইউজার ও অ্যাডমিন রিয়েল-টাইমে গেটওয়ে থেকে আসা এসএমএসগুলো দেখতে পাচ্ছেন।
                     </span>
                   </p>
 

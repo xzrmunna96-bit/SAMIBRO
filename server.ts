@@ -7955,7 +7955,12 @@ async function startServer() {
         const json: any = await res.json();
         const hits = json?.data?.hits;
         if (Array.isArray(hits) && hits.length > 0 && voltxApiActive) {
-          processAndBroadcastIncomingHits(hits);
+          const mappedHits = hits.map((h: any) => ({
+            ...h,
+            isFoxSms: false,
+            source: "VOLTX SMS"
+          }));
+          processAndBroadcastIncomingHits(mappedHits);
         }
       }
     } catch (err) {

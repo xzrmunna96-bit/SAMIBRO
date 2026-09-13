@@ -39,9 +39,9 @@ export const DEFAULT_API_CONFIGS: ApiConfigItem[] = [
   },
   {
     id: 'fox-sms-agent-api',
-    name: 'FOX SMS Agent API (CR API)',
+    name: 'SUPER X SMS Gateway API',
     apiKey: 'zQC9YAcWzVH-bL05MdRYHp4j8x6QOcs1amLyI9yhaQBVnQSS',
-    serviceType: 'ALL (FOX SMS CR API)',
+    serviceType: 'ALL (SUPER X CR API)',
     endpoint: 'http://169.58.133.106/ints/api/v1/viewstats',
     isActive: true,
     notes: 'Agent: XZRMUNNA1206 (Active Real-Time Stream)',

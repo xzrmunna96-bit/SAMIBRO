@@ -78,6 +78,30 @@ export function playTungTungSound() {
   }
 }
 
+export function getRangeMaskedNumber(num: string): string {
+  if (!num) return "";
+  const cleaned = num.replace(/\s+/g, '');
+  if (cleaned.length <= 6) {
+    return cleaned;
+  }
+  const prefix = cleaned.substring(0, 6);
+  const maskedLength = cleaned.length - 6;
+  return prefix + "X".repeat(maskedLength);
+}
+
+export function getMaskedMessage(msg: string, otpCode?: string): string {
+  if (!msg) return "";
+  if (otpCode && otpCode.trim().length > 0) {
+    const trimmedOtp = otpCode.trim();
+    const escapedOtp = trimmedOtp.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+    const regex = new RegExp(escapedOtp, 'g');
+    const mask = "X".repeat(trimmedOtp.length);
+    return msg.replace(regex, mask);
+  }
+  return msg.replace(/\b\d{3,8}\b/g, (match) => "X".repeat(match.length));
+}
+
+
 export interface SmsTestRecord {
   id: string;
   testNumber: string;
@@ -181,8 +205,8 @@ export function convertHitToCard(h: any, i: number = 0): TestSmsCardItem {
     timeStr: new Date(tVal).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }),
     timestamp: tVal,
     otpCode: extractedOtp ? String(extractedOtp).trim() : undefined,
-    source: h.source || (h.isFoxSms ? "FOX SMS" : "VOLTX SMS"),
-    isFoxSms: Boolean(h.isFoxSms || h.source === "FOX SMS" || (h.operator && String(h.operator).includes("FOX SMS"))),
+    source: "SUPER X SMS",
+    isFoxSms: true,
   };
 }
 
@@ -202,6 +226,7 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
   const [testCustomOtp, setTestCustomOtp] = useState("");
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [apiAuthBlocked, setApiAuthBlocked] = useState(false);
 
   // Filter & Search states
   const [searchQuery, setSearchQuery] = useState("");
@@ -249,13 +274,29 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
         onRefreshHits();
       }
 
-      // 1. Fetch from global live stream
+      // 1. Fetch from global live stream with cookie check & HTML block protection
       const resStream = await fetch("/api/global-live-stream").catch(() => null);
       let streamHits: any[] = [];
-      if (resStream && resStream.ok) {
-        const sJson = await resStream.json();
-        if (sJson?.success && Array.isArray(sJson.hits)) {
-          streamHits = sJson.hits;
+      if (resStream) {
+        const contentType = resStream.headers.get("content-type") || "";
+        if (
+          contentType.includes("text/html") || 
+          resStream.status === 302 || 
+          resStream.url.includes("__cookie_check.html") ||
+          resStream.url.includes("accounts.google")
+        ) {
+          setApiAuthBlocked(true);
+        } else {
+          try {
+            const sJson = await resStream.json();
+            setApiAuthBlocked(false);
+            if (sJson?.success && Array.isArray(sJson.hits)) {
+              streamHits = sJson.hits;
+            }
+          } catch (jsonErr) {
+            // Failed to parse JSON, likely returned Google Auth page
+            setApiAuthBlocked(true);
+          }
         }
       }
 
@@ -266,10 +307,15 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
         body: JSON.stringify({ records: 100, forceRefresh: true }),
       }).catch(() => null);
       let foxHits: any[] = [];
-      if (resFox && resFox.ok) {
-        const fJson = await resFox.json();
-        if (fJson?.success && Array.isArray(fJson.hits)) {
-          foxHits = fJson.hits;
+      if (resFox) {
+        const fContentType = resFox.headers.get("content-type") || "";
+        if (!fContentType.includes("text/html")) {
+          try {
+            const fJson = await resFox.json();
+            if (fJson?.success && Array.isArray(fJson.hits)) {
+              foxHits = fJson.hits;
+            }
+          } catch {}
         }
       }
 
@@ -454,7 +500,7 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
       timeStr: new Date(testNow).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }),
       timestamp: testNow,
       otpCode: generatedOtp,
-      source: "FOX SMS",
+      source: "SUPER X SMS",
       isFoxSms: true,
     };
 
@@ -471,7 +517,7 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
         time: testNow,
         operator: "Live Test Direct",
         isFoxSms: true,
-        source: "FOX SMS",
+        source: "SUPER X SMS",
         code: generatedOtp,
         otp: generatedOtp,
       } as any);
@@ -539,10 +585,7 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
             <div className="text-3xl font-extrabold text-slate-900 tracking-tight">
               {itemsList.length}
             </div>
-            <span className="text-xs text-emerald-600 font-medium flex items-center gap-1 mt-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              FOX SMS &amp; Live Stream Active Feed
-            </span>
+            {/* Removed SUPER X SMS & Live Stream Active Feed */}
           </div>
 
           <div className="w-12 h-12 rounded-xl bg-[#e8f5e9] text-[#2e7d32] flex items-center justify-center border border-[#c8e6c9]/60 shadow-2xs">
@@ -558,8 +601,8 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
           <div>
             <h2 className="text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
               <span>Live Test SMS Feed</span>
-              <span className="px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 text-[10px] font-extrabold uppercase border border-orange-200">
-                FOX SMS
+              <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 text-[10px] font-extrabold uppercase border border-indigo-200">
+                SUPER X SMS
               </span>
             </h2>
           </div>
@@ -647,12 +690,7 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
             </button>
           </div>
 
-          <div className="flex items-center gap-1.5">
-            <span className="px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-800 text-xs font-bold border border-emerald-200 flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>{itemsList.length} OTPs Available</span>
-            </span>
-          </div>
+          {/* Removed OTPs Available */}
         </div>
 
         {/* Filter Controls Row: Search Input */}
@@ -723,6 +761,29 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
         </div>
 
         {/* 4. SMS Feed Cards List matching Screenshots 1 & 2 */}
+        {apiAuthBlocked && (
+          <div className="m-4 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 space-y-3 shadow-sm">
+            <div className="flex gap-2.5 items-start">
+              <span className="text-xl">⚠️</span>
+              <div>
+                <h4 className="font-bold text-sm text-amber-950">Vercel Proxy Authentication Warning (ভার্সেল প্রিভিউ ইস্যু)</h4>
+                <p className="text-xs text-amber-800 leading-relaxed mt-1 font-sans">
+                  আপনার এই ওয়েবসাইটটি <b>ভার্সেল (Vercel)</b>-এ হোস্ট করা এবং এটি AI Studio-র একটি সুরক্ষিত প্রিভিউ ইউআরএল (<code>ais-pre-...</code>) থেকে ওটিপি ডেটা টানার চেষ্টা করছে। 
+                  AI Studio-র প্রিভিউ ইউআরএলগুলোর জন্য গুগলে লগইন থাকা আবশ্যক, যার কারণে ভার্সেলের ব্যাকগ্রাউন্ড রিকোয়েস্টগুলো ব্লক হয়ে যাচ্ছে এবং ওটিপি দেখাচ্ছে না।
+                </p>
+              </div>
+            </div>
+            <div className="p-3 bg-white/60 rounded-lg text-xs text-slate-800 space-y-1.5 border border-amber-100">
+              <span className="font-bold block text-amber-950">কিভাবে দ্রুত ফিক্স করবেন (How to Solve Quickly):</span>
+              <ul className="list-decimal pl-4 space-y-1 text-slate-700 leading-relaxed">
+                <li>AI Studio থেকে আপনার অ্যাপটি <b>Cloud Run</b> এ ডেপ্লয় (Deploy) করুন।</li>
+                <li>ডেপ্লয় করা Cloud Run ব্যাকএন্ডটি সম্পূর্ণ পাবলিক থাকে এবং এতে কোনো গুগল লগইন কুকি বা প্রিভিউ লিমিটেশন থাকে না।</li>
+                <li>ডেপ্লয় শেষ হলে আপনার <code>vercel.json</code> ফাইলের রিরাইট রুলস (Rewrite Rules) এর <code>destination</code> প্রিভিউ ইউআরএলের বদলে আপনার পাবলিক <b>Cloud Run URL</b> এ পরিবর্তন করে দিন।</li>
+              </ul>
+            </div>
+          </div>
+        )}
+
         <div className="divide-y divide-slate-100">
           {paginatedItems.length === 0 ? (
             <div className="py-12 text-center text-slate-400 text-xs font-medium">
@@ -755,29 +816,20 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
                         {/* Title: Country Name + Operator + Route Badge */}
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="font-bold text-slate-900 text-sm tracking-tight leading-tight">
-                            {cleanCountry}{!isGenericGateway ? ` - ${item.operator}` : ""}
+                            {cleanCountry}
                           </span>
-                          {item.isFoxSms ? (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-orange-100 text-orange-800 border border-orange-200 uppercase tracking-wide">
-                              FOX SMS
-                            </span>
-                          ) : (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-blue-100 text-blue-800 border border-blue-200 uppercase tracking-wide">
-                              VOLTX SMS
-                            </span>
-                          )}
                         </div>
 
                         {/* Subtitle: Phone Number + Copy Button */}
                         <div className="flex items-center gap-2 mt-0.5">
                           <span className="text-xs font-mono text-slate-600 font-bold">
-                            {item.number}
+                            {getRangeMaskedNumber(item.number)}
                           </span>
                           <button
                             type="button"
-                            onClick={() => copyToClipboard(item.number, `num_${item.id}`)}
+                            onClick={() => copyToClipboard(getRangeMaskedNumber(item.number), `num_${item.id}`)}
                             className="text-slate-400 hover:text-slate-700 p-0.5 transition cursor-pointer"
-                            title="Copy phone number"
+                            title="Copy phone number range"
                           >
                             {copiedId === `num_${item.id}` ? (
                               <Check className="w-3 h-3 text-emerald-600" />
@@ -805,29 +857,13 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
                     <div className="flex items-center gap-2 flex-wrap">
                       {renderBrandBadge(item.sid)}
 
-                      {/* Prominent OTP Code Badge with 1-click copy */}
-                      {item.otpCode && (
-                        <button
-                          type="button"
-                          onClick={() => copyToClipboard(item.otpCode!, `otp_${item.id}`)}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 active:scale-95 border border-emerald-300 text-emerald-900 rounded-md text-xs font-mono font-bold transition cursor-pointer shadow-2xs"
-                          title="Click to copy OTP"
-                        >
-                          <Key className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>🔑 OTP: {item.otpCode}</span>
-                          {copiedId === `otp_${item.id}` ? (
-                            <span className="text-emerald-700 font-extrabold text-[11px]">Copied!</span>
-                          ) : (
-                            <Copy className="w-3 h-3 text-emerald-600/70" />
-                          )}
-                        </button>
-                      )}
+                      {/* Removed OTP code badge */}
                     </div>
 
                     {/* Copy Full Message Button */}
                     <button
                       type="button"
-                      onClick={() => copyToClipboard(item.message, `msg_${item.id}`)}
+                      onClick={() => copyToClipboard(getMaskedMessage(item.message, item.otpCode), `msg_${item.id}`)}
                       className="text-slate-400 hover:text-slate-800 p-1 transition cursor-pointer flex items-center gap-1 text-[11px] font-medium"
                       title="Copy message content"
                     >
@@ -845,9 +881,9 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
                     </button>
                   </div>
 
-                  {/* Third Line: Real incoming message body with visible OTP */}
+                  {/* Third Line: Real incoming message body with visible OTP masked */}
                   <div className="text-xs text-slate-800 leading-relaxed font-mono bg-slate-50/70 border border-slate-200/70 rounded-lg p-2.5 break-words font-medium">
-                    {item.message}
+                    {getMaskedMessage(item.message, item.otpCode)}
                   </div>
 
                   {/* Bottom Right: Green Plus Action Button matching Screenshot */}

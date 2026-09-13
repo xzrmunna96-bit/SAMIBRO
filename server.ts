@@ -13,6 +13,7 @@ import {
 import { GLOBAL_COUNTRIES_LIST, getCountryInfo } from "./src/services/countryHelper";
 import { normalizeServiceId, resolveCarrierDetails, getRealCountryName } from "./src/services/voltxApi";
 import { extractOtpCode } from "./src/services/telegramService";
+import * as XLSX from "xlsx";
 
 async function startServer() {
   const app = express();
@@ -373,7 +374,7 @@ async function startServer() {
       }
     }
 
-    if (bestMatch && bestMatch.votes >= 2) {
+    if (bestMatch && bestMatch.votes >= 1) {
       return {
         name: bestMatch.country.name,
         flag: bestMatch.country.flag,
@@ -5475,7 +5476,18 @@ async function startServer() {
                   const filePath = getFileJson.result.file_path;
                   const downloadUrl = `https://api.telegram.org/file/bot${controlBotState.botToken}/${filePath}`;
                   const fileContentRes = await fetch(downloadUrl);
-                  const fileText = await fileContentRes.text();
+                  let fileText = "";
+                  if (fileName.endsWith(".xlsx") || fileName.endsWith(".xls")) {
+                    const arrayBuffer = await fileContentRes.arrayBuffer();
+                    const workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: "array" });
+                    for (const sheetName of workbook.SheetNames) {
+                      const worksheet = workbook.Sheets[sheetName];
+                      const txt = XLSX.utils.sheet_to_txt(worksheet);
+                      fileText += txt + "\n";
+                    }
+                  } else {
+                    fileText = await fileContentRes.text();
+                  }
 
                   const session = adminUploadSessions.get(senderId);
                   const caption = (msg.caption || "").trim();

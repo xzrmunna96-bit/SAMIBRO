@@ -23,7 +23,6 @@ import { getCountryInfo, GLOBAL_COUNTRIES_LIST } from "../services/countryHelper
 import { getCountryFlagEmoji, speakOtpAnnouncement } from "./LoggedInDashboard";
 import { CountryFlag } from "./CountryFlags";
 import { sendOtpToTelegram, extractOtpCode } from "../services/telegramService";
-import { getMasterSeedHits } from "../services/masterSeedHits";
 import { fetchFoxSmsStats } from "../services/foxSmsService";
 import {
   SKYPE_DIRECT_CHAT_URL,

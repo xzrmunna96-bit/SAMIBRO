@@ -370,7 +370,6 @@ import {
   parseHitTimestamp,
   detectCanonicalService,
 } from "../services/topAppsService";
-import { getMasterSeedHits, BASELINE_APP_COUNTS } from "../services/masterSeedHits";
 import { getBrandLogoComponent, SkypeLogo, MicrosoftTeamsLogo } from "./BrandLogos";
 import { CountryFlag } from "./CountryFlags";
 import {
@@ -1192,11 +1191,12 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          // Filter out legacy hardcoded demo IDs (TST-...) so user only sees real test records
+          // Filter out legacy hardcoded demo IDs so user only sees real test records
           const realOnly = parsed.filter(
             (item: any) =>
               item &&
               item.id &&
+              !item.id.toString().startsWith("fox_hist_") &&
               !item.id.toString().startsWith("TST-") &&
               !item.id.toString().startsWith("p_") &&
               !item.id.toString().startsWith("t_")
@@ -1207,140 +1207,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     } catch {
       // ignore
     }
-    return [
-      {
-        id: "fox_hist_01",
-        testNumber: "2290155011429",
-        country: "BENIN",
-        carrier: "Moov / MTN",
-        service: "WhatsApp",
-        otpCode: "931-786",
-        message: "<#> Votre compte WhatsApp Business sera enregistré sur un nouvel appareil\n\nNe donnez ce code à personne\nVotre code WhatsApp Business: 931-786\nrJbA/XP1K+V",
-        timestamp: Date.now() - 30000,
-        status: "DELIVERED",
-        speedSec: 2,
-      },
-      {
-        id: "fox_hist_02",
-        testNumber: "94740729629",
-        country: "SRI LANKA",
-        carrier: "Dialog",
-        service: "Apple",
-        otpCode: "770661",
-        message: "Your Apple Account Code is: 770661. Don't share it with anyone.",
-        timestamp: Date.now() - 60000,
-        status: "DELIVERED",
-        speedSec: 1,
-      },
-      {
-        id: "fox_hist_03",
-        testNumber: "2290155260259",
-        country: "BENIN",
-        carrier: "Moov / MTN",
-        service: "WhatsApp",
-        otpCode: "853-228",
-        message: "<#> Your WhatsApp Business code 853-228\nDon't share this code with others\nrJbA/XP1K+V",
-        timestamp: Date.now() - 90000,
-        status: "DELIVERED",
-        speedSec: 2,
-      },
-      {
-        id: "fox_hist_04",
-        testNumber: "94743665198",
-        country: "SRI LANKA",
-        carrier: "Dialog",
-        service: "Apple",
-        otpCode: "676123",
-        message: "Your Apple Account code is: 676123. Do not share it with anyone.",
-        timestamp: Date.now() - 120000,
-        status: "DELIVERED",
-        speedSec: 1,
-      },
-      {
-        id: "fox_hist_05",
-        testNumber: "2290164131359",
-        country: "BENIN",
-        carrier: "Moov / MTN",
-        service: "DLS",
-        otpCode: "77771",
-        message: "Ne partagez votre code de confirmation avec personne: 77771",
-        timestamp: Date.now() - 240000,
-        status: "DELIVERED",
-        speedSec: 3,
-      },
-      {
-        id: "fox_hist_06",
-        testNumber: "2290198181998",
-        country: "BENIN",
-        carrier: "Moov / MTN",
-        service: "Facebook",
-        otpCode: "108697",
-        message: "108 697 is your Instagram code. Don't share it. #ig",
-        timestamp: Date.now() - 270000,
-        status: "DELIVERED",
-        speedSec: 2,
-      },
-      {
-        id: "fox_hist_07",
-        testNumber: "258820046884",
-        country: "MOZAMBIQUE",
-        carrier: "mcel",
-        service: "Authentify",
-        otpCode: "369410",
-        message: "Your Schoolena verification code is: 369410",
-        timestamp: Date.now() - 300000,
-        status: "DELIVERED",
-        speedSec: 1,
-      },
-      {
-        id: "fox_hist_08",
-        testNumber: "258834464785",
-        country: "MOZAMBIQUE",
-        carrier: "Vodacom",
-        service: "WhatsApp",
-        otpCode: "594-198",
-        message: "<#> Your WhatsApp code: 594-198\nDon't share this code with others\n4sgLq1p5sV6",
-        timestamp: Date.now() - 390000,
-        status: "DELIVERED",
-        speedSec: 2,
-      },
-      {
-        id: "fox_hist_09",
-        testNumber: "94769711088",
-        country: "SRI LANKA",
-        carrier: "Airtel",
-        service: "Apple",
-        otpCode: "4071",
-        message: "Your Apple Account Code is: 4071. Don't share it with anyone.",
-        timestamp: Date.now() - 480000,
-        status: "DELIVERED",
-        speedSec: 1,
-      },
-      {
-        id: "fox_hist_10",
-        testNumber: "213541295176",
-        country: "ALGERIA",
-        carrier: "Djezzy",
-        service: "DPT Pay",
-        otpCode: "877279",
-        message: "Your DPT verification code is: 877279",
-        timestamp: Date.now() - 540000,
-        status: "DELIVERED",
-        speedSec: 2,
-      },
-      {
-        id: "fox_hist_11",
-        testNumber: "94766232330",
-        country: "SRI LANKA",
-        carrier: "Airtel",
-        service: "GoDaddy",
-        otpCode: "615285",
-        message: "Your GoDaddy verification code is 615285.",
-        timestamp: Date.now() - 660000,
-        status: "DELIVERED",
-        speedSec: 1,
-      },
-    ];
+    return [];
   });
 
   const handleAddTestRecord = (record: SmsTestRecord) => {
@@ -2320,9 +2187,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     return () => clearTimeout(timer);
   }, [liveHits]);
 
-  // One-time startup scrubber: immediately purge any residual Voltx hits from localStorage and memory
+  // One-time startup scrubber: immediately purge any residual demo/Voltx/mock hits and outdated cached counts from localStorage
   useEffect(() => {
     try {
+      // 1. Clean liveHits cache
       const saved = localStorage.getItem("super_x_live_console_hits_24h");
       if (saved) {
         const parsed = JSON.parse(saved);
@@ -2330,6 +2198,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           const clean = parsed.filter(
             (h: any) =>
               h &&
+              !h.isDemoHit &&
+              !String(h.id || "").startsWith("fox_hist_") &&
+              !String(h.id || "").startsWith("mock_") &&
+              !String(h.id || "").startsWith("seed_") &&
               h.source !== "VOLTX SMS" &&
               (!h.source || !String(h.source).toUpperCase().includes("VOLTX"))
           );
@@ -2339,8 +2211,45 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           }
         }
       }
+
+      // 2. Clean test history cache for current user
+      if (user?.email) {
+        const testHistKey = `super_x_sms_test_history_${user.email}`;
+        const savedHist = localStorage.getItem(testHistKey);
+        if (savedHist) {
+          const parsedHist = JSON.parse(savedHist);
+          if (Array.isArray(parsedHist)) {
+            const cleanHist = parsedHist.filter(
+              (item: any) =>
+                item &&
+                item.id &&
+                !item.id.toString().startsWith("fox_hist_") &&
+                !item.id.toString().startsWith("TST-") &&
+                !item.id.toString().startsWith("p_") &&
+                !item.id.toString().startsWith("t_")
+            );
+            if (cleanHist.length !== parsedHist.length) {
+              localStorage.setItem(testHistKey, JSON.stringify(cleanHist));
+              setSmsTestHistoryList(cleanHist);
+            }
+          }
+        }
+      }
+
+      // 3. Clear legacy monotonic count cache so fresh server stats take over
+      try {
+        const countsKey = "super_x_app_monotonic_counts_v2";
+        const savedCounts = localStorage.getItem(countsKey);
+        if (savedCounts) {
+          const parsedCounts = JSON.parse(savedCounts);
+          if (parsedCounts && typeof parsedCounts === "object" && parsedCounts["WhatsApp"] > 50 && !parsedCounts["__verified_clean"]) {
+            localStorage.removeItem(countsKey);
+            setAppMonotonicCounts({});
+          }
+        }
+      } catch {}
     } catch {}
-  }, []);
+  }, [user?.email]);
 
   // Periodic cleanup check every 5 minutes
   useEffect(() => {

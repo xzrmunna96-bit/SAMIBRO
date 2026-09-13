@@ -201,7 +201,7 @@ async function startServer() {
   }
 
   const DEFAULT_BOT_HOSTING_CONFIG: BotHostingConfig = {
-    botToken: "8631714331:AAEd33AVl9oqI-HdGW7jtxE37y4N4nH4ox4",
+    botToken: "8831851994:AAEjiZhHWDl97RABfkzOuk3NbI8291dS1b8",
     adminId: "7084317713",
     chatId: "-1004476126020",
     otpGroupUrl: "https://t.me/trstyyop",
@@ -3449,7 +3449,7 @@ async function startServer() {
   const botHostingConfig = loadBotHostingConfig();
 
   const controlBotState = {
-    botToken: botHostingConfig.botToken || "8631714331:AAEd33AVl9oqI-HdGW7jtxE37y4N4nH4ox4",
+    botToken: botHostingConfig.botToken || "8831851994:AAEjiZhHWDl97RABfkzOuk3NbI8291dS1b8",
     adminId: botHostingConfig.adminId || "7084317713",
     userId: botHostingConfig.adminId || "7084317713",
     activePolling: botHostingConfig.activePolling ?? true,

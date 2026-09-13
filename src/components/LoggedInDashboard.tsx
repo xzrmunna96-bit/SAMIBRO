@@ -2254,15 +2254,26 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     };
 
     syncWithGlobalStream();
-    // Fast 5-second polling interval for real-time responsiveness without persistent SSE streams
+    // Fast 3-second polling interval for real-time responsiveness across all devices and browsers
     const pollTimer = setInterval(() => {
       if (document.hidden) return;
       syncWithGlobalStream();
-    }, 5000);
+    }, 3000);
+
+    const handleFocusOrVisible = () => {
+      if (!document.hidden && isMounted) {
+        syncWithGlobalStream();
+      }
+    };
+
+    window.addEventListener("focus", handleFocusOrVisible);
+    document.addEventListener("visibilitychange", handleFocusOrVisible);
 
     return () => {
       isMounted = false;
       clearInterval(pollTimer);
+      window.removeEventListener("focus", handleFocusOrVisible);
+      document.removeEventListener("visibilitychange", handleFocusOrVisible);
     };
   }, []);
 

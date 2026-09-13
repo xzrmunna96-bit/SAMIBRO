@@ -411,7 +411,7 @@ async function startServer() {
     defaultDialCode: string,
     platform: string = "All Social (WhatsApp/TG)"
   ): ParseManualNumbersResult {
-    const lines = (rawText || "").split(/[\r\n,;]+/);
+    const lines = (rawText || "").split(/[\r\n]+/);
     const addedRecords: ManualNumberRecord[] = [];
     const pool = loadManualNumbersPool();
     const existingMap = new Map<string, ManualNumberRecord>(pool.map((n) => [n.cleanDigits, n]));
@@ -420,15 +420,35 @@ async function startServer() {
     const sampleDigits: string[] = [];
     let existingCount = 0;
 
-    // Collect initial sample numbers for country auto-detection if needed
+    const uniqueCleanTokens = new Set<string>();
+
+    // Phase 1: Collect sample digits from valid number-like cells/tokens
     for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      const digits = trimmed.replace(/\D/g, "");
-      if (digits.length >= 7 && digits.length <= 16) {
-        sampleDigits.push(digits);
-        if (sampleDigits.length >= 30) break;
+      const parts = line.split(/[\t,;|\s]+/);
+      for (const part of parts) {
+        let token = part.trim();
+        if (!token) continue;
+
+        // Skip headers, letters, statuses, e.g. "Active", "Email", "User"
+        if (/[a-zA-Z]/.test(token)) continue;
+
+        // Handle common Excel decimal export issues
+        if (token.endsWith(".0")) {
+          token = token.slice(0, -2);
+        } else if (token.endsWith(".00")) {
+          token = token.slice(0, -3);
+        }
+
+        const digits = token.replace(/\D/g, "");
+        if (digits.length >= 7 && digits.length <= 16) {
+          if (!uniqueCleanTokens.has(digits)) {
+            uniqueCleanTokens.add(digits);
+            sampleDigits.push(digits);
+            if (sampleDigits.length >= 50) break;
+          }
+        }
       }
+      if (sampleDigits.length >= 50) break;
     }
 
     // Auto detect country from numbers first for 100% accuracy, fallback to defaultCountry
@@ -447,47 +467,65 @@ async function startServer() {
       resolvedDial = defaultDialCode || "";
     }
 
+    // Phase 2: Parse and add all numbers
+    const processedDigits = new Set<string>();
+
     for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      const digits = trimmed.replace(/\D/g, "");
-      if (digits.length >= 7 && digits.length <= 16) {
-        const existing = existingMap.get(digits);
-        if (existing) {
-          existingCount++;
-          // Refresh existing item to be available for allocation
-          existing.allocated = false;
-          if (resolvedCountry && resolvedCountry !== "Global") {
-            existing.country = resolvedCountry;
-            existing.flag = resolvedFlag;
-            existing.dialCode = resolvedDial;
-          }
-          if (platform) {
-            existing.platform = platform;
-            existing.socialMedia = platform;
-          }
-        } else {
-          const fullNum = trimmed.startsWith("+") ? trimmed : `+${digits}`;
-          const prefix = digits.slice(0, 5);
-          const mask = `${prefix}${"X".repeat(Math.max(0, digits.length - 5))}`;
+      const parts = line.split(/[\t,;|\s]+/);
+      for (const part of parts) {
+        let token = part.trim();
+        if (!token) continue;
 
-          const newRec: ManualNumberRecord = {
-            id: `num_${now}_${Math.random().toString(36).slice(2, 7)}`,
-            number: fullNum,
-            cleanDigits: digits,
-            rangePrefix: prefix,
-            maskedRange: mask,
-            country: resolvedCountry || "Global",
-            flag: resolvedFlag || "🌐",
-            dialCode: resolvedDial || "",
-            platform: platform || "All Social (WhatsApp/TG)",
-            socialMedia: platform || "All Social (WhatsApp/TG)",
-            allocated: false,
-            uploadedAt: now,
-          };
+        // Skip headers, letters, statuses, etc.
+        if (/[a-zA-Z]/.test(token)) continue;
 
-          existingMap.set(digits, newRec);
-          addedRecords.push(newRec);
+        if (token.endsWith(".0")) {
+          token = token.slice(0, -2);
+        } else if (token.endsWith(".00")) {
+          token = token.slice(0, -3);
+        }
+
+        const digits = token.replace(/\D/g, "");
+        if (digits.length >= 7 && digits.length <= 16) {
+          if (processedDigits.has(digits)) continue;
+          processedDigits.add(digits);
+
+          const existing = existingMap.get(digits);
+          if (existing) {
+            existingCount++;
+            existing.allocated = false;
+            if (resolvedCountry && resolvedCountry !== "Global") {
+              existing.country = resolvedCountry;
+              existing.flag = resolvedFlag;
+              existing.dialCode = resolvedDial;
+            }
+            if (platform) {
+              existing.platform = platform;
+              existing.socialMedia = platform;
+            }
+          } else {
+            const fullNum = token.startsWith("+") ? token : `+${digits}`;
+            const prefix = digits.slice(0, 5);
+            const mask = `${prefix}${"X".repeat(Math.max(0, digits.length - 5))}`;
+
+            const newRec: ManualNumberRecord = {
+              id: `num_${now}_${Math.random().toString(36).slice(2, 7)}`,
+              number: fullNum,
+              cleanDigits: digits,
+              rangePrefix: prefix,
+              maskedRange: mask,
+              country: resolvedCountry || "Global",
+              flag: resolvedFlag || "🌐",
+              dialCode: resolvedDial || "",
+              platform: platform || "All Social (WhatsApp/TG)",
+              socialMedia: platform || "All Social (WhatsApp/TG)",
+              allocated: false,
+              uploadedAt: now,
+            };
+
+            existingMap.set(digits, newRec);
+            addedRecords.push(newRec);
+          }
         }
       }
     }

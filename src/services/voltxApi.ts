@@ -21,107 +21,43 @@ export const VOLTX_BACKEND_SLUG = 'MXS47FLFX0U';
 let cachedVoltxActive: boolean = false;
 
 export function isVoltxApiActive(): boolean {
-  if (typeof window !== 'undefined') {
-    const saved = localStorage.getItem('voltx_api_active');
-    if (saved !== null) {
-      return saved === 'true';
-    }
-  }
-  return cachedVoltxActive;
+  // Voltx API is completely removed as requested
+  return false;
 }
 
 export function setVoltxApiActiveLocal(active: boolean): void {
-  cachedVoltxActive = active;
+  cachedVoltxActive = false;
   if (typeof window !== 'undefined') {
-    localStorage.setItem('voltx_api_active', active ? 'true' : 'false');
-    window.dispatchEvent(new CustomEvent('voltx_active_toggled', { detail: { isActive: active } }));
+    localStorage.setItem('voltx_api_active', 'false');
+    window.dispatchEvent(new CustomEvent('voltx_active_toggled', { detail: { isActive: false } }));
     window.dispatchEvent(new Event('voltx_key_updated'));
   }
 }
 
 export async function syncVoltxActiveStatusFromServer(): Promise<boolean> {
-  try {
-    const res = await fetch('/api/voltx/status');
-    if (res.ok) {
-      const data = await res.json();
-      if (data && typeof data.isActive === 'boolean') {
-        setVoltxApiActiveLocal(data.isActive);
-        return data.isActive;
-      }
-    }
-  } catch {}
-  return isVoltxApiActive();
+  setVoltxApiActiveLocal(false);
+  return false;
 }
 
 export function getVoltxEndpointKey(): string {
-  if (!isVoltxApiActive()) {
-    return '';
-  }
-  if (typeof window !== 'undefined') {
-    const saved = localStorage.getItem('voltx_endpoint_key');
-    if (saved && saved.trim()) {
-      const clean = saved.trim();
-      if (clean === 'MK1CB2Y3GI9') {
-        localStorage.setItem('voltx_endpoint_key', DEFAULT_VOLTX_ENDPOINT_KEY);
-        localStorage.setItem('voltx_mauthapi_key', DEFAULT_MAUTH_API_KEY);
-        return DEFAULT_VOLTX_ENDPOINT_KEY;
-      }
-      if (clean !== 'MOBEKJ8H20I' && clean !== 'M7ANNWJY6B2' && clean !== 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=') {
-        return clean;
-      }
-    }
-  }
-  return DEFAULT_VOLTX_ENDPOINT_KEY;
+  return '';
 }
 
 export function setVoltxEndpointKey(key: string): void {
   if (typeof window !== 'undefined') {
-    const trimmed = key.trim();
-    if (!trimmed || trimmed === 'MOBEKJ8H20I') {
-      localStorage.removeItem('voltx_endpoint_key');
-      localStorage.removeItem('voltx_mauthapi_key');
-    } else {
-      localStorage.setItem('voltx_endpoint_key', trimmed);
-      localStorage.setItem('voltx_mauthapi_key', trimmed);
-    }
-    window.dispatchEvent(new Event('voltx_key_updated'));
-    broadcastSystemApiKeyToServer(trimmed).catch(() => {});
+    localStorage.removeItem('voltx_endpoint_key');
+    localStorage.removeItem('voltx_mauthapi_key');
   }
 }
 
 export function getMauthApiKey(): string {
-  if (!isVoltxApiActive()) {
-    return '';
-  }
-  if (typeof window !== 'undefined') {
-    const saved = localStorage.getItem('voltx_mauthapi_key') || localStorage.getItem('voltx_endpoint_key');
-    if (saved && saved.trim()) {
-      const clean = saved.trim();
-      if (clean === 'MK1CB2Y3GI9') {
-        localStorage.setItem('voltx_mauthapi_key', DEFAULT_MAUTH_API_KEY);
-        localStorage.setItem('voltx_endpoint_key', DEFAULT_VOLTX_ENDPOINT_KEY);
-        return DEFAULT_MAUTH_API_KEY;
-      }
-      if (clean !== 'MOBEKJ8H20I' && clean !== 'M7ANNWJY6B2' && clean !== 'gIBhSFlycFVcj5lCRVKEgF-Vb4hEcGBGaneFQ0KRgn0=') {
-        return clean;
-      }
-    }
-  }
-  return DEFAULT_MAUTH_API_KEY;
+  return '';
 }
 
 export function setMauthApiKey(key: string): void {
   if (typeof window !== 'undefined') {
-    const trimmed = key.trim();
-    if (!trimmed || trimmed === 'MOBEKJ8H20I') {
-      localStorage.removeItem('voltx_mauthapi_key');
-      localStorage.removeItem('voltx_endpoint_key');
-    } else {
-      localStorage.setItem('voltx_mauthapi_key', trimmed);
-      localStorage.setItem('voltx_endpoint_key', trimmed);
-    }
-    window.dispatchEvent(new Event('voltx_key_updated'));
-    broadcastSystemApiKeyToServer(trimmed).catch(() => {});
+    localStorage.removeItem('voltx_mauthapi_key');
+    localStorage.removeItem('voltx_endpoint_key');
   }
 }
 
@@ -228,99 +164,11 @@ export async function callVoltxApi<T>(
     customEndpoint?: string;
   } = {}
 ): Promise<ApiResponse<T>> {
-  const method = options.method || 'GET';
-  const apiKey = options.apiKey || getMauthApiKey();
-  const endpointKey = getVoltxEndpointKey();
-  const customEndpoint = options.customEndpoint;
-
-  const isVoltxOn = isVoltxApiActive();
-  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-
-  if (!isVoltxOn && !cleanEndpoint.includes('/getnum') && !customEndpoint) {
-    return {
-      meta: { code: 200, status: 'ok' },
-      data: [] as any,
-      message: 'Voltx SMS API is currently paused by admin (OFF).',
-    };
-  }
-
-  if (!apiKey && !endpointKey && !customEndpoint) {
-    return { meta: { code: 200, status: 'ok' }, data: [] as any, message: 'API is currently OFF' };
-  }
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-    'mauthapi': apiKey,
-    'x-voltx-endpoint-key': endpointKey,
-  };
-
-  if (customEndpoint) {
-    headers['x-custom-endpoint'] = customEndpoint;
-  }
-
-  const fetchOptions: RequestInit = {
-    method,
-    headers,
-  };
-
-  if (method === 'POST' && options.body) {
-    fetchOptions.body = JSON.stringify(options.body);
-  }
-
-  const executeFetchWithTimeout = async (url: string, init: RequestInit, timeoutMs = 2500): Promise<Response> => {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const res = await fetch(url, { ...init, signal: controller.signal });
-      clearTimeout(timer);
-      return res;
-    } catch (err) {
-      clearTimeout(timer);
-      throw err;
-    }
-  };
-
-  // 1. If custom endpoint is passed, use Universal Proxy
-  if (customEndpoint) {
-    try {
-      const res = await executeFetchWithTimeout(`/api/universal-proxy${cleanEndpoint}`, fetchOptions);
-      const json = await res.json();
-      if (json && (json.meta || json.data !== undefined || json.hits !== undefined)) {
-        return json;
-      }
-    } catch {
-      // fallback
-    }
-  }
-
-  // 2. Try local dev proxy route first to avoid CORS
-  try {
-    const res = await executeFetchWithTimeout(`${PROXY_BASE_URL}${cleanEndpoint}`, fetchOptions);
-    const json = await res.json();
-    if (json && (json.meta || json.data !== undefined || json.hits !== undefined)) {
-      return json;
-    }
-  } catch {
-    // try direct fetch fallback
-  }
-
-  // 3. Direct HTTPS fetch to upstream CDN/API
-  try {
-    const targetBase = customEndpoint || getUpstreamBaseUrl();
-    const directRes = await executeFetchWithTimeout(`${targetBase}${cleanEndpoint}`, fetchOptions);
-    const json = await directRes.json();
-    if (json && (json.meta || json.data !== undefined || json.hits !== undefined)) {
-      return json;
-    }
-  } catch {
-    // ignore
-  }
-
+  // Voltx API is completely removed as requested
   return {
     meta: { code: 200, status: 'ok' },
-    data: null,
-    message: 'SUPER X SMS Gateway Physical Carrier Route active'
+    data: null as any,
+    message: 'SUPER X SMS Gateway Physical Carrier Route active',
   };
 }
 
@@ -462,177 +310,17 @@ export const detectServiceFromHit = normalizeServiceId;
  * Aggregates across all active API routes in real-time
  */
 export async function fetchLiveConsoleDetailed(apiKey?: string, customEndpoint?: string): Promise<FetchConsoleResponse> {
-  const isVoltxOn = isVoltxApiActive();
-  if (!isVoltxOn) {
-    try {
-      const foxResult = await fetchFoxSmsStats();
-      return {
-        hits: foxResult.hits || [],
-        code: 200,
-        status: 'ok',
-        message: 'FOX SMS API active & synchronized',
-      };
-    } catch {
-      return { hits: [], code: 200, status: 'ok', message: 'FOX SMS API' };
-    }
-  }
-
-  // If specific key or endpoint is passed, query single route
-  if (apiKey || customEndpoint) {
-    try {
-      const res = await callVoltxApi<{ hits?: any[]; cached?: boolean }>('/console', {
-        apiKey,
-        customEndpoint,
-      });
-
-      const code = res.meta?.code ?? 200;
-      const status = res.meta?.status ?? 'ok';
-      const message = res.message;
-      const rid = res.rid;
-
-      let rawHits: any[] = [];
-      if (res.data) {
-        if (res.data.hits && Array.isArray(res.data.hits)) {
-          rawHits = res.data.hits;
-        } else if (Array.isArray(res.data)) {
-          rawHits = res.data;
-        }
-      } else if ((res as any).hits && Array.isArray((res as any).hits)) {
-        rawHits = (res as any).hits;
-      }
-
-      const hits: LiveConsoleHit[] = rawHits.map((hit) => {
-        const rawRange = hit.range || hit.number || hit.phone || '';
-        const carrier = resolveCarrierDetails(rawRange);
-        const rawMsg = hit.message || hit.msg || hit.text || hit.sms || '';
-
-        let parsedTime = Date.now();
-        if (typeof hit.time === 'number') {
-          parsedTime = hit.time < 10000000000 ? hit.time * 1000 : hit.time;
-        } else if (typeof hit.time === 'string') {
-          const n = Number(hit.time);
-          if (!isNaN(n) && n > 0) {
-            parsedTime = n < 10000000000 ? n * 1000 : n;
-          } else {
-            parsedTime = new Date(hit.time).getTime() || Date.now();
-          }
-        }
-
-        return {
-          range: rawRange,
-          sid: normalizeServiceId(hit.sid || hit.service || hit.service_name || '', rawMsg),
-          message: rawMsg,
-          time: parsedTime,
-          operator: hit.operator || carrier.operator,
-          country: getRealCountryName(hit.country, rawRange),
-        };
-      });
-
-      return { hits, code, status, message, rid };
-    } catch (err: any) {
-      return { hits: [], code: 500, status: 'network_error', message: err?.message || 'Network request failed' };
-    }
-  }
-
-  // Multi-API Pool Mode: Query all active configured APIs concurrently
-  const activeConfigs = getActiveApiConfigs();
-  if (activeConfigs.length === 0) {
-    try {
-      const foxResult = await fetchFoxSmsStats();
-      return { hits: foxResult.hits || [], code: 200, status: 'ok', message: 'FOX SMS API' };
-    } catch {
-      return { hits: [], code: 200, status: 'ok', message: 'API is currently OFF' };
-    }
-  }
-  const allHitsMap = new Map<string, LiveConsoleHit>();
-
-  const results = await Promise.allSettled(
-    activeConfigs.map((cfg) =>
-      callVoltxApi<{ hits?: any[]; cached?: boolean }>('/console', {
-        apiKey: cfg.apiKey,
-        customEndpoint: cfg.endpoint,
-      })
-    )
-  );
-
-  let successCount = 0;
-  results.forEach((result) => {
-    if (result.status === 'fulfilled' && result.value) {
-      const res = result.value;
-      let rawHits: any[] = [];
-      if (res.data) {
-        if (res.data.hits && Array.isArray(res.data.hits)) {
-          rawHits = res.data.hits;
-        } else if (Array.isArray(res.data)) {
-          rawHits = res.data;
-        }
-      } else if ((res as any).hits && Array.isArray((res as any).hits)) {
-        rawHits = (res as any).hits;
-      }
-
-      if (rawHits.length > 0) {
-        successCount++;
-        rawHits.forEach((hit) => {
-          const rawRange = hit.range || hit.number || hit.phone || '';
-          const carrier = resolveCarrierDetails(rawRange);
-          const rawMsg = hit.message || hit.msg || hit.text || hit.sms || '';
-
-          let parsedTime = Date.now();
-          if (typeof hit.time === 'number') {
-            parsedTime = hit.time < 10000000000 ? hit.time * 1000 : hit.time;
-          } else if (typeof hit.time === 'string') {
-            const n = Number(hit.time);
-            if (!isNaN(n) && n > 0) {
-              parsedTime = n < 10000000000 ? n * 1000 : n;
-            } else {
-              parsedTime = new Date(hit.time).getTime() || Date.now();
-            }
-          }
-
-          const sid = normalizeServiceId(hit.sid || hit.service || hit.service_name || '', rawMsg);
-          const itemKey = `${rawRange}_${parsedTime}_${sid}_${rawMsg.substring(0, 30)}`;
-
-          if (!allHitsMap.has(itemKey)) {
-            const finalHit: LiveConsoleHit = {
-              range: rawRange,
-              sid,
-              message: rawMsg,
-              time: parsedTime,
-              operator: hit.operator || carrier.operator,
-              country: getRealCountryName(hit.country, rawRange),
-            };
-            allHitsMap.set(itemKey, finalHit);
-          }
-        });
-      }
-    }
-  });
-
-  // Query FOX SMS API stream in background
   try {
-    const foxResult = await fetchFoxSmsStats();
-    if (foxResult.success && foxResult.hits.length > 0) {
-      foxResult.hits.forEach((hit) => {
-        const itemKey = `${hit.range}_${hit.time}_${hit.sid}_${hit.message.substring(0, 30)}`;
-        if (!allHitsMap.has(itemKey)) {
-          allHitsMap.set(itemKey, hit);
-        }
-      });
-    }
-  } catch {
-    // ignore
+    const foxResult = await fetchFoxSmsStats(50);
+    return {
+      hits: foxResult.hits || [],
+      code: 200,
+      status: 'ok',
+      message: 'FOX SMS API active & synchronized',
+    };
+  } catch (err: any) {
+    return { hits: [], code: 200, status: 'ok', message: 'FOX SMS API' };
   }
-
-  const mergedHits = Array.from(allHitsMap.values()).sort(
-    (a, b) => Number(b.time) - Number(a.time)
-  );
-
-  return {
-    hits: mergedHits,
-    code: 200,
-    status: 'ok',
-    message: `${mergedHits.length} live stream packets aggregated across ${successCount || activeConfigs.length} API routes`,
-  };
 }
 
 export async function fetchLiveConsole(apiKey?: string, customEndpoint?: string): Promise<LiveConsoleHit[]> {

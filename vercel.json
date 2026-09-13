@@ -66,7 +66,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://ais-pre-dqh6s7knakggx6354loggu-674904799109.asia-southeast1.run.app/api/$1"
+      "destination": "/api"
     },
     {
       "source": "/(.*)",

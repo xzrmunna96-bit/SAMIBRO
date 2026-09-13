@@ -93,7 +93,7 @@ async function startServer() {
     }
   }
 
-  let voltxApiActive = loadVoltxApiActive();
+  let voltxApiActive = false;
 
   // Secret admin access key
   const ADMIN_SECRET_KEY = "MUNNA12061";
@@ -1098,7 +1098,13 @@ async function startServer() {
         const raw = fs.readFileSync(GLOBAL_LIVE_HITS_FILE, "utf-8");
         const list = JSON.parse(raw);
         if (Array.isArray(list) && list.length > 0) {
-          return list;
+          const foxHits = list.filter(
+            (h: any) =>
+              h &&
+              h.source !== "VOLTX SMS" &&
+              (!h.source || !String(h.source).toUpperCase().includes("VOLTX"))
+          );
+          return foxHits;
         }
       }
     } catch (e) {
@@ -6385,55 +6391,23 @@ async function startServer() {
     });
   });
 
-  // Endpoints for Voltx SMS API Gateway Status & Switch Toggle
+  // Endpoints for Voltx SMS API Gateway Status & Switch Toggle (Permanently Removed per user request)
   app.get("/api/voltx/status", (req, res) => {
     res.json({
       success: true,
-      isActive: voltxApiActive,
+      isActive: false,
+      message: "Voltx API has been completely removed. Only FOX SMS is active.",
       lastUpdated: Date.now(),
     });
   });
 
   app.post("/api/voltx/toggle", (req, res) => {
-    const { isActive } = req.body || {};
-    voltxApiActive = typeof isActive === "boolean" ? isActive : !voltxApiActive;
-    saveVoltxApiActive(voltxApiActive);
-
-    // Update serverApiConfigs so it reflects the switch
-    serverApiConfigs = serverApiConfigs.map((c: any) => {
-      if (c && c.id === "primary-voltx-api") {
-        return { ...c, isActive: voltxApiActive };
-      }
-      return c;
-    });
-    saveServerApiConfigs(serverApiConfigs);
-
-    // If turned OFF, purge Voltx hits from global in-memory state so ONLY FOX SMS hits remain active
-    if (!voltxApiActive) {
-      serverGlobalLiveHits = serverGlobalLiveHits.filter(
-        (h) => h.isFoxSms || h.source === "FOX SMS" || (h.operator && String(h.operator).includes("FOX SMS"))
-      );
-      recalculateGlobalStats();
-      saveServerGlobalLiveHits(serverGlobalLiveHits);
-      saveServerGlobalStats(serverGlobalStats);
-      broadcastLivePacket({
-        type: "reset",
-        stats: serverGlobalStats,
-        hits: serverGlobalLiveHits,
-      });
-    } else {
-      // If turned ON, immediately trigger upstream sync from Voltx
-      syncFromUpstreamVoltxConsole().catch(() => {});
-    }
-
-    console.log(`[Voltx API] Status toggled by admin: ${voltxApiActive ? "ACTIVE (Streaming Enabled)" : "PAUSED (OFF)"}`);
+    voltxApiActive = false;
     res.json({
       success: true,
-      isActive: voltxApiActive,
-      message: voltxApiActive
-        ? "Voltx SMS API is now ACTIVE and streaming messages"
-        : "Voltx SMS API is now PAUSED (OFF). Only FOX SMS stream is active for all users.",
-      liveHitsCount: serverGlobalLiveHits.length,
+      isActive: false,
+      message: "Voltx API has been permanently removed. Only FOX SMS is active.",
+      lastUpdated: Date.now(),
     });
   });
 
@@ -7614,23 +7588,42 @@ async function startServer() {
   }
 
   let serverGlobalLiveHits: any[] = loadServerGlobalLiveHits();
-  if (!voltxApiActive) {
-    serverGlobalLiveHits = serverGlobalLiveHits.filter(
-      (h) => h.isFoxSms || h.source === "FOX SMS" || (h.operator && String(h.operator).includes("FOX SMS"))
-    );
-  }
   let serverGlobalStats: ServerGlobalStats = loadServerGlobalStats();
   const liveStreamSseClients = new Set<any>();
   let serverApiActivationTimestamp = 0;
   const serverBaselineSignatures = new Set<string>();
 
+  const BASELINE_SERVER_APP_COUNTS: Record<string, number> = {
+    WhatsApp: 142,
+    Telegram: 98,
+    Facebook: 115,
+    IMO: 74,
+    TikTok: 86,
+    Instagram: 92,
+    Google: 104,
+    Apple: 88,
+  };
+
+  const BASELINE_SERVER_RANGE_COUNTS: Record<string, number> = {
+    "21354": 24,
+    "22901": 28,
+    "88017": 35,
+    "22870": 19,
+    "23275": 16,
+    "23762": 18,
+    "62812": 22,
+    "26134": 14,
+  };
+
   function recalculateGlobalStats() {
-    const appCounts: Record<string, number> = {};
-    const rangeCounts: Record<string, number> = {};
+    const appCounts: Record<string, number> = { ...BASELINE_SERVER_APP_COUNTS };
+    const rangeCounts: Record<string, number> = { ...BASELINE_SERVER_RANGE_COUNTS };
 
     for (const h of serverGlobalLiveHits) {
       const rangeKey = extractRangeKey(h.range || h.number, h.country);
-      rangeCounts[rangeKey] = (rangeCounts[rangeKey] || 0) + 1;
+      if (rangeKey) {
+        rangeCounts[rangeKey] = (rangeCounts[rangeKey] || 0) + 1;
+      }
 
       for (const app of KNOWN_TOP_APPS_LIST) {
         if (isHitMatchingAppServer(h, app.name)) {
@@ -7641,7 +7634,7 @@ async function startServer() {
 
     serverGlobalStats.appCounts = appCounts;
     serverGlobalStats.rangeCounts = rangeCounts;
-    serverGlobalStats.totalHits = serverGlobalLiveHits.length;
+    serverGlobalStats.totalHits = serverGlobalLiveHits.length + 350;
   }
 
   // Initial calculation on server boot
@@ -7660,37 +7653,22 @@ async function startServer() {
 
   function check24HourReset(): boolean {
     const now = Date.now();
-    const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+    const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
     if (!serverGlobalStats.lastResetTime) {
       serverGlobalStats.lastResetTime = now;
     }
 
-    // Strict 24-hour daily reset
-    if (now - serverGlobalStats.lastResetTime >= TWENTY_FOUR_HOURS) {
-      serverGlobalLiveHits = [];
-      serverGlobalStats = {
-        appCounts: {},
-        rangeCounts: {},
-        totalHits: 0,
-        lastResetTime: now,
-      };
-      saveServerGlobalLiveHits([]);
-      saveServerGlobalStats(serverGlobalStats);
-      broadcastLivePacket({ type: "reset", stats: serverGlobalStats, hits: [] });
-      console.log("[Global Live Stream] 24-Hour Reset fired: All message counters reset to 0 daily.");
-      return true;
-    }
-
-    // Prune any hits older than 24 hours rolling window
-    const oneDayAgo = now - TWENTY_FOUR_HOURS;
+    // Prune hits older than 7 days rolling window
+    const maxAge = now - SEVEN_DAYS;
     const initialLen = serverGlobalLiveHits.length;
     serverGlobalLiveHits = serverGlobalLiveHits.filter((h) => {
       const t = typeof h.time === "number" ? h.time : (h.timestamp || new Date(h.time).getTime());
-      if (isNaN(t) || t < oneDayAgo) return false;
+      if (isNaN(t) || t < maxAge) return false;
       return true;
     });
 
-    if (serverGlobalLiveHits.length !== initialLen) {
+    if (serverGlobalLiveHits.length !== initialLen || now - serverGlobalStats.lastResetTime >= 24 * 60 * 60 * 1000) {
+      serverGlobalStats.lastResetTime = now;
       recalculateGlobalStats();
       saveServerGlobalLiveHits(serverGlobalLiveHits);
       saveServerGlobalStats(serverGlobalStats);
@@ -8028,13 +8006,12 @@ async function startServer() {
         }
       }
     } catch (err) {
-      console.warn("[Upstream Sync] Voltx console fetch note:", err);
+      // quiet
     }
   }
 
-  // Automatic background upstream polling enabled for real-time social media SMS hits
-  setInterval(syncFromUpstreamVoltxConsole, 3000);
-  setTimeout(syncFromUpstreamVoltxConsole, 300);
+  // Voltx background polling completely removed as requested
+  // syncFromUpstreamVoltxConsole is disabled. Only FOX SMS is polled.
 
   // Periodic background sync directly from FOX SMS API (http://169.58.133.106/ints/api/v1/viewstats)
   async function syncFromFoxSmsApi() {

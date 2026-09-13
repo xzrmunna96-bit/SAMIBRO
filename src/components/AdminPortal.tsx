@@ -2770,74 +2770,33 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
                 </div>
               </div>
 
-              {/* Grid with 2 Gateway Control Cards */}
+              {/* Gateway Control Card */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* 1. Voltx SMS API Gateway Switch Card */}
-                <div className={`p-4 sm:p-5 rounded-2xl border transition-all ${
-                  isVoltxApiActive
-                    ? 'bg-emerald-950/20 border-emerald-500/40 shadow-lg shadow-emerald-950/20'
-                    : 'bg-slate-950/80 border-rose-500/30'
-                }`}>
+                {/* 1. Real Active Live Gateway: FOX SMS */}
+                <div className="p-4 sm:p-5 rounded-2xl border bg-slate-950/80 border-emerald-500/40 shadow-lg shadow-emerald-950/20">
                   <div className="flex items-center justify-between gap-3 mb-3">
                     <div className="flex items-center gap-2.5">
-                      <div className={`p-2 rounded-xl border ${
-                        isVoltxApiActive
-                          ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
-                          : 'bg-rose-500/20 border-rose-500/40 text-rose-400'
-                      }`}>
-                        <Radio className={`w-5 h-5 ${isVoltxApiActive ? 'animate-pulse' : ''}`} />
+                      <div className="p-2 rounded-xl border bg-emerald-500/20 border-emerald-500/40 text-emerald-400">
+                        <Radio className="w-5 h-5 animate-pulse" />
                       </div>
                       <div>
-                        <h3 className="text-sm font-black text-white">Voltx SMS API Gateway</h3>
-                        <span className="text-[11px] font-mono text-slate-400">api.2oo9.cloud (m29)</span>
+                        <h3 className="text-sm font-black text-white">FOX SMS Gateway (CR API)</h3>
+                        <span className="text-[11px] font-mono text-emerald-400">169.58.133.106/ints/api/v1/viewstats</span>
                       </div>
                     </div>
 
                     {/* Status Badge */}
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-black font-mono border flex items-center gap-1.5 ${
-                      isVoltxApiActive
-                        ? 'bg-emerald-950 text-emerald-300 border-emerald-500/40'
-                        : 'bg-rose-950 text-rose-300 border-rose-500/40'
-                    }`}>
-                      <span className={`w-2 h-2 rounded-full ${isVoltxApiActive ? 'bg-emerald-400 animate-ping' : 'bg-rose-500'}`} />
-                      <span>{isVoltxApiActive ? 'STREAMING ACTIVE' : 'OFF / PAUSED'}</span>
+                    <span className="px-2.5 py-1 rounded-full text-xs font-black font-mono border flex items-center gap-1.5 bg-emerald-950 text-emerald-300 border-emerald-500/40">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                      <span>REAL-TIME ACTIVE</span>
                     </span>
                   </div>
 
-                  <p className="text-xs text-slate-300 mb-4 leading-relaxed bg-slate-900/80 p-3 rounded-xl border border-slate-800">
-                    {isVoltxApiActive ? (
-                      <span className="text-emerald-300 font-medium">
-                        🟢 বর্তমানে ভোলটেক্স API সক্রিয় রয়েছে এবং সকল ইউজারদের কাছে স্বয়ংক্রিয়ভাবে মেসেজ যাচ্ছে।
-                      </span>
-                    ) : (
-                      <span className="text-rose-300 font-medium">
-                        🔴 ভোলটেক্স API বর্তমানে বন্ধ (OFF) রাখা হয়েছে। অ্যাডমিন ও সাধারণ ইউজারদের কাছে ভোলটেক্স থেকে এসএমএস আসা সম্পূর্ণরূপে বন্ধ রয়েছে।
-                      </span>
-                    )}
+                  <p className="text-xs text-slate-300 mb-3 leading-relaxed bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+                    <span className="text-emerald-300 font-medium">
+                      🟢 ফক্স এসএমএস (FOX SMS) গেটওয়ে সরাসরি সক্রিয় রয়েছে। সকল ইউজার ও অ্যাডমিন প্যানেলে রিয়েল-টাইম লাইভ এসএমএস স্ট্রিম হচ্ছে।
+                    </span>
                   </p>
-
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
-                    <span className="text-xs font-bold text-slate-400">Master Switch:</span>
-                    <button
-                      type="button"
-                      disabled={isTogglingVoltxApi}
-                      onClick={() => handleToggleVoltxApi()}
-                      className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition cursor-pointer disabled:opacity-50 ${
-                        isVoltxApiActive
-                          ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-md shadow-rose-900/30'
-                          : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-900/30'
-                      }`}
-                    >
-                      <Power className="w-4 h-4" />
-                      <span>
-                        {isTogglingVoltxApi
-                          ? 'Updating...'
-                          : isVoltxApiActive
-                          ? 'সুইচ অফ করুন (Turn OFF Voltx)'
-                          : 'সুইচ অন করুন (Turn ON Voltx)'}
-                      </span>
-                    </button>
-                  </div>
                 </div>
 
                 {/* 2. SUPER X SMS API Gateway Card */}

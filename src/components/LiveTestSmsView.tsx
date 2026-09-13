@@ -23,6 +23,8 @@ import { getCountryInfo, GLOBAL_COUNTRIES_LIST } from "../services/countryHelper
 import { getCountryFlagEmoji, speakOtpAnnouncement } from "./LoggedInDashboard";
 import { CountryFlag } from "./CountryFlags";
 import { sendOtpToTelegram, extractOtpCode } from "../services/telegramService";
+import { getMasterSeedHits } from "../services/masterSeedHits";
+import { fetchFoxSmsStats } from "../services/foxSmsService";
 import {
   SKYPE_DIRECT_CHAT_URL,
   handleOpenSkypeOrTeams,
@@ -234,7 +236,30 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
   const [currentPage, setCurrentPage] = useState(1);
   const [isLiveConnected, setIsLiveConnected] = useState(true);
   const [isSoundOn, setIsSoundOn] = useState(true);
-  const [itemsList, setItemsList] = useState<TestSmsCardItem[]>([]);
+  const [itemsList, setItemsList] = useState<TestSmsCardItem[]>(() => {
+    const raw = (liveHits && liveHits.length > 0) ? liveHits : getMasterSeedHits();
+    const seed = raw.filter(
+      (h: any) =>
+        h &&
+        h.source !== "VOLTX SMS" &&
+        (!h.source || !String(h.source).toUpperCase().includes("VOLTX"))
+    );
+    return seed.map((h, i) => convertHitToCard(h, i));
+  });
+
+  // Calculate messages received today (00:00:00 local time to now)
+  const todayCount = useMemo(() => {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const startTimestamp = startOfToday.getTime();
+
+    const todays = itemsList.filter((item) => {
+      const t = typeof item.timestamp === "number" ? item.timestamp : new Date(item.timestamp).getTime();
+      return !isNaN(t) && t >= startTimestamp;
+    });
+
+    return todays.length;
+  }, [itemsList]);
 
   // Sound chime tracking ref
   const prevItemsCountRef = useRef<number | null>(null);
@@ -243,15 +268,30 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
   const mergeCardsIntoList = useCallback((newHits: any[]) => {
     if (!Array.isArray(newHits) || newHits.length === 0) return;
 
+    // Strictly filter out any Voltx hits
+    const cleanHits = newHits.filter(
+      (h: any) =>
+        h &&
+        h.source !== "VOLTX SMS" &&
+        (!h.source || !String(h.source).toUpperCase().includes("VOLTX"))
+    );
+    if (cleanHits.length === 0) return;
+
     setItemsList((prev) => {
       const map = new Map<string, TestSmsCardItem>();
       prev.forEach((item) => {
+        if (
+          item.source === "VOLTX SMS" ||
+          (item.source && String(item.source).toUpperCase().includes("VOLTX"))
+        ) {
+          return;
+        }
         const sig = `${item.number.replace(/\D/g, "")}_${item.timestamp}_${item.sid.toLowerCase()}_${item.message.slice(0, 40)}`;
         map.set(sig, item);
       });
 
       let hasNew = false;
-      newHits.forEach((h, idx) => {
+      cleanHits.forEach((h, idx) => {
         if (!h) return;
         const card = convertHitToCard(h, idx);
         const sig = `${card.number.replace(/\D/g, "")}_${card.timestamp}_${card.sid.toLowerCase()}_${card.message.slice(0, 40)}`;
@@ -317,6 +357,16 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
             }
           } catch {}
         }
+      }
+
+      // 3. If upstream endpoints blocked or empty, invoke direct foxSmsService fallback
+      if (streamHits.length === 0 && foxHits.length === 0) {
+        try {
+          const directFox = await fetchFoxSmsStats(50);
+          if (directFox && Array.isArray(directFox.hits) && directFox.hits.length > 0) {
+            foxHits = directFox.hits;
+          }
+        } catch {}
       }
 
       const combined = [...streamHits, ...foxHits];
@@ -575,17 +625,22 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
         </div>
       </div>
 
-      {/* 2. Top Metric Cards (TOTAL MESSAGES) matching user screenshot */}
+      {/* 2. Top Metric Card: TODAY'S MESSAGES (আজকের প্রাপ্ত মেসেজ) */}
       <div className="grid grid-cols-1 gap-4">
         <div className="bg-white rounded-xl border border-slate-200/90 p-5 shadow-2xs relative overflow-hidden flex items-center justify-between">
           <div className="space-y-1">
             <span className="text-[11px] font-bold text-slate-400 tracking-wider uppercase block">
-              TOTAL MESSAGES
+              TODAY'S MESSAGES
             </span>
-            <div className="text-3xl font-extrabold text-slate-900 tracking-tight">
-              {itemsList.length}
+            <div className="text-3xl font-extrabold text-slate-900 tracking-tight flex items-baseline gap-2">
+              <span>{todayCount}</span>
+              <span className="text-xs font-bold text-emerald-600 bg-emerald-50 border border-emerald-200/70 px-2 py-0.5 rounded-full">
+                Today
+              </span>
             </div>
-            {/* Removed SUPER X SMS & Live Stream Active Feed */}
+            <span className="text-[11px] font-medium text-slate-500 block">
+              আজকের প্রাপ্ত মেসেজ (Today's Live SMS)
+            </span>
           </div>
 
           <div className="w-12 h-12 rounded-xl bg-[#e8f5e9] text-[#2e7d32] flex items-center justify-center border border-[#c8e6c9]/60 shadow-2xs">

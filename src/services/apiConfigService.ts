@@ -28,16 +28,6 @@ export const API_CONFIGS_UPDATE_EVENT = 'super_x_api_configs_updated';
 
 export const DEFAULT_API_CONFIGS: ApiConfigItem[] = [
   {
-    id: 'primary-voltx-api',
-    name: 'Primary Voltx / 2oo9 Gateway',
-    apiKey: 'MJTFKF97CI2',
-    serviceType: 'ALL (Global Auto-Detect)',
-    endpoint: 'https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api',
-    isActive: false,
-    notes: 'System Voltx Gateway (Currently OFF by admin)',
-    createdAt: Date.now(),
-  },
-  {
     id: 'fox-sms-agent-api',
     name: 'SUPER X SMS Gateway API',
     apiKey: 'zQC9YAcWzVH-bL05MdRYHp4j8x6QOcs1amLyI9yhaQBVnQSS',

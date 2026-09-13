@@ -348,9 +348,9 @@ export function isHitMatchingApp(hit: { sid?: string; message?: string; service?
 }
 
 /**
- * Filter hits for a specific app strictly within the 24-hour rolling window
+ * Filter hits for a specific app within rolling window (default 7 days)
  */
-export function filterHitsForApp(hits: any[], appNameOrId: string, maxAgeMs = 24 * 60 * 60 * 1000): any[] {
+export function filterHitsForApp(hits: any[], appNameOrId: string, maxAgeMs = 7 * 24 * 60 * 60 * 1000): any[] {
   if (!Array.isArray(hits) || hits.length === 0 || !appNameOrId) return [];
   const now = Date.now();
   const minTime = now - maxAgeMs;
@@ -362,8 +362,15 @@ export function filterHitsForApp(hits: any[], appNameOrId: string, maxAgeMs = 24
 
   return hits.filter((h) => {
     if (!h) return false;
+    // Strictly filter out any Voltx hits per user requirement
+    if (
+      h.source === "VOLTX SMS" ||
+      (h.source && String(h.source).toUpperCase().includes("VOLTX"))
+    ) {
+      return false;
+    }
     const t = parseHitTimestamp(h.time ?? h.timestamp);
-    if (t < minTime) return false; // Enforce strict 24-hour limit
+    if (t < minTime) return false;
     if (isAll) return true;
     return isHitMatchingApp(h, appNameOrId);
   });

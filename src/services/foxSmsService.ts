@@ -63,7 +63,7 @@ export interface FoxSmsHitRecord {
 /**
  * Fetch real-time SMS stats from FOX SMS API via server proxy
  */
-export async function fetchFoxSmsStats(): Promise<{
+export async function fetchFoxSmsStats(recordsOverride?: number): Promise<{
   success: boolean;
   hits: LiveConsoleHit[];
   message: string;
@@ -87,7 +87,7 @@ export async function fetchFoxSmsStats(): Promise<{
       body: JSON.stringify({
         endpointUrl: config.endpointUrl,
         token: config.token,
-        records: config.records,
+        records: recordsOverride || config.records,
         username: config.username,
       }),
     });

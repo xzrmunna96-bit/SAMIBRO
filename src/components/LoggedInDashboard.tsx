@@ -1059,26 +1059,27 @@ const StreamCountdownRefreshButton = React.memo(function StreamCountdownRefreshB
 });
 
 export const VIEW_TO_HASH_MAP: Record<string, string> = {
-  dashboard: "dashboard",
-  getNumber: "get-number",
+  dashboard: "agent",
+  getNumber: "getNumber",
   console: "console",
-  smsRange: "sms-range",
-  smsNumber: "sms-number",
+  smsRange: "smsRange",
+  smsNumber: "smsNumber",
   summary: "summary",
-  smsCdrReports: "cdr-reports",
-  accessList: "access-list",
-  senderRange: "sender-range",
+  smsCdrReports: "smsCdrReports",
+  accessList: "accessList",
+  senderRange: "senderRange",
   terminal: "terminal",
   profile: "profile",
-  adminRequests: "admin-approvals",
-  liveTestSms: "live-test-sms",
-  smsTestHistory: "sms-test-history",
-  telegramBot: "telegram-bot",
-  userApiSession: "user-api",
-  supportChatAdmin: "support-chat",
+  adminRequests: "adminRequests",
+  liveTestSms: "liveTestSms",
+  smsTestHistory: "smsTestHistory",
+  telegramBot: "telegramBot",
+  userApiSession: "userApiSession",
+  supportChatAdmin: "supportChatAdmin",
 };
 
 export const HASH_TO_VIEW_MAP: Record<string, any> = {
+  agent: "dashboard",
   dashboard: "dashboard",
   "get-number": "getNumber",
   getnumber: "getNumber",
@@ -1833,24 +1834,27 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   // Initial default seed hits - strictly empty when Voltx is OFF
   const DEFAULT_INITIAL_HITS: LiveConsoleHit[] = [];
 
-  // Live Real Data State with 24-Hour Persistence & Automatic Reset
-  // Synchronized across all users & admins in real-time from server
+  // Live Real Data State (Strictly Authentic Panel & Telegram OTP Messages, No Demo Data)
   const [liveHits, setLiveHits] = useState<LiveConsoleHit[]>(() => {
     try {
       const saved = localStorage.getItem("super_x_live_console_hits_24h");
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
+          // Filter out any legacy generated demo messages
+          const realOnly = parsed.filter(
+            (h: any) => h && h.message && !h.message.includes("Do not share this with anyone.") && !h.isDemoHit
+          );
           if (!isVoltxApiActive()) {
-            return parsed.filter(
+            return realOnly.filter(
               (h: any) => h.isFoxSms || h.source === "FOX SMS" || (h.operator && String(h.operator).includes("FOX SMS"))
             );
           }
-          return parsed;
+          return realOnly;
         }
       }
     } catch {}
-    return generateBaselineLiveHits();
+    return [];
   });
 
   const [globalStats, setGlobalStats] = useState<{

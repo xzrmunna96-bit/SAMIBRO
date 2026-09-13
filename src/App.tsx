@@ -155,19 +155,19 @@ export function App() {
     };
   }, [currentUser]);
 
-  // Automatically sync logged-in URL to show 'agent' in browser path hash (Chrome, Via Browser, etc.)
+  // Automatically sync logged-in URL to default 'agent' when entering dashboard without overwriting sub-views
   useEffect(() => {
     if (currentUser) {
       try {
         const hash = window.location.hash;
-        if (!hash.includes('/agent') && !hash.includes('#agent') && !isAdminRoute) {
+        if ((!hash || hash === '#' || hash === '#/') && !isAdminRoute) {
           window.location.hash = '#/agent';
         }
       } catch {}
     } else {
       try {
         const hash = window.location.hash;
-        if (hash.includes('/agent') || hash.includes('#agent')) {
+        if (hash && hash.length > 1 && !isAdminRoute) {
           window.location.hash = '';
         }
       } catch {}

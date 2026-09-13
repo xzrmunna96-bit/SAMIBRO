@@ -237,10 +237,11 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
   const [isLiveConnected, setIsLiveConnected] = useState(true);
   const [isSoundOn, setIsSoundOn] = useState(true);
   const [itemsList, setItemsList] = useState<TestSmsCardItem[]>(() => {
-    const raw = (liveHits && liveHits.length > 0) ? liveHits : getMasterSeedHits();
+    const raw = (liveHits && liveHits.length > 0) ? liveHits : [];
     const seed = raw.filter(
       (h: any) =>
         h &&
+        !h.isDemoHit &&
         h.source !== "VOLTX SMS" &&
         (!h.source || !String(h.source).toUpperCase().includes("VOLTX"))
     );

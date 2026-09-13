@@ -1857,7 +1857,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         }
       }
     } catch {}
-    return getMasterSeedHits();
+    return [];
   });
 
   const [globalStats, setGlobalStats] = useState<{
@@ -1865,25 +1865,16 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     rangeCounts: Record<string, number>;
     totalHits: number;
   }>({
-    appCounts: { ...BASELINE_APP_COUNTS },
-    rangeCounts: {
-      "21354": 24,
-      "22901": 28,
-      "88017": 35,
-      "22870": 19,
-      "23275": 16,
-      "23762": 18,
-      "62812": 22,
-      "26134": 14,
-    },
-    totalHits: 380,
+    appCounts: {},
+    rangeCounts: {},
+    totalHits: 0,
   });
 
   // Listen for 24-hour reset events and check periodically
   useEffect(() => {
     const handleResetEvent = () => {
-      setLiveHits(getMasterSeedHits());
-      setAppMonotonicCounts({ ...BASELINE_APP_COUNTS });
+      setLiveHits([]);
+      setAppMonotonicCounts({});
       try {
         localStorage.removeItem("super_x_live_console_hits_24h");
         localStorage.removeItem("super_x_app_monotonic_counts_v2");
@@ -1895,8 +1886,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     const resetCheckInterval = setInterval(() => {
       const check = checkAndApply24HourReset();
       if (check.didReset) {
-        setLiveHits(getMasterSeedHits());
-        setAppMonotonicCounts({ ...BASELINE_APP_COUNTS });
+        setLiveHits([]);
+        setAppMonotonicCounts({});
         try {
           localStorage.removeItem("super_x_live_console_hits_24h");
           localStorage.removeItem("super_x_app_monotonic_counts_v2");
@@ -2420,13 +2411,12 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     return {};
   });
 
-  // Calculate real-time count for any social media app, guaranteed never to show 0
+  // Calculate real-time count for any social media app based strictly on real FOX SMS API hits
   const getMonotonicCountForApp = useCallback((appName: string): number => {
     if (!appName) return 0;
-    const baseCount = BASELINE_APP_COUNTS[appName] || 65;
     const serverCount = globalStats?.appCounts?.[appName];
     const liveFiltered = filterHitsForApp(active24hHits, appName).length;
-    return Math.max(baseCount + liveFiltered, serverCount || 0, liveFiltered);
+    return Math.max(serverCount || 0, liveFiltered);
   }, [active24hHits, globalStats?.appCounts]);
 
   // Real-time online heartbeat tracking for the active logged-in user
@@ -3150,29 +3140,6 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         });
       }
     });
-
-    if (rangeMap.size === 0) {
-      getMasterSeedHits().forEach((hit) => {
-        const cleanRange = (hit.range || "").replace(/\D/g, "");
-        if (!cleanRange) return;
-        const carrier = resolveCarrierDetails(cleanRange);
-        const hitService = hit.sid || "SMS Direct";
-        const hitCountry = getRealCountryName(hit.country, cleanRange).toUpperCase();
-        const hitOperator = hit.operator || carrier.operator || "Direct Route";
-        const rangeKey = cleanRange.length > 7 ? cleanRange.slice(0, 5) : cleanRange;
-        if (!rangeMap.has(rangeKey)) {
-          rangeMap.set(rangeKey, {
-            id: rangeKey,
-            countryCode: hitCountry,
-            country: hitCountry,
-            range: rangeKey,
-            service: hitService,
-            operator: hitOperator,
-            consoleHitCount: 8,
-          });
-        }
-      });
-    }
 
     // Sort strictly descending by real received hit volume
     return Array.from(rangeMap.values())

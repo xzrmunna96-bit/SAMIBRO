@@ -1041,56 +1041,7 @@ async function startServer() {
     return clean || country || "UNKNOWN";
   }
 
-  const DEFAULT_SERVER_SEED_HITS = [
-    {
-      range: "85567464345",
-      sid: "AUTHMSG",
-      message: "Your foodpanda verification code is: XXXX",
-      time: Date.now() - 30000,
-      operator: "Metfone 12",
-      country: "CAMBODIA",
-    },
-    {
-      range: "998918617252",
-      sid: "Facebook",
-      message: "<#> XXX XXX— ваш код Instagram. Никому не показывайте его. GdDGCwrWHVm",
-      time: Date.now() - 48000,
-      operator: "Daewoo Unitel 32",
-      country: "UZBEKISTAN",
-    },
-    {
-      range: "22897437931",
-      sid: "Facebook",
-      message: "Tap to reset your Instagram password: https://ig.me/XXyXuSQUXosAXTG",
-      time: Date.now() - 65000,
-      operator: "Moov 34",
-      country: "TOGO",
-    },
-    {
-      range: "2250767490303",
-      sid: "Apple",
-      message: "REG-RESP?v=X;r=XXXXXXXXX;n=+XXXXXXXXXXXXX;s=XXXAAXXBXXFFFFFFFFXXX",
-      time: Date.now() - 90000,
-      operator: "Orange 111",
-      country: "IVORY COAST",
-    },
-    {
-      range: "23277595046",
-      sid: "Uber",
-      message: "HAKAN KHAGAN is arriving now in a Silver MG ZS EV HKXXCVM. Need help? Contact Support",
-      time: Date.now() - 120000,
-      operator: "Lintel 8",
-      country: "SIERRA LEONE",
-    },
-    {
-      range: "2250140426646",
-      sid: "WhatsApp",
-      message: "Your WhatsApp code is: XXXX. Do not share this code with anyone.",
-      time: Date.now() - 150000,
-      operator: "Moov 136",
-      country: "IVORY COAST",
-    },
-  ];
+  const DEFAULT_SERVER_SEED_HITS: any[] = [];
 
   function loadServerGlobalLiveHits(): any[] {
     try {
@@ -1110,7 +1061,7 @@ async function startServer() {
     } catch (e) {
       console.warn("Could not load global_live_hits.json:", e);
     }
-    return DEFAULT_SERVER_SEED_HITS;
+    return [];
   }
 
   function saveServerGlobalLiveHits(list: any[]) {

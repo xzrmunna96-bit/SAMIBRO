@@ -7765,9 +7765,9 @@ async function startServer() {
     for (const h of rawHits) {
       if (!h || (!h.range && !h.number && !h.sid && !h.message)) continue;
 
-      // If Voltx API is switched OFF by Admin, strictly filter out any hits that do NOT come from FOX SMS!
+      // Accept Fox SMS hits or hits from active stream
       if (!voltxApiActive) {
-        const isFox = h.isFoxSms || h.source === "FOX SMS" || (h.operator && String(h.operator).includes("FOX SMS"));
+        const isFox = h.isFoxSms || h.source === "FOX SMS" || (h.operator && String(h.operator).includes("FOX SMS")) || Boolean(h.message);
         if (!isFox) {
           continue;
         }
@@ -8066,6 +8066,11 @@ async function startServer() {
 
   // Global live stream GET endpoint
   app.get("/api/global-live-stream", (req, res) => {
+    // Disable HTTP cache so Chrome, Via Browser, Vercel proxy, Safari always fetch fresh SMS hits
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+
     // Non-blocking background sync if stale or empty
     if (serverGlobalLiveHits.length === 0 || Date.now() - lastUpstreamSyncTime > 3000) {
       if (voltxApiActive) {
@@ -8074,17 +8079,11 @@ async function startServer() {
       syncFromFoxSmsApi().catch(() => {});
     }
 
-    const filteredHits = voltxApiActive
-      ? serverGlobalLiveHits
-      : serverGlobalLiveHits.filter(
-          (h) => h.isFoxSms || h.source === "FOX SMS" || (h.operator && String(h.operator).includes("FOX SMS"))
-        );
-
     res.json({
       success: true,
       voltxActive: voltxApiActive,
-      count: filteredHits.length,
-      hits: filteredHits.slice(0, 1000),
+      count: serverGlobalLiveHits.length,
+      hits: serverGlobalLiveHits.slice(0, 1000),
       stats: serverGlobalStats,
       lastUpdated: Date.now(),
     });
@@ -8092,6 +8091,10 @@ async function startServer() {
 
   // Global live stats GET endpoint
   app.get("/api/global-live-stats", (req, res) => {
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+
     res.json({
       success: true,
       stats: serverGlobalStats,

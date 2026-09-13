@@ -6200,7 +6200,7 @@ async function startServer() {
     username: "XZRMUNNA1206",
     endpointUrl: "http://169.58.133.106/ints/api/v1/viewstats",
     token: "zQC9YAcWzVH-bL05MdRYHp4j8x6QOcs1amLyI9yhaQBVnQSS",
-    records: 50,
+    records: 100,
     isActive: true,
   };
 
@@ -7544,31 +7544,13 @@ async function startServer() {
   let serverApiActivationTimestamp = 0;
   const serverBaselineSignatures = new Set<string>();
 
-  const BASELINE_SERVER_APP_COUNTS: Record<string, number> = {
-    WhatsApp: 142,
-    Telegram: 98,
-    Facebook: 115,
-    IMO: 74,
-    TikTok: 86,
-    Instagram: 92,
-    Google: 104,
-    Apple: 88,
-  };
+  const BASELINE_SERVER_APP_COUNTS: Record<string, number> = {};
 
-  const BASELINE_SERVER_RANGE_COUNTS: Record<string, number> = {
-    "21354": 24,
-    "22901": 28,
-    "88017": 35,
-    "22870": 19,
-    "23275": 16,
-    "23762": 18,
-    "62812": 22,
-    "26134": 14,
-  };
+  const BASELINE_SERVER_RANGE_COUNTS: Record<string, number> = {};
 
   function recalculateGlobalStats() {
-    const appCounts: Record<string, number> = { ...BASELINE_SERVER_APP_COUNTS };
-    const rangeCounts: Record<string, number> = { ...BASELINE_SERVER_RANGE_COUNTS };
+    const appCounts: Record<string, number> = {};
+    const rangeCounts: Record<string, number> = {};
 
     for (const h of serverGlobalLiveHits) {
       const rangeKey = extractRangeKey(h.range || h.number, h.country);
@@ -7585,7 +7567,7 @@ async function startServer() {
 
     serverGlobalStats.appCounts = appCounts;
     serverGlobalStats.rangeCounts = rangeCounts;
-    serverGlobalStats.totalHits = serverGlobalLiveHits.length + 350;
+    serverGlobalStats.totalHits = serverGlobalLiveHits.length;
   }
 
   // Initial calculation on server boot
@@ -7969,7 +7951,7 @@ async function startServer() {
     try {
       const token = foxSmsConfig.token || "zQC9YAcWzVH-bL05MdRYHp4j8x6QOcs1amLyI9yhaQBVnQSS";
       const baseUrl = foxSmsConfig.endpointUrl || "http://169.58.133.106/ints/api/v1/viewstats";
-      const targetUrl = `${baseUrl}?token=${encodeURIComponent(token)}&records=50`;
+      const targetUrl = `${baseUrl}?token=${encodeURIComponent(token)}&records=100`;
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 4000);

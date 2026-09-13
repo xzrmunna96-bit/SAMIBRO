@@ -139,31 +139,14 @@ const KNOWN_APPS = [
   "Huawei",
 ];
 
-const BASELINE_COUNTS: Record<string, number> = {
-  WhatsApp: 184,
-  Telegram: 122,
-  Facebook: 145,
-  IMO: 96,
-  TikTok: 110,
-  Instagram: 118,
-  Google: 134,
-  Apple: 108,
-  Baji: 75,
-  "Twitter / X": 82,
-  Amazon: 64,
-  Snapchat: 72,
-  Viber: 58,
-  Discord: 62,
-  Microsoft: 54,
-  Huawei: 48,
-};
+const BASELINE_COUNTS: Record<string, number> = {};
 
 async function fetchFromFoxSmsUpstream(): Promise<any[]> {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 3800);
     const res = await fetch(
-      "http://169.58.133.106/ints/api/v1/viewstats?token=zQC9YAcWzVH-bL05MdRYHp4j8x6QOcs1amLyI9yhaQBVnQSS&records=60",
+      "http://169.58.133.106/ints/api/v1/viewstats?token=zQC9YAcWzVH-bL05MdRYHp4j8x6QOcs1amLyI9yhaQBVnQSS&records=100",
       {
         signal: controller.signal,
         headers: {
@@ -276,17 +259,8 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    const appCounts: Record<string, number> = { ...BASELINE_COUNTS };
-    const rangeCounts: Record<string, number> = {
-      "21354": 38,
-      "22901": 42,
-      "88017": 55,
-      "22870": 31,
-      "23275": 28,
-      "23762": 32,
-      "62812": 44,
-      "26134": 26,
-    };
+    const appCounts: Record<string, number> = {};
+    const rangeCounts: Record<string, number> = {};
 
     cachedHits.forEach((h) => {
       const s = (h.sid || h.cli || "").toLowerCase();
@@ -311,7 +285,7 @@ export default async function handler(req: any, res: any) {
       stats: {
         appCounts,
         rangeCounts,
-        totalHits: cachedHits.length + 480,
+        totalHits: cachedHits.length,
       },
       lastUpdated: Date.now(),
     });

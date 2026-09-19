@@ -1570,6 +1570,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isReturnSuccessOpen, setIsReturnSuccessOpen] = useState(false);
   const [isAddNumbersConfirmOpen, setIsAddNumbersConfirmOpen] = useState(false);
+  const [isAllocationSuccessOpen, setIsAllocationSuccessOpen] = useState(false);
+  const [lastAllocatedCount, setLastAllocatedCount] = useState(50);
   const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([]);
   const [myNumsPage, setMyNumsPage] = useState(1);
   const [isRentModalOpen, setIsRentModalOpen] = useState(false);
@@ -6996,10 +6998,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                           {/* NUMBER INFO */}
                           <div className="col-span-5 sm:col-span-4 space-y-1 border-r border-slate-300 pr-2 h-full flex flex-col justify-center">
                             <div className="font-mono text-gray-900 font-black tracking-wide text-xs sm:text-sm flex items-center gap-1.5 flex-wrap">
-                              <span>{getRangeMaskedNumber(item.number)}</span>
+                              <span>{item.number}</span>
                               <button
                                 type="button"
-                                onClick={() => copyToClipboard(getRangeMaskedNumber(item.number), `num_${item.id}`, item.country || "GLOBAL")}
+                                onClick={() => copyToClipboard(item.number, `num_${item.id}`, item.country || "GLOBAL")}
                                 className="p-1 rounded-md bg-slate-100 hover:bg-emerald-100 text-slate-600 hover:text-emerald-900 transition cursor-pointer border border-slate-300 flex items-center gap-1"
                                 title="Copy number"
                               >
@@ -7396,11 +7398,11 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                               <div className="space-y-1.5 min-w-0 flex-1">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="font-mono text-gray-950 font-black tracking-wide text-sm sm:text-base">
-                                    {getRangeMaskedNumber(item.number)}
+                                    {item.number}
                                   </span>
                                   <button
                                     type="button"
-                                    onClick={() => copyToClipboard(getRangeMaskedNumber(item.number), `mynum_${item.id}`, item.country || "GLOBAL")}
+                                    onClick={() => copyToClipboard(item.number, `mynum_${item.id}`, item.country || "GLOBAL")}
                                     className="p-1 rounded-md bg-gray-50 hover:bg-emerald-50 text-gray-500 hover:text-emerald-700 transition cursor-pointer border border-gray-200 flex items-center gap-1 shadow-3xs"
                                     title="Copy number"
                                   >
@@ -8285,7 +8287,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                       setIsRentModalOpen(false);
                       setIsChooseTerminationOpen(false);
                       setModalSearchFilter("");
-                      showDashboardToast(`Successfully added ${qty} number(s) for ${selectedCountry} (${selectedOp})!`, "success", 2000);
+                      setLastAllocatedCount(qty);
+                      setIsAllocationSuccessOpen(true);
                     }}
                     className="px-5 py-2.5 rounded-xl bg-[#74A50C] hover:bg-[#628B0A] text-white font-extrabold text-xs sm:text-sm transition cursor-pointer shadow-md flex items-center gap-1.5 active:scale-95"
                   >
@@ -8303,6 +8306,54 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   >
                     <X className="w-3.5 h-3.5 text-gray-500" />
                     <span>Cancel</span>
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* -------------------- ALLOCATION SUCCESS MODAL -------------------- */}
+        <AnimatePresence>
+          {isAllocationSuccessOpen && (
+            <div
+              onClick={(e) => {
+                if (e.target === e.currentTarget) {
+                  setIsAllocationSuccessOpen(false);
+                }
+              }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.1, ease: "easeOut" }}
+                className="w-full max-w-sm bg-white rounded-3xl p-8 shadow-2xl border border-gray-100 text-center space-y-4 relative overflow-hidden"
+              >
+                {/* Big Green Circle with Checkmark Icon */}
+                <div className="w-20 h-20 rounded-full bg-[#EBF4D2] border-2 border-[#D1E2A3] flex items-center justify-center text-[#74A50C] mx-auto shadow-inner">
+                  <CheckCircle className="w-10 h-10 text-[#74A50C]" />
+                </div>
+
+                {/* Title & Subtitle */}
+                <div className="space-y-1.5">
+                  <h3 className="text-2xl font-black text-gray-900 tracking-tight">
+                    Success!
+                  </h3>
+                  <p className="text-xs sm:text-sm text-gray-600 font-bold leading-relaxed">
+                    {lastAllocatedCount} number(s) allocated successfully.
+                  </p>
+                </div>
+
+                {/* Primary Action Button */}
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsAllocationSuccessOpen(false)}
+                    className="w-full py-3 px-6 rounded-xl bg-[#74A50C] hover:bg-[#628B0A] text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider transition cursor-pointer shadow-md active:scale-95"
+                  >
+                    GOT IT, CONTINUE TO WORK
                   </button>
                 </div>
               </motion.div>

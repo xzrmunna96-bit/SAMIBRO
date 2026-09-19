@@ -1308,7 +1308,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   };
 
   useEffect(() => {
-    const handleAccountsUpdated = () => {
+    const handleAccountsUpdated = (e?: StorageEvent | Event) => {
+      if (e && "key" in e && e.key && e.key !== "super_x_accounts" && e.key !== "super_x_accounts_updated") {
+        return;
+      }
       reloadUsers();
     };
     window.addEventListener("super_x_accounts_updated", handleAccountsUpdated);
@@ -1316,7 +1319,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     const interval = setInterval(() => {
       if (document.hidden) return;
       reloadUsers();
-    }, 20000);
+    }, 30000);
     return () => {
       window.removeEventListener(
         "super_x_accounts_updated",
@@ -1457,18 +1460,25 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
     checkAdminPermission();
 
+    const handleAdminStorageChange = (e: StorageEvent | Event) => {
+      if (e && "key" in e && e.key && e.key !== "super_x_sub_admins" && e.key !== "super_x_accounts" && e.key !== "super_x_accounts_updated") {
+        return;
+      }
+      checkAdminPermission();
+    };
+
     window.addEventListener("super_x_sub_admins_updated", checkAdminPermission);
     window.addEventListener("super_x_accounts_updated", checkAdminPermission);
-    window.addEventListener("storage", checkAdminPermission);
+    window.addEventListener("storage", handleAdminStorageChange);
     const interval = setInterval(() => {
       if (document.hidden) return;
       checkAdminPermission();
-    }, 20000);
+    }, 30000);
 
     return () => {
       window.removeEventListener("super_x_sub_admins_updated", checkAdminPermission);
       window.removeEventListener("super_x_accounts_updated", checkAdminPermission);
-      window.removeEventListener("storage", checkAdminPermission);
+      window.removeEventListener("storage", handleAdminStorageChange);
       clearInterval(interval);
     };
   }, [user]);
@@ -2307,11 +2317,11 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     };
 
     syncWithGlobalStream();
-    // Fast 3-second polling interval for real-time responsiveness across all devices and browsers
+    // 8-second polling interval for real-time responsiveness without memory bloat or tab crashes
     const pollTimer = setInterval(() => {
       if (document.hidden) return;
       syncWithGlobalStream();
-    }, 3000);
+    }, 8000);
 
     const handleFocusOrVisible = () => {
       if (!document.hidden && isMounted) {
@@ -5617,11 +5627,11 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                       : "bg-transparent text-slate-300 hover:bg-slate-800/70 hover:text-white"
                   }`}
                 >
-                  <Smartphone className="w-4.5 h-4.5 text-emerald-400 shrink-0 opacity-90 animate-pulse" />
+                  <Smartphone className="w-4.5 h-4.5 text-emerald-400 shrink-0 opacity-90" />
                   <span className="flex items-center justify-between w-full">
                     <span>My Numbers</span>
                     {getNumHistory.length > 0 && (
-                      <span className="bg-emerald-600 text-white text-[10px] font-bold font-mono px-2 py-0.5 rounded-full animate-bounce">
+                      <span className="bg-emerald-600 text-white text-[10px] font-bold font-mono px-2 py-0.5 rounded-full">
                         {getNumHistory.length}
                       </span>
                     )}
@@ -5641,40 +5651,6 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 >
                   <Hash className="w-4.5 h-4.5 shrink-0 opacity-90" />
                   <span>Get Number</span>
-                </button>
-              </>
-            )}
-
-            {userPerms.canAccessConsole && (
-              <>
-                {/* SMS Range */}
-                <button
-                  type="button"
-                  id="sidebar-item-sms-range"
-                  onClick={() => handleNavClick("smsRange")}
-                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer select-none focus:outline-none focus:ring-0 ${
-                    currentView === "smsRange"
-                      ? "bg-blue-600 text-white shadow-sm font-semibold"
-                      : "bg-transparent text-slate-300 hover:bg-slate-800/70 hover:text-white"
-                  }`}
-                >
-                  <Radio className="w-4.5 h-4.5 shrink-0 opacity-90" />
-                  <span>SMS Range</span>
-                </button>
-
-                {/* SMS Number */}
-                <button
-                  type="button"
-                  id="sidebar-item-sms-number"
-                  onClick={() => handleNavClick("smsNumber")}
-                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer select-none focus:outline-none focus:ring-0 ${
-                    currentView === "smsNumber"
-                      ? "bg-blue-600 text-white shadow-sm font-semibold"
-                      : "bg-transparent text-slate-300 hover:bg-slate-800/70 hover:text-white"
-                  }`}
-                >
-                  <Smartphone className="w-4.5 h-4.5 shrink-0 opacity-90" />
-                  <span>SMS Number</span>
                 </button>
               </>
             )}
@@ -5772,32 +5748,6 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 </div>
               )}
             </div>
-
-            {/* User API Session Navigation Item (Main Admin Only) */}
-            {user.role === "admin" && (
-              <button
-                type="button"
-                id="sidebar-item-user-api"
-                onClick={() => handleNavClick("userApiSession")}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer select-none focus:outline-none focus:ring-0 ${
-                  currentView === "userApiSession"
-                    ? "bg-teal-600 text-white shadow-sm font-semibold"
-                    : "bg-transparent text-slate-300 hover:bg-slate-800/70 hover:text-white"
-                }`}
-              >
-                <Key className="w-4.5 h-4.5 shrink-0 opacity-90 text-teal-400" />
-                <span className="flex items-center justify-between w-full">
-                  <span>User API Session</span>
-                  {isAdminUnlocked ? (
-                    <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-teal-500/20 text-teal-300 border border-teal-500/30">
-                      NEW
-                    </span>
-                  ) : (
-                    <Lock className="w-3 h-3 text-amber-500 animate-pulse" />
-                  )}
-                </span>
-              </button>
-            )}
 
             {/* Profile Navigation Item */}
             <button
@@ -8674,29 +8624,28 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                           </td>
                           <td className="p-3 text-slate-700 border-r border-slate-200 whitespace-nowrap">
                             <span className="font-semibold text-slate-900">{row.carrier.country}</span>
-                            <span className="text-[10px] text-slate-500 block font-medium">{row.carrier.operator}</span>
                           </td>
                           <td className="p-3 font-mono font-bold text-slate-900 border-r border-slate-200 whitespace-nowrap">
                             <span className="bg-slate-100 text-slate-800 px-2 py-0.5 rounded border border-slate-300">
-                              {row.number || (row.range.length <= 6 ? `${row.range}XXX` : row.range)}
+                              {getRangeMaskedNumber(row.number || row.range)}
                             </span>
                           </td>
                           <td className="p-3 border-r border-slate-200">
                             {row.otp ? (
                               <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                                 <span className="inline-flex items-center gap-1.5 font-bold text-emerald-900 bg-emerald-100 px-2.5 py-1 rounded-md border border-emerald-300 text-xs font-mono shrink-0">
-                                  🔑 OTP: {row.otp}
+                                  🔑 OTP: {row.otp.replace(/[0-9]/g, "X")}
                                   <button
                                     type="button"
-                                    onClick={() => copyToClipboard(row.otp!, `acc_flt_${row.sid}_${row.range}_${i}`)}
+                                    onClick={() => copyToClipboard(row.otp!.replace(/[0-9]/g, "X"), `acc_flt_${row.sid}_${row.range}_${i}`)}
                                     className="ml-1 px-1.5 py-0.5 bg-emerald-700 text-white rounded text-[10px] hover:bg-emerald-800 transition cursor-pointer font-sans"
                                   >
                                     {copiedText === `acc_flt_${row.sid}_${row.range}_${i}` ? "Copied" : "Copy"}
                                   </button>
                                 </span>
                                 {row.message && (
-                                  <span className="text-[11px] text-slate-600 line-clamp-1 italic max-w-xs" title={row.message}>
-                                    "{row.message}"
+                                  <span className="text-[11px] text-slate-600 line-clamp-1 italic max-w-xs" title={getMaskedMessage(row.message, row.otp)}>
+                                    "{getMaskedMessage(row.message, row.otp)}"
                                   </span>
                                 )}
                               </div>
@@ -8923,9 +8872,6 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                   <div className="font-bold text-slate-900 text-xs">
                                     {stripFlagFromCountryName(item.country)}
                                   </div>
-                                  <div className="text-[11px] text-slate-500 font-medium">
-                                    {item.operator}
-                                  </div>
                                 </div>
                               </div>
                             </td>
@@ -8934,7 +8880,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                             <td className="py-3.5 px-4 font-mono font-bold text-slate-900 text-xs sm:text-sm border-r border-b border-slate-300">
                               <div className="flex items-center gap-1.5">
                                 <span className="bg-slate-100 text-slate-800 px-2 py-0.5 rounded border border-slate-300">
-                                  {item.range.length <= 6 ? `${item.range}XXX` : item.range}
+                                  {getRangeMaskedNumber(item.range)}
                                 </span>
                                 <button
                                   type="button"

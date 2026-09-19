@@ -3563,7 +3563,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     };
 
     loadRanges();
-    const interval = setInterval(loadRanges, 6000);
+    const interval = setInterval(loadRanges, 3000);
 
     if (currentView === "smsRange") {
       setManualRangesLoading(true);
@@ -4273,8 +4273,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const filteredAvailableTerminations = React.useMemo(() => {
     const q = terminationSearchQuery.trim().toLowerCase();
     return manualRanges.filter((r) => {
-      const isSriLanka = (r.country || "").toLowerCase().includes("sri lanka");
-      const platStr = (isSriLanka ? "whatsapp" : (r.platform || r.socialMedia || "whatsapp")).toLowerCase();
+      const platStr = (r.platform || r.socialMedia || "All Social (WhatsApp/TG)").toLowerCase();
       const info = formatTerminationInfo(r);
 
       if (terminationDropdownPlatform !== "ALL") {
@@ -6786,108 +6785,69 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                       </span>
                     </div>
 
-                    {/* Service Cards Grid */}
+                    {/* Service Cards Grid - 100% Dynamic from Bot-Added manualRanges */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {[
-                        {
-                          name: "WhatsApp VIP",
-                          range: "9478",
-                          country: "🇱🇰 Sri Lanka (Dialog/Mobitel)",
-                          rate: "99.6%",
-                          status: "Online",
-                          desc: "Instant WhatsApp registration codes with zero block rate",
-                        },
-                        {
-                          name: "Telegram Ultra",
-                          range: "88017",
-                          country: "🇧🇩 Bangladesh (Grameenphone)",
-                          rate: "98.8%",
-                          status: "Online",
-                          desc: "Direct Telegram SMS carrier line for instant account creation",
-                        },
-                        {
-                          name: "IMO Messenger",
-                          range: "62812",
-                          country: "🇮🇩 Indonesia (Telkomsel)",
-                          rate: "97.5%",
-                          status: "Online",
-                          desc: "Physical SIM routing for IMO phone verification",
-                        },
-                        {
-                          name: "Meta Facebook",
-                          range: "44740",
-                          country: "🇬🇧 United Kingdom (EE Physical)",
-                          rate: "99.1%",
-                          status: "Online",
-                          desc: "Official EE Carrier UK numbers for Facebook / Instagram verification",
-                        },
-                        {
-                          name: "Ivory Coast Direct",
-                          range: "22501",
-                          country: "🇨🇮 Ivory Coast (Moov/Orange)",
-                          rate: "98.4%",
-                          status: "Online",
-                          desc: "High-speed African gateway for multi-platform activation",
-                        },
-                        {
-                          name: "TikTok / ByteDance",
-                          range: "23276",
-                          country: "🇸🇱 Sierra Leone (Orange)",
-                          rate: "95.5%",
-                          status: "Online",
-                          desc: "Fast delivery for TikTok creator accounts",
-                        },
-                      ].map((service) => (
-                        <div
-                          key={service.name}
-                          className="bg-gray-50/90 hover:bg-white border border-gray-200/90 rounded-xl p-3.5 space-y-2.5 transition shadow-2xs hover:shadow-sm"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <h4 className="font-bold text-gray-900 text-sm flex items-center gap-1.5">
-                                <span>{service.name}</span>
-                                <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
-                                  {service.status}
-                                </span>
-                              </h4>
-                              <p className="text-[11px] text-gray-500 font-mono mt-0.5">
-                                Range Prefix:{" "}
-                                <strong className="text-gray-900">
-                                  #{service.range}
-                                </strong>{" "}
-                                ({service.country})
-                              </p>
-                            </div>
-
-                            <span className="text-xs font-mono font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                              {service.rate}
-                            </span>
-                          </div>
-
-                          <p className="text-xs text-gray-600 leading-relaxed">
-                            {service.desc}
-                          </p>
-
-                          <div className="flex items-center justify-between pt-1 border-t border-gray-200/70">
-                            <span className="text-[11px] text-gray-400 font-mono">
-                              Ready to Allocate
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setRangeCustomInput(service.range);
-                                setGetNumTab("RANGE");
-                                setRangeInputError(false);
-                                handleGetNumberCustom(service.range);
-                              }}
-                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition flex items-center gap-1 shadow-2xs cursor-pointer active:scale-95"
-                            >
-                              <Zap className="w-3 h-3 text-amber-300" />
-                              <span>Use Range &amp; Get Number</span>
-                            </button>
-                          </div>
+                      {manualRanges.length === 0 ? (
+                        <div className="col-span-full py-10 px-4 text-center bg-gray-50/80 rounded-2xl border border-dashed border-gray-300 space-y-1.5">
+                          <p className="text-sm font-bold text-gray-800">No active termination ranges configured</p>
+                          <p className="text-xs text-gray-500 max-w-sm mx-auto">Ranges added from your bot or admin console will appear here automatically in real time.</p>
                         </div>
-                      ))}
+                      ) : (
+                        manualRanges.map((r) => {
+                          const platformName = r.platform || r.socialMedia || "All Social (WhatsApp/TG)";
+                          return (
+                            <div
+                              key={`${r.rangePrefix}_${r.country}_${platformName}`}
+                              className="bg-gray-50/90 hover:bg-white border border-gray-200/90 rounded-xl p-3.5 space-y-2.5 transition shadow-2xs hover:shadow-sm"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <h4 className="font-bold text-gray-900 text-sm flex items-center gap-1.5">
+                                    <span>{r.country} Route</span>
+                                    <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                      Online
+                                    </span>
+                                  </h4>
+                                  <p className="text-[11px] text-gray-500 font-mono mt-0.5">
+                                    Range Prefix:{" "}
+                                    <strong className="text-gray-900">
+                                      #{r.rangePrefix}
+                                    </strong>{" "}
+                                    ({r.flag} {r.country})
+                                  </p>
+                                </div>
+
+                                <span className="text-xs font-mono font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                                  {platformName}
+                                </span>
+                              </div>
+
+                              <p className="text-xs text-gray-600 leading-relaxed">
+                                Physical carrier line with {r.availableCount} available number(s) of {r.totalCount} in pool.
+                              </p>
+
+                              <div className="flex items-center justify-between pt-1 border-t border-gray-200/70">
+                                <span className="text-[11px] text-gray-400 font-mono">
+                                  Ready to Allocate
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setRangeCustomInput(r.rangePrefix);
+                                    setGetNumTab("RANGE");
+                                    setRangeInputError(false);
+                                    handleGetNumberCustom(r.rangePrefix);
+                                  }}
+                                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition flex items-center gap-1 shadow-2xs cursor-pointer active:scale-95"
+                                >
+                                  <Zap className="w-3 h-3 text-amber-300" />
+                                  <span>Use Range &amp; Get Number</span>
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
                     </div>
                   </div>
                 )}

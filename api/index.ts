@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "http";
 import fs from "fs";
 import path from "path";
+import { GLOBAL_COUNTRIES_LIST } from "../src/services/countryHelper";
 
 // =========================================================================
 // SUPER X SMS - VERCEL SERVERLESS UNIVERSAL HANDLER
@@ -94,6 +95,324 @@ let memoryNotifications: any[] = readJsonFile<any[]>("notifications.json", []);
 let memoryNumbers: any[] = readJsonFile<any[]>("shared_account_numbers.json", []);
 let memoryRates: any[] = readJsonFile<any[]>("rates.json", []);
 let memoryLiveChats: any[] = readJsonFile<any[]>("live_chats.json", []);
+let memoryManualNumbers: any[] = readJsonFile<any[]>("manual_numbers_pool.json", []);
+let memoryBotConfig: any = readJsonFile<any>("bot_management_config.json", {
+  botToken: "8831851994:AAEjiZhHWDl97RABfkzOuk3NbI8291dS1b8",
+  adminId: "7084317713",
+  chatId: "-1003877961573",
+  otpGroupUrl: "https://t.me/trstyyop",
+  activePolling: true,
+  botUsername: "",
+  lastUpdated: Date.now(),
+});
+
+function loadManualNumbersPool(): any[] {
+  memoryManualNumbers = readJsonFile<any[]>("manual_numbers_pool.json", []);
+  return memoryManualNumbers.filter((item: any) => !item.id.startsWith("seed_"));
+}
+
+function saveManualNumbersPool(list: any[]) {
+  memoryManualNumbers = list;
+  writeJsonFile("manual_numbers_pool.json", list);
+}
+
+function findCountryByNameOrCode(rawInput: string): { name: string; flag: string; dialCode: string } {
+  const raw = (rawInput || "").replace(/\.[^/.]+$/, "").trim();
+  if (!raw) return { name: "Global", flag: "🌐", dialCode: "" };
+
+  const clean = raw.toLowerCase();
+  const normalized = clean.replace(/[^a-z0-9]/g, "");
+
+  if (normalized === "bd" || normalized.includes("bangla")) return { name: "Bangladesh", flag: "🇧🇩", dialCode: "+880" };
+  if (normalized === "lk" || normalized.includes("srilanka") || normalized.includes("sri lanka")) return { name: "Sri Lanka", flag: "🇱🇰", dialCode: "+94" };
+  if (normalized === "in" || normalized.includes("india")) return { name: "India", flag: "🇮🇳", dialCode: "+91" };
+  if (normalized === "pk" || normalized.includes("pakistan")) return { name: "Pakistan", flag: "🇵🇰", dialCode: "+92" };
+  if (normalized === "ci" || normalized.includes("ivory") || normalized.includes("cote")) return { name: "Ivory Coast", flag: "🇨🇮", dialCode: "+225" };
+  if (normalized === "us" || normalized === "usa" || normalized.includes("america") || normalized.includes("unitedstates")) return { name: "United States", flag: "🇺🇸", dialCode: "+1" };
+  if (normalized === "uk" || normalized === "gb" || normalized.includes("kingdom") || normalized.includes("britain")) return { name: "United Kingdom", flag: "🇬🇧", dialCode: "+44" };
+  if (normalized === "uae" || normalized.includes("dubai") || normalized.includes("emirates")) return { name: "UAE", flag: "🇦🇪", dialCode: "+971" };
+  if (normalized === "ksa" || normalized.includes("saudi")) return { name: "Saudi Arabia", flag: "🇸🇦", dialCode: "+966" };
+
+  const direct = GLOBAL_COUNTRIES_LIST.find(
+    (c) => c.name.toLowerCase() === clean || c.iso.toLowerCase() === clean
+  );
+  if (direct) return { name: direct.name, flag: direct.flag, dialCode: direct.dialCode };
+
+  const normMatch = GLOBAL_COUNTRIES_LIST.find(
+    (c) => {
+      const cNorm = c.name.toLowerCase().replace(/[^a-z0-9]/g, "");
+      return normalized.includes(cNorm) || cNorm.includes(normalized);
+    }
+  );
+  if (normMatch) return { name: normMatch.name, flag: normMatch.flag, dialCode: normMatch.dialCode };
+
+  const partial = GLOBAL_COUNTRIES_LIST.find(
+    (c) => clean.includes(c.name.toLowerCase()) || c.name.toLowerCase().includes(clean)
+  );
+  if (partial) return { name: partial.name, flag: partial.flag, dialCode: partial.dialCode };
+
+  const cleanDigits = clean.replace(/\D/g, "");
+  if (cleanDigits) {
+    const byDial = GLOBAL_COUNTRIES_LIST.find(
+      (c) => c.dialCode.replace(/\D/g, "") === cleanDigits
+    );
+    if (byDial) return { name: byDial.name, flag: byDial.flag, dialCode: byDial.dialCode };
+  }
+
+  return { name: raw.trim(), flag: "🌐", dialCode: "" };
+}
+
+function detectCountryFromNumbers(sampleNumbers: string[]): { name: string; flag: string; dialCode: string } | null {
+  if (!sampleNumbers || sampleNumbers.length === 0) return null;
+  
+  const sortedCountries = [...GLOBAL_COUNTRIES_LIST].sort((a, b) => {
+    const d1 = a.dialCode.replace(/\D/g, "");
+    const d2 = b.dialCode.replace(/\D/g, "");
+    return d2.length - d1.length;
+  });
+
+  const voteCount = new Map<string, { country: typeof GLOBAL_COUNTRIES_LIST[0]; votes: number }>();
+
+  for (const num of sampleNumbers.slice(0, 50)) {
+    const digits = num.replace(/\D/g, "");
+    if (digits.length < 7) continue;
+
+    for (const c of sortedCountries) {
+      const codeDigits = c.dialCode.replace(/\D/g, "");
+      if (codeDigits && digits.startsWith(codeDigits)) {
+        const prev = voteCount.get(c.name);
+        if (prev) {
+          prev.votes += 1;
+        } else {
+          voteCount.set(c.name, { country: c, votes: 1 });
+        }
+        break;
+      }
+    }
+  }
+
+  let bestMatch: { country: typeof GLOBAL_COUNTRIES_LIST[0]; votes: number } | null = null;
+  for (const item of voteCount.values()) {
+    if (!bestMatch || item.votes > bestMatch.votes) {
+      bestMatch = item;
+    }
+  }
+
+  if (bestMatch && bestMatch.votes >= 1) {
+    return {
+      name: bestMatch.country.name,
+      flag: bestMatch.country.flag,
+      dialCode: bestMatch.country.dialCode,
+    };
+  }
+
+  return null;
+}
+
+function parseManualNumbersDetailed(
+  rawText: string,
+  defaultCountry: string,
+  defaultFlag: string,
+  defaultDialCode: string,
+  platform: string = "All Social (WhatsApp/TG)"
+): any {
+  const lines = (rawText || "").split(/[\r\n]+/);
+  const addedRecords: any[] = [];
+  const pool = loadManualNumbersPool();
+  const existingMap = new Map<string, any>(pool.map((n) => [n.cleanDigits, n]));
+  const now = Date.now();
+
+  const sampleDigits: string[] = [];
+  let existingCount = 0;
+
+  const uniqueCleanTokens = new Set<string>();
+
+  for (const line of lines) {
+    const parts = line.split(/[\t,;|\s]+/);
+    for (const part of parts) {
+      let token = part.trim();
+      if (!token) continue;
+
+      if (/[a-zA-Z]/.test(token)) continue;
+
+      if (token.endsWith(".0")) {
+        token = token.slice(0, -2);
+      } else if (token.endsWith(".00")) {
+        token = token.slice(0, -3);
+      }
+
+      const digits = token.replace(/\D/g, "");
+      if (digits.length >= 7 && digits.length <= 16) {
+        if (!uniqueCleanTokens.has(digits)) {
+          uniqueCleanTokens.add(digits);
+          sampleDigits.push(digits);
+          if (sampleDigits.length >= 50) break;
+        }
+      }
+    }
+    if (sampleDigits.length >= 50) break;
+  }
+
+  let resolvedCountry = "";
+  let resolvedFlag = "";
+  let resolvedDial = "";
+
+  if (defaultCountry && defaultCountry !== "Global") {
+    resolvedCountry = defaultCountry;
+    resolvedFlag = defaultFlag || "🌐";
+    resolvedDial = defaultDialCode || "";
+  } else {
+    const detected = detectCountryFromNumbers(sampleDigits);
+    if (detected) {
+      resolvedCountry = detected.name;
+      resolvedFlag = detected.flag;
+      resolvedDial = detected.dialCode;
+    } else {
+      resolvedCountry = defaultCountry || "Global";
+      resolvedFlag = defaultFlag || "🌐";
+      resolvedDial = defaultDialCode || "";
+    }
+  }
+
+  const processedDigits = new Set<string>();
+
+  for (const line of lines) {
+    const parts = line.split(/[\t,;|\s]+/);
+    for (const part of parts) {
+      let token = part.trim();
+      if (!token) continue;
+
+      if (/[a-zA-Z]/.test(token)) continue;
+
+      if (token.endsWith(".0")) {
+        token = token.slice(0, -2);
+      } else if (token.endsWith(".00")) {
+        token = token.slice(0, -3);
+      }
+
+      const digits = token.replace(/\D/g, "");
+      if (digits.length >= 7 && digits.length <= 16) {
+        if (processedDigits.has(digits)) continue;
+        processedDigits.add(digits);
+
+        const existing = existingMap.get(digits);
+        if (existing) {
+          existingCount++;
+          existing.allocated = false;
+          if (resolvedCountry && resolvedCountry !== "Global") {
+            existing.country = resolvedCountry;
+            existing.flag = resolvedFlag;
+            existing.dialCode = resolvedDial;
+          }
+          if (platform) {
+            existing.platform = platform;
+            existing.socialMedia = platform;
+          }
+        } else {
+          const fullNum = token.startsWith("+") ? token : `+${digits}`;
+          const prefix = digits.slice(0, 5);
+          const mask = `${prefix}${"X".repeat(Math.max(0, digits.length - 5))}`;
+
+          const newRec = {
+            id: `num_${now}_${Math.random().toString(36).slice(2, 7)}`,
+            number: fullNum,
+            cleanDigits: digits,
+            rangePrefix: prefix,
+            maskedRange: mask,
+            country: resolvedCountry || "Global",
+            flag: resolvedFlag || "🌐",
+            dialCode: resolvedDial || "",
+            platform: platform || "All Social (WhatsApp/TG)",
+            socialMedia: platform || "All Social (WhatsApp/TG)",
+            allocated: false,
+            uploadedAt: now,
+          };
+
+          existingMap.set(digits, newRec);
+          addedRecords.push(newRec);
+        }
+      }
+    }
+  }
+
+  return {
+    addedRecords,
+    newCount: addedRecords.length,
+    existingCount,
+    totalProcessed: addedRecords.length + existingCount,
+    detectedCountry: {
+      name: resolvedCountry || "Global",
+      flag: resolvedFlag || "🌐",
+      dialCode: resolvedDial || "",
+    },
+  };
+}
+
+function getManualRangesSummary(pool: any[]): any[] {
+  const map = new Map<string, any>();
+
+  for (const item of pool) {
+    const key = `${item.rangePrefix}_${item.country}_${item.platform || "All"}`;
+    if (!map.has(key)) {
+      map.set(key, {
+        rangePrefix: item.rangePrefix,
+        maskedRange: item.maskedRange,
+        country: item.country,
+        flag: item.flag,
+        dialCode: item.dialCode,
+        platform: item.platform || item.socialMedia || "All Social (WhatsApp/TG)",
+        socialMedia: item.socialMedia || item.platform || "All Social (WhatsApp/TG)",
+        totalCount: 0,
+        availableCount: 0,
+        allocatedCount: 0,
+      });
+    }
+    const entry = map.get(key)!;
+    entry.totalCount += 1;
+    if (item.allocated) {
+      entry.allocatedCount += 1;
+    } else {
+      entry.availableCount += 1;
+    }
+  }
+
+  return Array.from(map.values()).sort((a, b) => b.totalCount - a.totalCount);
+}
+
+function allocateOneManualNumber(rangeInput: string, allocatedTo?: string): any {
+  const raw = (rangeInput || "").trim();
+  const cleanDigits = raw.replace(/\D/g, "");
+  const cleanPrefix = cleanDigits.slice(0, 5);
+  const pool = loadManualNumbersPool();
+
+  let targetIndex = pool.findIndex(
+    (n) =>
+      !n.allocated &&
+      (n.rangePrefix === cleanDigits ||
+        n.rangePrefix === cleanPrefix ||
+        (cleanDigits.length >= 3 && n.cleanDigits.startsWith(cleanDigits)) ||
+        (cleanPrefix.length >= 3 && n.cleanDigits.startsWith(cleanPrefix)))
+  );
+
+  if (targetIndex < 0 && cleanDigits.length >= 4) {
+    targetIndex = pool.findIndex(
+      (n) => !n.allocated && n.cleanDigits.includes(cleanDigits)
+    );
+  }
+
+  if (targetIndex < 0 && (!cleanDigits || raw.toLowerCase() === "all" || raw.toLowerCase() === "any")) {
+    targetIndex = pool.findIndex((n) => !n.allocated);
+  }
+
+  if (targetIndex >= 0) {
+    pool[targetIndex].allocated = true;
+    pool[targetIndex].allocatedTo = allocatedTo || "website_user";
+    pool[targetIndex].allocatedAt = Date.now();
+    saveManualNumbersPool(pool);
+    return pool[targetIndex];
+  }
+  return null;
+}
 
 // Ensure super admin always exists
 if (!memoryAccounts.some((a) => a.email === "xzrmunna96@gmail.com")) {
@@ -744,6 +1063,211 @@ export default async function handler(req: any, res: any) {
       writeJsonFile("live_chats.json", memoryLiveChats);
     }
     return sendJson(res, 200, { success: true, chats: memoryLiveChats });
+  }
+
+  // -------------------------------------------------------------------------
+  // 12. MANUAL NUMBERS & RANGE ENDPOINTS (SYNCHRONIZED REAL-TIME FOR VERCEL)
+  // -------------------------------------------------------------------------
+  if (cleanPath === "/api/manual-numbers/ranges" && method === "GET") {
+    const pool = loadManualNumbersPool();
+    const ranges = getManualRangesSummary(pool);
+    const totalCount = pool.length;
+    const allocatedCount = pool.filter((n: any) => n.allocated).length;
+    const availableCount = totalCount - allocatedCount;
+    return sendJson(res, 200, {
+      success: true,
+      ranges,
+      totalCount,
+      allocatedCount,
+      availableCount,
+    });
+  }
+
+  if (cleanPath === "/api/manual-numbers/all" && method === "GET") {
+    const pool = loadManualNumbersPool();
+    const reversed = [...pool].reverse();
+    return sendJson(res, 200, {
+      success: true,
+      numbers: reversed.slice(0, 500),
+      total: pool.length,
+    });
+  }
+
+  if (cleanPath === "/api/manual-numbers/upload" && method === "POST") {
+    const body = await parseBody(req);
+    const { numbersText, numbersList, country, flag, dialCode, platform } = body || {};
+    let rawText = "";
+    if (typeof numbersText === "string") {
+      rawText = numbersText;
+    } else if (Array.isArray(numbersList)) {
+      rawText = numbersList.join("\n");
+    }
+
+    if (!rawText.trim()) {
+      return sendJson(res, 400, { success: false, error: "numbersText or numbersList is required" });
+    }
+
+    const cInfo = findCountryByNameOrCode(country || "Global");
+    const resolvedCountry = country || cInfo.name;
+    const resolvedFlag = flag || cInfo.flag;
+    const resolvedDial = dialCode || cInfo.dialCode;
+
+    const parseResult = parseManualNumbersDetailed(
+      rawText,
+      resolvedCountry,
+      resolvedFlag,
+      resolvedDial,
+      platform || "All Social (WhatsApp/TG)"
+    );
+
+    if (parseResult.totalProcessed === 0) {
+      return sendJson(res, 200, { success: false, error: "No valid 7-16 digit phone numbers found in input" });
+    }
+
+    const pool = loadManualNumbersPool();
+    if (parseResult.addedRecords.length > 0) {
+      pool.push(...parseResult.addedRecords);
+    }
+    saveManualNumbersPool(pool);
+
+    const ranges = getManualRangesSummary(pool);
+    return sendJson(res, 200, {
+      success: true,
+      message: `Successfully processed ${parseResult.totalProcessed} numbers (${parseResult.newCount} new, ${parseResult.existingCount} refreshed) for ${parseResult.detectedCountry.name}!`,
+      count: parseResult.totalProcessed,
+      addedCount: parseResult.newCount,
+      existingCount: parseResult.existingCount,
+      totalPoolCount: pool.length,
+      country: parseResult.detectedCountry,
+      ranges,
+    });
+  }
+
+  if (cleanPath === "/api/manual-numbers/allocate" && method === "POST") {
+    const body = await parseBody(req);
+    const { rangePrefix, range, allocatedTo, userEmail } = body || {};
+    const prefix = rangePrefix || range;
+    const assignee = allocatedTo || userEmail || "Website User";
+
+    if (!prefix) {
+      return sendJson(res, 400, { success: false, error: "rangePrefix or range is required" });
+    }
+
+    const record = allocateOneManualNumber(String(prefix), assignee);
+    if (record) {
+      return sendJson(res, 200, {
+        success: true,
+        record: record,
+        numberRecord: record,
+        message: `Allocated ${record.number} for range ${record.maskedRange}`,
+      });
+    } else {
+      return sendJson(res, 200, {
+        success: false,
+        error: "No available numbers found in pool for this range",
+        message: "No available numbers found in pool for this range",
+      });
+    }
+  }
+
+  if (cleanPath === "/api/manual-numbers/test-otp" && method === "POST") {
+    const body = await parseBody(req);
+    const { number, service, otp, otpCode, message, sender } = body || {};
+    const cleanNum = (number || "").trim();
+    const code = otp || otpCode || String(Math.floor(100000 + Math.random() * 900000));
+    const srv = service || sender || "WhatsApp";
+    const msgText = message || `Your ${srv} verification code is: ${code}`;
+
+    const pool = loadManualNumbersPool();
+    const cleanDigits = cleanNum.replace(/\D/g, "");
+    const target = pool.find(
+      (n: any) => n.cleanDigits === cleanDigits || (cleanDigits.length >= 7 && n.cleanDigits.endsWith(cleanDigits))
+    );
+
+    const now = Date.now();
+    const newHit = {
+      id: `hit_manual_${now}_${Math.random().toString(36).substring(2, 6)}`,
+      sid: srv,
+      service: srv,
+      range: target?.maskedRange || cleanNum,
+      number: cleanNum,
+      code: code,
+      otp: code,
+      message: msgText,
+      sms: msgText,
+      text: msgText,
+      time: new Date().toLocaleTimeString(),
+      receivedAt: new Date().toISOString(),
+      country: target?.country || "International",
+      flag: target?.flag || "🌐",
+      source: "Manual Pool Test Gateway",
+    };
+
+    cachedHits.unshift(newHit);
+    if (cachedHits.length > 500) cachedHits.pop();
+
+    return sendJson(res, 200, {
+      success: true,
+      message: "Test OTP dispatched to Website Dashboard!",
+      hit: newHit,
+    });
+  }
+
+  if (cleanPath.startsWith("/api/manual-numbers/range/") && method === "DELETE") {
+    const prefix = cleanPath.replace("/api/manual-numbers/range/", "").trim();
+    let pool = loadManualNumbersPool();
+    const initialCount = pool.length;
+    pool = pool.filter(
+      (n: any) =>
+        n.rangePrefix !== prefix &&
+        n.cleanDigits.slice(0, 5) !== prefix &&
+        !n.cleanDigits.startsWith(prefix)
+    );
+    const deletedCount = initialCount - pool.length;
+    saveManualNumbersPool(pool);
+    const ranges = getManualRangesSummary(pool);
+    return sendJson(res, 200, {
+      success: true,
+      message: `Successfully deleted ${deletedCount} numbers for range prefix #${prefix}`,
+      deletedCount,
+      totalPoolCount: pool.length,
+      ranges,
+    });
+  }
+
+  if (cleanPath === "/api/manual-numbers/clear" && (method === "DELETE" || method === "POST")) {
+    saveManualNumbersPool([]);
+    return sendJson(res, 200, {
+      success: true,
+      message: "Successfully cleared all manual numbers from pool",
+      deletedCount: 0,
+      totalPoolCount: 0,
+      ranges: [],
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // 13. BOT MANAGEMENT CONFIG ENDPOINTS
+  // -------------------------------------------------------------------------
+  if (cleanPath === "/api/bot-management/config" && method === "GET") {
+    return sendJson(res, 200, { success: true, config: memoryBotConfig });
+  }
+
+  if (cleanPath === "/api/bot-management/config" && method === "POST") {
+    const body = await parseBody(req);
+    memoryBotConfig = { ...memoryBotConfig, ...body, lastUpdated: Date.now() };
+    writeJsonFile("bot_management_config.json", memoryBotConfig);
+    return sendJson(res, 200, { success: true, config: memoryBotConfig });
+  }
+
+  if (cleanPath === "/api/bot-management/ping" && method === "GET") {
+    return sendJson(res, 200, {
+      success: true,
+      status: "online",
+      botUsername: memoryBotConfig.botUsername || "SuperXSMSBot",
+      activePolling: true,
+      serverTime: Date.now(),
+    });
   }
 
   // -------------------------------------------------------------------------

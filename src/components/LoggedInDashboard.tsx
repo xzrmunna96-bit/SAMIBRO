@@ -940,21 +940,6 @@ const TOP_APPLICATIONS = [
 
 const POPULAR_RANGES = [
   {
-    id: "afghanistan_awcc_10",
-    name: "AWCC 10",
-    code: "9370XXX",
-    dialCode: "93",
-    country: "Afghanistan",
-    operator: "AWCC",
-    subOperator: "AWCC 10",
-    totalStock: 9999,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
     id: "afghanistan_areeba_1",
     name: "Areeba 1",
     code: "9377XXX",
@@ -1037,6 +1022,21 @@ const POPULAR_RANGES = [
     country: "Afghanistan",
     operator: "AWCC",
     subOperator: "AWCC 1",
+    totalStock: 9999,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
+    id: "afghanistan_awcc_10",
+    name: "AWCC 10",
+    code: "9370XXX",
+    dialCode: "93",
+    country: "Afghanistan",
+    operator: "AWCC",
+    subOperator: "AWCC 10",
     totalStock: 9999,
     rented: 0,
     available: "Unlimited",
@@ -1180,6 +1180,126 @@ const POPULAR_RANGES = [
     cap: "99%",
   },
   {
+    id: "afghanistan_awcc_5",
+    name: "AWCC 5",
+    code: "9370XXX",
+    dialCode: "93",
+    country: "Afghanistan",
+    operator: "AWCC",
+    subOperator: "AWCC 5",
+    totalStock: 9999,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
+    id: "afghanistan_awcc_6",
+    name: "AWCC 6",
+    code: "9370XXX",
+    dialCode: "93",
+    country: "Afghanistan",
+    operator: "AWCC",
+    subOperator: "AWCC 6",
+    totalStock: 9999,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
+    id: "afghanistan_awcc_7",
+    name: "AWCC 7",
+    code: "9370XXX",
+    dialCode: "93",
+    country: "Afghanistan",
+    operator: "AWCC",
+    subOperator: "AWCC 7",
+    totalStock: 9999,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
+    id: "afghanistan_awcc_8",
+    name: "AWCC 8",
+    code: "9370XXX",
+    dialCode: "93",
+    country: "Afghanistan",
+    operator: "AWCC",
+    subOperator: "AWCC 8",
+    totalStock: 9999,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
+    id: "afghanistan_awcc_9",
+    name: "AWCC 9",
+    code: "9370XXX",
+    dialCode: "93",
+    country: "Afghanistan",
+    operator: "AWCC",
+    subOperator: "AWCC 9",
+    totalStock: 9999,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
+    id: "afghanistan_etisalat_1",
+    name: "Etisalat 1",
+    code: "9378XXX",
+    dialCode: "93",
+    country: "Afghanistan",
+    operator: "Etisalat",
+    subOperator: "Etisalat 1",
+    totalStock: 9999,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
+    id: "afghanistan_mtn_1",
+    name: "MTN 1",
+    code: "9376XXX",
+    dialCode: "93",
+    country: "Afghanistan",
+    operator: "MTN",
+    subOperator: "MTN 1",
+    totalStock: 9999,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
+    id: "afghanistan_roshan_1",
+    name: "Roshan 1",
+    code: "9379XXX",
+    dialCode: "93",
+    country: "Afghanistan",
+    operator: "Roshan",
+    subOperator: "Roshan 1",
+    totalStock: 9999,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
     id: "bangladesh_wa",
     name: "WhatsApp",
     code: "88017XXX",
@@ -1210,6 +1330,51 @@ const POPULAR_RANGES = [
     cap: "99%",
   },
   {
+    id: "bangladesh_gp",
+    name: "Grameenphone",
+    code: "88017XXX",
+    dialCode: "880",
+    country: "Bangladesh",
+    operator: "Grameenphone",
+    subOperator: "Grameenphone",
+    totalStock: 10000,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
+    id: "bangladesh_bl",
+    name: "Banglalink",
+    code: "88019XXX",
+    dialCode: "880",
+    country: "Bangladesh",
+    operator: "Banglalink",
+    subOperator: "Banglalink",
+    totalStock: 10000,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
+    id: "bangladesh_robi",
+    name: "Robi",
+    code: "88018XXX",
+    dialCode: "880",
+    country: "Bangladesh",
+    operator: "Robi",
+    subOperator: "Robi",
+    totalStock: 10000,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
     id: "ivory_coast_wa",
     name: "WhatsApp",
     code: "22501XXX",
@@ -1223,6 +1388,126 @@ const POPULAR_RANGES = [
     rate: "0.0096 USD",
     a2pLimit: "10000",
     cap: "98%",
+  },
+  {
+    id: "ivory_coast_tg",
+    name: "Telegram",
+    code: "22505XXX",
+    dialCode: "225",
+    country: "Ivory Coast",
+    operator: "Telegram",
+    subOperator: "Telegram",
+    totalStock: 9500,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "98%",
+  },
+  {
+    id: "india_wa",
+    name: "WhatsApp",
+    code: "9198XXX",
+    dialCode: "91",
+    country: "India",
+    operator: "WhatsApp",
+    subOperator: "WhatsApp",
+    totalStock: 20000,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
+    id: "india_tg",
+    name: "Telegram",
+    code: "9199XXX",
+    dialCode: "91",
+    country: "India",
+    operator: "Telegram",
+    subOperator: "Telegram",
+    totalStock: 18000,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
+    id: "usa_wa",
+    name: "WhatsApp",
+    code: "1202XXX",
+    dialCode: "1",
+    country: "United States",
+    operator: "WhatsApp",
+    subOperator: "WhatsApp",
+    totalStock: 25000,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
+    id: "uk_wa",
+    name: "WhatsApp",
+    code: "4477XXX",
+    dialCode: "44",
+    country: "United Kingdom",
+    operator: "WhatsApp",
+    subOperator: "WhatsApp",
+    totalStock: 15000,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
+    id: "indonesia_wa",
+    name: "WhatsApp",
+    code: "62812XXX",
+    dialCode: "62",
+    country: "Indonesia",
+    operator: "WhatsApp",
+    subOperator: "WhatsApp",
+    totalStock: 8000,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "95%",
+  },
+  {
+    id: "pakistan_wa",
+    name: "WhatsApp",
+    code: "92300XXX",
+    dialCode: "92",
+    country: "Pakistan",
+    operator: "WhatsApp",
+    subOperator: "WhatsApp",
+    totalStock: 12000,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "97%",
+  },
+  {
+    id: "nigeria_wa",
+    name: "WhatsApp",
+    code: "23480XXX",
+    dialCode: "234",
+    country: "Nigeria",
+    operator: "WhatsApp",
+    subOperator: "WhatsApp",
+    totalStock: 14000,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "96%",
   },
   {
     id: "ethiopia_telegram",
@@ -1253,36 +1538,6 @@ const POPULAR_RANGES = [
     rate: "0.0096 USD",
     a2pLimit: "10000",
     cap: "96%",
-  },
-  {
-    id: "indonesia_wa",
-    name: "WhatsApp",
-    code: "62812XXX",
-    dialCode: "62",
-    country: "Indonesia",
-    operator: "WhatsApp",
-    subOperator: "WhatsApp",
-    totalStock: 8000,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "95%",
-  },
-  {
-    id: "india_wa",
-    name: "WhatsApp",
-    code: "9198XXX",
-    dialCode: "91",
-    country: "India",
-    operator: "WhatsApp",
-    subOperator: "WhatsApp",
-    totalStock: 20000,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
   },
   {
     id: "kenya_wa",
@@ -1642,28 +1897,35 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     } catch {}
   };
 
-  // Login Telegram & Manager Support Popup Notice State
+  // Login Telegram & Manager Support Popup Notice State:
+  // Shows ONCE upon login. If the page is reloaded (F5), it does NOT show again.
+  // When logging in again after logout, it will show once again.
   const [showLoginNoticeBanner, setShowLoginNoticeBanner] = useState<boolean>(() => {
     try {
-      const storageKey = `super_x_login_notice_dismissed_${user.email || 'user'}`;
-      const dismissed = sessionStorage.getItem(storageKey);
-      return !dismissed;
-    } catch {
+      const storageKey = `super_x_login_notice_shown_${user.email || "user"}`;
+      const hasShownInSession = sessionStorage.getItem(storageKey);
+      if (hasShownInSession === "true") {
+        return false;
+      }
+      // First time in this login session: show it and record so refresh/reload will not show it again
+      sessionStorage.setItem(storageKey, "true");
       return true;
+    } catch {
+      return false;
     }
   });
 
   const handleDismissLoginNotice = () => {
     setShowLoginNoticeBanner(false);
     try {
-      const storageKey = `super_x_login_notice_dismissed_${user.email || 'user'}`;
+      const storageKey = `super_x_login_notice_shown_${user.email || "user"}`;
       sessionStorage.setItem(storageKey, "true");
     } catch {}
   };
 
   const handleUserLogout = () => {
     try {
-      const storageKey = `super_x_login_notice_dismissed_${user.email || 'user'}`;
+      const storageKey = `super_x_login_notice_shown_${user.email || "user"}`;
       sessionStorage.removeItem(storageKey);
     } catch {}
     onLogout();
@@ -6306,93 +6568,93 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       {/* -------------------- MAIN CONTENT AREA -------------------- */}
       <main className="flex-1 w-full p-3 sm:p-6 lg:p-8 space-y-5">
         {/* Animated Login Telegram & Manager Support Notice Banner */}
-        <AnimatePresence>
+        <AnimatePresence mode="popLayout">
           {showLoginNoticeBanner && (
             <motion.div
               key="login-telegram-notice-banner"
-              initial={{ opacity: 0, y: -50, scale: 0.98 }}
+              initial={{ opacity: 0, y: -15, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -50, scale: 0.98 }}
-              transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+              exit={{ opacity: 0, y: -15, scale: 0.98, transition: { duration: 0.15 } }}
+              transition={{ duration: 0.25, ease: "easeOut" }}
               className="w-full"
             >
-              <div className="bg-slate-900/95 border-2 border-slate-700/80 shadow-2xl rounded-2xl p-3.5 sm:p-4 text-white relative overflow-hidden backdrop-blur-md">
+              <div className="bg-[#0f172a]/95 border border-sky-500/30 shadow-lg shadow-black/40 rounded-xl px-3 py-2 sm:px-4 sm:py-2.5 text-white relative overflow-hidden backdrop-blur-md">
                 {/* Glowing Background Light Accents */}
-                <div className="absolute -top-12 -right-12 w-48 h-48 bg-sky-500/15 rounded-full blur-2xl pointer-events-none" />
-                <div className="absolute -bottom-12 -left-12 w-48 h-48 bg-emerald-500/15 rounded-full blur-2xl pointer-events-none" />
+                <div className="absolute -top-10 -right-10 w-32 h-32 bg-sky-500/15 rounded-full blur-xl pointer-events-none" />
+                <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-emerald-500/15 rounded-full blur-xl pointer-events-none" />
 
-                {/* Main Content Banner Row */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
-                  {/* Logo & Website Title */}
-                  <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-slate-800 p-1.5 border border-slate-700/90 flex items-center justify-center shrink-0 shadow-inner">
-                      <img
-                        src="/super_x_sms_logo.png"
-                        alt="SUPER X SMS Logo"
-                        className="w-full h-full object-contain"
-                        onError={(e) => {
-                          e.currentTarget.style.display = "none";
-                        }}
-                      />
-                      <MessageSquare className="w-5 h-5 text-sky-400 hidden" />
+                {/* Main Compact Row */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 relative z-10">
+                  {/* Left: Beautiful Logo & Official SUPER X SMS Title */}
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-slate-800/90 border border-sky-500/40 flex items-center justify-center shrink-0 p-1 shadow-inner">
+                      <svg viewBox="0 0 48 48" fill="none" className="w-full h-full">
+                        <path
+                          d="M12 24C12 17.3726 17.3726 12 24 12C30.6274 12 36 17.3726 36 24C36 30.6274 30.6274 36 24 36C21.4678 36 19.1128 35.2155 17.1724 33.8767L12 35L13.4116 30.3475C12.5186 28.4891 12 26.3474 12 24Z"
+                          fill="url(#bannerLogoGrad)"
+                          stroke="#0284C7"
+                          strokeWidth="1.5"
+                          strokeLinejoin="round"
+                        />
+                        <path d="M18 21H30M18 26H26" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
+                        <path d="M7 17H13M6 22H11M8 27H13" stroke="#38BDF8" strokeWidth="2" strokeLinecap="round" />
+                        <defs>
+                          <linearGradient id="bannerLogoGrad" x1="12" y1="12" x2="36" y2="36" gradientUnits="userSpaceOnUse">
+                            <stop stopColor="#38BDF8" />
+                            <stop offset="1" stopColor="#0284C7" />
+                          </linearGradient>
+                        </defs>
+                      </svg>
                     </div>
 
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-extrabold text-white text-base sm:text-lg tracking-tight">
-                          SUPER X SMS
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-black text-white text-xs sm:text-sm tracking-tight">
+                          SUPER X <span className="text-[#38bdf8]">SMS</span>
                         </span>
-                        <span className="px-2 py-0.5 text-[10px] sm:text-xs font-black uppercase tracking-wider bg-sky-500/20 text-sky-400 border border-sky-400/40 rounded-md">
+                        <span className="px-1.5 py-0.5 text-[9px] sm:text-[10px] font-black uppercase tracking-wider bg-sky-500/20 text-sky-400 border border-sky-400/40 rounded">
                           OFFICIAL
                         </span>
                       </div>
-                      <p className="text-xs sm:text-sm text-slate-300 mt-0.5 font-medium truncate">
+                      <p className="text-[10px] sm:text-[11px] text-slate-300 font-medium truncate">
                         Join our Telegram channel for live updates &amp; news
                       </p>
                     </div>
                   </div>
 
-                  {/* Action Row: Telegram Join & Close Cross Button */}
-                  <div className="flex items-center justify-between sm:justify-end gap-2 shrink-0">
+                  {/* Right: Actions (Join, English Manager Support, Close) */}
+                  <div className="flex items-center justify-between sm:justify-end gap-1.5 shrink-0">
                     <a
                       href="https://t.me/super_x_sms_support"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-sky-500 hover:bg-sky-400 text-white font-bold text-xs sm:text-sm rounded-xl transition-all shadow-md hover:shadow-sky-500/25 active:scale-95 cursor-pointer"
+                      className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 bg-sky-500 hover:bg-sky-400 text-white font-bold text-xs rounded-lg transition-all shadow-xs hover:shadow-sky-500/25 active:scale-95 cursor-pointer"
                     >
-                      <Send className="w-4 h-4" />
+                      <Send className="w-3.5 h-3.5" />
                       <span>Join</span>
-                      <ExternalLink className="w-3.5 h-3.5 opacity-80" />
+                      <ExternalLink className="w-3 h-3 opacity-75" />
+                    </a>
+
+                    <a
+                      href="https://t.me/super_x_sms_support"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-lg transition-all shadow-xs hover:shadow-emerald-500/25 active:scale-95 cursor-pointer"
+                    >
+                      <Headphones className="w-3.5 h-3.5" />
+                      <span>Manager Support</span>
+                      <ArrowRight className="w-3 h-3 opacity-75" />
                     </a>
 
                     <button
                       onClick={handleDismissLoginNotice}
-                      className="p-2 text-slate-400 hover:text-white bg-slate-800/90 hover:bg-slate-700 rounded-xl transition-all cursor-pointer border border-slate-700/80 active:scale-95"
+                      className="p-1.5 text-slate-400 hover:text-white bg-slate-800/90 hover:bg-slate-700 rounded-lg transition-all cursor-pointer border border-slate-700/80 active:scale-95 ml-0.5"
                       title="Close notice"
                       aria-label="Close login notice"
                     >
-                      <X className="w-4 h-4 sm:w-5 sm:h-5" />
+                      <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     </button>
                   </div>
-                </div>
-
-                {/* Dedicated Secondary Row: Manager Support Button */}
-                <div className="mt-3 pt-3 border-t border-slate-800/90 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 relative z-10">
-                  <div className="flex items-center gap-2 text-xs text-slate-300 font-medium">
-                    <Headphones className="w-4 h-4 text-emerald-400 animate-pulse shrink-0" />
-                    <span>Need direct assistance or account help? Contact support:</span>
-                  </div>
-
-                  <a
-                    href="https://t.me/super_x_sms_support"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs sm:text-sm rounded-xl transition-all shadow-md hover:shadow-emerald-500/25 active:scale-95 cursor-pointer"
-                  >
-                    <Headphones className="w-4 h-4" />
-                    <span>ম্যানেজার সাপোর্ট (Manager Support)</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </a>
                 </div>
               </div>
             </motion.div>
@@ -7511,8 +7773,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               <button
                 type="button"
                 onClick={() => {
-                  setModalSelectedRange(null);
-                  setIsChooseTerminationOpen(false);
+                  setIsChooseTerminationOpen(true);
                   setModalSearchFilter("");
                   setIsRentModalOpen(true);
                 }}
@@ -7678,9 +7939,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         <button
                           type="button"
                           onClick={() => {
-                            if (!modalSelectedRange) {
-                              setModalSelectedRange(POPULAR_RANGES[0]);
-                            }
+                            setIsChooseTerminationOpen(true);
+                            setModalSearchFilter("");
                             setIsRentModalOpen(true);
                           }}
                           className="px-4 py-2 text-xs font-bold bg-[#74A50C] hover:bg-[#628B0A] text-white rounded-xl transition cursor-pointer border border-[#74A50C] inline-flex items-center gap-1.5 shadow-3xs"
@@ -7925,7 +8185,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           </div>
         )}
 
-        {/* -------------------- ADD NUMBERS MODAL (Matching User Screenshot) -------------------- */}
+        {/* -------------------- ADD NUMBERS MODAL (Two-Step Flow Matching Screenshots) -------------------- */}
         <AnimatePresence>
           {isRentModalOpen && (
             <div
@@ -7936,58 +8196,165 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   setModalSearchFilter("");
                 }
               }}
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto"
+              className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs overflow-y-auto"
             >
-              <motion.div
-                initial={{ opacity: 0, scale: 0.96 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.96 }}
-                transition={{ duration: 0.15, ease: "easeOut" }}
-                className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden flex flex-col my-auto relative"
-              >
-                {/* Modal Header */}
-                <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3.5 min-w-0">
-                    <div className="w-9 h-9 rounded-lg bg-[#689F38] text-white flex items-center justify-center shrink-0 shadow-xs">
-                      <div className="w-5 h-5 rounded-full border-2 border-white flex items-center justify-center">
-                        <Plus className="w-3 h-3 stroke-[3]" />
+              {isChooseTerminationOpen ? (
+                /* ================= STEP 1: CHOOSE A TERMINATION FULL LIST (Screenshot 1) ================= */
+                <motion.div
+                  key="step-choose-termination"
+                  initial={{ opacity: 0, scale: 0.97 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.97 }}
+                  transition={{ duration: 0.12 }}
+                  className="w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden flex flex-col my-auto relative max-h-[85vh]"
+                >
+                  {/* Quick Search Header */}
+                  <div className="p-3.5 sm:p-4 bg-gray-50/90 border-b border-gray-100 flex items-center gap-3 shrink-0">
+                    <div className="relative flex-1">
+                      <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        placeholder="Search termination, country, code..."
+                        value={modalSearchFilter}
+                        onChange={(e) => setModalSearchFilter(e.target.value)}
+                        className="w-full pl-9 pr-8 py-2 text-xs sm:text-sm bg-white border border-gray-200 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#689F38] shadow-2xs"
+                        autoFocus
+                      />
+                      {modalSearchFilter && (
+                        <button
+                          type="button"
+                          onClick={() => setModalSearchFilter("")}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1 text-xs font-bold"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsChooseTerminationOpen(false);
+                        setModalSearchFilter("");
+                      }}
+                      className="p-2 rounded-xl text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition cursor-pointer shrink-0"
+                      title="Close picker"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  {/* Scrollable Termination List (Matching Screenshot 1) */}
+                  <div className="overflow-y-auto divide-y divide-gray-100 flex-1 overscroll-contain">
+                    {/* Top Default Item: -- Choose a termination -- */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setModalSelectedRange(null);
+                        setIsChooseTerminationOpen(false);
+                        setModalSearchFilter("");
+                      }}
+                      className="w-full text-left px-5 py-3.5 text-xs sm:text-sm text-gray-900 hover:bg-gray-50 flex items-center justify-between cursor-pointer transition active:bg-gray-100"
+                    >
+                      <span className="font-normal text-gray-800">-- Choose a termination --</span>
+                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                        !modalSelectedRange ? "border-blue-600" : "border-gray-400"
+                      }`}>
+                        {!modalSelectedRange && <div className="w-2.5 h-2.5 rounded-full bg-blue-600" />}
+                      </div>
+                    </button>
+
+                    {/* Dynamic Popular Ranges List */}
+                    {POPULAR_RANGES.filter((r) => {
+                      if (!modalSearchFilter.trim()) return true;
+                      const q = modalSearchFilter.toLowerCase();
+                      return (
+                        r.country.toLowerCase().includes(q) ||
+                        r.operator.toLowerCase().includes(q) ||
+                        (r.subOperator && r.subOperator.toLowerCase().includes(q)) ||
+                        (r.dialCode && r.dialCode.includes(q))
+                      );
+                    }).map((range) => {
+                      const isSelected = modalSelectedRange && modalSelectedRange.id === range.id;
+                      return (
+                        <button
+                          key={range.id}
+                          type="button"
+                          onClick={() => {
+                            setModalSelectedRange(range);
+                            setIsChooseTerminationOpen(false);
+                            setModalSearchFilter("");
+                          }}
+                          className={`w-full text-left px-5 py-3.5 text-xs sm:text-sm transition flex items-center justify-between cursor-pointer active:bg-blue-50/60 ${
+                            isSelected
+                              ? "bg-blue-50/40 text-gray-900 font-medium"
+                              : "bg-white text-gray-800 hover:bg-gray-50"
+                          }`}
+                        >
+                          <span className="truncate pr-3">
+                            {range.country} - {range.subOperator || range.operator} - {range.dialCode} (Unlimited available)
+                          </span>
+                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                            isSelected ? "border-blue-600" : "border-gray-400"
+                          }`}>
+                            {isSelected && <div className="w-2.5 h-2.5 rounded-full bg-blue-600" />}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </motion.div>
+              ) : (
+                /* ================= STEP 2: ADD NUMBERS FORM (Screenshot 2) ================= */
+                <motion.div
+                  key="step-add-numbers"
+                  initial={{ opacity: 0, scale: 0.97 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.97 }}
+                  transition={{ duration: 0.12 }}
+                  className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden flex flex-col my-auto relative"
+                >
+                  {/* Modal Header */}
+                  <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3.5 min-w-0">
+                      <div className="w-9 h-9 rounded-lg bg-[#689F38] text-white flex items-center justify-center shrink-0 shadow-xs">
+                        <div className="w-5 h-5 rounded-full border-2 border-white flex items-center justify-center">
+                          <Plus className="w-3 h-3 stroke-[3]" />
+                        </div>
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="text-base sm:text-lg font-bold text-gray-900 tracking-tight leading-snug">
+                          Add numbers
+                        </h3>
+                        <p className="text-xs text-gray-500 truncate">
+                          Select a termination and specify how many numbers yo...
+                        </p>
                       </div>
                     </div>
-                    <div className="min-w-0">
-                      <h3 className="text-base sm:text-lg font-bold text-gray-900 tracking-tight leading-snug">
-                        Add numbers
-                      </h3>
-                      <p className="text-xs text-gray-500 truncate">
-                        Select a termination and specify how many numbers yo...
-                      </p>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsRentModalOpen(false);
+                        setIsChooseTerminationOpen(false);
+                        setModalSearchFilter("");
+                      }}
+                      className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition cursor-pointer shrink-0"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsRentModalOpen(false);
-                      setIsChooseTerminationOpen(false);
-                      setModalSearchFilter("");
-                    }}
-                    className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition cursor-pointer shrink-0"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
 
-                {/* Modal Body */}
-                <div className="p-4 sm:p-6 space-y-4 max-h-[80vh] overflow-y-auto">
-                  {/* Select Termination Header */}
-                  <div className="space-y-1.5">
-                    <label className="block text-xs sm:text-sm font-semibold text-gray-800">
-                      Select termination
-                    </label>
+                  {/* Modal Body */}
+                  <div className="p-4 sm:p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+                    {/* Select Termination Header */}
+                    <div className="space-y-1.5">
+                      <label className="block text-xs sm:text-sm font-semibold text-gray-800">
+                        Select termination
+                      </label>
 
-                    {/* Dropdown Button / Select Box */}
-                    <div className="relative">
+                      {/* Dropdown Button / Select Box */}
                       <button
                         type="button"
-                        onClick={() => setIsChooseTerminationOpen(!isChooseTerminationOpen)}
+                        onClick={() => setIsChooseTerminationOpen(true)}
                         className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg border text-xs sm:text-sm text-left cursor-pointer transition shadow-2xs ${
                           modalSelectedRange
                             ? "border-[#689F38] ring-1 ring-[#689F38]/30 bg-white text-gray-900 font-medium"
@@ -8002,282 +8369,200 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         <ChevronDown className="w-4 h-4 text-gray-500 shrink-0" />
                       </button>
 
-                      {/* Dropdown Options Popup (Exact Match to Screenshot 1) */}
-                      {isChooseTerminationOpen && (
-                        <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden z-50 divide-y divide-gray-100 max-h-72 overflow-y-auto">
-                          {/* Search Filter Inside Dropdown */}
-                          <div className="p-2 bg-gray-50/80 sticky top-0 z-10 border-b border-gray-100 flex items-center gap-2">
-                            <Search className="w-3.5 h-3.5 text-gray-400 shrink-0 ml-1" />
-                            <input
-                              type="text"
-                              placeholder="Search country, operator, or code..."
-                              value={modalSearchFilter}
-                              onChange={(e) => setModalSearchFilter(e.target.value)}
-                              className="w-full bg-white px-2.5 py-1 text-xs border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-[#689F38]"
-                            />
-                            {modalSearchFilter && (
-                              <button
-                                type="button"
-                                onClick={() => setModalSearchFilter("")}
-                                className="text-[10px] text-gray-400 hover:text-gray-600 px-1 font-bold"
-                              >
-                                ✕
-                              </button>
-                            )}
-                          </div>
-
-                          {/* Default "-- Choose a termination --" Option */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setModalSelectedRange(null);
-                              setIsChooseTerminationOpen(false);
-                            }}
-                            className="w-full text-left px-4 py-2.5 text-xs sm:text-sm font-normal text-gray-800 hover:bg-gray-50 flex items-center justify-between cursor-pointer transition"
-                          >
-                            <span>-- Choose a termination --</span>
-                            <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                              !modalSelectedRange ? "border-blue-600" : "border-gray-400"
-                            }`}>
-                              {!modalSelectedRange && <div className="w-2 h-2 rounded-full bg-blue-600" />}
-                            </div>
-                          </button>
-
-                          {/* Filtered Range Items */}
-                          {POPULAR_RANGES.filter((r) => {
-                            if (!modalSearchFilter.trim()) return true;
-                            const q = modalSearchFilter.toLowerCase();
-                            return (
-                              r.country.toLowerCase().includes(q) ||
-                              r.operator.toLowerCase().includes(q) ||
-                              (r.subOperator && r.subOperator.toLowerCase().includes(q)) ||
-                              (r.dialCode && r.dialCode.includes(q))
-                            );
-                          }).map((range) => {
-                            const isSelected = modalSelectedRange && modalSelectedRange.id === range.id;
-                            return (
-                              <button
-                                key={range.id}
-                                type="button"
-                                onClick={() => {
-                                  setModalSelectedRange(range);
-                                  setIsChooseTerminationOpen(false);
-                                  setModalSearchFilter("");
-                                }}
-                                className={`w-full text-left px-4 py-2.5 text-xs sm:text-sm transition flex items-center justify-between cursor-pointer ${
-                                  isSelected
-                                    ? "bg-blue-50/40 text-gray-900 font-medium"
-                                    : "bg-white text-gray-800 hover:bg-gray-50"
-                                }`}
-                              >
-                                <span className="truncate pr-3">
-                                  {range.country} - {range.subOperator || range.operator} - {range.dialCode} (Unlimited available)
-                                </span>
-                                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                                  isSelected ? "border-blue-600" : "border-gray-400"
-                                }`}>
-                                  {isSelected && <div className="w-2 h-2 rounded-full bg-blue-600" />}
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
+                      {/* Subtext Underneath */}
+                      <p className="text-xs text-gray-500 leading-relaxed pt-0.5">
+                        Showing the first 500 of 4,238 ranges. Type a range or operator name to find a specific one.
+                      </p>
                     </div>
 
-                    {/* Subtext Underneath */}
-                    <p className="text-xs text-gray-500 leading-relaxed pt-0.5">
-                      Showing the first 500 of 4,238 ranges. Type a range or operator name to find a specific one.
-                    </p>
-                  </div>
-
-                  {/* Range Detail Container (Matching Screenshot 2) */}
-                  {modalSelectedRange && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="p-4 sm:p-5 rounded-2xl bg-[#F8FAFC] border border-slate-100 space-y-3.5 shadow-2xs"
-                    >
-                      {/* Row 1: COUNTRY & OPERATOR */}
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                          <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                            COUNTRY
-                          </span>
-                          <span className="block text-sm sm:text-base font-bold text-slate-900">
-                            {modalSelectedRange.dialCode || "93"}
-                          </span>
-                        </div>
-                        <div className="space-y-1">
-                          <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                            OPERATOR
-                          </span>
-                          <span className="block text-sm sm:text-base font-bold text-slate-900 truncate">
-                            {modalSelectedRange.operator || "AWCC"}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Row 2: AVAILABLE */}
-                      <div className="space-y-1">
-                        <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                          AVAILABLE
-                        </span>
-                        <span className="block text-xs sm:text-sm font-bold text-[#9333EA]">
-                          Unlimited
-                        </span>
-                      </div>
-
-                      {/* Subtle Divider */}
-                      <div className="border-t border-slate-200/70 pt-3 space-y-2">
-                        {/* Select Payment Term */}
-                        <div className="flex items-center gap-1.5">
-                          <FileText className="w-3.5 h-3.5 text-[#689F38]" />
-                          <label className="text-xs font-semibold text-slate-700">
-                            Select payment term
-                          </label>
+                    {/* Range Detail Container (Matching Screenshot 2) */}
+                    {modalSelectedRange && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="p-4 sm:p-5 rounded-2xl bg-[#F8FAFC] border border-slate-100 space-y-3.5 shadow-2xs"
+                      >
+                        {/* Row 1: COUNTRY & OPERATOR */}
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                              COUNTRY
+                            </span>
+                            <span className="block text-sm sm:text-base font-bold text-slate-900">
+                              {modalSelectedRange.dialCode || "93"}
+                            </span>
+                          </div>
+                          <div className="space-y-1">
+                            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                              OPERATOR
+                            </span>
+                            <span className="block text-sm sm:text-base font-bold text-slate-900 truncate">
+                              {modalSelectedRange.operator || "AWCC"}
+                            </span>
+                          </div>
                         </div>
 
-                        <select
-                          value={modalPaymentTerm}
-                          onChange={(e) => setModalPaymentTerm(e.target.value)}
-                          className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs sm:text-sm font-medium text-slate-800 bg-white focus:outline-none focus:ring-1 focus:ring-[#689F38] cursor-pointer shadow-2xs"
-                        >
-                          <option value="1/1 (Default) - Rate: 0.0096 USD">1/1 (Default) - Rate: 0.0096 USD</option>
-                          <option value="1/2 (Bulk Terms) - Rate: 0.0096 USD">1/2 (Bulk Terms) - Rate: 0.0096 USD</option>
-                          <option value="1/7 (Weekly Terms) - Rate: 0.0096 USD">1/7 (Weekly Terms) - Rate: 0.0096 USD</option>
-                        </select>
-
-                        <p className="text-xs text-slate-400">
-                          Payment terms determine your rate
-                        </p>
-                      </div>
-
-                      {/* Subtle Divider */}
-                      <div className="border-t border-slate-200/70 pt-3 grid grid-cols-2 gap-4">
+                        {/* Row 2: AVAILABLE */}
                         <div className="space-y-1">
                           <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                            RATE
+                            AVAILABLE
                           </span>
                           <span className="block text-xs sm:text-sm font-bold text-[#9333EA]">
-                            {modalSelectedRange.rate || "0.0096 USD"}
+                            Unlimited
                           </span>
                         </div>
-                        <div className="space-y-1">
-                          <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                            A2P LIMIT
-                          </span>
-                          <span className="block text-xs sm:text-sm font-bold text-slate-900">
-                            {modalSelectedRange.a2pLimit || "10000"}
-                          </span>
+
+                        {/* Subtle Divider */}
+                        <div className="border-t border-slate-200/70 pt-3 space-y-2">
+                          {/* Select Payment Term */}
+                          <div className="flex items-center gap-1.5">
+                            <FileText className="w-3.5 h-3.5 text-[#689F38]" />
+                            <label className="text-xs font-semibold text-slate-700">
+                              Select payment term
+                            </label>
+                          </div>
+
+                          <select
+                            value={modalPaymentTerm}
+                            onChange={(e) => setModalPaymentTerm(e.target.value)}
+                            className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs sm:text-sm font-medium text-slate-800 bg-white focus:outline-none focus:ring-1 focus:ring-[#689F38] cursor-pointer shadow-2xs"
+                          >
+                            <option value="1/1 (Default) - Rate: 0.0096 USD">1/1 (Default) - Rate: 0.0096 USD</option>
+                            <option value="1/2 (Bulk Terms) - Rate: 0.0096 USD">1/2 (Bulk Terms) - Rate: 0.0096 USD</option>
+                            <option value="1/7 (Weekly Terms) - Rate: 0.0096 USD">1/7 (Weekly Terms) - Rate: 0.0096 USD</option>
+                          </select>
+
+                          <p className="text-xs text-slate-400">
+                            Payment terms determine your rate
+                          </p>
                         </div>
+
+                        {/* Subtle Divider */}
+                        <div className="border-t border-slate-200/70 pt-3 grid grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                              RATE
+                            </span>
+                            <span className="block text-xs sm:text-sm font-bold text-[#9333EA]">
+                              {modalSelectedRange.rate || "0.0096 USD"}
+                            </span>
+                          </div>
+                          <div className="space-y-1">
+                            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                              A2P LIMIT
+                            </span>
+                            <span className="block text-xs sm:text-sm font-bold text-slate-900">
+                              {modalSelectedRange.a2pLimit || "10000"}
+                            </span>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {/* HOW MANY NUMBERS? Section (Matching Screenshot 2) */}
+                    <div className="space-y-2 pt-1">
+                      <label className="block text-xs sm:text-sm font-semibold text-gray-800">
+                        How many numbers?
+                      </label>
+
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min={1}
+                          max={1000}
+                          value={modalQuantity}
+                          onChange={(e) => setModalQuantity(Math.max(1, Math.min(1000, parseInt(e.target.value) || 1)))}
+                          className="w-20 px-3 py-2 text-center text-xs sm:text-sm font-bold border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#689F38] shadow-2xs"
+                        />
+
+                        {[1, 5, 10, 50, 100].map((qty) => (
+                          <button
+                            key={qty}
+                            type="button"
+                            onClick={() => setModalQuantity(qty)}
+                            className={`px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium transition border cursor-pointer ${
+                              modalQuantity === qty
+                                ? "bg-slate-900 text-white border-slate-900 shadow-2xs"
+                                : "bg-white hover:bg-gray-50 text-gray-700 border-gray-300"
+                            }`}
+                          >
+                            {qty}
+                          </button>
+                        ))}
                       </div>
-                    </motion.div>
-                  )}
+                    </div>
 
-                  {/* HOW MANY NUMBERS? Section (Matching Screenshot 2) */}
-                  <div className="space-y-2 pt-1">
-                    <label className="block text-xs sm:text-sm font-semibold text-gray-800">
-                      How many numbers?
-                    </label>
+                    {/* NUMBER ORDER Section (Matching Screenshot 2) */}
+                    <div className="space-y-2 pt-1">
+                      <label className="block text-xs sm:text-sm font-semibold text-gray-800">
+                        Number order
+                      </label>
 
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        min={1}
-                        max={1000}
-                        value={modalQuantity}
-                        onChange={(e) => setModalQuantity(Math.max(1, Math.min(1000, parseInt(e.target.value) || 1)))}
-                        className="w-20 px-3 py-2 text-center text-xs sm:text-sm font-bold border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#689F38] shadow-2xs"
-                      />
-
-                      {[1, 5, 10, 50, 100].map((qty) => (
+                      <div className="grid grid-cols-2 gap-3">
                         <button
-                          key={qty}
                           type="button"
-                          onClick={() => setModalQuantity(qty)}
-                          className={`px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium transition border cursor-pointer ${
-                            modalQuantity === qty
-                              ? "bg-slate-900 text-white border-slate-900 shadow-2xs"
-                              : "bg-white hover:bg-gray-50 text-gray-700 border-gray-300"
+                          onClick={() => setNumberOrder("serial")}
+                          className={`py-2.5 px-4 rounded-lg text-xs sm:text-sm font-semibold transition border flex items-center justify-center gap-1.5 cursor-pointer ${
+                            numberOrder === "serial"
+                              ? "bg-[#F4F9EB] text-[#557A08] border-[#689F38] shadow-2xs"
+                              : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
                           }`}
                         >
-                          {qty}
+                          <span>↓↑ Serial</span>
                         </button>
-                      ))}
+
+                        <button
+                          type="button"
+                          onClick={() => setNumberOrder("random")}
+                          className={`py-2.5 px-4 rounded-lg text-xs sm:text-sm font-semibold transition border flex items-center justify-center gap-1.5 cursor-pointer ${
+                            numberOrder === "random"
+                              ? "bg-[#F4F9EB] text-[#557A08] border-[#689F38] shadow-2xs"
+                              : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+                          }`}
+                        >
+                          <span>🔀 Random</span>
+                        </button>
+                      </div>
+
+                      <p className="text-xs text-gray-400">
+                        You can request up to 1000 at a time.
+                      </p>
                     </div>
                   </div>
 
-                  {/* NUMBER ORDER Section (Matching Screenshot 2) */}
-                  <div className="space-y-2 pt-1">
-                    <label className="block text-xs sm:text-sm font-semibold text-gray-800">
-                      Number order
-                    </label>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <button
-                        type="button"
-                        onClick={() => setNumberOrder("serial")}
-                        className={`py-2.5 px-4 rounded-lg text-xs sm:text-sm font-semibold transition border flex items-center justify-center gap-1.5 cursor-pointer ${
-                          numberOrder === "serial"
-                            ? "bg-[#F4F9EB] text-[#557A08] border-[#689F38] shadow-2xs"
-                            : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
-                        }`}
-                      >
-                        <span>↓↑ Serial</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setNumberOrder("random")}
-                        className={`py-2.5 px-4 rounded-lg text-xs sm:text-sm font-semibold transition border flex items-center justify-center gap-1.5 cursor-pointer ${
-                          numberOrder === "random"
-                            ? "bg-[#F4F9EB] text-[#557A08] border-[#689F38] shadow-2xs"
-                            : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
-                        }`}
-                      >
-                        <span>🔀 Random</span>
-                      </button>
-                    </div>
-
-                    <p className="text-xs text-gray-400">
-                      You can request up to 1000 at a time.
-                    </p>
+                  {/* Modal Footer (Matching Screenshot 2) */}
+                  <div className="px-6 py-4 bg-gray-50/70 border-t border-gray-100 flex items-center justify-end gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsRentModalOpen(false);
+                        setIsChooseTerminationOpen(false);
+                        setModalSearchFilter("");
+                      }}
+                      className="px-4 py-2 text-xs sm:text-sm font-medium bg-white hover:bg-gray-50 border border-gray-300 rounded-lg text-gray-700 transition cursor-pointer shadow-2xs"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!modalSelectedRange || isAllocating}
+                      onClick={() => {
+                        if (!modalSelectedRange) return;
+                        setIsRentModalOpen(false);
+                        setIsAddNumbersConfirmOpen(true);
+                      }}
+                      className={`px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition flex items-center gap-1.5 shadow-2xs ${
+                        !modalSelectedRange || isAllocating
+                          ? "bg-[#8E9CA8] text-white cursor-not-allowed opacity-90"
+                          : "bg-[#111827] hover:bg-black text-white cursor-pointer active:scale-95"
+                      }`}
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Add numbers</span>
+                    </button>
                   </div>
-                </div>
-
-                {/* Modal Footer (Matching Screenshot 2) */}
-                <div className="px-6 py-4 bg-gray-50/70 border-t border-gray-100 flex items-center justify-end gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsRentModalOpen(false);
-                      setIsChooseTerminationOpen(false);
-                      setModalSearchFilter("");
-                    }}
-                    className="px-4 py-2 text-xs sm:text-sm font-medium bg-white hover:bg-gray-50 border border-gray-300 rounded-lg text-gray-700 transition cursor-pointer shadow-2xs"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!modalSelectedRange || isAllocating}
-                    onClick={() => {
-                      if (!modalSelectedRange) return;
-                      setIsRentModalOpen(false);
-                      setIsAddNumbersConfirmOpen(true);
-                    }}
-                    className={`px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition flex items-center gap-1.5 shadow-2xs ${
-                      !modalSelectedRange || isAllocating
-                        ? "bg-[#8E9CA8] text-white cursor-not-allowed opacity-90"
-                        : "bg-[#111827] hover:bg-black text-white cursor-pointer active:scale-95"
-                    }`}
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Add numbers</span>
-                  </button>
-                </div>
-              </motion.div>
+                </motion.div>
+              )}
             </div>
           )}
         </AnimatePresence>

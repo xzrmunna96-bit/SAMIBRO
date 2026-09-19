@@ -172,6 +172,7 @@ export function App() {
     setCurrentUser(user);
     try {
       localStorage.setItem('super_x_sms_logged_in_user', JSON.stringify(user));
+      sessionStorage.removeItem(`super_x_login_notice_shown_${user.email || 'user'}`);
     } catch {
       // ignore
     }
@@ -180,6 +181,11 @@ export function App() {
   };
 
   const handleLogout = () => {
+    if (currentUser?.email) {
+      try {
+        sessionStorage.removeItem(`super_x_login_notice_shown_${currentUser.email}`);
+      } catch {}
+    }
     setCurrentUser(null);
     try {
       localStorage.removeItem('super_x_sms_logged_in_user');

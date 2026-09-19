@@ -18,7 +18,7 @@ import {
   Radio,
   Key,
 } from "lucide-react";
-import { LiveConsoleHit, stripFlagFromCountryName } from "../services/voltxApi";
+import { LiveConsoleHit, stripFlagFromCountryName, getRealCountryName, normalizeServiceId } from "../services/voltxApi";
 import { getCountryInfo, GLOBAL_COUNTRIES_LIST } from "../services/countryHelper";
 import { getCountryFlagEmoji, speakOtpAnnouncement } from "./LoggedInDashboard";
 import { CountryFlag } from "./CountryFlags";
@@ -143,26 +143,34 @@ export interface TestSmsCardItem {
   isFoxSms?: boolean;
 }
 
-// Convert any incoming hit (from FOX SMS API or Voltx API) to display card item
+// Convert any incoming hit (from FOX SMS API or Seven On Tel / Voltx) to display card item
 export function convertHitToCard(h: any, i: number = 0): TestSmsCardItem {
   const rawRange = (h.range || (h as any).rangeCode || "").trim();
   const rawPhone = ((h as any).number || (h as any).num || (h as any).testNumber || rawRange).trim();
   const cleanDigits = (rawPhone || rawRange).replace(/\D/g, "");
-  const info = getCountryInfo(rawRange || rawPhone);
+  const info = getCountryInfo(cleanDigits || rawRange || rawPhone);
 
   let countryName = (h.country || (h as any).countryName || "").trim();
   if (
     !countryName ||
     countryName.toUpperCase().includes("INTERNATIONAL") ||
-    (countryName.toUpperCase().includes("SRI LANKA") && !cleanDigits.startsWith("94"))
+    countryName.toUpperCase().includes("UNKNOWN") ||
+    countryName.toUpperCase().includes("GLOBAL") ||
+    (countryName.toUpperCase().includes("SRI LANKA") && !cleanDigits.startsWith("94")) ||
+    (countryName.toUpperCase().includes("BANGLADESH") && !cleanDigits.startsWith("880"))
   ) {
-    countryName = info.name;
+    countryName = info.name || getRealCountryName(info.name, cleanDigits);
+  }
+
+  if (!countryName || countryName.toUpperCase().includes("INTERNATIONAL")) {
+    countryName = getRealCountryName(info.name, cleanDigits) || "Global Route";
   }
 
   let operatorName = h.operator || "";
   if (
     !operatorName ||
     operatorName === "Gateway Route" ||
+    operatorName === "FOX SMS Carrier Route" ||
     (operatorName.toLowerCase().includes("dialog") && !cleanDigits.startsWith("94"))
   ) {
     const matchedCountry = GLOBAL_COUNTRIES_LIST.find(
@@ -190,16 +198,27 @@ export function convertHitToCard(h: any, i: number = 0): TestSmsCardItem {
   else if (elapsedSec < 86400) elapsedStr = `${Math.floor(elapsedSec / 3600)}h ago`;
   else elapsedStr = `${Math.floor(elapsedSec / 86400)}d ago`;
 
-  const rawMsg = String(h.message || h.text || "Incoming SMS Packet").trim();
+  let rawMsg = String(h.message || h.text || h.sms_text || "").trim();
   const extractedOtp = (h as any).code || (h as any).otp || extractOtpCode(rawMsg) || "";
 
+  if (!rawMsg || rawMsg.toLowerCase().includes("incoming sms packet")) {
+    if (extractedOtp) {
+      rawMsg = `Your verification code is ${extractedOtp}`;
+    } else {
+      rawMsg = `Incoming SMS verification code received`;
+    }
+  }
+
+  const rawCli = h.sid || (h as any).service || (h as any).cli || "SMS";
+  const sid = normalizeServiceId(rawCli, rawMsg);
+
   return {
-    id: (h as any).id || `hit_${cleanDigits}_${tVal}_${(h.sid || "").toLowerCase()}_${i}`,
+    id: (h as any).id || `hit_${cleanDigits}_${tVal}_${sid.toLowerCase()}_${i}`,
     country: countryName.toUpperCase(),
     operator: operatorName,
     range: rawRange || info.dialCode.replace("+", ""),
     number: rawPhone,
-    sid: h.sid || (h as any).service || (h as any).cli || "SMS",
+    sid: sid || "SMS",
     message: rawMsg,
     payout: h.payout && h.payout !== "-" ? String(h.payout) : "-",
     elapsed: elapsedStr,
@@ -247,18 +266,9 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
     return seed.map((h, i) => convertHitToCard(h, i));
   });
 
-  // Calculate messages received today (00:00:00 local time to now)
+  // Calculate total messages in real time matching the displayed list length
   const todayCount = useMemo(() => {
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
-    const startTimestamp = startOfToday.getTime();
-
-    const todays = itemsList.filter((item) => {
-      const t = typeof item.timestamp === "number" ? item.timestamp : new Date(item.timestamp).getTime();
-      return !isNaN(t) && t >= startTimestamp;
-    });
-
-    return todays.length;
+    return itemsList.length;
   }, [itemsList]);
 
   // Sound chime tracking ref
@@ -660,7 +670,7 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
               </span>
             </div>
             <span className="text-[11px] font-medium text-slate-500 block">
-              আজকের প্রাপ্ত মেসেজ (Today's Live SMS)
+              Total Received Live Messages
             </span>
           </div>
 

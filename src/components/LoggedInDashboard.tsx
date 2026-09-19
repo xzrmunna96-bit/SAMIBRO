@@ -5376,7 +5376,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
       <aside
         id="dashboard-sidebar-drawer"
-        className={`fixed top-0 left-0 bottom-0 z-50 w-[280px] sm:w-[300px] lg:w-64 xl:w-72 bg-slate-900 text-slate-100 shadow-2xl lg:shadow-none flex flex-col justify-between overflow-y-auto transition-transform duration-300 ease-out border-r border-slate-800 lg:sticky lg:top-0 lg:h-screen lg:self-start lg:shrink-0 lg:z-30 ${
+        className={`fixed top-0 left-0 bottom-0 z-40 w-[280px] sm:w-[300px] lg:w-64 xl:w-72 bg-slate-900 text-slate-100 shadow-2xl flex flex-col justify-between overflow-y-auto transition-transform duration-300 ease-out border-r border-slate-800 ${
           isSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         }`}
       >
@@ -5851,7 +5851,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       </aside>
 
       {/* -------------------- MAIN CONTENT WRAPPER -------------------- */}
-      <div className="flex-1 min-w-0 flex flex-col min-h-screen">
+      <div className="flex-1 min-w-0 flex flex-col min-h-screen lg:pl-64 xl:pl-72">
         {/* -------------------- TOP NAVBAR -------------------- */}
         <header className="sticky top-0 z-40 w-full bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 text-white shadow-xl border-b-4 border-cyan-400 shadow-[0_4px_25px_rgba(6,182,212,0.35)]">
           <div className="w-full px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-2">

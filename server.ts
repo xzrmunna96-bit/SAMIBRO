@@ -6292,16 +6292,16 @@ async function startServer() {
       }
 
       if (hits.length > 0) {
-        cachedFoxHits = hits;
+        const result = processAndBroadcastIncomingHits(hits);
+        cachedFoxHits = result.added;
         lastFoxFetchTime = now;
-        processAndBroadcastIncomingHits(hits);
       }
 
       res.json({
         success: true,
-        count: hits.length,
-        hits: hits.length > 0 ? hits : cachedFoxHits,
-        message: `Parsed and synchronized ${hits.length} records from FOX SMS API`,
+        count: cachedFoxHits.length,
+        hits: cachedFoxHits,
+        message: `Parsed and synchronized ${cachedFoxHits.length} records from FOX SMS API`,
       });
     } catch (err: any) {
       res.json({
@@ -7720,8 +7720,12 @@ async function startServer() {
 
     // Build comprehensive set of existing signatures (both content-based and time-based) to strictly avoid duplicates
     const existingSignatures = new Set<string>();
+    const existingNumbers = new Set<string>();
     for (const h of serverGlobalLiveHits) {
       const rNum = (h.number || h.num || h.range || "").replace(/\D/g, "");
+      if (rNum) {
+        existingNumbers.add(rNum);
+      }
       const sStr = (h.sid || h.service || h.cli || "").trim().toLowerCase();
       const mStr = (h.message || "").trim().slice(0, 45).toLowerCase();
       const oStr = (h.code || h.otp || "").replace(/\D/g, "");
@@ -7752,6 +7756,12 @@ async function startServer() {
       const msgStr = (h.message || "").trim().slice(0, 45).toLowerCase();
       const extractedOtp = (h.code || h.otp || extractOtpCode(h.message || "") || "").replace(/\D/g, "");
 
+      // Apply single-OTP deduplication for Fox SMS and Seven On Tel to prevent spamming the website with duplicate phone numbers
+      const isFromApiPanel = h.source === "FOX SMS" || h.source === "Seven On Tel" || h.isFoxSms;
+      if (isFromApiPanel && rawNum && existingNumbers.has(rawNum)) {
+        continue;
+      }
+
       // Check all deduplication signatures
       const isDuplicateMsg = rawNum && msgStr && existingSignatures.has(`msg_${rawNum}_${msgStr}`);
       const isDuplicateOtp = rawNum && extractedOtp && extractedOtp.length >= 3 && existingSignatures.has(`otp_${rawNum}_${extractedOtp}`);
@@ -7765,6 +7775,7 @@ async function startServer() {
       if (rawNum && msgStr) existingSignatures.add(`msg_${rawNum}_${msgStr}`);
       if (rawNum && extractedOtp && extractedOtp.length >= 3) existingSignatures.add(`otp_${rawNum}_${extractedOtp}`);
       if (rawNum && hitTime) existingSignatures.add(`time_${rawNum}_${hitTime}_${sidStr}`);
+      if (rawNum && isFromApiPanel) existingNumbers.add(rawNum);
 
       validNew.push({
         ...h,
@@ -8030,8 +8041,92 @@ async function startServer() {
     }
   }
 
-  setInterval(syncFromFoxSmsApi, 3000);
+  // Periodic background sync directly from Seven On Tel (S1T) API
+  async function syncFromSevenOnTelApi() {
+    try {
+      const targetUrl = "http://147.135.212.197/crapi/s1t/viewstats?token=%20Qk9YNEVBdXVDV6UG-JaU6BZ11jT4tKcXSDiJCCQX6EVYnpbox_VoU=&records=100";
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+      const res = await fetch(targetUrl, {
+        method: "GET",
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          "Accept": "application/json, text/plain, */*",
+        },
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const text = await res.text();
+        let json: any = null;
+        try { json = JSON.parse(text); } catch {}
+
+        if (json && (json.status === "success" || Array.isArray(json.data) || Array.isArray(json))) {
+          const items = Array.isArray(json.data) ? json.data : (Array.isArray(json) ? json : []);
+          const hits: any[] = [];
+          for (const item of items) {
+            if (!item) continue;
+            const num = String(item.num || item.number || item.phone || item.range || "").trim();
+            const rawMsg = String(item.message || item.text || item.sms || "").trim();
+            const rawCli = String(item.cli || item.sender || item.service || "Seven On Tel").trim();
+            const sid = normalizeServiceId(rawCli, rawMsg);
+
+            const digits = num.replace(/\D/g, "");
+            const rangePrefix = digits.length >= 5 ? digits.slice(0, 5) : (digits || num);
+
+            let parsedTime = Date.now();
+            if (item.dt) {
+              const dtStr = String(item.dt).trim();
+              const isoStr = dtStr.includes(" ") && !dtStr.includes("T") ? dtStr.replace(" ", "T") + "Z" : dtStr;
+              const t = new Date(isoStr).getTime();
+              if (!isNaN(t) && t > 0) parsedTime = t;
+            }
+
+            const carrier = resolveCarrierDetails(rangePrefix || num);
+            const countryName = getRealCountryName(carrier.country, num);
+            const operatorName = "Seven On Tel Carrier Route";
+            const otpCode = extractOtpCode(rawMsg);
+
+            if (num || rawMsg) {
+              hits.push({
+                range: rangePrefix || num,
+                number: num,
+                num,
+                cli: rawCli,
+                service: sid,
+                sid: sid,
+                message: rawMsg,
+                payout: item.payout || "0.01",
+                dt: item.dt,
+                time: parsedTime,
+                operator: operatorName,
+                country: countryName,
+                code: otpCode,
+                otp: otpCode,
+                isFoxSms: true, // Mark true to leverage the existing stream filters effortlessly
+                isSevenOnTel: true,
+                source: "Seven On Tel",
+              });
+            }
+          }
+
+          if (hits.length > 0) {
+            processAndBroadcastIncomingHits(hits);
+          }
+        }
+      }
+    } catch (err) {
+      // quiet
+    }
+  }
+
+  setInterval(syncFromFoxSmsApi, 5000);
   setTimeout(syncFromFoxSmsApi, 500);
+  setInterval(syncFromSevenOnTelApi, 10000);
+  setTimeout(syncFromSevenOnTelApi, 1500);
 
   // Global live stream GET endpoint
   app.get("/api/global-live-stream", (req, res) => {
@@ -8041,11 +8136,11 @@ async function startServer() {
     res.setHeader("Expires", "0");
 
     // Non-blocking background sync if stale or empty
-    if (serverGlobalLiveHits.length === 0 || Date.now() - lastUpstreamSyncTime > 3000) {
+    if (serverGlobalLiveHits.length === 0 || Date.now() - lastUpstreamSyncTime > 8000) {
       if (voltxApiActive) {
         syncFromUpstreamVoltxConsole().catch(() => {});
       }
-      syncFromFoxSmsApi().catch(() => {});
+      // Rely on background setIntervals for Fox SMS and Seven On Tel to avoid aggressive rate-limits
     }
 
     res.json({

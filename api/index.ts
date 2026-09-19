@@ -195,6 +195,61 @@ async function fetchFromFoxSmsUpstream(): Promise<any[]> {
   return [];
 }
 
+async function fetchFromSevenOnTelUpstream(): Promise<any[]> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3800);
+    const res = await fetch(
+      "http://147.135.212.197/crapi/s1t/viewstats?token=%20Qk9YNEVBdXVDV6UG-JaU6BZ11jT4tKcXSDiJCCQX6EVYnpbox_VoU=&records=100",
+      {
+        signal: controller.signal,
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          Accept: "application/json, text/plain, */*",
+        },
+      }
+    );
+    clearTimeout(timer);
+
+    if (res.ok) {
+      const data: any = await res.json();
+      if (data && Array.isArray(data.data)) {
+        return data.data.map((item: any) => {
+          let timeVal = Date.now();
+          if (item.dt) {
+            const dtStr = String(item.dt).trim();
+            const iso = dtStr.includes(" ") && !dtStr.includes("T") ? dtStr.replace(" ", "T") + "Z" : dtStr;
+            const parsed = new Date(iso).getTime();
+            if (!isNaN(parsed) && parsed > 0) timeVal = parsed;
+          }
+          const rawNum = String(item.num || item.number || "").replace(/\D/g, "");
+          const rangePrefix = rawNum.length >= 5 ? rawNum.slice(0, 5) : rawNum;
+          const cli = String(item.cli || item.service || "Seven On Tel").trim();
+
+          return {
+            range: rangePrefix,
+            number: rawNum,
+            num: rawNum,
+            sid: cli,
+            service: cli,
+            cli,
+            message: item.message || "",
+            payout: item.payout || "0.0100",
+            time: timeVal,
+            dt: item.dt,
+            operator: "Seven On Tel Carrier Route",
+            country: "International",
+            source: "Seven On Tel",
+            isFoxSms: true, // set to true for easy frontend filter integration
+            isSevenOnTel: true,
+          };
+        });
+      }
+    }
+  } catch {}
+  return [];
+}
+
 async function parseBody(req: any): Promise<any> {
   if (req.body && typeof req.body === "object") return req.body;
   if (req.body && typeof req.body === "string") {
@@ -253,8 +308,11 @@ export default async function handler(req: any, res: any) {
     const now = Date.now();
     if (now - lastFoxSyncTime > 3000 || cachedHits.length === 0) {
       const freshFox = await fetchFromFoxSmsUpstream();
-      if (freshFox.length > 0) {
-        cachedHits = freshFox;
+      const freshSeven = await fetchFromSevenOnTelUpstream();
+      const merged = [...freshFox, ...freshSeven];
+      if (merged.length > 0) {
+        merged.sort((a, b) => b.time - a.time);
+        cachedHits = merged;
         lastFoxSyncTime = now;
       }
     }

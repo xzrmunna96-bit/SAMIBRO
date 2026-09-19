@@ -28,6 +28,11 @@ import {
   ShieldAlert,
   Activity,
   Layers,
+  Mail,
+  MapPin,
+  Shield,
+  Save,
+  Headphones,
   Search,
   Terminal as TerminalIcon,
   Radio,
@@ -61,6 +66,7 @@ import {
   Send,
   Camera,
   Upload,
+  ShoppingCart,
   BadgeCheck,
   Image as ImageIcon,
   Volume2,
@@ -932,52 +938,69 @@ const TOP_APPLICATIONS = [
 
 const POPULAR_RANGES = [
   {
-    id: "88017",
-    name: "Bangladesh GP",
-    code: "88017XXX",
-    country: "Bangladesh",
-    rate: "$0.22",
-    cap: "98%",
-  },
-  {
-    id: "9478",
-    name: "Sri Lanka Dialog / Mobitel",
-    code: "9478XXXX",
-    country: "Sri Lanka",
-    rate: "$0.20",
+    id: "ethiopia_telegram",
+    name: "Telegram",
+    code: "25191XXX",
+    country: "Ethiopia",
+    operator: "Telegram",
+    totalStock: 8500,
+    rented: 0,
+    available: 8500,
+    rate: "0.0000 USD",
+    a2pLimit: "10,000",
     cap: "99%",
   },
   {
-    id: "44740",
-    name: "UK EE Physical",
-    code: "44740XXX",
-    country: "United Kingdom",
-    rate: "$0.28",
-    cap: "94%",
-  },
-  {
-    id: "22501",
-    name: "Ivory Coast Direct",
+    id: "ivory_coast_wa",
+    name: "WhatsApp",
     code: "22501XXX",
     country: "Ivory Coast",
-    rate: "$0.19",
-    cap: "91%",
+    operator: "WhatsApp",
+    totalStock: 9995,
+    rented: 0,
+    available: 9995,
+    rate: "0.0000 USD",
+    a2pLimit: "10,000",
+    cap: "98%",
   },
   {
-    id: "62812",
-    name: "Indonesia Telkomsel",
-    code: "62812XXX",
-    country: "Indonesia",
-    rate: "$0.24",
+    id: "bangladesh_tg",
+    name: "Telegram",
+    code: "88017XXX",
+    country: "Bangladesh",
+    operator: "Telegram",
+    totalStock: 12500,
+    rented: 0,
+    available: 12500,
+    rate: "0.0000 USD",
+    a2pLimit: "10,000",
+    cap: "99%",
+  },
+  {
+    id: "iraq_wa",
+    name: "WhatsApp",
+    code: "96477XXX",
+    country: "Iraq",
+    operator: "WhatsApp",
+    totalStock: 5000,
+    rented: 0,
+    available: 5000,
+    rate: "0.0000 USD",
+    a2pLimit: "10,000",
     cap: "96%",
   },
   {
-    id: "15552",
-    name: "USA T-Mobile",
-    code: "15552XXX",
-    country: "United States",
-    rate: "$0.35",
-    cap: "89%",
+    id: "indonesia_wa",
+    name: "WhatsApp",
+    code: "62812XXX",
+    country: "Indonesia",
+    operator: "WhatsApp",
+    totalStock: 8000,
+    rented: 0,
+    available: 8000,
+    rate: "0.0000 USD",
+    a2pLimit: "10,000",
+    cap: "95%",
   },
 ];
 
@@ -1060,6 +1083,7 @@ const StreamCountdownRefreshButton = React.memo(function StreamCountdownRefreshB
 
 export const VIEW_TO_HASH_MAP: Record<string, string> = {
   dashboard: "agent",
+  myNumbers: "myNumbers",
   getNumber: "getNumber",
   console: "console",
   smsRange: "smsRange",
@@ -1081,6 +1105,8 @@ export const VIEW_TO_HASH_MAP: Record<string, string> = {
 export const HASH_TO_VIEW_MAP: Record<string, any> = {
   agent: "dashboard",
   dashboard: "dashboard",
+  mynumbers: "myNumbers",
+  "my-numbers": "myNumbers",
   "get-number": "getNumber",
   getnumber: "getNumber",
   console: "console",
@@ -1130,6 +1156,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [currentView, setCurrentView] = useState<
     | "dashboard"
+    | "myNumbers"
     | "getNumber"
     | "console"
     | "smsRange"
@@ -1157,6 +1184,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         savedView &&
         [
           "dashboard",
+          "myNumbers",
           "getNumber",
           "console",
           "smsRange",
@@ -1225,6 +1253,33 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     try {
       localStorage.removeItem(`super_x_sms_test_history_${user.email}`);
     } catch {}
+  };
+
+  // Login Telegram & Manager Support Popup Notice State
+  const [showLoginNoticeBanner, setShowLoginNoticeBanner] = useState<boolean>(() => {
+    try {
+      const storageKey = `super_x_login_notice_dismissed_${user.email || 'user'}`;
+      const dismissed = sessionStorage.getItem(storageKey);
+      return !dismissed;
+    } catch {
+      return true;
+    }
+  });
+
+  const handleDismissLoginNotice = () => {
+    setShowLoginNoticeBanner(false);
+    try {
+      const storageKey = `super_x_login_notice_dismissed_${user.email || 'user'}`;
+      sessionStorage.setItem(storageKey, "true");
+    } catch {}
+  };
+
+  const handleUserLogout = () => {
+    try {
+      const storageKey = `super_x_login_notice_dismissed_${user.email || 'user'}`;
+      sessionStorage.removeItem(storageKey);
+    } catch {}
+    onLogout();
   };
 
   // Admin User Approvals State
@@ -1508,6 +1563,22 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
   const [isReloading, setIsReloading] = useState(false);
   const [copiedText, setCopiedText] = useState<string | null>(null);
+  const [myNumbersSearch, setMyNumbersSearch] = useState("");
+  const [myNumbersRangeFilter, setMyNumbersRangeFilter] = useState("");
+  const [selectedNums, setSelectedNums] = useState<string[]>([]);
+  const [myNumsPage, setMyNumsPage] = useState(1);
+  const [isRentModalOpen, setIsRentModalOpen] = useState(false);
+  const [rentModalTab, setRentModalTab] = useState<"rent" | "upload">("rent");
+  const [isChooseTerminationOpen, setIsChooseTerminationOpen] = useState(false);
+  const [modalSearchFilter, setModalSearchFilter] = useState("");
+  const [modalSelectedRange, setModalSelectedRange] = useState<any | null>(POPULAR_RANGES[0]);
+  const [modalDropdownOpen, setModalDropdownOpen] = useState(false);
+  const [modalQuantity, setModalQuantity] = useState(50);
+  const [modalPaymentTerm, setModalPaymentTerm] = useState("1/1 (Default) - Rate: 0.0000 USD");
+  const [stockUploadCountry, setStockUploadCountry] = useState("ivory coast");
+  const [stockUploadOperator, setStockUploadOperator] = useState("WhatsApp I said");
+  const [stockUploadNumbersText, setStockUploadNumbersText] = useState("");
+  const [stockUploadSuccess, setStockUploadSuccess] = useState(false);
 
   // User Profile Form & Password States
   const [profileName, setProfileName] = useState(user.name || "");
@@ -1520,6 +1591,38 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const [profileSaveError, setProfileSaveError] = useState<string | null>(null);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const profileFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Extended User Profile & Notifications matching Screenshot Specs
+  const [profileUsername, setProfileUsername] = useState(() => localStorage.getItem(`profile_username_${user.email}`) || user.name || "NAHIDUL GAZI");
+  const [profileFullName, setProfileFullName] = useState(() => localStorage.getItem(`profile_fullname_${user.email}`) || "John Doe");
+  const [profileAddress, setProfileAddress] = useState(() => localStorage.getItem(`profile_address_${user.email}`) || "Your full address");
+  const [profileCity, setProfileCity] = useState(() => localStorage.getItem(`profile_city_${user.email}`) || "New York");
+  const [profileState, setProfileState] = useState(() => localStorage.getItem(`profile_state_${user.email}`) || "NY");
+  const [profilePostalCode, setProfilePostalCode] = useState(() => localStorage.getItem(`profile_postal_code_${user.email}`) || "10001");
+  const [profileCountry, setProfileCountry] = useState(() => localStorage.getItem(`profile_country_${user.email}`) || "Bangladesh");
+  const [profileTimezone, setProfileTimezone] = useState(() => localStorage.getItem(`profile_timezone_${user.email}`) || "UTC");
+  const [profileCurrentPassword, setProfileCurrentPassword] = useState("");
+
+  const [notifEmail, setNotifEmail] = useState(() => {
+    const v = localStorage.getItem(`notif_email_${user.email}`);
+    return v === null ? true : v === 'true';
+  });
+  const [notifSms, setNotifSms] = useState(() => {
+    const v = localStorage.getItem(`notif_sms_${user.email}`);
+    return v === null ? true : v === 'true';
+  });
+  const [notifPayment, setNotifPayment] = useState(() => {
+    const v = localStorage.getItem(`notif_payment_${user.email}`);
+    return v === null ? true : v === 'true';
+  });
+  const [notifSecurity, setNotifSecurity] = useState(() => {
+    const v = localStorage.getItem(`notif_security_${user.email}`);
+    return v === null ? true : v === 'true';
+  });
+  const [notifMarketing, setNotifMarketing] = useState(() => {
+    const v = localStorage.getItem(`notif_marketing_${user.email}`);
+    return v === null ? false : v === 'true';
+  });
 
   useEffect(() => {
     setProfileName(user.name || "");
@@ -1646,16 +1749,26 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     setProfileSaveError(null);
     setProfileSaveSuccess(null);
 
+    // Save extended fields to localStorage
+    localStorage.setItem(`profile_username_${user.email}`, profileUsername);
+    localStorage.setItem(`profile_fullname_${user.email}`, profileFullName);
+    localStorage.setItem(`profile_address_${user.email}`, profileAddress);
+    localStorage.setItem(`profile_city_${user.email}`, profileCity);
+    localStorage.setItem(`profile_state_${user.email}`, profileState);
+    localStorage.setItem(`profile_postal_code_${user.email}`, profilePostalCode);
+    localStorage.setItem(`profile_country_${user.email}`, profileCountry);
+    localStorage.setItem(`profile_timezone_${user.email}`, profileTimezone);
+
     const res = updateUserProfileAndPassword({
       email: user.email,
-      name: profileName,
+      name: profileUsername || profileName,
       phoneOrTelegram: profilePhone,
       note: profileNote,
       avatarUrl: profileAvatar,
     });
 
     if (res.success) {
-      setProfileSaveSuccess("Profile info saved! Admin panel updated successfully.");
+      setProfileSaveSuccess("Personal Information updated successfully!");
       reloadUsers();
       setTimeout(() => setProfileSaveSuccess(null), 4000);
     } else {
@@ -1692,6 +1805,21 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     } else {
       setProfileSaveError(res.message || "Failed to update password.");
     }
+  };
+
+  const handleSaveNotificationPreferences = (e: React.FormEvent) => {
+    e.preventDefault();
+    setProfileSaveError(null);
+    setProfileSaveSuccess(null);
+
+    localStorage.setItem(`notif_email_${user.email}`, String(notifEmail));
+    localStorage.setItem(`notif_sms_${user.email}`, String(notifSms));
+    localStorage.setItem(`notif_payment_${user.email}`, String(notifPayment));
+    localStorage.setItem(`notif_security_${user.email}`, String(notifSecurity));
+    localStorage.setItem(`notif_marketing_${user.email}`, String(notifMarketing));
+
+    setProfileSaveSuccess("Notification preferences saved successfully!");
+    setTimeout(() => setProfileSaveSuccess(null), 4000);
   };
 
   // Background API Key State
@@ -1860,8 +1988,32 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         return prev;
       }
 
-      // 3. Sort strictly newest on top
-      const sorted = Array.from(map.values()).sort((a, b) => {
+      // 3. Sort chronologically ascending (oldest first) to deduplicate and keep the first/oldest OTP per number
+      const chronological = Array.from(map.values()).sort((a, b) => {
+        const tA = parseHitTimestamp(a.time ?? (a as any).timestamp);
+        const tB = parseHitTimestamp(b.time ?? (b as any).timestamp);
+        return tA - tB;
+      });
+
+      const seenNums = new Set<string>();
+      const deduplicated: LiveConsoleHit[] = [];
+
+      for (const h of chronological) {
+        const src = String((h as any).source || "").toUpperCase();
+        const isFromApiPanel = src === "FOX SMS" || src === "SEVEN ON TEL" || (h as any).isSevenOnTel || (h as any).isFoxSms;
+        const rawNum = (h.number || h.range || "").replace(/\D/g, "");
+
+        if (isFromApiPanel && rawNum) {
+          if (seenNums.has(rawNum)) {
+            continue;
+          }
+          seenNums.add(rawNum);
+        }
+        deduplicated.push(h);
+      }
+
+      // Sort back to descending (newest first)
+      const sorted = deduplicated.sort((a, b) => {
         const tA = parseHitTimestamp(a.time ?? (a as any).timestamp);
         const tB = parseHitTimestamp(b.time ?? (b as any).timestamp);
         return tB - tA;
@@ -5188,7 +5340,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
             <button
               type="button"
-              onClick={onLogout}
+              onClick={handleUserLogout}
               className="w-full py-2.5 px-4 text-slate-400 hover:text-rose-400 text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1"
             >
               <LogOut className="w-3.5 h-3.5" />
@@ -5308,7 +5460,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 <button
                   type="button"
                   id="sidebar-logout-link-btn"
-                  onClick={onLogout}
+                  onClick={handleUserLogout}
                   className="flex items-center gap-1 text-rose-400/90 hover:text-rose-300 transition cursor-pointer"
                 >
                   <LogOut className="w-3.5 h-3.5 text-rose-400" />
@@ -5445,19 +5597,44 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             )}
 
             {userPerms.canGetNumber && (
-              <button
-                type="button"
-                id="sidebar-item-get-number"
-                onClick={() => handleNavClick("getNumber")}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer select-none focus:outline-none focus:ring-0 ${
-                  currentView === "getNumber"
-                    ? "bg-blue-600 text-white shadow-sm font-semibold"
-                    : "bg-transparent text-slate-300 hover:bg-slate-800/70 hover:text-white"
-                }`}
-              >
-                <Hash className="w-4.5 h-4.5 shrink-0 opacity-90" />
-                <span>Get Number</span>
-              </button>
+              <>
+                {/* My Numbers */}
+                <button
+                  type="button"
+                  id="sidebar-item-my-numbers"
+                  onClick={() => handleNavClick("myNumbers")}
+                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer select-none focus:outline-none focus:ring-0 ${
+                    currentView === "myNumbers"
+                      ? "bg-blue-600 text-white shadow-sm font-semibold"
+                      : "bg-transparent text-slate-300 hover:bg-slate-800/70 hover:text-white"
+                  }`}
+                >
+                  <Smartphone className="w-4.5 h-4.5 text-emerald-400 shrink-0 opacity-90 animate-pulse" />
+                  <span className="flex items-center justify-between w-full">
+                    <span>My Numbers</span>
+                    {getNumHistory.length > 0 && (
+                      <span className="bg-emerald-600 text-white text-[10px] font-bold font-mono px-2 py-0.5 rounded-full animate-bounce">
+                        {getNumHistory.length}
+                      </span>
+                    )}
+                  </span>
+                </button>
+
+                {/* Get Number */}
+                <button
+                  type="button"
+                  id="sidebar-item-get-number"
+                  onClick={() => handleNavClick("getNumber")}
+                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer select-none focus:outline-none focus:ring-0 ${
+                    currentView === "getNumber"
+                      ? "bg-blue-600 text-white shadow-sm font-semibold"
+                      : "bg-transparent text-slate-300 hover:bg-slate-800/70 hover:text-white"
+                  }`}
+                >
+                  <Hash className="w-4.5 h-4.5 shrink-0 opacity-90" />
+                  <span>Get Number</span>
+                </button>
+              </>
             )}
 
             {userPerms.canAccessConsole && (
@@ -5650,7 +5827,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               <button
                 type="button"
                 id="sidebar-item-logout"
-                onClick={onLogout}
+                onClick={handleUserLogout}
                 className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm text-rose-400 hover:bg-rose-950/40 hover:text-rose-200 transition-colors cursor-pointer"
               >
                 <LogOut className="w-4.5 h-4.5 shrink-0 opacity-90" />
@@ -5747,7 +5924,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             <button
               type="button"
               id="header-quick-logout-btn"
-              onClick={onLogout}
+              onClick={handleUserLogout}
               className="p-2 rounded-xl bg-slate-800/90 hover:bg-rose-950/80 text-slate-300 hover:text-rose-300 border border-slate-700/80 hover:border-rose-500/40 transition cursor-pointer flex items-center justify-center min-w-[36px] min-h-[36px]"
               title="Log Out of Account"
             >
@@ -5759,6 +5936,99 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
       {/* -------------------- MAIN CONTENT AREA -------------------- */}
       <main className="flex-1 max-w-6xl w-full mx-auto p-3 sm:p-6 space-y-5">
+        {/* Animated Login Telegram & Manager Support Notice Banner */}
+        <AnimatePresence>
+          {showLoginNoticeBanner && (
+            <motion.div
+              key="login-telegram-notice-banner"
+              initial={{ opacity: 0, y: -50, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -50, scale: 0.98 }}
+              transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+              className="w-full"
+            >
+              <div className="bg-slate-900/95 border-2 border-slate-700/80 shadow-2xl rounded-2xl p-3.5 sm:p-4 text-white relative overflow-hidden backdrop-blur-md">
+                {/* Glowing Background Light Accents */}
+                <div className="absolute -top-12 -right-12 w-48 h-48 bg-sky-500/15 rounded-full blur-2xl pointer-events-none" />
+                <div className="absolute -bottom-12 -left-12 w-48 h-48 bg-emerald-500/15 rounded-full blur-2xl pointer-events-none" />
+
+                {/* Main Content Banner Row */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
+                  {/* Logo & Website Title */}
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-slate-800 p-1.5 border border-slate-700/90 flex items-center justify-center shrink-0 shadow-inner">
+                      <img
+                        src="/super_x_sms_logo.png"
+                        alt="SUPER X SMS Logo"
+                        className="w-full h-full object-contain"
+                        onError={(e) => {
+                          e.currentTarget.style.display = "none";
+                        }}
+                      />
+                      <MessageSquare className="w-5 h-5 text-sky-400 hidden" />
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-extrabold text-white text-base sm:text-lg tracking-tight">
+                          SUPER X SMS
+                        </span>
+                        <span className="px-2 py-0.5 text-[10px] sm:text-xs font-black uppercase tracking-wider bg-sky-500/20 text-sky-400 border border-sky-400/40 rounded-md">
+                          OFFICIAL
+                        </span>
+                      </div>
+                      <p className="text-xs sm:text-sm text-slate-300 mt-0.5 font-medium truncate">
+                        Join our Telegram channel for live updates &amp; news
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Action Row: Telegram Join & Close Cross Button */}
+                  <div className="flex items-center justify-between sm:justify-end gap-2 shrink-0">
+                    <a
+                      href="https://t.me/super_x_sms_support"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-sky-500 hover:bg-sky-400 text-white font-bold text-xs sm:text-sm rounded-xl transition-all shadow-md hover:shadow-sky-500/25 active:scale-95 cursor-pointer"
+                    >
+                      <Send className="w-4 h-4" />
+                      <span>Join</span>
+                      <ExternalLink className="w-3.5 h-3.5 opacity-80" />
+                    </a>
+
+                    <button
+                      onClick={handleDismissLoginNotice}
+                      className="p-2 text-slate-400 hover:text-white bg-slate-800/90 hover:bg-slate-700 rounded-xl transition-all cursor-pointer border border-slate-700/80 active:scale-95"
+                      title="Close notice"
+                      aria-label="Close login notice"
+                    >
+                      <X className="w-4 h-4 sm:w-5 sm:h-5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Dedicated Secondary Row: Manager Support Button */}
+                <div className="mt-3 pt-3 border-t border-slate-800/90 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 relative z-10">
+                  <div className="flex items-center gap-2 text-xs text-slate-300 font-medium">
+                    <Headphones className="w-4 h-4 text-emerald-400 animate-pulse shrink-0" />
+                    <span>Need direct assistance or account help? Contact support:</span>
+                  </div>
+
+                  <a
+                    href="https://t.me/super_x_sms_support"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs sm:text-sm rounded-xl transition-all shadow-md hover:shadow-emerald-500/25 active:scale-95 cursor-pointer"
+                  >
+                    <Headphones className="w-4 h-4" />
+                    <span>ম্যানেজার সাপোর্ট (Manager Support)</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         {/* Animated Moving Welcome Banner */}
         {showWelcomeMarquee && (
           <section
@@ -6723,7 +6993,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                               <span>{getRangeMaskedNumber(item.number)}</span>
                               <button
                                 type="button"
-                                onClick={() => copyToClipboard(getRangeMaskedNumber(item.number), `num_${item.id}`, item.country)}
+                                onClick={() => copyToClipboard(getRangeMaskedNumber(item.number), `num_${item.id}`, item.country || "GLOBAL")}
                                 className="p-1 rounded-md bg-slate-100 hover:bg-emerald-100 text-slate-600 hover:text-emerald-900 transition cursor-pointer border border-slate-300 flex items-center gap-1"
                                 title="Copy number"
                               >
@@ -6843,6 +7113,785 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             </div>
           </div>
         )}
+
+        {/* -------------------- MY NUMBERS VIEW -------------------- */}
+        {currentView === "myNumbers" && (
+          <div className="space-y-6 animate-in fade-in slide-in-from-top-4 duration-200">
+            {/* Breadcrumb section */}
+            <div className="flex items-center gap-2 text-xs text-gray-500/90 font-medium">
+              <span>Dashboard</span>
+              <ChevronRight className="w-3.5 h-3.5 text-gray-300" />
+              <span>Client System</span>
+              <ChevronRight className="w-3.5 h-3.5 text-gray-300" />
+              <span className="text-gray-900 font-semibold">My Numbers</span>
+            </div>
+
+            {/* Title block */}
+            <div className="space-y-1">
+              <h2 className="text-2xl sm:text-3xl font-black text-[#1a2b49] tracking-tight">
+                My numbers
+              </h2>
+              <p className="text-xs sm:text-sm text-gray-500">
+                Rented MSISDNs · rates, limits and assignment
+              </p>
+            </div>
+
+            {/* Quick Actions Row */}
+            <div className="flex items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-gray-100 shadow-3xs">
+              <button
+                type="button"
+                onClick={() => {
+                  // Reset modal selection to null by default so "-- Choose a termination --" shows
+                  setModalSelectedRange(null);
+                  setIsRentModalOpen(true);
+                }}
+                className="px-5 py-2.5 text-xs sm:text-sm font-bold bg-[#74A50C] hover:bg-[#628B0A] text-white rounded-xl transition cursor-pointer flex items-center justify-center gap-2 shadow-sm"
+              >
+                <Plus className="w-4 h-4 font-black" />
+                <span>Add number</span>
+              </button>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsReloading(true);
+                    setTimeout(() => {
+                      setIsReloading(false);
+                      showDashboardToast("Numbers synchronized with server successfully", "success");
+                    }, 800);
+                  }}
+                  className={`p-2.5 rounded-xl border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition cursor-pointer flex items-center justify-center shadow-3xs ${isReloading ? "animate-spin" : ""}`}
+                  title="Reload numbers"
+                >
+                  <RotateCw className="w-4 h-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedNums.length > 0) {
+                      setGetNumHistory((prev) => prev.filter(num => !selectedNums.includes(num.id)));
+                      setSelectedNums([]);
+                      showDashboardToast(`Deleted ${selectedNums.length} selected numbers`, "success");
+                    } else {
+                      showDashboardToast("No numbers selected to delete", "warning");
+                    }
+                  }}
+                  disabled={selectedNums.length === 0}
+                  className={`p-2.5 rounded-xl border transition flex items-center justify-center shadow-3xs ${
+                    selectedNums.length > 0
+                      ? "border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 cursor-pointer"
+                      : "border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed"
+                  }`}
+                  title="Delete selected"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (getNumHistory.length === 0) {
+                      showDashboardToast("No numbers to download", "warning");
+                      return;
+                    }
+                    const text = getNumHistory.map(n => `${n.number},${n.country},${n.operator},${n.otp || ""}`).join("\n");
+                    const blob = new Blob([text], { type: "text/csv" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `my_rented_numbers_${Date.now()}.csv`;
+                    a.click();
+                    showDashboardToast("Downloaded CSV report successfully", "success");
+                  }}
+                  className="p-2.5 rounded-xl bg-[#0F3720] hover:bg-[#1a4a2e] text-white transition cursor-pointer flex items-center justify-center shadow-3xs"
+                  title="Download report"
+                >
+                  <FileSpreadsheet className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Rented numbers Panel */}
+            <div className="bg-white border border-gray-200/90 rounded-2xl shadow-3xs overflow-hidden">
+              <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+                <h3 className="font-extrabold text-gray-900 tracking-tight text-sm sm:text-base">
+                  Rented numbers
+                </h3>
+                <label className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase tracking-wider cursor-pointer select-none">
+                  <span>Select All</span>
+                  <input
+                    type="checkbox"
+                    checked={getNumHistory.length > 0 && selectedNums.length === getNumHistory.length}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedNums(getNumHistory.map(n => n.id));
+                      } else {
+                        setSelectedNums([]);
+                      }
+                    }}
+                    className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500 cursor-pointer"
+                  />
+                </label>
+              </div>
+
+              {/* Range input container */}
+              <div className="p-5 bg-gray-50/50 border-b border-gray-100 space-y-1.5">
+                <span className="block text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">
+                  Range
+                </span>
+                <div className="relative">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search or select..."
+                    value={myNumbersRangeFilter}
+                    onChange={(e) => {
+                      setMyNumbersRangeFilter(e.target.value);
+                      setMyNumsPage(1);
+                    }}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 bg-white transition text-gray-900"
+                  />
+                  {myNumbersRangeFilter && (
+                    <button
+                      type="button"
+                      onClick={() => setMyNumbersRangeFilter("")}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400 hover:text-gray-600 cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Main table space */}
+              {(() => {
+                const filtered = getNumHistory.filter((item) => {
+                  if (!myNumbersRangeFilter.trim()) return true;
+                  const searchLower = myNumbersRangeFilter.toLowerCase();
+                  const numClean = item.number.replace(/\D/g, "");
+                  const countryClean = (item.country || "").toLowerCase();
+                  const opClean = (item.operator || "").toLowerCase();
+                  const serviceClean = (item.service || "").toLowerCase();
+                  return (
+                    numClean.includes(searchLower) ||
+                    countryClean.includes(searchLower) ||
+                    opClean.includes(searchLower) ||
+                    serviceClean.includes(searchLower)
+                  );
+                });
+
+                // Pagination Math
+                const itemsPerPage = 5;
+                const totalEntries = filtered.length;
+                const totalPages = Math.ceil(totalEntries / itemsPerPage) || 1;
+                const startIdx = totalEntries === 0 ? 0 : (myNumsPage - 1) * itemsPerPage + 1;
+                const endIdx = Math.min(myNumsPage * itemsPerPage, totalEntries);
+                const paginatedItems = filtered.slice((myNumsPage - 1) * itemsPerPage, endIdx);
+
+                if (totalEntries === 0) {
+                  return (
+                    <div className="p-8 sm:p-12">
+                      <div className="border border-dashed border-gray-200 rounded-2xl py-16 px-4 text-center space-y-4 bg-white">
+                        <div className="w-14 h-14 rounded-2xl bg-gray-50 border border-gray-100 text-gray-400 flex items-center justify-center mx-auto shadow-3xs">
+                          <Hash className="w-7 h-7" />
+                        </div>
+                        <div className="space-y-1">
+                          <h4 className="text-base font-black text-gray-800">
+                            No numbers found
+                          </h4>
+                          <p className="text-xs text-gray-400 max-w-sm mx-auto leading-relaxed">
+                            Try a different search, or rent a number to get started.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setModalSelectedRange(null);
+                            setIsRentModalOpen(true);
+                          }}
+                          className="px-4 py-2 text-xs font-bold bg-[#74A50C] hover:bg-[#628B0A] text-white rounded-xl transition cursor-pointer border border-[#74A50C] inline-flex items-center gap-1.5 shadow-3xs"
+                        >
+                          <Plus className="w-3.5 h-3.5 font-black" />
+                          <span>Add number</span>
+                        </button>
+                      </div>
+
+                      {/* Skeleton footer as seen in Screenshot 1 */}
+                      <div className="mt-6 flex flex-col items-center justify-center gap-4 text-xs font-medium text-gray-500">
+                        <button
+                          type="button"
+                          className="px-4 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-700 font-bold transition flex items-center gap-1.5 hover:bg-gray-50 cursor-pointer"
+                        >
+                          Columns <ChevronDown className="w-3.5 h-3.5" />
+                        </button>
+                        <span className="text-gray-400">Showing 0 to 0 of 0 entries</span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled
+                            className="px-4 py-1.5 rounded-lg border border-gray-100 bg-gray-50 text-gray-300 font-bold cursor-not-allowed"
+                          >
+                            Previous
+                          </button>
+                          <button
+                            type="button"
+                            disabled
+                            className="px-4 py-1.5 rounded-lg border border-gray-100 bg-gray-50 text-gray-300 font-bold cursor-not-allowed"
+                          >
+                            Next
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="divide-y divide-gray-100">
+                    <div className="bg-white">
+                      {paginatedItems.map((item, idx) => {
+                        const isSelected = selectedNums.includes(item.id);
+                        const displayCountry = item.country || "GLOBAL";
+                        let displayOperator = item.operator || "Default Carrier";
+                        const digits = item.number.replace(/\D/g, "");
+                        if (
+                          (displayOperator.toLowerCase().includes("dialog") && !digits.startsWith("94"))
+                        ) {
+                          const cObj = GLOBAL_COUNTRIES_LIST.find((c) => c.name.toLowerCase() === displayCountry.toLowerCase());
+                          displayOperator = cObj?.operators?.[0] || "Direct Carrier";
+                        }
+
+                        return (
+                          <div
+                            key={item.id}
+                            className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 hover:bg-gray-50/50 transition-colors ${
+                              isSelected ? "bg-emerald-50/20" : ""
+                            }`}
+                          >
+                            {/* Number & Selection */}
+                            <div className="flex items-start gap-3 min-w-0">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedNums(prev => [...prev, item.id]);
+                                  } else {
+                                    setSelectedNums(prev => prev.filter(id => id !== item.id));
+                                  }
+                                }}
+                                className="mt-1 w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500 cursor-pointer"
+                              />
+
+                              <div className="space-y-1.5 min-w-0">
+                                <div className="font-mono text-gray-950 font-black tracking-wide text-sm sm:text-base flex items-center gap-1.5 flex-wrap">
+                                  <span>{getRangeMaskedNumber(item.number)}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => copyToClipboard(getRangeMaskedNumber(item.number), `mynum_${item.id}`, item.country || "GLOBAL")}
+                                    className="p-1 rounded-md bg-white hover:bg-emerald-50 text-gray-500 hover:text-emerald-700 transition cursor-pointer border border-gray-200 flex items-center gap-1 shadow-3xs"
+                                    title="Copy number"
+                                  >
+                                    {copiedText === `mynum_${item.id}` ? (
+                                      <Check className="w-3.5 h-3.5 text-emerald-600 font-bold" />
+                                    ) : (
+                                      <Copy className="w-3.5 h-3.5" />
+                                    )}
+                                  </button>
+                                </div>
+
+                                <div className="flex items-center gap-2 flex-wrap text-xs text-gray-500">
+                                  <span className="font-medium text-gray-900 flex items-center gap-1">
+                                    <CountryFlag countryCode={displayCountry} size="sm" />
+                                    <span>{stripFlagFromCountryName(displayCountry)}</span>
+                                  </span>
+                                  <span className="text-gray-300">•</span>
+                                  <span className="flex items-center gap-1 text-[11px] bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded-md font-bold">
+                                    <Radio className="w-3 h-3 text-gray-400 shrink-0" />
+                                    <span>{displayOperator}</span>
+                                  </span>
+                                  {item.service && (
+                                    <>
+                                      <span className="text-gray-300">•</span>
+                                      <span className="bg-slate-50 border border-slate-100 text-slate-700 font-extrabold px-1.5 py-0.5 rounded-md text-[10px]">
+                                        Service: {item.service}
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* OTP Status or Code */}
+                            <div className="flex items-center justify-between sm:justify-end gap-4">
+                              <div className="text-left sm:text-right space-y-1">
+                                {item.otp ? (
+                                  <div className="flex items-center gap-1.5">
+                                    <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-lg text-emerald-900 font-mono text-xs font-black shadow-3xs">
+                                      <Key className="w-3.5 h-3.5 text-emerald-600" />
+                                      <span>{item.otp}</span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => copyToClipboard(item.otp || "", `myotp_${item.id}`, "OTP Code")}
+                                      className="p-1 rounded-md bg-white hover:bg-emerald-50 text-gray-500 hover:text-emerald-700 transition cursor-pointer border border-gray-200 flex items-center gap-1 shadow-3xs"
+                                      title="Copy OTP"
+                                    >
+                                      {copiedText === `myotp_${item.id}` ? (
+                                        <Check className="w-3.5 h-3.5 text-emerald-600 font-bold" />
+                                      ) : (
+                                        <Copy className="w-3.5 h-3.5" />
+                                      )}
+                                    </button>
+                                  </div>
+                                ) : item.status === "FAILED" ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-bold bg-rose-50 text-rose-700 border border-rose-200 uppercase tracking-wider">
+                                    FAILED
+                                  </span>
+                                ) : (
+                                  <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200/60 px-2 py-1 rounded-lg font-bold animate-pulse">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
+                                    <span>Waiting for SMS...</span>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] text-gray-400 font-mono">
+                                  {formatRelativeActivityTime(item, nowTick)}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    handleDeleteNumEntry(item.id);
+                                    setSelectedNums(prev => prev.filter(id => id !== item.id));
+                                  }}
+                                  className="p-2 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer border border-transparent hover:border-rose-100"
+                                  title="Delete number"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Pagination footer */}
+                    <div className="p-5 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-medium text-gray-500 bg-gray-50/50">
+                      <button
+                        type="button"
+                        className="px-4 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-700 font-bold transition flex items-center gap-1.5 hover:bg-gray-50 cursor-pointer"
+                      >
+                        Columns <ChevronDown className="w-3.5 h-3.5" />
+                      </button>
+
+                      <span className="text-gray-400">
+                        Showing {startIdx} to {endIdx} of {totalEntries} entries
+                      </span>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={myNumsPage === 1}
+                          onClick={() => setMyNumsPage(prev => Math.max(1, prev - 1))}
+                          className={`px-4 py-1.5 rounded-lg border font-bold transition ${
+                            myNumsPage === 1
+                              ? "border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed"
+                              : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer"
+                          }`}
+                        >
+                          Previous
+                        </button>
+                        <button
+                          type="button"
+                          disabled={myNumsPage >= totalPages}
+                          onClick={() => setMyNumsPage(prev => Math.min(totalPages, prev + 1))}
+                          className={`px-4 py-1.5 rounded-lg border font-bold transition ${
+                            myNumsPage >= totalPages
+                              ? "border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed"
+                              : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer"
+                          }`}
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        )}
+
+        {/* -------------------- RENT NUMBERS MODAL (Screenshot 1 & 2) -------------------- */}
+        <AnimatePresence>
+          {isRentModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/60 backdrop-blur-xs overflow-y-auto">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.96, y: 15 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.96, y: 15 }}
+                transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                className="w-full max-w-xl bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden flex flex-col my-auto relative"
+              >
+                {/* Modal Header */}
+                <div className="p-4 sm:p-6 border-b border-gray-100 flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3 sm:gap-4 min-w-0">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-[#74A50C]/10 border border-[#74A50C]/20 text-[#74A50C] flex items-center justify-center shrink-0 shadow-3xs">
+                      <Plus className="w-5 h-5 sm:w-6 sm:h-6 font-black" />
+                    </div>
+                    <div className="space-y-0.5 sm:space-y-1 min-w-0">
+                      <h3 className="text-base sm:text-lg font-black text-gray-900 tracking-tight">
+                        Rent Numbers
+                      </h3>
+                      <p className="text-xs text-gray-500 leading-relaxed max-w-sm truncate sm:whitespace-normal">
+                        Select a termination range and specify how many numbers you want to rent.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsRentModalOpen(false);
+                      setIsChooseTerminationOpen(false);
+                      setModalSearchFilter("");
+                    }}
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition cursor-pointer shrink-0"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Top Tabs (Screenshot 2) */}
+                <div className="border-b border-gray-100 bg-gray-50/50 p-1.5 flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setRentModalTab("rent")}
+                    className={`flex-1 py-2 px-3 rounded-xl text-xs sm:text-sm font-extrabold transition flex items-center justify-center gap-2 cursor-pointer ${
+                      rentModalTab === "rent"
+                        ? "bg-white text-[#74A50C] shadow-2xs border border-gray-200/80"
+                        : "text-gray-500 hover:text-gray-900 hover:bg-white/60"
+                    }`}
+                  >
+                    <ShoppingCart className="w-4 h-4 text-[#74A50C]" />
+                    <span>Rent Numbers (ইউজার রেন্ট)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRentModalTab("upload")}
+                    className={`flex-1 py-2 px-3 rounded-xl text-xs sm:text-sm font-extrabold transition flex items-center justify-center gap-2 cursor-pointer ${
+                      rentModalTab === "upload"
+                        ? "bg-white text-[#74A50C] shadow-2xs border border-gray-200/80"
+                        : "text-gray-500 hover:text-gray-900 hover:bg-white/60"
+                    }`}
+                  >
+                    <Upload className="w-4 h-4 text-emerald-600" />
+                    <span>Upload to Stock Pool (স্টক পুলে ফাইল আপলোড)</span>
+                  </button>
+                </div>
+
+                {rentModalTab === "rent" ? (
+                  /* TAB 1: RENT NUMBERS FORM (Exact Match to User Screenshot) */
+                  <div className="p-4 sm:p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+                    {/* SELECT TERMINATION Section */}
+                    <div className="space-y-2.5">
+                      <div className="flex items-center justify-between text-xs font-black uppercase tracking-wider">
+                        <span className="text-gray-900 font-extrabold">SELECT TERMINATION</span>
+                        <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-[#EAF0D8] text-[#557A08] border border-[#D5E0B0] font-bold">
+                          1 Ranges - 86 Countries
+                        </span>
+                      </div>
+
+                      {/* Filter Input Box */}
+                      <div className="relative">
+                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input
+                          type="text"
+                          placeholder="Filter country, operator or prefix (e.g. Bangladesh, Vodafone, MTN)..."
+                          value={modalSearchFilter}
+                          onChange={(e) => setModalSearchFilter(e.target.value)}
+                          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-300 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#74A50C]/40 focus:border-[#74A50C] transition text-gray-900 placeholder-gray-400 bg-white shadow-2xs"
+                        />
+                        {modalSearchFilter && (
+                          <button
+                            type="button"
+                            onClick={() => setModalSearchFilter("")}
+                            className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400 hover:text-gray-600 cursor-pointer"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Termination Dropdown Selector Box */}
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setIsChooseTerminationOpen(!isChooseTerminationOpen)}
+                          className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl border border-gray-900 bg-white transition text-xs sm:text-sm font-semibold text-gray-900 text-left cursor-pointer shadow-2xs"
+                        >
+                          {modalSelectedRange ? (
+                            <div className="flex items-center gap-2 truncate">
+                              <span className="truncate font-bold text-gray-900">
+                                {modalSelectedRange.country} - {modalSelectedRange.operator || modalSelectedRange.name} [🟢 Available]
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-gray-900 font-bold">-- Choose a termination --</span>
+                          )}
+                          <ChevronDown className="w-4 h-4 text-gray-700 shrink-0" />
+                        </button>
+
+                        {/* Inline Dropdown List (Matching Screenshot Image September 19, 2026 - 5:32AM) */}
+                        {isChooseTerminationOpen && (
+                          <div className="mt-1 w-full bg-white border border-gray-900 rounded-xl shadow-xl overflow-hidden divide-y divide-gray-200 z-50">
+                            {/* Blue Header Option: "-- Choose a termination --" */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setModalSelectedRange(null);
+                                setIsChooseTerminationOpen(false);
+                              }}
+                              className="w-full text-left px-4 py-2 text-xs sm:text-sm font-bold bg-[#0056B3] text-white flex items-center justify-between hover:bg-[#004494] transition cursor-pointer"
+                            >
+                              <span>-- Choose a termination --</span>
+                            </button>
+
+                            {/* List of Country - Service options (e.g. Ethiopia - Telegram [🟢 Available]) */}
+                            <div className="max-h-52 overflow-y-auto divide-y divide-gray-100">
+                              {POPULAR_RANGES.filter((r) => {
+                                if (!modalSearchFilter.trim()) return true;
+                                const q = modalSearchFilter.toLowerCase();
+                                return (
+                                  r.country.toLowerCase().includes(q) ||
+                                  r.operator.toLowerCase().includes(q) ||
+                                  r.name.toLowerCase().includes(q) ||
+                                  r.code.includes(q)
+                                );
+                              }).map((range) => {
+                                const isSelected = modalSelectedRange && modalSelectedRange.id === range.id;
+                                return (
+                                  <button
+                                    key={range.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setModalSelectedRange(range);
+                                      setIsChooseTerminationOpen(false);
+                                    }}
+                                    className={`w-full text-left px-4 py-2.5 text-xs sm:text-sm font-semibold transition flex items-center justify-between cursor-pointer ${
+                                      isSelected
+                                        ? "bg-[#0056B3] text-white font-bold"
+                                        : "bg-white text-gray-900 hover:bg-slate-50"
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2 truncate">
+                                      <span className="truncate">
+                                        {range.country} - {range.operator || range.name}
+                                      </span>
+                                      <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded inline-flex items-center gap-1">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                        <span>Available</span>
+                                      </span>
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Muted Sub-info Text */}
+                      <p className="text-[11px] text-teal-800/80 font-medium pt-0.5">
+                        Showing 1 of 1 active range sources added by Admin across 1 countries.
+                      </p>
+                    </div>
+
+                    {/* Show Details & Quantity Selection ONLY when a termination is chosen */}
+                    {modalSelectedRange && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="p-4 rounded-2xl border border-slate-200 bg-slate-50/80 space-y-3 mt-3"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-black text-gray-800 tracking-tight">
+                            Selected Termination Details
+                          </span>
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-emerald-100/90 text-emerald-800 border border-emerald-200">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                            <span>In Stock ({modalSelectedRange?.available || 9995} Available)</span>
+                          </span>
+                        </div>
+
+                        {/* Details grid */}
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div className="p-2.5 rounded-xl bg-white border border-slate-100">
+                            <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">Country</span>
+                            <span className="font-extrabold text-gray-900 capitalize">{modalSelectedRange.country}</span>
+                          </div>
+                          <div className="p-2.5 rounded-xl bg-white border border-slate-100">
+                            <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">Operator</span>
+                            <span className="font-extrabold text-gray-900">{modalSelectedRange.operator || modalSelectedRange.name}</span>
+                          </div>
+                        </div>
+
+                        {/* Quantity Preset */}
+                        <div className="space-y-1.5 pt-1">
+                          <label className="block text-xs font-bold text-gray-700">
+                            কয়টি নাম্বার নিতে চান (QUANTITY)
+                          </label>
+                          <div className="flex items-center gap-2">
+                            {[1, 5, 10, 50].map((qty) => (
+                              <button
+                                key={qty}
+                                type="button"
+                                onClick={() => setModalQuantity(qty)}
+                                className={`flex-1 py-1.5 rounded-xl text-xs font-black transition border cursor-pointer ${
+                                  modalQuantity === qty
+                                    ? "bg-[#74A50C] text-white border-[#74A50C]"
+                                    : "bg-white hover:bg-gray-100 text-gray-700 border-gray-200"
+                                }`}
+                              >
+                                {qty} টি
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </div>
+                ) : (
+                  /* TAB 2: UPLOAD TO STOCK POOL FORM */
+                  <div className="p-4 sm:p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+                    <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 font-medium">
+                      <strong>স্টক পুল আপলোড (Stock Pool Upload):</strong> এখানে আপনি সরাসরি আপনার স্টক ফাইলের নম্বরগুলো সিস্টেমে আপলোড করতে পারবেন।
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold text-gray-700">Country (দেশ)</label>
+                      <input
+                        type="text"
+                        value={stockUploadCountry}
+                        onChange={(e) => setStockUploadCountry(e.target.value)}
+                        placeholder="e.g. Ivory Coast, Iraq, Bangladesh"
+                        className="w-full px-3.5 py-2 rounded-xl border border-gray-200 text-xs sm:text-sm text-gray-900 font-bold"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold text-gray-700">Operator / Range Name</label>
+                      <input
+                        type="text"
+                        value={stockUploadOperator}
+                        onChange={(e) => setStockUploadOperator(e.target.value)}
+                        placeholder="e.g. WhatsApp I said, GP A2P"
+                        className="w-full px-3.5 py-2 rounded-xl border border-gray-200 text-xs sm:text-sm text-gray-900 font-bold"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold text-gray-700">
+                        Paste Phone Numbers (প্রতি লাইনে ১টি নম্বর)
+                      </label>
+                      <textarea
+                        rows={4}
+                        value={stockUploadNumbersText}
+                        onChange={(e) => setStockUploadNumbersText(e.target.value)}
+                        placeholder="22501234567&#10;22501234568&#10;22501234569"
+                        className="w-full p-3 rounded-xl border border-gray-200 text-xs font-mono text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#74A50C]"
+                      />
+                    </div>
+
+                    {stockUploadSuccess && (
+                      <div className="p-3 rounded-xl bg-emerald-100 text-emerald-800 font-bold text-xs">
+                        ✓ ফাইল স্টক পুলে সফলভাবে যোগ হয়েছে!
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStockUploadSuccess(true);
+                        setTimeout(() => {
+                          setStockUploadSuccess(false);
+                          setRentModalTab("rent");
+                          showDashboardToast("Numbers added to stock pool successfully!", "success");
+                        }, 1200);
+                      }}
+                      className="w-full py-2.5 bg-[#74A50C] hover:bg-[#628B0A] text-white font-extrabold text-xs sm:text-sm rounded-xl transition cursor-pointer"
+                    >
+                      Upload Numbers to Stock Pool
+                    </button>
+                  </div>
+                )}
+
+                {/* Modal Footer */}
+                {rentModalTab === "rent" && (
+                  <div className="p-4 sm:p-6 bg-gray-50/80 border-t border-gray-100 flex items-center justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsRentModalOpen(false);
+                        setIsChooseTerminationOpen(false);
+                        setModalSearchFilter("");
+                      }}
+                      className="px-5 py-2.5 text-xs sm:text-sm font-bold bg-white hover:bg-gray-50 border border-gray-200 rounded-xl text-gray-700 transition cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!modalSelectedRange || isAllocating}
+                      onClick={async () => {
+                        if (!modalSelectedRange) return;
+                        setIsRentModalOpen(false);
+                        setIsChooseTerminationOpen(false);
+
+                        // Allocate selected quantity of numbers
+                        const allocatedCount = Math.max(1, modalQuantity);
+                        for (let i = 0; i < Math.min(allocatedCount, 10); i++) {
+                          await handleGetNumberCustom(
+                            modalSelectedRange.code,
+                            modalSelectedRange.country,
+                            modalSelectedRange.operator || modalSelectedRange.name
+                          );
+                        }
+                        showDashboardToast(
+                          `Successfully added ${allocatedCount} numbers for ${modalSelectedRange.country} (${modalSelectedRange.operator || modalSelectedRange.name})`,
+                          "success"
+                        );
+                        setModalSearchFilter("");
+                      }}
+                      className={`px-5 py-2.5 text-xs sm:text-sm font-bold rounded-xl transition flex items-center gap-2 ${
+                        !modalSelectedRange || isAllocating
+                          ? "bg-[#C4CFC0] text-gray-600 border border-[#B5C2B0] cursor-not-allowed"
+                          : "bg-[#74A50C] hover:bg-[#628B0A] text-white cursor-pointer active:scale-95 shadow-sm"
+                      }`}
+                    >
+                      {isAllocating ? (
+                        <>
+                          <RotateCw className="w-4 h-4 animate-spin" />
+                          <span>Adding...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>+ Rent numbers</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+
+
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
 
         {/* -------------------- 2. CONSOLE VIEW -------------------- */}
         {currentView === "console" && (
@@ -8805,7 +9854,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
         {/* -------------------- 7. PROFILE VIEW -------------------- */}
         {currentView === "profile" && (
-          <div className="space-y-6 animate-fadeIn max-w-4xl mx-auto">
+          <div className="space-y-6 animate-fadeIn max-w-4xl mx-auto pb-12 antialiased text-gray-800">
             {/* Hidden Gallery / Device File Input */}
             <input
               type="file"
@@ -8815,283 +9864,625 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               className="hidden"
             />
 
-            {/* Cyber Hero Banner Header */}
-            <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 rounded-3xl p-6 sm:p-8 text-white shadow-2xl border-2 border-emerald-500/40 relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-6">
-              <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-              <div className="absolute bottom-0 left-0 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
-
-              <div className="flex items-center gap-5 relative z-10">
-                {/* Clickable Profile Avatar with Gallery Upload */}
-                <div
-                  onClick={handleOpenGalleryPicker}
-                  className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-gradient-to-tr from-emerald-500 via-teal-500 to-cyan-400 p-1 flex items-center justify-center shrink-0 shadow-[0_0_35px_rgba(16,185,129,0.35)] border border-white/30 cursor-pointer relative group transition-transform active:scale-95"
-                  title="Click to select / change photo from your device gallery"
-                >
-                  <div className="w-full h-full bg-slate-950 rounded-[20px] flex items-center justify-center overflow-hidden relative">
-                    {profileAvatar ? (
-                      <img src={profileAvatar} alt="Profile Avatar" className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
-                    ) : (
-                      <span className="text-3xl sm:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-tr from-emerald-400 to-cyan-300">
-                        {(profileName || user.name || (isManagerAccount ? "M" : "U"))[0].toUpperCase()}
-                      </span>
-                    )}
-
-                    {/* Camera Overlay on Hover/Tap */}
-                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white text-[10px] font-bold p-1 text-center">
-                      <Camera className="w-5 h-5 text-emerald-400 mb-0.5" />
-                      <span>{isUploadingPhoto ? "Uploading..." : "Change Photo"}</span>
-                    </div>
-                  </div>
-
-                  {/* Verified Tick Badge on Avatar */}
-                  {isManagerAccount && (
-                    <span className="absolute -bottom-1 -right-1 w-6 h-6 bg-emerald-500 rounded-full border-2 border-slate-950 flex items-center justify-center text-white text-xs font-black shadow-md">
-                      ✓
-                    </span>
-                  )}
-                </div>
-
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight flex items-center gap-2">
-                      <span>{profileName || user.name || (isManagerAccount ? "SUPER X MANAGER" : "SUPER X User")}</span>
-                      {isManagerAccount && (
-                        <span title="Super X Verified Manager" className="inline-flex items-center">
-                          <CheckCircle2 className="w-6 h-6 text-emerald-400 fill-emerald-500/20 shrink-0" />
-                        </span>
-                      )}
-                    </h2>
-                  </div>
-
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className={`px-3 py-1 rounded-full text-xs font-mono font-black uppercase tracking-wider flex items-center gap-1.5 shadow-sm ${
-                      isManagerAccount
-                        ? 'bg-gradient-to-r from-amber-500/25 via-emerald-500/25 to-cyan-500/25 text-amber-300 border border-amber-400/50'
-                        : currentUserDisplayRole === 'Admin'
-                        ? 'bg-amber-500/20 text-amber-300 border border-amber-400/40'
-                        : currentUserDisplayRole === 'Sub-Admin'
-                        ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-400/40'
-                        : 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40'
-                    }`}>
-                      <span>👑</span>
-                      <span>{isManagerAccount ? 'SUPER X MANAGER' : currentUserDisplayRole}</span>
-                    </span>
-
-                    <span className="px-3 py-1 rounded-full text-xs font-mono font-black bg-emerald-500/20 text-emerald-300 border border-emerald-400/50 uppercase tracking-wider flex items-center gap-1">
-                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>VERIFIED</span>
-                    </span>
-
-                    {isManagerAccount && (
-                      <span className="px-2.5 py-1 rounded-full text-[11px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-400/40 uppercase">
-                        OFFICIAL
-                      </span>
-                    )}
-                  </div>
-
-                  <p className="text-xs sm:text-sm text-slate-300 font-mono flex items-center gap-2 flex-wrap pt-0.5">
-                    <span>Identity: <strong className="text-teal-300">{user.email}</strong></span>
-                    <span className="text-slate-600">•</span>
-                    <span>Account ID: <strong className="text-amber-300">{accountCode}</strong></span>
-                  </p>
-                </div>
+            {/* Breadcrumb & Top Action Icons */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="flex items-center gap-1.5 font-sans">
+                <span className="text-[11px] sm:text-xs text-gray-400 font-extrabold tracking-wider uppercase">Dashboard</span>
+                <span className="text-gray-300 font-extrabold text-xs">&gt;</span>
+                <span className="text-[11px] sm:text-xs text-gray-700 font-extrabold tracking-wider uppercase">My Profile</span>
               </div>
 
-              {/* Action Buttons in Hero */}
-              <div className="relative z-10 flex flex-wrap items-center gap-2.5 self-start md:self-auto">
-                <button
-                  type="button"
-                  onClick={handleOpenGalleryPicker}
-                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs uppercase tracking-wider shadow-lg flex items-center gap-2 border border-emerald-300/40 transition hover:scale-105 active:scale-95 cursor-pointer"
-                  title="Choose a photo from your phone/computer gallery"
-                >
-                  <Camera className="w-4 h-4 text-emerald-100" />
-                  <span>{profileAvatar ? "Change Photo" : "Upload Photo"}</span>
-                </button>
-
-                {profileAvatar && (
-                  <button
-                    type="button"
-                    onClick={handleRemoveProfileAvatar}
-                    className="px-3 py-2.5 rounded-xl bg-slate-800 hover:bg-rose-950/80 text-slate-300 hover:text-rose-300 font-bold text-xs uppercase tracking-wider border border-slate-700 hover:border-rose-500/40 transition cursor-pointer"
-                    title="Remove custom profile photo"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                )}
-
+              {/* Social Channels in Breadcrumb Bar */}
+              <div className="flex items-center gap-2">
                 <a
                   href="https://t.me/super_x_sms_support"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-sky-600 to-teal-600 hover:from-sky-500 hover:to-teal-500 text-white font-extrabold text-xs uppercase tracking-wider shadow-md flex items-center gap-2 border border-sky-400/40 transition hover:scale-105 active:scale-95 cursor-pointer"
-                  title="Contact API Manager on Telegram"
+                  className="w-7 h-7 rounded-full bg-[#0088cc] hover:bg-[#0077b5] flex items-center justify-center text-white transition-all shadow-3xs"
+                  title="Contact Support on Telegram"
                 >
-                  <Send className="w-4 h-4 text-white" />
-                  <span>এপিআই ম্যানেজার</span>
+                  <Send className="w-3.5 h-3.5 text-white" />
+                </a>
+                <a
+                  href="skype:charlesjames997@outlook.com?chat"
+                  className="w-7 h-7 rounded-full bg-[#00aff0] hover:bg-[#009ee0] flex items-center justify-center text-white transition-all shadow-3xs"
+                  title="Contact Support on Skype"
+                >
+                  <svg className="w-3.5 h-3.5 fill-current text-white" viewBox="0 0 24 24">
+                    <path d="M22.052 13.565c.026-.228.038-.456.038-.686 0-4.836-3.92-8.756-8.756-8.756-.23 0-.458.012-.686.038C11.517 3.323 10.151 2.8 8.658 2.8 4.429 2.8 1 6.229 1 10.458c0 1.493.523 2.859 1.361 3.99-.026.228-.038.456-.038.686 0 4.836 3.92 8.756 8.756 8.756.23 0 .458-.012.686-.038 1.131.838 2.497 1.361 3.99 1.361 4.229 0 7.658-3.429 7.658-7.658 0-1.493-.523-2.859-1.361-3.99zM12.983 17.5c-2.453 0-3.665-1.127-3.665-1.89 0-.414.336-.75.75-.75.405 0 .616.242.822.476.549.627 1.311 1.014 2.158 1.014.939 0 1.834-.43 1.834-1.353 0-1.921-5.187-.803-5.187-4.135 0-1.401 1.157-2.43 3.308-2.43 1.889 0 3.195.845 3.195 1.636 0 .414-.336.75-.75.75-.403 0-.571-.247-.847-.532-.477-.492-1.16-.704-1.663-.704-.962 0-1.503.447-1.503 1.13 0 1.701 5.187.697 5.187 4.148C17.472 16.326 15.651 17.5 12.983 17.5z" />
+                  </svg>
                 </a>
               </div>
             </div>
 
-            {/* Toast Alerts for Profile Actions */}
+            {/* Profile Premium Green Banner Card */}
+            <div className="bg-gradient-to-br from-[#74A50C] to-[#88C40E] rounded-[24px] shadow-sm text-white overflow-hidden border border-[#6ea008]/40 relative">
+              <div className="p-6 sm:p-8 flex flex-col items-center text-center">
+                
+                {/* Custom Avatar with Green Ring and Tick Badge */}
+                <div
+                  onClick={handleOpenGalleryPicker}
+                  className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-white/20 border-2 border-white/40 flex items-center justify-center cursor-pointer relative group transition-transform active:scale-95 shadow-md"
+                  title="Click to select/change photo from your device"
+                >
+                  <div className="w-full h-full bg-slate-100 rounded-[20px] flex items-center justify-center overflow-hidden relative">
+                    {profileAvatar ? (
+                      <img src={profileAvatar} alt="Avatar" className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
+                    ) : (
+                      <span className="text-3xl font-black text-[#74A50C]">
+                        {(profileUsername || user.name || "U")[0].toUpperCase()}
+                      </span>
+                    )}
+
+                    {/* Change Photo Camera Overlay */}
+                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white text-[10px] font-bold p-1">
+                      <Camera className="w-4 h-4 text-white mb-0.5" />
+                      <span>{isUploadingPhoto ? "Uploading..." : "Change"}</span>
+                    </div>
+                  </div>
+
+                  {/* Verified Checkmark Badge at bottom-right */}
+                  <span className="absolute -bottom-1 -right-1 w-6 h-6 bg-[#84B813] border-2 border-white rounded-full flex items-center justify-center text-white text-xs font-black shadow-md">
+                    ✓
+                  </span>
+                </div>
+
+                {/* Profile Name */}
+                <h2 className="text-xl sm:text-2xl font-black tracking-tight uppercase mt-4 text-white">
+                  {profileUsername || user.name || "NAHIDUL GAZI"}
+                </h2>
+
+                {/* Profile Email */}
+                <p className="text-xs text-white/90 font-medium tracking-wide mt-1">
+                  {user.email}
+                </p>
+
+                {/* Capsules Stack */}
+                <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
+                  <span className="px-3 py-1 rounded-full bg-black/15 text-white font-extrabold text-[10px] sm:text-xs border border-white/15 flex items-center gap-1.5 shadow-3xs uppercase tracking-wider">
+                    <Shield className="w-3.5 h-3.5 text-white" />
+                    <span>Agent Account</span>
+                  </span>
+
+                  <span className="px-3 py-1 rounded-full bg-black/15 text-white font-extrabold text-[10px] sm:text-xs border border-white/15 flex items-center gap-1.5 shadow-3xs uppercase tracking-wider">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                    <span>! 2FA Off</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Banner Footer bar */}
+              <div className="w-full bg-white text-gray-500 py-3.5 px-6 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between text-xs font-bold gap-2 select-none">
+                <span>Member since September 2026</span>
+                <span className="text-[#74A50C] flex items-center gap-1">
+                  <CheckCircle className="w-4 h-4 text-[#74A50C] fill-current" />
+                  <span>Verified Agent Portal</span>
+                </span>
+              </div>
+            </div>
+
+            {/* Support Message Success/Error */}
             {profileSaveSuccess && (
-              <div className="p-4 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-sm font-semibold flex items-center gap-2 animate-fadeIn">
-                <CheckCircle className="w-5 h-5 text-emerald-400 shrink-0" />
+              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs sm:text-sm font-semibold flex items-center gap-2 animate-fadeIn">
+                <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
                 <span>{profileSaveSuccess}</span>
               </div>
             )}
             {profileSaveError && (
-              <div className="p-4 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-sm font-semibold flex items-center gap-2 animate-fadeIn">
-                <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0" />
+              <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs sm:text-sm font-semibold flex items-center gap-2 animate-fadeIn">
+                <ShieldAlert className="w-5 h-5 text-rose-600 shrink-0" />
                 <span>{profileSaveError}</span>
               </div>
             )}
 
-            {/* Vertical Stack Layout (লাম্বালম্বি) */}
-            <div className="space-y-6">
-              {/* 1. Profile Details Form Card */}
-              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                  <div className="flex items-center gap-2">
-                    <User className="w-5 h-5 text-teal-400" />
-                    <h3 className="text-lg font-bold text-white tracking-tight">
-                      Submitted Profile & Registration Info
-                    </h3>
-                  </div>
-                  {isManagerAccount && (
-                    <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-400/40 text-[11px] font-bold font-mono">
-                      👑 MANAGER ACCOUNT
-                    </span>
-                  )}
+            {/* Manager & Support 24/7 Section */}
+            <div className="bg-white border border-gray-100 rounded-[24px] p-5 sm:p-6 shadow-3xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-[#eef8db] text-[#74A50C] flex items-center justify-center shrink-0 shadow-3xs">
+                  <Headphones className="w-6 h-6 stroke-[2.2]" />
                 </div>
-
-                <form onSubmit={handleSaveProfileInfo} className="space-y-4 text-xs sm:text-sm">
-                  <div>
-                    <label className="block text-slate-300 font-bold mb-1">
-                      Full Name / Account Title:
-                    </label>
-                    <input
-                      type="text"
-                      value={profileName}
-                      onChange={(e) => setProfileName(e.target.value)}
-                      placeholder="Enter full name"
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-teal-400 transition"
-                    />
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h4 className="font-extrabold text-gray-900 text-sm sm:text-base tracking-tight">Manager & Support</h4>
+                    <span className="bg-[#eef8db] text-[#74A50C] font-extrabold text-[9px] px-2 py-0.5 rounded-full tracking-wider">24/7</span>
                   </div>
-
-                  <div>
-                    <label className="block text-slate-300 font-bold mb-1">
-                      Registered Email Address (Identity):
-                    </label>
-                    <input
-                      type="email"
-                      value={user.email}
-                      disabled
-                      className="w-full bg-slate-800/60 border border-slate-700/60 rounded-xl px-3.5 py-2.5 text-slate-400 cursor-not-allowed font-mono"
-                    />
-                    <span className="text-[11px] text-slate-400 mt-1 block">
-                      * Email identity is locked and verified.
-                    </span>
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-300 font-bold mb-1">
-                      Phone Number / Telegram Contact:
-                    </label>
-                    <input
-                      type="text"
-                      value={profilePhone}
-                      onChange={(e) => setProfilePhone(e.target.value)}
-                      placeholder="+8801700000000 or @telegram_handle"
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-teal-400 transition font-mono"
-                    />
-                    <span className="text-[11px] text-slate-400 mt-1 block">
-                      * You can change your name or phone number anytime. Click "Save Changes" below to save immediately.
-                    </span>
-                  </div>
-
-                  <div className="pt-2">
-                    <button
-                      type="submit"
-                      id="save-profile-btn"
-                      className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer active:scale-95"
-                    >
-                      <Check className="w-4 h-4" />
-                      <span>Save Changes</span>
-                    </button>
-                  </div>
-                </form>
+                  <p className="text-xs text-gray-500 leading-relaxed font-semibold">
+                    One-tap direct contact for API access and portal support
+                  </p>
+                </div>
               </div>
 
-              {/* 2. User Proxy API Session Section (সকল তথ্যের নিচে এপিআই) */}
-              <UserApiSessionCard 
-                userEmail={user.email} 
-                userName={user.name} 
-                accountCode={accountCode} 
-                apiUnlocked={user.apiUnlocked}
-                apiKey={user.apiKey}
-              />
+              {/* Social support links */}
+              <div className="flex flex-wrap items-center gap-2 shrink-0 self-start sm:self-auto">
+                <a
+                  href="https://t.me/super_x_sms_support"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2.5 bg-[#0088cc] hover:bg-[#0077b5] text-white font-extrabold text-xs rounded-xl flex items-center gap-1.5 shadow-3xs transition cursor-pointer"
+                >
+                  <Send className="w-3.5 h-3.5 text-white" />
+                  <span>Telegram</span>
+                  <ExternalLink className="w-3 h-3 text-white/80" />
+                </a>
+                <a
+                  href="skype:charlesjames997@outlook.com?chat"
+                  className="px-4 py-2.5 bg-[#00aff0] hover:bg-[#009ee0] text-white font-extrabold text-xs rounded-xl flex items-center gap-1.5 shadow-3xs transition cursor-pointer"
+                >
+                  <svg className="w-3.5 h-3.5 fill-current text-white" viewBox="0 0 24 24">
+                    <path d="M22.052 13.565c.026-.228.038-.456.038-.686 0-4.836-3.92-8.756-8.756-8.756-.23 0-.458.012-.686.038C11.517 3.323 10.151 2.8 8.658 2.8 4.429 2.8 1 6.229 1 10.458c0 1.493.523 2.859 1.361 3.99-.026.228-.038.456-.038.686 0 4.836 3.92 8.756 8.756 8.756.23 0 .458-.012.686-.038 1.131.838 2.497 1.361 3.99 1.361 4.229 0 7.658-3.429 7.658-7.658 0-1.493-.523-2.859-1.361-3.99zM12.983 17.5c-2.453 0-3.665-1.127-3.665-1.89 0-.414.336-.75.75-.75.405 0 .616.242.822.476.549.627 1.311 1.014 2.158 1.014.939 0 1.834-.43 1.834-1.353 0-1.921-5.187-.803-5.187-4.135 0-1.401 1.157-2.43 3.308-2.43 1.889 0 3.195.845 3.195 1.636 0 .414-.336.75-.75.75-.403 0-.571-.247-.847-.532-.477-.492-1.16-.704-1.663-.704-.962 0-1.503.447-1.503 1.13 0 1.701 5.187.697 5.187 4.148C17.472 16.326 15.651 17.5 12.983 17.5z" />
+                  </svg>
+                  <span>Skype</span>
+                  <ExternalLink className="w-3 h-3 text-white/80" />
+                </a>
+              </div>
+            </div>
 
-              {/* 3. Security & Change Password Card (তার নিচে নতুন ইউজার পাসওয়ার্ড চেঞ্জ) */}
-              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
-                <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
-                  <Key className="w-5 h-5 text-indigo-400" />
-                  <h3 className="text-lg font-bold text-white tracking-tight">
-                    Update Account Password
-                  </h3>
+            {/* Quick Actions Shortcuts */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between px-1">
+                <h3 className="font-extrabold text-gray-900 text-sm sm:text-base tracking-tight">Quick Actions</h3>
+                <span className="text-[10px] text-gray-400 font-extrabold tracking-widest uppercase">Shortcuts</span>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                {/* Action 1: Payment methods */}
+                <div
+                  onClick={() => setCurrentView("summary")}
+                  className="bg-white border border-gray-100 rounded-[20px] p-4.5 shadow-3xs flex items-center justify-between cursor-pointer hover:bg-slate-50/80 transition-all active:scale-[0.985]"
+                >
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-11 h-11 rounded-xl bg-[#eef8db] text-[#74A50C] flex items-center justify-center shrink-0 shadow-3xs">
+                      <Receipt className="w-5.5 h-5.5" />
+                    </div>
+                    <div className="space-y-0.5">
+                      <h4 className="font-extrabold text-gray-800 text-xs sm:text-sm tracking-tight">Payment Methods</h4>
+                      <p className="text-[11px] text-gray-500 font-semibold">Manage your payment options</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                </div>
+
+                {/* Action 2: Security settings */}
+                <div
+                  onClick={() => {
+                    const el = document.getElementById("security-section");
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                  className="bg-white border border-gray-100 rounded-[20px] p-4.5 shadow-3xs flex items-center justify-between cursor-pointer hover:bg-slate-50/80 transition-all active:scale-[0.985]"
+                >
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-11 h-11 rounded-xl bg-[#eef8db] text-[#74A50C] flex items-center justify-center shrink-0 shadow-3xs">
+                      <Shield className="w-5.5 h-5.5" />
+                    </div>
+                    <div className="space-y-0.5">
+                      <h4 className="font-extrabold text-gray-800 text-xs sm:text-sm tracking-tight">Security Settings</h4>
+                      <p className="text-[11px] text-gray-500 font-semibold">Enable 2FA, manage security</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                </div>
+              </div>
+            </div>
+
+            {/* Client Active Key (API Key) locked card */}
+            <div className="bg-white border border-gray-100 rounded-[24px] p-5 sm:p-6 shadow-3xs space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="flex items-start gap-3.5">
+                  <div className="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 shadow-3xs border border-amber-100">
+                    <Key className="w-5.5 h-5.5" />
+                  </div>
+                  <div className="space-y-0.5">
+                    <h4 className="font-extrabold text-gray-900 text-sm sm:text-base tracking-tight">Client Active Key (API Key)</h4>
+                    <p className="text-xs text-gray-500 font-semibold max-w-xl leading-relaxed">
+                      Use this key to integrate Client Active SMS, Numbers, and Statistics into your website
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="shrink-0 self-start sm:self-auto">
+                  <span className="px-3 py-1.5 rounded-full text-[10px] font-extrabold bg-amber-50 text-amber-700 border border-amber-200/60 uppercase tracking-wide inline-flex items-center gap-1.5 shadow-3xs">
+                    <Lock className="w-3 h-3 text-amber-700 stroke-[2.5]" />
+                    <span>LOCKED / APPROVAL REQUIRED</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Exact Locked Warning Box from Screenshot 2 */}
+              <div className="bg-[#fdf8ed] border border-amber-200/70 rounded-2xl p-4.5 sm:p-5 space-y-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-700 shrink-0 mt-0.5">
+                    <Lock className="w-4 h-4 stroke-[2.5]" />
+                  </div>
+                  <div className="space-y-1">
+                    <h5 className="font-black text-amber-950 text-xs sm:text-sm tracking-tight">API Access is Locked for this Account</h5>
+                    <p className="text-[11px] sm:text-xs text-amber-900/90 leading-relaxed font-bold">
+                      Direct API access is restricted by default. To request an API key for your account, please contact our administrator support below for verification and activation. Once approved, you will be able to view, copy, and rotate your API keys.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Restricted field mask */}
+                <div className="relative">
+                  <div className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between text-xs font-mono font-extrabold tracking-widest text-gray-400 select-all">
+                    <div className="flex items-center gap-2">
+                      <Lock className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                      <span>sk_live_••••••••••••••••••••••••••••••••••••••••</span>
+                    </div>
+                    <span className="bg-amber-100 text-amber-800 text-[10px] font-black px-2.5 py-1 rounded-lg border border-amber-200 uppercase tracking-wide shrink-0">
+                      Restricted
+                    </span>
+                  </div>
+                </div>
+
+                {/* Action support channels inside card */}
+                <div className="pt-3 border-t border-amber-200/40 space-y-2">
+                  <p className="text-[11px] text-amber-900/85 font-extrabold tracking-tight">Need API integration access? Contact Admin Support directly:</p>
+                  <div className="flex flex-wrap gap-2">
+                    <a
+                      href="https://t.me/super_x_sms_support"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2 bg-[#0088cc] hover:bg-[#0077b5] text-white font-extrabold text-[11px] rounded-xl flex items-center gap-1.5 transition cursor-pointer shadow-3xs"
+                    >
+                      <Send className="w-3.5 h-3.5 text-white" />
+                      <span>Telegram</span>
+                    </a>
+                    <a
+                      href="skype:charlesjames997@outlook.com?chat"
+                      className="px-4 py-2 bg-[#00aff0] hover:bg-[#009ee0] text-white font-extrabold text-[11px] rounded-xl flex items-center gap-1.5 transition cursor-pointer shadow-3xs"
+                    >
+                      <svg className="w-3.5 h-3.5 fill-current text-white" viewBox="0 0 24 24">
+                        <path d="M22.052 13.565c.026-.228.038-.456.038-.686 0-4.836-3.92-8.756-8.756-8.756-.23 0-.458.012-.686.038C11.517 3.323 10.151 2.8 8.658 2.8 4.429 2.8 1 6.229 1 10.458c0 1.493.523 2.859 1.361 3.99-.026.228-.038.456-.038.686 0 4.836 3.92 8.756 8.756 8.756.23 0 .458-.012.686-.038 1.131.838 2.497 1.361 3.99 1.361 4.229 0 7.658-3.429 7.658-7.658 0-1.493-.523-2.859-1.361-3.99zM12.983 17.5c-2.453 0-3.665-1.127-3.665-1.89 0-.414.336-.75.75-.75.405 0 .616.242.822.476.549.627 1.311 1.014 2.158 1.014.939 0 1.834-.43 1.834-1.353 0-1.921-5.187-.803-5.187-4.135 0-1.401 1.157-2.43 3.308-2.43 1.889 0 3.195.845 3.195 1.636 0 .414-.336.75-.75.75-.403 0-.571-.247-.847-.532-.477-.492-1.16-.704-1.663-.704-.962 0-1.503.447-1.503 1.13 0 1.701 5.187.697 5.187 4.148C17.472 16.326 15.651 17.5 12.983 17.5z" />
+                      </svg>
+                      <span>Skype</span>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Personal Information Form Card */}
+            <div className="bg-white border border-gray-100 rounded-[24px] p-5 sm:p-6 shadow-3xs space-y-6">
+              <div className="flex items-center justify-between border-b border-gray-100 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-[#eef8db] text-[#74A50C] flex items-center justify-center">
+                    <User className="w-4.5 h-4.5" />
+                  </div>
+                  <h3 className="font-extrabold text-gray-900 text-sm sm:text-base tracking-tight">Personal Information</h3>
+                </div>
+                <span className="text-[10px] text-[#74A50C] font-extrabold tracking-widest uppercase">Account</span>
+              </div>
+
+              <form onSubmit={handleSaveProfileInfo} className="space-y-6">
+                {/* Information Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs sm:text-sm">
+                  {/* Username */}
+                  <div>
+                    <label className="block text-[11px] text-gray-500 font-extrabold mb-1.5 tracking-tight uppercase">Username</label>
+                    <input
+                      type="text"
+                      value={profileUsername}
+                      onChange={(e) => setProfileUsername(e.target.value)}
+                      placeholder="Enter username"
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-800 font-semibold focus:outline-none focus:ring-1 focus:ring-[#74A50C] focus:border-[#74A50C] transition text-xs sm:text-sm"
+                    />
+                  </div>
+
+                  {/* Full Name */}
+                  <div>
+                    <label className="block text-[11px] text-gray-500 font-extrabold mb-1.5 tracking-tight uppercase">Full Name</label>
+                    <input
+                      type="text"
+                      value={profileFullName}
+                      onChange={(e) => setProfileFullName(e.target.value)}
+                      placeholder="Enter full name"
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-800 font-semibold focus:outline-none focus:ring-1 focus:ring-[#74A50C] focus:border-[#74A50C] transition text-xs sm:text-sm"
+                    />
+                  </div>
+
+                  {/* Email Address */}
+                  <div>
+                    <label className="block text-[11px] text-gray-500 font-extrabold mb-1.5 tracking-tight uppercase">Email Address</label>
+                    <div className="relative">
+                      <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-gray-400">
+                        <Mail className="w-4 h-4" />
+                      </span>
+                      <input
+                        type="email"
+                        value={user.email}
+                        disabled
+                        className="w-full bg-gray-100 border border-gray-200 rounded-xl pl-10 pr-3.5 py-2.5 text-gray-400 font-semibold cursor-not-allowed text-xs sm:text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Phone Number */}
+                  <div>
+                    <label className="block text-[11px] text-gray-500 font-extrabold mb-1.5 tracking-tight uppercase">Phone Number</label>
+                    <div className="relative">
+                      <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-gray-400">
+                        <Phone className="w-4 h-4" />
+                      </span>
+                      <input
+                        type="text"
+                        value={profilePhone}
+                        onChange={(e) => setProfilePhone(e.target.value)}
+                        placeholder="Enter phone number"
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-3.5 py-2.5 text-gray-800 font-semibold focus:outline-none focus:ring-1 focus:ring-[#74A50C] focus:border-[#74A50C] transition text-xs sm:text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Address */}
+                  <div className="md:col-span-2">
+                    <label className="block text-[11px] text-gray-500 font-extrabold mb-1.5 tracking-tight uppercase">Address</label>
+                    <div className="relative">
+                      <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-gray-400">
+                        <MapPin className="w-4 h-4" />
+                      </span>
+                      <input
+                        type="text"
+                        value={profileAddress}
+                        onChange={(e) => setProfileAddress(e.target.value)}
+                        placeholder="Enter full address"
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-3.5 py-2.5 text-gray-800 font-semibold focus:outline-none focus:ring-1 focus:ring-[#74A50C] focus:border-[#74A50C] transition text-xs sm:text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  {/* City */}
+                  <div>
+                    <label className="block text-[11px] text-gray-500 font-extrabold mb-1.5 tracking-tight uppercase">City</label>
+                    <input
+                      type="text"
+                      value={profileCity}
+                      onChange={(e) => setProfileCity(e.target.value)}
+                      placeholder="Enter city"
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-800 font-semibold focus:outline-none focus:ring-1 focus:ring-[#74A50C] focus:border-[#74A50C] transition text-xs sm:text-sm"
+                    />
+                  </div>
+
+                  {/* State / Province */}
+                  <div>
+                    <label className="block text-[11px] text-gray-500 font-extrabold mb-1.5 tracking-tight uppercase">State/Province</label>
+                    <input
+                      type="text"
+                      value={profileState}
+                      onChange={(e) => setProfileState(e.target.value)}
+                      placeholder="Enter state or province"
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-800 font-semibold focus:outline-none focus:ring-1 focus:ring-[#74A50C] focus:border-[#74A50C] transition text-xs sm:text-sm"
+                    />
+                  </div>
+
+                  {/* Postal Code */}
+                  <div>
+                    <label className="block text-[11px] text-gray-500 font-extrabold mb-1.5 tracking-tight uppercase">Postal Code</label>
+                    <input
+                      type="text"
+                      value={profilePostalCode}
+                      onChange={(e) => setProfilePostalCode(e.target.value)}
+                      placeholder="Enter postal code"
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-800 font-semibold focus:outline-none focus:ring-1 focus:ring-[#74A50C] focus:border-[#74A50C] transition text-xs sm:text-sm"
+                    />
+                  </div>
+
+                  {/* Country Dropdown */}
+                  <div>
+                    <label className="block text-[11px] text-gray-500 font-extrabold mb-1.5 tracking-tight uppercase">Country</label>
+                    <select
+                      value={profileCountry}
+                      onChange={(e) => setProfileCountry(e.target.value)}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-800 font-semibold focus:outline-none focus:ring-1 focus:ring-[#74A50C] focus:border-[#74A50C] transition text-xs sm:text-sm cursor-pointer"
+                    >
+                      <option value="Bangladesh">Bangladesh</option>
+                      <option value="United States">United States</option>
+                      <option value="United Kingdom">United Kingdom</option>
+                      <option value="Canada">Canada</option>
+                      <option value="Australia">Australia</option>
+                      <option value="India">India</option>
+                    </select>
+                  </div>
+
+                  {/* Timezone Dropdown */}
+                  <div className="md:col-span-2">
+                    <label className="block text-[11px] text-gray-500 font-extrabold mb-1.5 tracking-tight uppercase">Timezone</label>
+                    <select
+                      value={profileTimezone}
+                      onChange={(e) => setProfileTimezone(e.target.value)}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-800 font-semibold focus:outline-none focus:ring-1 focus:ring-[#74A50C] focus:border-[#74A50C] transition text-xs sm:text-sm cursor-pointer"
+                    >
+                      <option value="UTC">UTC</option>
+                      <option value="GMT+6">Asia/Dhaka (GMT+6)</option>
+                      <option value="GMT-5">America/New_York (GMT-5)</option>
+                      <option value="GMT+0">Europe/London (GMT+0)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 rounded-xl bg-[#74A50C] hover:bg-[#628b0a] text-white font-extrabold text-xs transition cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>Save Changes</span>
+                  </button>
+                </div>
+              </form>
+
+              {/* Password credentials block */}
+              <div id="security-section" className="pt-6 border-t border-gray-100 space-y-4">
+                <div className="flex items-center gap-2">
+                  <Lock className="w-4.5 h-4.5 text-gray-700" />
+                  <h4 className="font-extrabold text-gray-800 text-sm tracking-tight">Security Credentials</h4>
                 </div>
 
                 <form onSubmit={handleUpdatePassword} className="space-y-4 text-xs sm:text-sm">
-                  <div>
-                    <label className="block text-slate-300 font-bold mb-1">
-                      New Security Password:
-                    </label>
-                    <input
-                      type="password"
-                      value={profileNewPassword}
-                      onChange={(e) => setProfileNewPassword(e.target.value)}
-                      placeholder="Enter new password (min 4 chars)"
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-indigo-400 transition"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-300 font-bold mb-1">
-                      Confirm New Password:
-                    </label>
-                    <input
-                      type="password"
-                      value={profileConfirmPassword}
-                      onChange={(e) => setProfileConfirmPassword(e.target.value)}
-                      placeholder="Re-type new password"
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-indigo-400 transition"
-                    />
-                  </div>
-
-                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-400 space-y-1">
-                    <div className="flex items-center gap-1.5 font-bold text-amber-400">
-                      <ShieldCheck className="w-3.5 h-3.5" />
-                      <span>Admin Sync Protection</span>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Current password stub */}
+                    <div>
+                      <label className="block text-[11px] text-gray-500 font-extrabold mb-1.5 tracking-tight uppercase">Current Password</label>
+                      <input
+                        type="password"
+                        value={profileCurrentPassword}
+                        onChange={(e) => setProfileCurrentPassword(e.target.value)}
+                        placeholder="•••••••••"
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-800 font-semibold focus:outline-none focus:ring-1 focus:ring-[#74A50C] focus:border-[#74A50C] transition text-xs sm:text-sm"
+                      />
                     </div>
-                    <p className="text-[11px] leading-relaxed">
-                      Updating your password here automatically updates your access credentials across the system and reflects in the Admin Panel.
-                    </p>
+
+                    {/* New password */}
+                    <div>
+                      <label className="block text-[11px] text-gray-500 font-extrabold mb-1.5 tracking-tight uppercase">New Password</label>
+                      <input
+                        type="password"
+                        value={profileNewPassword}
+                        onChange={(e) => setProfileNewPassword(e.target.value)}
+                        placeholder="•••••••••"
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-800 font-semibold focus:outline-none focus:ring-1 focus:ring-[#74A50C] focus:border-[#74A50C] transition text-xs sm:text-sm"
+                      />
+                    </div>
+
+                    {/* Confirm Password */}
+                    <div>
+                      <label className="block text-[11px] text-gray-500 font-extrabold mb-1.5 tracking-tight uppercase">Confirm Password</label>
+                      <input
+                        type="password"
+                        value={profileConfirmPassword}
+                        onChange={(e) => setProfileConfirmPassword(e.target.value)}
+                        placeholder="•••••••••"
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-800 font-semibold focus:outline-none focus:ring-1 focus:ring-[#74A50C] focus:border-[#74A50C] transition text-xs sm:text-sm"
+                      />
+                    </div>
                   </div>
 
-                  <div className="pt-2">
+                  <p className="text-[11px] text-gray-500 font-semibold leading-relaxed">
+                    * Password must be at least 8 characters with uppercase, lowercase and numbers
+                  </p>
+
+                  <div className="flex items-center gap-2 pt-2">
                     <button
                       type="submit"
-                      className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold transition-all shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                      className="px-5 py-2.5 rounded-xl bg-[#74A50C] hover:bg-[#628b0a] text-white font-extrabold text-xs transition cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
                     >
-                      <Lock className="w-4 h-4" />
+                      <Key className="w-4 h-4 text-white" />
                       <span>Update Password</span>
                     </button>
                   </div>
                 </form>
               </div>
+            </div>
 
-              {/* 4. 2FA Two-Factor Authentication Security Card */}
-              <TwoFactorAuthCard userEmail={user.email} userName={user.name} />
+            {/* Notification Preferences Card */}
+            <div className="bg-white border border-gray-100 rounded-[24px] p-5 sm:p-6 shadow-3xs space-y-5">
+              <div className="flex items-center justify-between border-b border-gray-100 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-500 flex items-center justify-center border border-amber-100">
+                    <Bell className="w-4.5 h-4.5" />
+                  </div>
+                  <h3 className="font-extrabold text-gray-900 text-sm sm:text-base tracking-tight">Notification Preferences</h3>
+                </div>
+                <span className="text-[10px] text-[#74A50C] font-extrabold tracking-widest uppercase">Alerts</span>
+              </div>
+
+              <form onSubmit={handleSaveNotificationPreferences} className="space-y-4">
+                <div className="space-y-3.5">
+                  {/* Item 1: Email Notifications */}
+                  <div className="flex items-center justify-between p-3 bg-gray-50/50 rounded-2xl border border-gray-100">
+                    <div className="space-y-0.5">
+                      <h4 className="font-extrabold text-gray-800 text-xs sm:text-sm tracking-tight">Email Notifications</h4>
+                      <p className="text-[11px] text-gray-500 font-medium">Receive important updates via email</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setNotifEmail(!notifEmail)}
+                      className={`w-10 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors duration-200 shrink-0 ${notifEmail ? 'bg-[#74A50C]' : 'bg-gray-300'}`}
+                    >
+                      <div className={`bg-white w-4 h-4 rounded-full shadow-xs transform transition-transform duration-200 ${notifEmail ? 'translate-x-4' : 'translate-x-0'}`} />
+                    </button>
+                  </div>
+
+                  {/* Item 2: SMS Notifications */}
+                  <div className="flex items-center justify-between p-3 bg-gray-50/50 rounded-2xl border border-gray-100">
+                    <div className="space-y-0.5">
+                      <h4 className="font-extrabold text-gray-800 text-xs sm:text-sm tracking-tight">SMS Notifications</h4>
+                      <p className="text-[11px] text-gray-500 font-medium">Receive alerts via SMS</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setNotifSms(!notifSms)}
+                      className={`w-10 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors duration-200 shrink-0 ${notifSms ? 'bg-[#74A50C]' : 'bg-gray-300'}`}
+                    >
+                      <div className={`bg-white w-4 h-4 rounded-full shadow-xs transform transition-transform duration-200 ${notifSms ? 'translate-x-4' : 'translate-x-0'}`} />
+                    </button>
+                  </div>
+
+                  {/* Item 3: Payment Alerts */}
+                  <div className="flex items-center justify-between p-3 bg-gray-50/50 rounded-2xl border border-gray-100">
+                    <div className="space-y-0.5">
+                      <h4 className="font-extrabold text-gray-800 text-xs sm:text-sm tracking-tight">Payment Alerts</h4>
+                      <p className="text-[11px] text-gray-500 font-medium">Get notified about payment activities</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setNotifPayment(!notifPayment)}
+                      className={`w-10 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors duration-200 shrink-0 ${notifPayment ? 'bg-[#74A50C]' : 'bg-gray-300'}`}
+                    >
+                      <div className={`bg-white w-4 h-4 rounded-full shadow-xs transform transition-transform duration-200 ${notifPayment ? 'translate-x-4' : 'translate-x-0'}`} />
+                    </button>
+                  </div>
+
+                  {/* Item 4: Security Alerts */}
+                  <div className="flex items-center justify-between p-3 bg-gray-50/50 rounded-2xl border border-gray-100">
+                    <div className="space-y-0.5">
+                      <h4 className="font-extrabold text-gray-800 text-xs sm:text-sm tracking-tight">Security Alerts</h4>
+                      <p className="text-[11px] text-gray-500 font-medium">Important security notifications</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setNotifSecurity(!notifSecurity)}
+                      className={`w-10 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors duration-200 shrink-0 ${notifSecurity ? 'bg-[#74A50C]' : 'bg-gray-300'}`}
+                    >
+                      <div className={`bg-white w-4 h-4 rounded-full shadow-xs transform transition-transform duration-200 ${notifSecurity ? 'translate-x-4' : 'translate-x-0'}`} />
+                    </button>
+                  </div>
+
+                  {/* Item 5: Marketing Emails */}
+                  <div className="flex items-center justify-between p-3 bg-gray-50/50 rounded-2xl border border-gray-100">
+                    <div className="space-y-0.5">
+                      <h4 className="font-extrabold text-gray-800 text-xs sm:text-sm tracking-tight">Marketing Emails</h4>
+                      <p className="text-[11px] text-gray-500 font-medium">Receive promotional content and updates</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setNotifMarketing(!notifMarketing)}
+                      className={`w-10 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors duration-200 shrink-0 ${notifMarketing ? 'bg-[#74A50C]' : 'bg-gray-300'}`}
+                    >
+                      <div className={`bg-white w-4 h-4 rounded-full shadow-xs transform transition-transform duration-200 ${notifMarketing ? 'translate-x-4' : 'translate-x-0'}`} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end pt-3">
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 rounded-xl bg-[#74A50C] hover:bg-[#628b0a] text-white font-extrabold text-xs transition cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>Save Preferences</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* Redesigned Footer from Screenshot 4 */}
+            <div className="pt-6 pb-2 text-center select-none">
+              <p className="text-[10px] text-gray-400 font-extrabold tracking-wider uppercase">
+                © 2026 KSI IPR TECHNOLOGY. All rights reserved.
+              </p>
+              <p className="text-[9px] text-gray-400 font-black tracking-widest uppercase mt-1">
+                SWITCHFY V3.0.0
+              </p>
             </div>
           </div>
         )}

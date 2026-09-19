@@ -302,8 +302,29 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
       });
 
       if (!hasNew && map.size === prev.length) return prev;
-      const sorted = Array.from(map.values()).sort((a, b) => b.timestamp - a.timestamp);
-      return sorted;
+
+      // Sort the combined list chronologically (oldest first) to ensure we keep the first/oldest OTP for any given number
+      const chronological = Array.from(map.values()).sort((a, b) => a.timestamp - b.timestamp);
+
+      const seenNumbers = new Set<string>();
+      const deduplicated: TestSmsCardItem[] = [];
+
+      for (const item of chronological) {
+        const isFromApiPanel = item.source === "FOX SMS" || item.source === "Seven On Tel" || item.isFoxSms;
+        const rawNum = item.number.replace(/\D/g, "");
+
+        if (isFromApiPanel && rawNum) {
+          if (seenNumbers.has(rawNum)) {
+            // Skip subsequent OTPs for this number
+            continue;
+          }
+          seenNumbers.add(rawNum);
+        }
+        deduplicated.push(item);
+      }
+
+      // Sort back to descending (newest first) for visual feed display
+      return deduplicated.sort((a, b) => b.timestamp - a.timestamp);
     });
   }, []);
 
@@ -849,6 +870,13 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="font-bold text-slate-900 text-sm tracking-tight leading-tight">
                             {cleanCountry}
+                          </span>
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                            item.operator.includes("Seven") 
+                              ? "bg-amber-50 text-amber-700 border border-amber-200" 
+                              : "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                          }`}>
+                            {item.operator}
                           </span>
                         </div>
 

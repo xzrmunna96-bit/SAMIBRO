@@ -97,9 +97,9 @@ let memoryRates: any[] = readJsonFile<any[]>("rates.json", []);
 let memoryLiveChats: any[] = readJsonFile<any[]>("live_chats.json", []);
 let memoryManualNumbers: any[] = readJsonFile<any[]>("manual_numbers_pool.json", []);
 let memoryBotConfig: any = readJsonFile<any>("bot_management_config.json", {
-  botToken: "8831851994:AAEjiZhHWDl97RABfkzOuk3NbI8291dS1b8",
+  botToken: "8892734138:AAEu_wMYBM6523MjGIbGGwtPbXSko0yqhew",
   adminId: "7084317713",
-  chatId: "-1003877961573",
+  chatId: "-1004476126020",
   otpGroupUrl: "https://t.me/trstyyop",
   activePolling: true,
   botUsername: "",
@@ -377,6 +377,111 @@ function getManualRangesSummary(pool: any[]): any[] {
   }
 
   return Array.from(map.values()).sort((a, b) => b.totalCount - a.totalCount);
+}
+
+let lastTelegramUpdateId = 0;
+
+async function sendTelegramMessage(botToken: string, chatId: string | number, text: string) {
+  if (!botToken || !chatId) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML" }),
+    });
+  } catch {}
+}
+
+async function handleTelegramUpdateInApi(update: any, botConfig: any) {
+  if (!update) return;
+  const botToken = botConfig?.botToken || DEFAULT_BOT_CONFIG.botToken;
+
+  const msg = update.message || update.channel_post || update.edited_message;
+  if (!msg) return;
+
+  const chatId = msg.chat?.id;
+  const text = (msg.text || msg.caption || "").trim();
+
+  // If a document (.txt / .csv) is attached
+  if (msg.document) {
+    const fileId = msg.document.file_id;
+    const fileName = msg.document.file_name || "numbers.txt";
+
+    try {
+      const fileInfoRes = await fetch(`https://api.telegram.org/bot${botToken}/getFile?file_id=${fileId}`);
+      if (fileInfoRes.ok) {
+        const fileInfo = await fileInfoRes.json();
+        const filePath = fileInfo.result?.file_path;
+        if (filePath) {
+          const fileRes = await fetch(`https://api.telegram.org/file/bot${botToken}/${filePath}`);
+          if (fileRes.ok) {
+            const fileContent = await fileRes.text();
+            const countryInfo = detectCountryFromText(fileName) || { name: "Global", flag: "🌐", dialCode: "" };
+            
+            const parseResult = parseManualNumbersDetailed(
+              fileContent,
+              countryInfo.name,
+              countryInfo.flag,
+              countryInfo.dialCode,
+              "All Social (WhatsApp/TG)"
+            );
+
+            if (parseResult.newCount > 0) {
+              const replyMsg = `✅ <b>SUPER X SMS — Numbers Uploaded!</b>\n\n` +
+                `📁 <b>File:</b> <code>${fileName}</code>\n` +
+                `🌍 <b>Country:</b> ${parseResult.detectedCountry.flag} <b>${parseResult.detectedCountry.name}</b>\n` +
+                `📞 <b>Added Numbers:</b> <code>${parseResult.newCount}</code>\n` +
+                `🔄 <b>Total Pool Count:</b> <code>${parseResult.totalProcessed}</code>\n\n` +
+                `<i>Available instantly on Website & Choose Termination dropdown!</i>`;
+              await sendTelegramMessage(botToken, chatId, replyMsg);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("[Telegram File Process Error]:", err);
+    }
+    return;
+  }
+
+  // If message contains digits/numbers text
+  if (text && /\d{7,}/.test(text)) {
+    const countryInfo = detectCountryFromText(text) || { name: "Global", flag: "🌐", dialCode: "" };
+    const parseResult = parseManualNumbersDetailed(
+      text,
+      countryInfo.name,
+      countryInfo.flag,
+      countryInfo.dialCode,
+      "All Social (WhatsApp/TG)"
+    );
+
+    if (parseResult.newCount > 0) {
+      const replyMsg = `✅ <b>SUPER X SMS — Text Numbers Added!</b>\n\n` +
+        `🌍 <b>Country:</b> ${parseResult.detectedCountry.flag} <b>${parseResult.detectedCountry.name}</b>\n` +
+        `📞 <b>Added Numbers:</b> <code>${parseResult.newCount}</code>\n\n` +
+        `<i>Visible real-time on Website & Choose Termination dropdown!</i>`;
+      await sendTelegramMessage(botToken, chatId, replyMsg);
+    }
+  }
+}
+
+async function pollTelegramUpdatesInApi(botConfig: any) {
+  const botToken = botConfig?.botToken || DEFAULT_BOT_CONFIG.botToken;
+  if (!botToken) return;
+
+  try {
+    const url = `https://api.telegram.org/bot${botToken}/getUpdates?offset=${lastTelegramUpdateId + 1}&limit=20&timeout=1`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const json = await res.json();
+      if (json.ok && Array.isArray(json.result)) {
+        for (const update of json.result) {
+          lastTelegramUpdateId = Math.max(lastTelegramUpdateId, update.update_id);
+          await handleTelegramUpdateInApi(update, botConfig);
+        }
+      }
+    }
+  } catch {}
 }
 
 function allocateOneManualNumber(rangeInput: string, allocatedTo?: string): any {
@@ -1247,8 +1352,23 @@ export default async function handler(req: any, res: any) {
   }
 
   // -------------------------------------------------------------------------
-  // 13. BOT MANAGEMENT CONFIG ENDPOINTS
+  // 13. BOT MANAGEMENT & TELEGRAM WEBHOOK ENDPOINTS
   // -------------------------------------------------------------------------
+  if (cleanPath === "/api/telegram-webhook" || cleanPath === "/api/bot-management/webhook") {
+    if (method === "POST") {
+      try {
+        const update = await parseBody(req);
+        if (update && (update.update_id || update.message || update.callback_query)) {
+          await handleTelegramUpdateInApi(update, memoryBotConfig);
+        }
+      } catch (err) {
+        console.warn("[Telegram Webhook Error]:", err);
+      }
+      return sendJson(res, 200, { ok: true, timestamp: Date.now() });
+    }
+    return sendJson(res, 200, { ok: true, status: "webhook_active" });
+  }
+
   if (cleanPath === "/api/bot-management/config" && method === "GET") {
     return sendJson(res, 200, { success: true, config: memoryBotConfig });
   }
@@ -1257,10 +1377,24 @@ export default async function handler(req: any, res: any) {
     const body = await parseBody(req);
     memoryBotConfig = { ...memoryBotConfig, ...body, lastUpdated: Date.now() };
     writeJsonFile("bot_management_config.json", memoryBotConfig);
+
+    // Auto set Telegram Webhook if host header is available
+    if (memoryBotConfig.botToken && req.headers.host) {
+      const host = req.headers.host;
+      const protocol = host.includes("localhost") ? "http" : "https";
+      const webhookUrl = `${protocol}://${host}/api/telegram-webhook`;
+      fetch(`https://api.telegram.org/bot${memoryBotConfig.botToken}/setWebhook?url=${encodeURIComponent(webhookUrl)}`)
+        .catch(() => {});
+    }
+
     return sendJson(res, 200, { success: true, config: memoryBotConfig });
   }
 
   if (cleanPath === "/api/bot-management/ping" && method === "GET") {
+    // Optionally trigger background polling for new updates from Telegram
+    if (memoryBotConfig.botToken) {
+      pollTelegramUpdatesInApi(memoryBotConfig).catch(() => {});
+    }
     return sendJson(res, 200, {
       success: true,
       status: "online",

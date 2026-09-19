@@ -167,17 +167,6 @@ export async function fetchManualRanges(): Promise<ManualRangeSummary[]> {
     console.warn('[ManualNumberService] Error fetching manual ranges from API:', err);
   }
 
-  // Fallback to localStorage cache
-  try {
-    const cached = localStorage.getItem(CACHED_RANGES_KEY);
-    if (cached) {
-      const parsed = JSON.parse(cached);
-      if (Array.isArray(parsed)) {
-        return parsed;
-      }
-    }
-  } catch {}
-
   return [];
 }
 

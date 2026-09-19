@@ -700,22 +700,23 @@ export function formatTerminationInfo(range: ManualRangeSummary) {
   const prefix5 = clean.slice(0, 5);
   const masked = `${prefix5}${"X".repeat(Math.max(5, 10 - prefix5.length))}`;
 
-  let operator = "Telecom Route";
+  let operator = (range as any).operator || "Telecom Route";
   const c = (range.country || "").toLowerCase();
   let resolvedPlatform = range.platform || range.socialMedia || "WhatsApp";
 
-  if (c.includes("sri lanka")) {
-    operator = "Dialog / Mobitel";
-    resolvedPlatform = "WhatsApp";
-  } else if (c.includes("bangladesh")) {
-    if (clean.startsWith("88017")) operator = "Grameenphone";
-    else if (clean.startsWith("88018")) operator = "Robi";
-    else if (clean.startsWith("88019")) operator = "Banglalink";
-    else operator = "Grameenphone / Robi";
-  } else if (c.includes("india")) {
-    operator = "Airtel / Jio";
-  } else if (c.includes("tanzania")) {
-    operator = "Airtel TZ";
+  if (!((range as any).operator)) {
+    if (c.includes("sri lanka")) {
+      operator = "Dialog / Mobitel";
+    } else if (c.includes("bangladesh")) {
+      if (clean.startsWith("88017")) operator = "Grameenphone";
+      else if (clean.startsWith("88018")) operator = "Robi";
+      else if (clean.startsWith("88019")) operator = "Banglalink";
+      else operator = "Grameenphone / Robi";
+    } else if (c.includes("india")) {
+      operator = "Airtel / Jio";
+    } else if (c.includes("tanzania")) {
+      operator = "Airtel TZ";
+    }
   }
 
   // Append the selected platform/social media name next to operator

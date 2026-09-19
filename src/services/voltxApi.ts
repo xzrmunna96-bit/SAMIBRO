@@ -482,7 +482,7 @@ export async function allocateRealNumberDetailed(
           full_number: fullNum,
           no_plus_number: noPlus,
           national_number: noPlus,
-          country: rec.country || 'Sri Lanka',
+          country: rec.country || 'Global Route',
           operator: rec.platform || 'Direct Range Pool',
         };
         return {
@@ -514,7 +514,7 @@ export async function allocateRealNumberDetailed(
           if (info.name && !info.name.toLowerCase().includes('international')) {
             country = info.name;
           } else {
-            country = 'Sri Lanka';
+            country = 'Global Route';
           }
         }
         return {

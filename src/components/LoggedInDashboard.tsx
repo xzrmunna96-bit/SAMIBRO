@@ -1568,6 +1568,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const [myNumbersRangeFilter, setMyNumbersRangeFilter] = useState("");
   const [selectedNums, setSelectedNums] = useState<string[]>([]);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [isReturnSuccessOpen, setIsReturnSuccessOpen] = useState(false);
+  const [isAddNumbersConfirmOpen, setIsAddNumbersConfirmOpen] = useState(false);
   const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([]);
   const [myNumsPage, setMyNumsPage] = useState(1);
   const [isRentModalOpen, setIsRentModalOpen] = useState(false);
@@ -5359,7 +5361,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   }
 
   return (
-    <div className="min-h-screen w-full bg-[#f8fafc] font-sans flex flex-col lg:flex-row text-gray-800 relative overflow-x-hidden">
+    <div className="min-h-screen w-full bg-[#f8fafc] font-sans flex flex-col lg:flex-row text-gray-800 relative">
       {/* -------------------- SIDEBAR DRAWER OVERLAY & PANEL -------------------- */}
       <div
         id="sidebar-backdrop"
@@ -5374,7 +5376,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
       <aside
         id="dashboard-sidebar-drawer"
-        className={`fixed top-0 left-0 bottom-0 z-50 w-[280px] sm:w-[300px] lg:w-64 xl:w-72 bg-slate-900 text-slate-100 shadow-2xl lg:shadow-none flex flex-col justify-between overflow-y-auto transition-transform duration-300 ease-out border-r border-slate-800 lg:static lg:top-0 lg:h-screen lg:sticky lg:shrink-0 lg:z-auto ${
+        className={`fixed top-0 left-0 bottom-0 z-50 w-[280px] sm:w-[300px] lg:w-64 xl:w-72 bg-slate-900 text-slate-100 shadow-2xl lg:shadow-none flex flex-col justify-between overflow-y-auto transition-transform duration-300 ease-out border-r border-slate-800 lg:sticky lg:top-0 lg:h-screen lg:self-start lg:shrink-0 lg:z-30 ${
           isSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         }`}
       >
@@ -5852,7 +5854,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       <div className="flex-1 min-w-0 flex flex-col min-h-screen">
         {/* -------------------- TOP NAVBAR -------------------- */}
         <header className="sticky top-0 z-40 w-full bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 text-white shadow-xl border-b-4 border-cyan-400 shadow-[0_4px_25px_rgba(6,182,212,0.35)]">
-          <div className="max-w-7xl mx-auto px-2.5 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-2">
+          <div className="w-full px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
               {/* Enlarged Sidebar Toggle Button (Mobile Only) */}
               <button
@@ -5939,7 +5941,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       </header>
 
       {/* -------------------- MAIN CONTENT AREA -------------------- */}
-      <main className="flex-1 max-w-6xl w-full mx-auto p-3 sm:p-6 space-y-5">
+      <main className="flex-1 w-full p-3 sm:p-6 lg:p-8 space-y-5">
         {/* Animated Login Telegram & Manager Support Notice Banner */}
         <AnimatePresence>
           {showLoginNoticeBanner && (
@@ -7145,8 +7147,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               <button
                 type="button"
                 onClick={() => {
-                  // Reset modal selection to null by default so "-- Choose a termination --" shows
-                  setModalSelectedRange(null);
+                  if (!modalSelectedRange) {
+                    setModalSelectedRange(POPULAR_RANGES[0]);
+                  }
                   setIsRentModalOpen(true);
                 }}
                 className="px-5 py-2.5 text-xs sm:text-sm font-bold bg-[#74A50C] hover:bg-[#628B0A] text-white rounded-xl transition cursor-pointer flex items-center justify-center gap-2 shadow-sm"
@@ -7311,7 +7314,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         <button
                           type="button"
                           onClick={() => {
-                            setModalSelectedRange(null);
+                            if (!modalSelectedRange) {
+                              setModalSelectedRange(POPULAR_RANGES[0]);
+                            }
                             setIsRentModalOpen(true);
                           }}
                           className="px-4 py-2 text-xs font-bold bg-[#74A50C] hover:bg-[#628B0A] text-white rounded-xl transition cursor-pointer border border-[#74A50C] inline-flex items-center gap-1.5 shadow-3xs"
@@ -7557,12 +7562,21 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         {/* -------------------- RENT NUMBERS MODAL (Screenshot 1 & 2) -------------------- */}
         <AnimatePresence>
           {isRentModalOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/60 backdrop-blur-xs overflow-y-auto">
+            <div
+              onClick={(e) => {
+                if (e.target === e.currentTarget) {
+                  setIsRentModalOpen(false);
+                  setIsChooseTerminationOpen(false);
+                  setModalSearchFilter("");
+                }
+              }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/50 overflow-y-auto"
+            >
               <motion.div
-                initial={{ opacity: 0, scale: 0.96, y: 15 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.96, y: 15 }}
-                transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.1, ease: "easeOut" }}
                 className="w-full max-w-xl bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden flex flex-col my-auto relative"
               >
                 {/* Modal Header */}
@@ -8017,25 +8031,12 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                     <button
                       type="button"
                       disabled={!modalSelectedRange || isAllocating}
-                      onClick={async () => {
-                        if (!modalSelectedRange) return;
-                        setIsRentModalOpen(false);
-                        setIsChooseTerminationOpen(false);
-
-                        // Allocate selected quantity of numbers
-                        const allocatedCount = Math.max(1, modalQuantity);
-                        for (let i = 0; i < Math.min(allocatedCount, 10); i++) {
-                          await handleGetNumberCustom(
-                            modalSelectedRange.code,
-                            modalSelectedRange.country,
-                            modalSelectedRange.operator || modalSelectedRange.name
-                          );
+                      onClick={() => {
+                        if (!modalSelectedRange) {
+                          setModalSelectedRange(POPULAR_RANGES[0]);
                         }
-                        showDashboardToast(
-                          `Successfully added ${allocatedCount} numbers for ${modalSelectedRange.country} (${modalSelectedRange.operator || modalSelectedRange.name})`,
-                          "success"
-                        );
-                        setModalSearchFilter("");
+                        setIsRentModalOpen(false);
+                        setIsAddNumbersConfirmOpen(true);
                       }}
                       className={`px-5 py-2.5 text-xs sm:text-sm font-bold rounded-xl transition flex items-center gap-2 ${
                         !modalSelectedRange || isAllocating
@@ -8063,69 +8064,245 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           )}
         </AnimatePresence>
 
-        {/* -------------------- DELETE CONFIRMATION MODAL -------------------- */}
+        {/* -------------------- RETURN / DELETE CONFIRMATION MODAL -------------------- */}
         <AnimatePresence>
           {isDeleteConfirmOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-xs">
+            <div
+              onClick={(e) => {
+                if (e.target === e.currentTarget) {
+                  setIsDeleteConfirmOpen(false);
+                  setDeleteTargetIds([]);
+                }
+              }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+            >
               <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                className="w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl border border-gray-100 space-y-5 relative overflow-hidden"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.1, ease: "easeOut" }}
+                className="w-full max-w-sm bg-white rounded-3xl p-6 sm:p-7 shadow-2xl border border-gray-100 text-center space-y-4 relative overflow-hidden"
               >
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-100 text-rose-600 flex items-center justify-center shrink-0 shadow-3xs">
-                    <AlertTriangle className="w-6 h-6" />
+                {/* Close X */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsDeleteConfirmOpen(false);
+                    setDeleteTargetIds([]);
+                  }}
+                  className="absolute top-4 right-4 p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+
+                {/* Exclamation Icon in Double Gold Ring */}
+                <div className="relative mx-auto w-16 h-16 flex items-center justify-center">
+                  <div className="absolute inset-0 rounded-full border-2 border-amber-200/60 animate-ping opacity-25" />
+                  <div className="w-16 h-16 rounded-full bg-amber-50/80 border-2 border-amber-300/80 flex items-center justify-center text-amber-600 shadow-inner">
+                    <span className="font-extrabold text-3xl leading-none">!</span>
                   </div>
-                  <div className="space-y-1 min-w-0 flex-1">
-                    <h3 className="text-base sm:text-lg font-black text-gray-900 tracking-tight">
-                      Confirm Deletion (নাম্বার ডিলিট করার সতর্কতা)
-                    </h3>
-                    <p className="text-xs text-gray-500 leading-relaxed">
-                      আপনি কি নিশ্চিত যে {deleteTargetIds.length > 0 ? deleteTargetIds.length : selectedNums.length}টি নাম্বার ডিলিট করতে চান?
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsDeleteConfirmOpen(false);
-                      setDeleteTargetIds([]);
-                    }}
-                    className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition cursor-pointer"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
                 </div>
 
-                <div className="p-3 bg-rose-50/70 rounded-xl border border-rose-200/60 text-xs text-rose-800 font-medium leading-relaxed">
-                  ⚠️ ডিলিট করার পর এই নম্বরসমূহ আপনার লাইভ লিস্টিং প্যানেল থেকে মুছে যাবে।
+                {/* Title & Subtitle */}
+                <div className="space-y-1.5">
+                  <h3 className="text-xl font-black text-gray-900 tracking-tight">
+                    Return ALL Numbers?
+                  </h3>
+                  <p className="text-xs sm:text-sm text-gray-500 font-medium leading-relaxed">
+                    You are about to return <span className="font-extrabold underline text-rose-600">ALL</span> your numbers to the system.
+                  </p>
                 </div>
 
-                <div className="flex items-center justify-end gap-3 pt-2">
+                {/* Warning Card */}
+                <div className="p-3 bg-rose-50/90 rounded-xl border-l-4 border-l-rose-500 border border-rose-200/80 text-left flex items-center gap-2.5 shadow-2xs">
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span className="text-xs font-black text-rose-900 uppercase tracking-wide">
+                    WARNING: This action is irreversible!
+                  </span>
+                </div>
+
+                {/* Description */}
+                <p className="text-xs text-gray-500 leading-relaxed font-medium">
+                  All your active numbers will be returned and become available for reassignment.
+                </p>
+
+                {/* Action Buttons */}
+                <div className="flex items-center justify-center gap-3 pt-2">
                   <button
                     type="button"
                     onClick={() => {
-                      setIsDeleteConfirmOpen(false);
-                      setDeleteTargetIds([]);
-                    }}
-                    className="px-4 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-bold text-xs hover:bg-gray-50 transition cursor-pointer"
-                  >
-                    Cancel (বাতিল)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const idsToRemove = deleteTargetIds.length > 0 ? deleteTargetIds : selectedNums;
+                      const idsToRemove = deleteTargetIds.length > 0 ? deleteTargetIds : (selectedNums.length > 0 ? selectedNums : getNumHistory.map(n => n.id));
                       setGetNumHistory((prev) => prev.filter((n) => !idsToRemove.includes(n.id)));
                       setSelectedNums((prev) => prev.filter((id) => !idsToRemove.includes(id)));
                       setIsDeleteConfirmOpen(false);
                       setDeleteTargetIds([]);
-                      showDashboardToast(`সফলভাবে ${idsToRemove.length}টি নাম্বার ডিলিট করা হয়েছে`, "success");
+                      setIsReturnSuccessOpen(true);
                     }}
-                    className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs transition cursor-pointer shadow-sm flex items-center gap-1.5"
+                    className="px-5 py-2.5 rounded-xl bg-[#74A50C] hover:bg-[#638e0a] text-white font-extrabold text-xs sm:text-sm transition cursor-pointer shadow-md flex items-center gap-1.5 active:scale-95"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Confirm Delete (ডিলিট করুন)</span>
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-200" />
+                    <span>Yes, return ALL!</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsDeleteConfirmOpen(false);
+                      setDeleteTargetIds([]);
+                    }}
+                    className="px-4 py-2.5 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-700 font-bold text-xs sm:text-sm transition cursor-pointer flex items-center gap-1"
+                  >
+                    <X className="w-3.5 h-3.5 text-gray-500" />
+                    <span>Cancel</span>
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* -------------------- ALL NUMBERS RETURNED SUCCESS MODAL -------------------- */}
+        <AnimatePresence>
+          {isReturnSuccessOpen && (
+            <div
+              onClick={(e) => {
+                if (e.target === e.currentTarget) {
+                  setIsReturnSuccessOpen(false);
+                }
+              }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.1, ease: "easeOut" }}
+                className="w-full max-w-sm bg-white rounded-3xl p-8 shadow-2xl border border-gray-100 text-center space-y-4 relative overflow-hidden"
+              >
+                {/* Green Circle with Tick Icon */}
+                <div className="w-20 h-20 rounded-full bg-emerald-50 border-2 border-emerald-200 flex items-center justify-center text-[#74A50C] mx-auto shadow-inner">
+                  <CheckCircle className="w-10 h-10 text-[#74A50C]" />
+                </div>
+
+                {/* Title & Description */}
+                <div className="space-y-1.5">
+                  <h3 className="text-xl font-black text-gray-900 tracking-tight">
+                    All Numbers Returned!
+                  </h3>
+                  <p className="text-xs sm:text-sm text-gray-500 font-medium leading-relaxed">
+                    All active numbers successfully returned to pool.
+                  </p>
+                </div>
+
+                {/* OK Button */}
+                <div className="pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsReturnSuccessOpen(false)}
+                    className="px-8 py-2.5 rounded-xl bg-[#74A50C] hover:bg-[#638e0a] text-white font-extrabold text-sm transition cursor-pointer shadow-md active:scale-95"
+                  >
+                    OK
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* -------------------- ADD NUMBERS CONFIRMATION MODAL -------------------- */}
+        <AnimatePresence>
+          {isAddNumbersConfirmOpen && (
+            <div
+              onClick={(e) => {
+                if (e.target === e.currentTarget) {
+                  setIsAddNumbersConfirmOpen(false);
+                }
+              }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.1, ease: "easeOut" }}
+                className="w-full max-w-sm bg-white rounded-3xl p-7 shadow-2xl border border-gray-100 text-center space-y-4 relative overflow-hidden"
+              >
+                {/* Circle with ? Icon */}
+                <div className="w-16 h-16 rounded-full bg-emerald-50/80 border-2 border-emerald-200/80 flex items-center justify-center text-[#74A50C] mx-auto shadow-inner">
+                  <span className="font-extrabold text-3xl leading-none">?</span>
+                </div>
+
+                {/* Title & Subtitle */}
+                <div className="space-y-1">
+                  <h3 className="text-xl font-black text-gray-900 tracking-tight">
+                    Add Numbers?
+                  </h3>
+                  <p className="text-xs text-gray-400 font-medium">
+                    You are about to add
+                  </p>
+                </div>
+
+                {/* Highlighted Quantity & Service info */}
+                <div className="py-2 px-3 bg-gray-50 rounded-2xl border border-gray-100/80 space-y-0.5">
+                  <p className="text-xl sm:text-2xl font-black text-[#74A50C] tracking-tight">
+                    {modalQuantity} number(s)
+                  </p>
+                  <p className="text-xs font-bold text-gray-600">
+                    from {modalSelectedRange?.country || "Ethiopia"} - {modalSelectedRange?.operator || modalSelectedRange?.name || "Telegram"}
+                  </p>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex items-center justify-center gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const qty = Math.max(1, modalQuantity);
+                      const selectedCountry = modalSelectedRange?.country || "Ethiopia";
+                      const selectedOp = modalSelectedRange?.operator || modalSelectedRange?.name || "Telegram";
+                      const rawCode = modalSelectedRange?.code?.replace(/\D/g, "") || "25191123456";
+                      const baseNum = parseInt(rawCode, 10) || 251911234567;
+
+                      const newEntries: any[] = [];
+                      const nowMs = Date.now();
+                      for (let i = 0; i < qty; i++) {
+                        const nextNum = (baseNum + i).toString();
+                        newEntries.push({
+                          id: `num_${nowMs}_${i}_${Math.random().toString(36).substring(2, 6)}`,
+                          number: "+" + nextNum,
+                          country: selectedCountry,
+                          operator: selectedOp,
+                          service: selectedOp,
+                          status: "PENDING" as const,
+                          activity: "Live OTP Listening",
+                          rate: "0.0000 USD",
+                          createdAt: nowMs - i * 100,
+                        });
+                      }
+
+                      setGetNumHistory((prev) => [...newEntries, ...prev]);
+                      setMyNumsPage(1);
+                      setIsAddNumbersConfirmOpen(false);
+                      setIsRentModalOpen(false);
+                      setIsChooseTerminationOpen(false);
+                      setModalSearchFilter("");
+                      showDashboardToast(`Successfully added ${qty} number(s) for ${selectedCountry} (${selectedOp})!`, "success", 2000);
+                    }}
+                    className="px-5 py-2.5 rounded-xl bg-[#74A50C] hover:bg-[#628B0A] text-white font-extrabold text-xs sm:text-sm transition cursor-pointer shadow-md flex items-center gap-1.5 active:scale-95"
+                  >
+                    <CheckCircle className="w-4 h-4 text-white" />
+                    <span>Yes, add them!</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddNumbersConfirmOpen(false);
+                      setIsRentModalOpen(true);
+                    }}
+                    className="px-4 py-2.5 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-700 font-bold text-xs sm:text-sm transition cursor-pointer flex items-center gap-1"
+                  >
+                    <X className="w-3.5 h-3.5 text-gray-500" />
+                    <span>Cancel</span>
                   </button>
                 </div>
               </motion.div>
@@ -8962,7 +9139,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
         {/* -------------------- CHOICE TERMINAL / SMS RANGE VIEW -------------------- */}
         {currentView === "smsRange" && (
-          <div className="w-full space-y-6 py-4 animate-fadeIn max-w-4xl mx-auto">
+          <div className="w-full space-y-6 py-4 animate-fadeIn">
             {/* Action Feedback Banner */}
             {actionFeedbackToast && (
               <div className="bg-emerald-600 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-md flex items-center justify-between animate-fadeIn">
@@ -10094,7 +10271,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
         {/* -------------------- 7. PROFILE VIEW -------------------- */}
         {currentView === "profile" && (
-          <div className="space-y-6 animate-fadeIn max-w-4xl mx-auto pb-12 antialiased text-gray-800">
+          <div className="space-y-6 animate-fadeIn w-full max-w-6xl mx-auto pb-12 antialiased text-gray-800">
             {/* Hidden Gallery / Device File Input */}
             <input
               type="file"
@@ -10976,7 +11153,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
             {/* Main Scrollable Area with Smooth, Fluid Scrolling */}
             <div className="flex-1 overflow-y-auto min-h-0 p-4 sm:p-6 w-full">
-              <div className="max-w-7xl w-full mx-auto space-y-4">
+              <div className="w-full space-y-4">
                 {/* Clean Header Title with Single Circular Teams Account Icon in top right corner */}
                 <div className="pb-1.5 border-b border-slate-200 flex items-center justify-between gap-3">
                   <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2.5">

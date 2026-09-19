@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import { subscribeToManualPool } from "../lib/firestoreSync";
 import { ActiveAccountWidget } from "./ActiveAccountWidget";
 import {
   Menu,
@@ -3551,8 +3552,19 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     }
   }, [isNotifModalOpen, user.email]);
 
-  // Fetch manual number ranges and pool list on mount, interval, and view change
+  // Fetch manual number ranges and pool list on mount, interval, and view change + Real-Time Firestore Sync
   useEffect(() => {
+    // 1. Subscribe to real-time Firestore pool updates across all devices on Vercel & local
+    const unsubscribeFirestore = subscribeToManualPool((numbers, ranges) => {
+      if (Array.isArray(ranges)) {
+        setManualRanges(ranges);
+      }
+      if (Array.isArray(numbers)) {
+        setManualNumbers(numbers);
+        setManualNumbersTotal(numbers.length);
+      }
+    });
+
     const loadRanges = () => {
       fetchManualRanges()
         .then((ranges) => {
@@ -3585,7 +3597,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         .finally(() => setManualNumbersLoading(false));
     }
 
-    return () => clearInterval(interval);
+    return () => {
+      unsubscribeFirestore();
+      clearInterval(interval);
+    };
   }, [currentView]);
 
   // Sync Live Chat updates in real-time

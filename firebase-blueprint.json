@@ -1,0 +1,60 @@
+{
+  "entities": {
+    "manual_numbers": {
+      "title": "Manual Numbers Pool",
+      "description": "Stores uploaded manual numbers and range information for real-time sync across Vercel and local server",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "number": { "type": "string" },
+        "country": { "type": "string" },
+        "flag": { "type": "string" },
+        "dialCode": { "type": "string" },
+        "rangePrefix": { "type": "string" },
+        "operator": { "type": "string" },
+        "platform": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "number"]
+    },
+    "bot_config": {
+      "title": "Bot Management Configuration",
+      "description": "Global bot token and Telegram integration configuration",
+      "type": "object",
+      "properties": {
+        "botToken": { "type": "string" },
+        "adminId": { "type": "string" },
+        "chatId": { "type": "string" },
+        "otpGroupUrl": { "type": "string" },
+        "activePolling": { "type": "boolean" },
+        "lastUpdated": { "type": "number" }
+      },
+      "required": ["botToken"]
+    },
+    "activations": {
+      "title": "Active Number Activations",
+      "description": "Active SMS activations and OTP status updates in real-time",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "number": { "type": "string" },
+        "service": { "type": "string" },
+        "country": { "type": "string" },
+        "status": { "type": "string" },
+        "smsCode": { "type": "string" },
+        "fullSms": { "type": "string" },
+        "cost": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "number"]
+    }
+  },
+  "firestore": {
+    "/app_data/{docId}": {
+      "schema": "manual_numbers",
+      "description": "Stores real-time application pool state and active range records"
+    }
+  }
+}

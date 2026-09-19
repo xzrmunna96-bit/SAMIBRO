@@ -2,6 +2,15 @@ import type { IncomingMessage, ServerResponse } from "http";
 import fs from "fs";
 import path from "path";
 import { GLOBAL_COUNTRIES_LIST } from "../src/services/countryHelper";
+import { initializeApp, getApps, getApp } from "firebase/app";
+import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
+import firebaseConfig from "../firebase-applet-config.json";
+
+// Initialize Firebase App & Firestore for Vercel Serverless Function
+const firebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig as any);
+const firestoreDb = firebaseConfig.firestoreDatabaseId
+  ? getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId)
+  : getFirestore(firebaseApp);
 
 // =========================================================================
 // SUPER X SMS - VERCEL SERVERLESS UNIVERSAL HANDLER
@@ -108,12 +117,17 @@ let memoryBotConfig: any = readJsonFile<any>("bot_management_config.json", {
 
 function loadManualNumbersPool(): any[] {
   memoryManualNumbers = readJsonFile<any[]>("manual_numbers_pool.json", []);
-  return memoryManualNumbers.filter((item: any) => !item.id.startsWith("seed_"));
+  return memoryManualNumbers.filter((item: any) => !item.id?.startsWith("seed_"));
 }
 
 function saveManualNumbersPool(list: any[]) {
   memoryManualNumbers = list;
   writeJsonFile("manual_numbers_pool.json", list);
+  // Async sync to Firebase Firestore for cross-platform real-time sync
+  try {
+    const docRef = doc(firestoreDb, "app_data", "manual_pool");
+    setDoc(docRef, { list, updatedAt: Date.now() }, { merge: true }).catch(() => {});
+  } catch {}
 }
 
 function findCountryByNameOrCode(rawInput: string): { name: string; flag: string; dialCode: string } {

@@ -225,54 +225,72 @@ export function App() {
     );
   }
 
-  // 3. Otherwise -> Regular Modern Login Viewport Matching Reference Image
+  // 3. Otherwise -> Modern Dark Space Login Viewport Matching Screenshots
   return (
     <main
       id="main-login-viewport"
-      className="min-h-screen w-full relative flex items-center justify-center p-3 sm:p-6 md:p-10 font-sans overflow-x-hidden selection:bg-teal-600 selection:text-white bg-gradient-to-br from-[#f3f8d2] via-[#e6f3aa] to-[#d4eb89]"
+      className="min-h-screen w-full relative flex flex-col items-center justify-center p-4 sm:p-6 md:p-10 font-sans overflow-x-hidden selection:bg-indigo-600 selection:text-white bg-[#060913] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#111a38] via-[#080d1e] to-[#04060f]"
     >
       <OfflineDetectorModal />
       <MaintenanceOverlay />
       <ManagerSupportPopupModal />
-      {/* Floating Organic Fluid circles matching image background */}
-      <div className="fixed top-0 left-0 w-80 h-80 bg-[#bef264]/40 rounded-full blur-3xl pointer-events-none -translate-x-1/3 -translate-y-1/3" />
-      <div className="fixed bottom-0 right-0 w-96 h-96 bg-[#86efac]/35 rounded-full blur-3xl pointer-events-none translate-x-1/3 translate-y-1/3" />
-      <div className="fixed top-1/2 right-10 w-64 h-64 bg-[#6ee7b7]/20 rounded-full blur-2xl pointer-events-none" />
+
+      {/* Subtle Dot Grid Background Pattern */}
+      <div className="fixed inset-0 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:28px_28px] opacity-40 pointer-events-none" />
+
+      {/* Glowing Ambient Glow Orbs */}
+      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[550px] h-[350px] bg-indigo-600/15 rounded-full blur-[110px] pointer-events-none" />
+      <div className="fixed bottom-0 right-0 w-[420px] h-[420px] bg-sky-600/10 rounded-full blur-[120px] pointer-events-none" />
+      <div className="fixed bottom-10 left-10 w-[320px] h-[320px] bg-purple-600/10 rounded-full blur-[100px] pointer-events-none" />
 
       {/* Floating Toast notification */}
       {toastMessage && (
         <div
           id="toast-notification"
-          className="fixed top-5 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 text-white px-5 py-3 rounded-full shadow-2xl backdrop-blur-md flex items-center gap-2.5 text-xs sm:text-sm font-semibold border border-emerald-500/40 animate-fadeIn"
+          className="fixed top-5 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 text-white px-5 py-3 rounded-full shadow-2xl backdrop-blur-md flex items-center gap-2.5 text-xs sm:text-sm font-semibold border border-indigo-500/40 animate-fadeIn"
         >
-          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+          <CheckCircle2 className="w-5 h-5 text-indigo-400 shrink-0" />
           <span>{toastMessage}</span>
         </div>
       )}
 
-      {/* Main Login Card */}
-      <section
-        id="login-main-card"
-        className="w-full max-w-[440px] md:max-w-[850px] bg-white rounded-[32px] shadow-[0_25px_60px_-15px_rgba(16,112,128,0.25)] overflow-hidden transition-all duration-300 border border-white/80 my-auto relative z-10"
-      >
-        <div className="grid grid-cols-1 md:grid-cols-12 items-stretch">
-          {/* Left Column: Teal & Green Organic Gradient Showcase */}
-          <div
-            id="brand-showcase-pane"
-            className="md:col-span-5 flex flex-col justify-center"
-          >
-            <LoginBrandShowcase />
+      {/* Center Branding & Card Wrapper */}
+      <div className="w-full max-w-[440px] flex flex-col items-center relative z-10 my-auto py-6">
+        {/* Top App Logo & Branding */}
+        <div className="text-center mb-6">
+          <div className="w-16 h-16 rounded-2xl bg-white flex items-center justify-center shadow-2xl shadow-sky-500/20 p-2.5 mx-auto border border-white/90 transition-transform duration-300 hover:scale-105">
+            <svg className="w-10 h-10" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect width="48" height="48" rx="12" fill="#0EA5E9" fillOpacity="0.1" />
+              <path
+                d="M12 24C12 17.3726 17.3726 12 24 12C30.6274 12 36 17.3726 36 24C36 30.6274 30.6274 36 24 36C21.4678 36 19.1128 35.2155 17.1724 33.8767L12 35L13.4116 30.3475C12.5186 28.4891 12 26.3474 12 24Z"
+                fill="url(#headerBubbleGrad)"
+                stroke="#0284C7"
+                strokeWidth="2"
+                strokeLinejoin="round"
+              />
+              <path d="M18 21H30M18 26H26" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
+              <path d="M7 17H13M6 22H11M8 27H13" stroke="#38BDF8" strokeWidth="2" strokeLinecap="round" />
+              <defs>
+                <linearGradient id="headerBubbleGrad" x1="12" y1="12" x2="36" y2="36" gradientUnits="userSpaceOnUse">
+                  <stop stopColor="#38BDF8" />
+                  <stop offset="1" stopColor="#0284C7" />
+                </linearGradient>
+              </defs>
+            </svg>
           </div>
-
-          {/* Right Column: Clean White Sign In Form */}
-          <div
-            id="form-pane"
-            className="md:col-span-7 bg-white px-6 py-6 sm:px-8 sm:py-8 flex flex-col justify-center items-center relative"
-          >
-            <LoginForm onLoginSuccess={handleLoginSuccess} />
-          </div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white mt-3.5">
+            Code Flow <span className="text-[#38bdf8] font-black">SMS</span>
+          </h1>
+          <p className="text-[10px] sm:text-[11px] font-extrabold tracking-[0.2em] text-slate-400 uppercase mt-1">
+            ENTERPRISE VERIFICATION NETWORK
+          </p>
         </div>
-      </section>
+
+        {/* 3D Animated Card (Login / Create Account with Page Flip) */}
+        <section id="login-main-card" className="w-full">
+          <LoginForm onLoginSuccess={handleLoginSuccess} />
+        </section>
+      </div>
 
       {/* Floating Active Account Support Widget at bottom right */}
       <ActiveAccountWidget />

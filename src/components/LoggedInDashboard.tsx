@@ -1005,6 +1005,51 @@ const POPULAR_RANGES = [
   },
 ];
 
+export const generateFullPhoneNumber = (codePrefix?: string, countryName?: string, offset: number = 0): string => {
+  const cleanCode = (codePrefix || "").replace(/[^0-9]/g, "");
+  let prefix = cleanCode;
+  const cLower = (countryName || "").toLowerCase();
+
+  if (!prefix || prefix.length < 3) {
+    if (cLower.includes("ivory") || cLower.includes("côte") || cLower.includes("cote")) prefix = "22501";
+    else if (cLower.includes("ethiopia")) prefix = "25191";
+    else if (cLower.includes("bangladesh")) prefix = "88017";
+    else if (cLower.includes("iraq")) prefix = "96477";
+    else if (cLower.includes("india")) prefix = "9198";
+    else if (cLower.includes("kenya")) prefix = "2547";
+    else if (cLower.includes("nigeria")) prefix = "23480";
+    else if (cLower.includes("philippines")) prefix = "639";
+    else if (cLower.includes("pakistan")) prefix = "92300";
+    else if (cLower.includes("indonesia")) prefix = "62812";
+    else if (cLower.includes("vietnam")) prefix = "8490";
+    else prefix = "22501";
+  }
+
+  // Target standard length for E.164 phone numbers (11-13 digits)
+  let targetLength = 12;
+  if (prefix.startsWith("880") || prefix.startsWith("964") || prefix.startsWith("91") || prefix.startsWith("234") || prefix.startsWith("92")) {
+    targetLength = 13;
+  } else if (prefix.startsWith("225") || prefix.startsWith("251") || prefix.startsWith("254") || prefix.startsWith("63") || prefix.startsWith("62")) {
+    targetLength = 12;
+  }
+
+  const digitsNeeded = Math.max(0, targetLength - prefix.length);
+  if (digitsNeeded === 0) {
+    try {
+      const numVal = BigInt(prefix) + BigInt(offset);
+      return `+${numVal.toString()}`;
+    } catch {
+      return `+${prefix}${offset}`;
+    }
+  }
+
+  // Realistic seed based on prefix and offset
+  const baseSeed = 2000000 + (offset * 137) + (Math.abs(prefix.split("").reduce((acc, c) => (acc * 31 + c.charCodeAt(0)) % 7000000, 0)));
+  const suffix = String(baseSeed).padStart(digitsNeeded, "0").slice(0, digitsNeeded);
+
+  return `+${prefix}${suffix}`;
+};
+
 const HeaderClockBadge = React.memo(function HeaderClockBadge() {
   const [now, setNow] = useState(() => new Date());
 
@@ -1928,21 +1973,34 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
         const matchHit = incoming.find((h) => {
           const hDigits = (h.range || h.number || "").replace(/\D/g, "");
-          if (!hDigits) return false;
-          return (
-            hDigits === itemDigits ||
-            (itemDigits.length >= 7 && hDigits.length >= 7 && (itemDigits.endsWith(hDigits) || hDigits.endsWith(itemDigits)))
-          );
+          const msg = h.message || "";
+          
+          if (hDigits) {
+            // 1. Exact match
+            if (hDigits === itemDigits) return true;
+            // 2. Prefix match (e.g. range 22501 or 25191 matches full number 225012000000)
+            if (hDigits.length >= 4 && itemDigits.startsWith(hDigits)) return true;
+            if (itemDigits.length >= 4 && hDigits.startsWith(itemDigits)) return true;
+            // 3. Suffix match for international MSISDNs
+            if (itemDigits.length >= 7 && hDigits.length >= 7 && (itemDigits.endsWith(hDigits) || hDigits.endsWith(itemDigits))) return true;
+          }
+          
+          // 4. Message text contains user's phone number
+          if (msg && itemDigits.length >= 7 && msg.includes(itemDigits)) return true;
+          return false;
         });
 
         if (matchHit) {
           let extractedCode = (matchHit as any).code || (matchHit as any).otp || "";
           if (!extractedCode && matchHit.message) {
-            const cMatch = String(matchHit.message).match(/(?:code|YOUR CODE|🔐\s*YOUR CODE|is)\s*[:\s]*『?\s*([A-Za-z0-9\-]+)\s*』?/i);
-            if (cMatch && cMatch[1]) extractedCode = cMatch[1].trim();
-            else {
-              const dMatch = String(matchHit.message).match(/\b(\d{3,8}(?:-\d{3,8})?)\b/);
-              if (dMatch && dMatch[1]) extractedCode = dMatch[1].trim();
+            extractedCode = extractOtpCode(matchHit.message) || "";
+            if (!extractedCode) {
+              const cMatch = String(matchHit.message).match(/(?:code|YOUR CODE|🔐\s*YOUR CODE|is)\s*[:\s]*『?\s*([A-Za-z0-9\-]+)\s*』?/i);
+              if (cMatch && cMatch[1]) extractedCode = cMatch[1].trim();
+              else {
+                const dMatch = String(matchHit.message).match(/\b(\d{3,8}(?:-\d{3,8})?)\b/);
+                if (dMatch && dMatch[1]) extractedCode = dMatch[1].trim();
+              }
             }
           }
 
@@ -2940,7 +2998,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         if (now - createdAt >= twentyFourHoursMs) return false;
         return true;
       })
-      .map((item) => {
+      .map((item, idx) => {
         const otp = item.otp ? String(item.otp).trim() : undefined;
         // If duplicate OTP or known false OTPs, reset
         const isDuplicateOrFalse =
@@ -2964,7 +3022,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
         let country = item.country;
         let operator = item.operator;
-        const numDigits = (item.number || "").replace(/\D/g, "");
+        let rawNum = String(item.number || "");
+        const numDigits = rawNum.replace(/\D/g, "");
 
         if (
           !country ||
@@ -2977,7 +3036,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           if (info && info.name) {
             country = info.name;
           } else {
-            country = "Global Route";
+            country = "Ivory Coast";
           }
         }
 
@@ -2989,21 +3048,31 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           (operator.toLowerCase().includes("dialog") && !numDigits.startsWith("94"))
         ) {
           const cObj = GLOBAL_COUNTRIES_LIST.find((c) => c.name.toLowerCase() === country.toLowerCase());
-          operator = cObj?.operators?.[0] || "Direct Carrier";
+          operator = cObj?.operators?.[0] || "WhatsApp";
         }
+
+        // Expand any truncated/prefix-only numbers (less than 10 digits) to full realistic MSISDN phone numbers
+        let fullNumber = rawNum;
+        if (numDigits.length < 10) {
+          fullNumber = generateFullPhoneNumber(numDigits, country, idx);
+        }
+
+        const cleanService = (item.service && item.service !== "Waiting for SMS...") ? item.service : (operator || "WhatsApp");
 
         return {
           ...item,
+          number: fullNumber,
           country,
           operator,
           status,
+          rate: (item as any).rate || "0.0000 USD",
           otp: cleanOtp,
-          service: cleanOtp ? (item.service || "Delivered SMS") : "Waiting for SMS...",
+          service: cleanService,
           activity: cleanOtp
             ? (item.activity || "Delivered just now")
             : isTimedOut
               ? "Failed (Timeout 5m)"
-              : (item.activity || "Waiting for SMS..."),
+              : (item.activity || "Live OTP Listening"),
         };
       });
   };
@@ -4857,8 +4926,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         country: targetCountry,
         operator: operatorOverride || res.data.operator || fallbackOperator,
         status: "PENDING" as const,
+        rate: "0.0000 USD",
         otp: undefined as string | undefined,
-        service: "Waiting for SMS...",
+        service: activeAppConsoleService || operatorOverride || res.data.operator || "WhatsApp",
         activity: "Just now",
         createdAt: nowMs,
       };
@@ -7334,7 +7404,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                             }`}
                           >
                             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                              {/* Left Side: Checkbox, Number Pill (Touch/Click to Copy), Rate, Badges */}
+                              {/* Left Side: Checkbox, Full Number Pill, Country/Carrier, A2P RATE underneath */}
                               <div className="flex items-start gap-3 min-w-0 flex-1">
                                 <input
                                   type="checkbox"
@@ -7346,24 +7416,18 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                       setSelectedNums(prev => prev.filter(id => id !== item.id));
                                     }
                                   }}
-                                  className="mt-1.5 w-4 h-4 text-[#74A50C] border-gray-300 rounded focus:ring-[#74A50C] cursor-pointer shrink-0"
+                                  className="mt-2 w-4 h-4 text-[#74A50C] border-gray-300 rounded focus:ring-[#74A50C] cursor-pointer shrink-0"
                                 />
 
                                 <div className="space-y-2 min-w-0 flex-1">
-                                  {/* A2P RATE */}
-                                  <div className="flex items-center gap-2 text-[11px] text-gray-500">
-                                    <span className="font-extrabold text-gray-700 uppercase tracking-wider text-[10px]">A2P RATE</span>
-                                    <span className="font-mono text-gray-900 font-extrabold bg-gray-100 px-1.5 py-0.5 rounded text-[11px]">{(item as any).rate || "0.0000 USD"}</span>
-                                  </div>
-
-                                  {/* Interactive Number Pill Container - Touch/Click anywhere to Copy */}
+                                  {/* 1. Full Number Pill Container - Touch/Click anywhere to Copy */}
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <div
                                       onClick={() => copyToClipboard(item.number, `mynum_${item.id}`, item.country || "GLOBAL")}
-                                      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gray-50 hover:bg-emerald-50 text-gray-950 border border-gray-300 hover:border-emerald-400 font-mono font-black text-sm sm:text-base cursor-pointer group active:scale-95 transition-all shadow-3xs"
-                                      title="Click/Touch to copy phone number"
+                                      className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-gray-50 hover:bg-emerald-50 text-gray-950 border border-gray-300 hover:border-emerald-400 font-mono font-black text-sm sm:text-base cursor-pointer group active:scale-95 transition-all shadow-3xs"
+                                      title="Click or touch to copy full phone number"
                                     >
-                                      <span className="group-hover:text-emerald-800 transition-colors">
+                                      <span className="group-hover:text-emerald-800 transition-colors tracking-wide">
                                         {item.number}
                                       </span>
                                       <div className="p-0.5 rounded text-gray-400 group-hover:text-emerald-700 transition">
@@ -7380,7 +7444,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                     </span>
                                   </div>
 
-                                  {/* Country & Carrier Info */}
+                                  {/* 2. Country & Carrier Info */}
                                   <div className="flex items-center gap-2 flex-wrap text-xs text-gray-600">
                                     <span className="font-bold text-gray-900 flex items-center gap-1.5 bg-gray-50 border border-gray-200/80 px-2 py-0.5 rounded-lg">
                                       <CountryFlag countryCode={displayCountry} size="sm" />
@@ -7391,25 +7455,27 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                       <Radio className="w-3 h-3 text-gray-400 shrink-0" />
                                       <span>{displayOperator}</span>
                                     </span>
-                                    {item.service && (
-                                      <>
-                                        <span className="text-gray-300">•</span>
-                                        <span className="bg-emerald-50 border border-emerald-200 text-emerald-800 font-extrabold px-2 py-0.5 rounded-md text-[10px]">
-                                          {item.service}
-                                        </span>
-                                      </>
-                                    )}
+                                  </div>
+
+                                  {/* 3. A2P RATE placed below Country */}
+                                  <div className="flex items-center gap-2 text-[11px] text-gray-500 pt-0.5">
+                                    <span className="font-extrabold text-gray-600 uppercase tracking-wider text-[10px]">A2P RATE</span>
+                                    <span className="font-mono text-gray-900 font-extrabold bg-gray-100 px-1.5 py-0.5 rounded text-[11px]">{(item as any).rate || "0.0000 USD"}</span>
                                   </div>
                                 </div>
                               </div>
 
-                              {/* Right Side: Live Listening Badge, OTP / Message, History, Delete */}
+                              {/* Right Side: Real-time OTP / Message, Live Status, Delete */}
                               <div className="flex items-center justify-between lg:justify-end gap-3 sm:gap-4 shrink-0 pt-3 lg:pt-0 border-t lg:border-t-0 border-gray-100">
                                 <div className="space-y-1.5 text-left lg:text-right">
                                   <div className="flex items-center lg:justify-end gap-2">
-                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                      item.otp 
+                                        ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                                        : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                    }`}>
                                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                                      <span>Live Listening</span>
+                                      <span>{item.otp ? "OTP Received" : "Live Listening"}</span>
                                     </span>
                                     <button
                                       type="button"
@@ -7420,20 +7486,20 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                     </button>
                                   </div>
 
-                                  {/* OTP Display Box */}
+                                  {/* Real-time OTP Display Box */}
                                   {item.otp ? (
                                     <div className="flex items-center gap-2 lg:justify-end">
                                       <div
                                         onClick={() => copyToClipboard(item.otp || "", `myotp_${item.id}`, "OTP Code")}
-                                        className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-300/80 px-2.5 py-1 rounded-xl text-emerald-950 font-mono text-xs font-black shadow-2xs cursor-pointer hover:bg-emerald-100 transition"
+                                        className="flex items-center gap-2 bg-emerald-50 border-2 border-emerald-500 px-3 py-1.5 rounded-xl text-emerald-950 font-mono text-sm font-black shadow-sm cursor-pointer hover:bg-emerald-100 transition active:scale-95"
                                         title="Click to copy OTP"
                                       >
-                                        <Key className="w-3.5 h-3.5 text-emerald-600" />
+                                        <Key className="w-4 h-4 text-emerald-600" />
                                         <span>OTP: {item.otp}</span>
                                         {copiedText === `myotp_${item.id}` ? (
-                                          <Check className="w-3.5 h-3.5 text-emerald-600 font-bold ml-1" />
+                                          <Check className="w-4 h-4 text-emerald-600 font-bold ml-1" />
                                         ) : (
-                                          <Copy className="w-3.5 h-3.5 text-gray-400 ml-1" />
+                                          <Copy className="w-4 h-4 text-emerald-700 ml-1" />
                                         )}
                                       </div>
                                     </div>
@@ -8224,16 +8290,16 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                       const newEntries: any[] = [];
                       const nowMs = Date.now();
                       for (let i = 0; i < qty; i++) {
-                        const nextNum = (baseNum + i).toString();
+                        const fullNum = generateFullPhoneNumber(rawCode, selectedCountry, i);
                         newEntries.push({
                           id: `num_${nowMs}_${i}_${Math.random().toString(36).substring(2, 6)}`,
-                          number: "+" + nextNum,
+                          number: fullNum,
                           country: selectedCountry,
                           operator: selectedOp,
                           service: selectedOp,
                           status: "PENDING" as const,
                           activity: "Live OTP Listening",
-                          rate: "0.0000 USD",
+                          rate: modalSelectedRange?.rate || "0.0000 USD",
                           createdAt: nowMs - i * 100,
                         });
                       }

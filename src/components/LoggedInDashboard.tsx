@@ -48,6 +48,7 @@ import {
   CheckCircle,
   Lock,
   Trash2,
+  AlertTriangle,
   Zap,
   Flame,
   Filter,
@@ -1566,6 +1567,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const [myNumbersSearch, setMyNumbersSearch] = useState("");
   const [myNumbersRangeFilter, setMyNumbersRangeFilter] = useState("");
   const [selectedNums, setSelectedNums] = useState<string[]>([]);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([]);
   const [myNumsPage, setMyNumsPage] = useState(1);
   const [isRentModalOpen, setIsRentModalOpen] = useState(false);
   const [rentModalTab, setRentModalTab] = useState<"rent" | "upload">("rent");
@@ -1574,6 +1577,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const [modalSelectedRange, setModalSelectedRange] = useState<any | null>(POPULAR_RANGES[0]);
   const [modalDropdownOpen, setModalDropdownOpen] = useState(false);
   const [modalQuantity, setModalQuantity] = useState(50);
+  const [numberOrder, setNumberOrder] = useState<"serial" | "random">("serial");
   const [modalPaymentTerm, setModalPaymentTerm] = useState("1/1 (Default) - Rate: 0.0000 USD");
   const [stockUploadCountry, setStockUploadCountry] = useState("ivory coast");
   const [stockUploadOperator, setStockUploadOperator] = useState("WhatsApp I said");
@@ -7171,9 +7175,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   type="button"
                   onClick={() => {
                     if (selectedNums.length > 0) {
-                      setGetNumHistory((prev) => prev.filter(num => !selectedNums.includes(num.id)));
-                      setSelectedNums([]);
-                      showDashboardToast(`Deleted ${selectedNums.length} selected numbers`, "success");
+                      setDeleteTargetIds(selectedNums);
+                      setIsDeleteConfirmOpen(true);
                     } else {
                       showDashboardToast("No numbers selected to delete", "warning");
                     }
@@ -7282,8 +7285,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   );
                 });
 
-                // Pagination Math
-                const itemsPerPage = 5;
+                // Pagination Math - Default 50 items per page as shown in screenshot
+                const itemsPerPage = 50;
                 const totalEntries = filtered.length;
                 const totalPages = Math.ceil(totalEntries / itemsPerPage) || 1;
                 const startIdx = totalEntries === 0 ? 0 : (myNumsPage - 1) * itemsPerPage + 1;
@@ -7350,7 +7353,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
                 return (
                   <div className="divide-y divide-gray-100">
-                    <div className="bg-white">
+                    <div className="bg-white divide-y divide-gray-100">
                       {paginatedItems.map((item, idx) => {
                         const isSelected = selectedNums.includes(item.id);
                         const displayCountry = item.country || "GLOBAL";
@@ -7366,12 +7369,12 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         return (
                           <div
                             key={item.id}
-                            className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 hover:bg-gray-50/50 transition-colors ${
-                              isSelected ? "bg-emerald-50/20" : ""
+                            className={`flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-4 sm:p-5 hover:bg-gray-50/70 transition-colors ${
+                              isSelected ? "bg-emerald-50/30" : ""
                             }`}
                           >
-                            {/* Number & Selection */}
-                            <div className="flex items-start gap-3 min-w-0">
+                            {/* Left Side: Checkbox, Number, Rate, Badges */}
+                            <div className="flex items-start gap-3 min-w-0 flex-1">
                               <input
                                 type="checkbox"
                                 checked={isSelected}
@@ -7382,16 +7385,18 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                     setSelectedNums(prev => prev.filter(id => id !== item.id));
                                   }
                                 }}
-                                className="mt-1 w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500 cursor-pointer"
+                                className="mt-1 w-4 h-4 text-[#74A50C] border-gray-300 rounded focus:ring-[#74A50C] cursor-pointer"
                               />
 
-                              <div className="space-y-1.5 min-w-0">
-                                <div className="font-mono text-gray-950 font-black tracking-wide text-sm sm:text-base flex items-center gap-1.5 flex-wrap">
-                                  <span>{getRangeMaskedNumber(item.number)}</span>
+                              <div className="space-y-1.5 min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-mono text-gray-950 font-black tracking-wide text-sm sm:text-base">
+                                    {getRangeMaskedNumber(item.number)}
+                                  </span>
                                   <button
                                     type="button"
                                     onClick={() => copyToClipboard(getRangeMaskedNumber(item.number), `mynum_${item.id}`, item.country || "GLOBAL")}
-                                    className="p-1 rounded-md bg-white hover:bg-emerald-50 text-gray-500 hover:text-emerald-700 transition cursor-pointer border border-gray-200 flex items-center gap-1 shadow-3xs"
+                                    className="p-1 rounded-md bg-gray-50 hover:bg-emerald-50 text-gray-500 hover:text-emerald-700 transition cursor-pointer border border-gray-200 flex items-center gap-1 shadow-3xs"
                                     title="Copy number"
                                   >
                                     {copiedText === `mynum_${item.id}` ? (
@@ -7400,10 +7405,13 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                       <Copy className="w-3.5 h-3.5" />
                                     )}
                                   </button>
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-[#EAF0D8] text-[#557A08] border border-[#D5E0B0]">
+                                    1/1
+                                  </span>
                                 </div>
 
                                 <div className="flex items-center gap-2 flex-wrap text-xs text-gray-500">
-                                  <span className="font-medium text-gray-900 flex items-center gap-1">
+                                  <span className="font-semibold text-gray-900 flex items-center gap-1">
                                     <CountryFlag countryCode={displayCountry} size="sm" />
                                     <span>{stripFlagFromCountryName(displayCountry)}</span>
                                   </span>
@@ -7415,23 +7423,43 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                   {item.service && (
                                     <>
                                       <span className="text-gray-300">•</span>
-                                      <span className="bg-slate-50 border border-slate-100 text-slate-700 font-extrabold px-1.5 py-0.5 rounded-md text-[10px]">
-                                        Service: {item.service}
+                                      <span className="bg-emerald-50 border border-emerald-100 text-emerald-800 font-extrabold px-1.5 py-0.5 rounded-md text-[10px]">
+                                        {item.service}
                                       </span>
                                     </>
                                   )}
                                 </div>
+
+                                <div className="pt-0.5 flex items-center gap-2 text-[11px] text-gray-400">
+                                  <span className="font-bold text-gray-500 uppercase tracking-wider text-[10px]">A2P RATE:</span>
+                                  <span className="font-mono text-gray-900 font-extrabold">{(item as any).rate || "0.0000 USD"}</span>
+                                </div>
                               </div>
                             </div>
 
-                            {/* OTP Status or Code */}
-                            <div className="flex items-center justify-between sm:justify-end gap-4">
-                              <div className="text-left sm:text-right space-y-1">
+                            {/* Right Side: Live Listening Badge, OTP / Message, History, Delete */}
+                            <div className="flex items-center justify-between lg:justify-end gap-3 sm:gap-4 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-gray-100">
+                              <div className="space-y-1.5 text-left lg:text-right">
+                                <div className="flex items-center lg:justify-end gap-2">
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                                    <span>Live Listening</span>
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => showDashboardToast("OTP history synced", "info")}
+                                    className="text-[11px] font-bold text-gray-500 hover:text-gray-900 flex items-center gap-1 hover:underline cursor-pointer"
+                                  >
+                                    <span>👁 History</span>
+                                  </button>
+                                </div>
+
+                                {/* OTP Display Box */}
                                 {item.otp ? (
-                                  <div className="flex items-center gap-1.5">
-                                    <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-lg text-emerald-900 font-mono text-xs font-black shadow-3xs">
+                                  <div className="flex items-center gap-2 lg:justify-end">
+                                    <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-300/80 px-2.5 py-1 rounded-xl text-emerald-950 font-mono text-xs font-black shadow-2xs">
                                       <Key className="w-3.5 h-3.5 text-emerald-600" />
-                                      <span>{item.otp}</span>
+                                      <span>OTP: {item.otp}</span>
                                     </div>
                                     <button
                                       type="button"
@@ -7446,27 +7474,26 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                       )}
                                     </button>
                                   </div>
-                                ) : item.status === "FAILED" ? (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-bold bg-rose-50 text-rose-700 border border-rose-200 uppercase tracking-wider">
-                                    FAILED
-                                  </span>
                                 ) : (
-                                  <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200/60 px-2 py-1 rounded-lg font-bold animate-pulse">
+                                  <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200/60 px-2.5 py-1 rounded-lg font-bold animate-pulse lg:justify-end">
                                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
-                                    <span>Waiting for SMS...</span>
+                                    <span>Waiting for OTP...</span>
                                   </div>
                                 )}
+
+                                <div className="text-[10px] text-gray-400 font-medium">
+                                  <span>LAST SMS: </span>
+                                  <span className="font-mono text-gray-700 font-bold">{item.otp || (item as any).lastSms || "-"}</span>
+                                </div>
                               </div>
 
-                              <div className="flex items-center gap-2">
-                                <span className="text-[10px] text-gray-400 font-mono">
-                                  {formatRelativeActivityTime(item, nowTick)}
-                                </span>
+                              {/* Delete Individual Number Button */}
+                              <div className="flex items-center gap-1">
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    handleDeleteNumEntry(item.id);
-                                    setSelectedNums(prev => prev.filter(id => id !== item.id));
+                                    setDeleteTargetIds([item.id]);
+                                    setIsDeleteConfirmOpen(true);
                                   }}
                                   className="p-2 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer border border-transparent hover:border-rose-100"
                                   title="Delete number"
@@ -7716,51 +7743,194 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                       <motion.div
                         initial={{ opacity: 0, y: 8 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="p-4 rounded-2xl border border-slate-200 bg-slate-50/80 space-y-3 mt-3"
+                        className="space-y-4 pt-1"
                       >
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-black text-gray-800 tracking-tight">
-                            Selected Termination Details
-                          </span>
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-emerald-100/90 text-emerald-800 border border-emerald-200">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                            <span>In Stock ({modalSelectedRange?.available || 9995} Available)</span>
-                          </span>
+                        {/* 1. RANGE POOL STOCK HEALTH (Screenshot 1) */}
+                        <div className="p-3.5 sm:p-4 rounded-xl border border-gray-200 bg-gray-50/70 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-black text-gray-900 tracking-tight">
+                              Range Pool Stock Health
+                            </span>
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-[#EBF4D2] text-[#4A6B07] border border-[#D1E2A3]">
+                              <span className="w-2 h-2 rounded-full bg-[#74A50C] animate-pulse" />
+                              <span>In Stock ({modalSelectedRange.available || 25} Available)</span>
+                            </span>
+                          </div>
+
+                          {/* 3 Metric Cards */}
+                          <div className="grid grid-cols-3 gap-2.5 text-center">
+                            <div className="p-2.5 rounded-lg bg-white border border-gray-200 shadow-2xs">
+                              <span className="block text-[9px] font-black uppercase tracking-wider text-gray-400">
+                                TOTAL NUMBERS
+                              </span>
+                              <span className="block text-sm sm:text-base font-black text-gray-900 mt-0.5">
+                                {modalSelectedRange.available || 25}
+                              </span>
+                            </div>
+                            <div className="p-2.5 rounded-lg bg-white border border-gray-200 shadow-2xs">
+                              <span className="block text-[9px] font-black uppercase tracking-wider text-gray-400">
+                                USED / RENTED
+                              </span>
+                              <span className="block text-sm sm:text-base font-black text-gray-900 mt-0.5">
+                                0
+                              </span>
+                            </div>
+                            <div className="p-2.5 rounded-lg bg-white border border-gray-200 shadow-2xs">
+                              <span className="block text-[9px] font-black uppercase tracking-wider text-gray-400">
+                                AVAILABLE
+                              </span>
+                              <span className="block text-sm sm:text-base font-black text-gray-900 mt-0.5">
+                                {modalSelectedRange.available || 25}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="pt-0.5 space-y-1 text-[11px] text-gray-500 font-medium">
+                            <p>Showing 1 of 1 active range sources added by Admin across 1 countries.</p>
+                          </div>
                         </div>
 
-                        {/* Details grid */}
-                        <div className="grid grid-cols-2 gap-2 text-xs">
-                          <div className="p-2.5 rounded-xl bg-white border border-slate-100">
-                            <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">Country</span>
-                            <span className="font-extrabold text-gray-900 capitalize">{modalSelectedRange.country}</span>
+                        {/* 2. COUNTRY, OPERATOR, AVAILABLE (Screenshot 1) */}
+                        <div className="p-3.5 rounded-xl border border-gray-200 bg-white shadow-3xs grid grid-cols-3 gap-2 text-xs">
+                          <div className="space-y-0.5">
+                            <span className="block text-[10px] font-extrabold uppercase tracking-wider text-gray-400">
+                              COUNTRY
+                            </span>
+                            <span className="font-black text-gray-900 capitalize text-xs sm:text-sm">
+                              {modalSelectedRange.country}
+                            </span>
                           </div>
-                          <div className="p-2.5 rounded-xl bg-white border border-slate-100">
-                            <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">Operator</span>
-                            <span className="font-extrabold text-gray-900">{modalSelectedRange.operator || modalSelectedRange.name}</span>
+                          <div className="space-y-0.5">
+                            <span className="block text-[10px] font-extrabold uppercase tracking-wider text-gray-400">
+                              OPERATOR
+                            </span>
+                            <span className="font-black text-gray-900 text-xs sm:text-sm">
+                              {modalSelectedRange.operator || modalSelectedRange.name}
+                            </span>
+                          </div>
+                          <div className="space-y-0.5">
+                            <span className="block text-[10px] font-extrabold uppercase tracking-wider text-purple-600">
+                              AVAILABLE
+                            </span>
+                            <span className="font-black text-purple-700 text-xs sm:text-sm">
+                              {modalSelectedRange.available || 25} available
+                            </span>
                           </div>
                         </div>
 
-                        {/* Quantity Preset */}
-                        <div className="space-y-1.5 pt-1">
-                          <label className="block text-xs font-bold text-gray-700">
-                            কয়টি নাম্বার নিতে চান (QUANTITY)
+                        {/* 3. SELECT PAYMENT TERM */}
+                        <div className="space-y-2">
+                          <label className="block text-xs font-black uppercase tracking-wider text-gray-700">
+                            SELECT PAYMENT TERM
                           </label>
+                          <select
+                            value={modalPaymentTerm}
+                            onChange={(e) => setModalPaymentTerm(e.target.value)}
+                            className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 text-xs sm:text-sm font-bold text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#74A50C]/40 focus:border-[#74A50C] cursor-pointer"
+                          >
+                            <option value="1/1 (Default) - Rate: 0.0000 USD">1/1 (Default) - Rate: 0.0000 USD</option>
+                            <option value="1/2 (Bulk Terms) - Rate: 0.0000 USD">1/2 (Bulk Terms) - Rate: 0.0000 USD</option>
+                          </select>
+                          <p className="text-[11px] text-gray-400 font-medium">
+                            Payment terms determine your rate
+                          </p>
+
+                          <div className="grid grid-cols-2 gap-3 pt-1">
+                            <div className="p-3 rounded-xl bg-gray-50 border border-gray-200 space-y-0.5">
+                              <span className="block text-[10px] font-extrabold uppercase tracking-wider text-gray-400">
+                                RATE
+                              </span>
+                              <span className="block text-xs sm:text-sm font-black text-purple-700">
+                                0.0000 USD
+                              </span>
+                            </div>
+                            <div className="p-3 rounded-xl bg-gray-50 border border-gray-200 space-y-0.5">
+                              <span className="block text-[10px] font-extrabold uppercase tracking-wider text-gray-400">
+                                A2P LIMIT
+                              </span>
+                              <span className="block text-xs sm:text-sm font-black text-gray-900">
+                                10,000
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 4. HOW MANY NUMBERS? (Matching Screenshot 1 & 2) */}
+                        <div className="space-y-2 pt-1 border-t border-gray-100">
+                          <div className="flex items-center justify-between">
+                            <label className="block text-xs font-black uppercase tracking-wider text-gray-800">
+                              HOW MANY NUMBERS?
+                            </label>
+                            <span className="text-[11px] font-bold text-gray-500">
+                              Max: 50
+                            </span>
+                          </div>
+
+                          {/* Preset Quantity Row: Input field + pills (1, 5, 10, 25, 50) */}
                           <div className="flex items-center gap-2">
-                            {[1, 5, 10, 50].map((qty) => (
+                            <div className="relative w-20">
+                              <input
+                                type="number"
+                                min={1}
+                                max={50}
+                                value={modalQuantity}
+                                onChange={(e) => setModalQuantity(Math.max(1, Math.min(50, parseInt(e.target.value) || 1)))}
+                                className="w-full px-3 py-2 text-center text-xs font-black border border-gray-300 rounded-xl bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#74A50C]"
+                              />
+                            </div>
+
+                            {[1, 5, 10, 25, 50].map((qty) => (
                               <button
                                 key={qty}
                                 type="button"
                                 onClick={() => setModalQuantity(qty)}
-                                className={`flex-1 py-1.5 rounded-xl text-xs font-black transition border cursor-pointer ${
+                                className={`px-3.5 py-2 rounded-xl text-xs font-black transition border cursor-pointer ${
                                   modalQuantity === qty
-                                    ? "bg-[#74A50C] text-white border-[#74A50C]"
-                                    : "bg-white hover:bg-gray-100 text-gray-700 border-gray-200"
+                                    ? "bg-black text-white border-black shadow-xs"
+                                    : "bg-white hover:bg-gray-100 text-gray-800 border-gray-300"
                                 }`}
                               >
-                                {qty} টি
+                                {qty}
                               </button>
                             ))}
                           </div>
+                        </div>
+
+                        {/* 5. NUMBER ORDER Section (Matching Screenshot 2) */}
+                        <div className="space-y-2 pt-1">
+                          <label className="block text-xs font-black uppercase tracking-wider text-gray-800">
+                            NUMBER ORDER
+                          </label>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <button
+                              type="button"
+                              onClick={() => setNumberOrder("serial")}
+                              className={`py-2.5 px-4 rounded-xl text-xs font-bold transition border flex items-center justify-center gap-2 cursor-pointer ${
+                                numberOrder === "serial"
+                                  ? "bg-[#F3F8E8] text-[#557A08] border-[#74A50C] shadow-2xs"
+                                  : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+                              }`}
+                            >
+                              <span>↑↓ Serial</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setNumberOrder("random")}
+                              className={`py-2.5 px-4 rounded-xl text-xs font-bold transition border flex items-center justify-center gap-2 cursor-pointer ${
+                                numberOrder === "random"
+                                  ? "bg-[#F3F8E8] text-[#557A08] border-[#74A50C] shadow-2xs"
+                                  : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+                              }`}
+                            >
+                              <span>🔀 Random</span>
+                            </button>
+                          </div>
+
+                          <p className="text-[11px] text-gray-400 font-medium">
+                            You can request up to 50 numbers at a time.
+                          </p>
                         </div>
                       </motion.div>
                     )}
@@ -7888,6 +8058,76 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 )}
 
 
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* -------------------- DELETE CONFIRMATION MODAL -------------------- */}
+        <AnimatePresence>
+          {isDeleteConfirmOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-xs">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                className="w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl border border-gray-100 space-y-5 relative overflow-hidden"
+              >
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-100 text-rose-600 flex items-center justify-center shrink-0 shadow-3xs">
+                    <AlertTriangle className="w-6 h-6" />
+                  </div>
+                  <div className="space-y-1 min-w-0 flex-1">
+                    <h3 className="text-base sm:text-lg font-black text-gray-900 tracking-tight">
+                      Confirm Deletion (নাম্বার ডিলিট করার সতর্কতা)
+                    </h3>
+                    <p className="text-xs text-gray-500 leading-relaxed">
+                      আপনি কি নিশ্চিত যে {deleteTargetIds.length > 0 ? deleteTargetIds.length : selectedNums.length}টি নাম্বার ডিলিট করতে চান?
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsDeleteConfirmOpen(false);
+                      setDeleteTargetIds([]);
+                    }}
+                    className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="p-3 bg-rose-50/70 rounded-xl border border-rose-200/60 text-xs text-rose-800 font-medium leading-relaxed">
+                  ⚠️ ডিলিট করার পর এই নম্বরসমূহ আপনার লাইভ লিস্টিং প্যানেল থেকে মুছে যাবে।
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsDeleteConfirmOpen(false);
+                      setDeleteTargetIds([]);
+                    }}
+                    className="px-4 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-bold text-xs hover:bg-gray-50 transition cursor-pointer"
+                  >
+                    Cancel (বাতিল)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const idsToRemove = deleteTargetIds.length > 0 ? deleteTargetIds : selectedNums;
+                      setGetNumHistory((prev) => prev.filter((n) => !idsToRemove.includes(n.id)));
+                      setSelectedNums((prev) => prev.filter((id) => !idsToRemove.includes(id)));
+                      setIsDeleteConfirmOpen(false);
+                      setDeleteTargetIds([]);
+                      showDashboardToast(`সফলভাবে ${idsToRemove.length}টি নাম্বার ডিলিট করা হয়েছে`, "success");
+                    }}
+                    className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs transition cursor-pointer shadow-sm flex items-center gap-1.5"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Confirm Delete (ডিলিট করুন)</span>
+                  </button>
+                </div>
               </motion.div>
             </div>
           )}

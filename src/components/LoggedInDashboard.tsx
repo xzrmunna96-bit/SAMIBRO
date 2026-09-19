@@ -938,668 +938,7 @@ const TOP_APPLICATIONS = [
   },
 ];
 
-const POPULAR_RANGES = [
-  {
-    id: "afghanistan_areeba_1",
-    name: "Areeba 1",
-    code: "9377XXX",
-    dialCode: "93",
-    country: "Afghanistan",
-    operator: "Areeba",
-    subOperator: "Areeba 1",
-    totalStock: 9999,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "afghanistan_areeba_2",
-    name: "Areeba 2",
-    code: "9377XXX",
-    dialCode: "93",
-    country: "Afghanistan",
-    operator: "Areeba",
-    subOperator: "Areeba 2",
-    totalStock: 9999,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "afghanistan_areeba_3",
-    name: "Areeba 3",
-    code: "9377XXX",
-    dialCode: "93",
-    country: "Afghanistan",
-    operator: "Areeba",
-    subOperator: "Areeba 3",
-    totalStock: 9999,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "afghanistan_areeba_4",
-    name: "Areeba 4",
-    code: "9377XXX",
-    dialCode: "93",
-    country: "Afghanistan",
-    operator: "Areeba",
-    subOperator: "Areeba 4",
-    totalStock: 9999,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "afghanistan_awcc",
-    name: "AWCC",
-    code: "9370XXX",
-    dialCode: "93",
-    country: "Afghanistan",
-    operator: "AWCC",
-    subOperator: "AWCC",
-    totalStock: 9999,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "afghanistan_awcc_1",
-    name: "AWCC 1",
-    code: "9370XXX",
-    dialCode: "93",
-    country: "Afghanistan",
-    operator: "AWCC",
-    subOperator: "AWCC 1",
-    totalStock: 9999,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "afghanistan_awcc_10",
-    name: "AWCC 10",
-    code: "9370XXX",
-    dialCode: "93",
-    country: "Afghanistan",
-    operator: "AWCC",
-    subOperator: "AWCC 10",
-    totalStock: 9999,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "afghanistan_awcc_11",
-    name: "AWCC 11",
-    code: "9370XXX",
-    dialCode: "93",
-    country: "Afghanistan",
-    operator: "AWCC",
-    subOperator: "AWCC 11",
-    totalStock: 9999,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "afghanistan_awcc_12",
-    name: "AWCC 12",
-    code: "9370XXX",
-    dialCode: "93",
-    country: "Afghanistan",
-    operator: "AWCC",
-    subOperator: "AWCC 12",
-    totalStock: 9999,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "afghanistan_awcc_13",
-    name: "AWCC 13",
-    code: "9370XXX",
-    dialCode: "93",
-    country: "Afghanistan",
-    operator: "AWCC",
-    subOperator: "AWCC 13",
-    totalStock: 9999,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "afghanistan_awcc_14",
-    name: "AWCC 14",
-    code: "9370XXX",
-    dialCode: "93",
-    country: "Afghanistan",
-    operator: "AWCC",
-    subOperator: "AWCC 14",
-    totalStock: 9999,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "afghanistan_awcc_15",
-    name: "AWCC 15",
-    code: "9370XXX",
-    dialCode: "93",
-    country: "Afghanistan",
-    operator: "AWCC",
-    subOperator: "AWCC 15",
-    totalStock: 9999,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "afghanistan_awcc_16",
-    name: "AWCC 16",
-    code: "9370XXX",
-    dialCode: "93",
-    country: "Afghanistan",
-    operator: "AWCC",
-    subOperator: "AWCC 16",
-    totalStock: 9999,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "afghanistan_awcc_2",
-    name: "AWCC 2",
-    code: "9370XXX",
-    dialCode: "93",
-    country: "Afghanistan",
-    operator: "AWCC",
-    subOperator: "AWCC 2",
-    totalStock: 9999,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "afghanistan_awcc_3",
-    name: "AWCC 3",
-    code: "9370XXX",
-    dialCode: "93",
-    country: "Afghanistan",
-    operator: "AWCC",
-    subOperator: "AWCC 3",
-    totalStock: 9999,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "afghanistan_awcc_4",
-    name: "AWCC 4",
-    code: "9370XXX",
-    dialCode: "93",
-    country: "Afghanistan",
-    operator: "AWCC",
-    subOperator: "AWCC 4",
-    totalStock: 9999,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "afghanistan_awcc_5",
-    name: "AWCC 5",
-    code: "9370XXX",
-    dialCode: "93",
-    country: "Afghanistan",
-    operator: "AWCC",
-    subOperator: "AWCC 5",
-    totalStock: 9999,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "afghanistan_awcc_6",
-    name: "AWCC 6",
-    code: "9370XXX",
-    dialCode: "93",
-    country: "Afghanistan",
-    operator: "AWCC",
-    subOperator: "AWCC 6",
-    totalStock: 9999,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "afghanistan_awcc_7",
-    name: "AWCC 7",
-    code: "9370XXX",
-    dialCode: "93",
-    country: "Afghanistan",
-    operator: "AWCC",
-    subOperator: "AWCC 7",
-    totalStock: 9999,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "afghanistan_awcc_8",
-    name: "AWCC 8",
-    code: "9370XXX",
-    dialCode: "93",
-    country: "Afghanistan",
-    operator: "AWCC",
-    subOperator: "AWCC 8",
-    totalStock: 9999,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "afghanistan_awcc_9",
-    name: "AWCC 9",
-    code: "9370XXX",
-    dialCode: "93",
-    country: "Afghanistan",
-    operator: "AWCC",
-    subOperator: "AWCC 9",
-    totalStock: 9999,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "afghanistan_etisalat_1",
-    name: "Etisalat 1",
-    code: "9378XXX",
-    dialCode: "93",
-    country: "Afghanistan",
-    operator: "Etisalat",
-    subOperator: "Etisalat 1",
-    totalStock: 9999,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "afghanistan_mtn_1",
-    name: "MTN 1",
-    code: "9376XXX",
-    dialCode: "93",
-    country: "Afghanistan",
-    operator: "MTN",
-    subOperator: "MTN 1",
-    totalStock: 9999,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "afghanistan_roshan_1",
-    name: "Roshan 1",
-    code: "9379XXX",
-    dialCode: "93",
-    country: "Afghanistan",
-    operator: "Roshan",
-    subOperator: "Roshan 1",
-    totalStock: 9999,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "bangladesh_wa",
-    name: "WhatsApp",
-    code: "88017XXX",
-    dialCode: "880",
-    country: "Bangladesh",
-    operator: "WhatsApp",
-    subOperator: "WhatsApp",
-    totalStock: 15000,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "bangladesh_tg",
-    name: "Telegram",
-    code: "88018XXX",
-    dialCode: "880",
-    country: "Bangladesh",
-    operator: "Telegram",
-    subOperator: "Telegram",
-    totalStock: 12500,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "bangladesh_gp",
-    name: "Grameenphone",
-    code: "88017XXX",
-    dialCode: "880",
-    country: "Bangladesh",
-    operator: "Grameenphone",
-    subOperator: "Grameenphone",
-    totalStock: 10000,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "bangladesh_bl",
-    name: "Banglalink",
-    code: "88019XXX",
-    dialCode: "880",
-    country: "Bangladesh",
-    operator: "Banglalink",
-    subOperator: "Banglalink",
-    totalStock: 10000,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "bangladesh_robi",
-    name: "Robi",
-    code: "88018XXX",
-    dialCode: "880",
-    country: "Bangladesh",
-    operator: "Robi",
-    subOperator: "Robi",
-    totalStock: 10000,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "ivory_coast_wa",
-    name: "WhatsApp",
-    code: "22501XXX",
-    dialCode: "225",
-    country: "Ivory Coast",
-    operator: "WhatsApp",
-    subOperator: "WhatsApp",
-    totalStock: 9995,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "98%",
-  },
-  {
-    id: "ivory_coast_tg",
-    name: "Telegram",
-    code: "22505XXX",
-    dialCode: "225",
-    country: "Ivory Coast",
-    operator: "Telegram",
-    subOperator: "Telegram",
-    totalStock: 9500,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "98%",
-  },
-  {
-    id: "india_wa",
-    name: "WhatsApp",
-    code: "9198XXX",
-    dialCode: "91",
-    country: "India",
-    operator: "WhatsApp",
-    subOperator: "WhatsApp",
-    totalStock: 20000,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "india_tg",
-    name: "Telegram",
-    code: "9199XXX",
-    dialCode: "91",
-    country: "India",
-    operator: "Telegram",
-    subOperator: "Telegram",
-    totalStock: 18000,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "usa_wa",
-    name: "WhatsApp",
-    code: "1202XXX",
-    dialCode: "1",
-    country: "United States",
-    operator: "WhatsApp",
-    subOperator: "WhatsApp",
-    totalStock: 25000,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "uk_wa",
-    name: "WhatsApp",
-    code: "4477XXX",
-    dialCode: "44",
-    country: "United Kingdom",
-    operator: "WhatsApp",
-    subOperator: "WhatsApp",
-    totalStock: 15000,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "indonesia_wa",
-    name: "WhatsApp",
-    code: "62812XXX",
-    dialCode: "62",
-    country: "Indonesia",
-    operator: "WhatsApp",
-    subOperator: "WhatsApp",
-    totalStock: 8000,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "95%",
-  },
-  {
-    id: "pakistan_wa",
-    name: "WhatsApp",
-    code: "92300XXX",
-    dialCode: "92",
-    country: "Pakistan",
-    operator: "WhatsApp",
-    subOperator: "WhatsApp",
-    totalStock: 12000,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "97%",
-  },
-  {
-    id: "nigeria_wa",
-    name: "WhatsApp",
-    code: "23480XXX",
-    dialCode: "234",
-    country: "Nigeria",
-    operator: "WhatsApp",
-    subOperator: "WhatsApp",
-    totalStock: 14000,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "96%",
-  },
-  {
-    id: "ethiopia_telegram",
-    name: "Telegram",
-    code: "25191XXX",
-    dialCode: "251",
-    country: "Ethiopia",
-    operator: "Telegram",
-    subOperator: "Telegram",
-    totalStock: 8500,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "99%",
-  },
-  {
-    id: "iraq_wa",
-    name: "WhatsApp",
-    code: "96477XXX",
-    dialCode: "964",
-    country: "Iraq",
-    operator: "WhatsApp",
-    subOperator: "WhatsApp",
-    totalStock: 5000,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "96%",
-  },
-  {
-    id: "kenya_wa",
-    name: "WhatsApp",
-    code: "25470XXX",
-    dialCode: "254",
-    country: "Kenya",
-    operator: "WhatsApp",
-    subOperator: "WhatsApp",
-    totalStock: 7500,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "98%",
-  },
-  {
-    id: "nigeria_wa",
-    name: "WhatsApp",
-    code: "23480XXX",
-    dialCode: "234",
-    country: "Nigeria",
-    operator: "WhatsApp",
-    subOperator: "WhatsApp",
-    totalStock: 10000,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "97%",
-  },
-  {
-    id: "pakistan_wa",
-    name: "WhatsApp",
-    code: "92300XXX",
-    dialCode: "92",
-    country: "Pakistan",
-    operator: "WhatsApp",
-    subOperator: "WhatsApp",
-    totalStock: 8500,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "98%",
-  },
-  {
-    id: "philippines_wa",
-    name: "WhatsApp",
-    code: "63917XXX",
-    dialCode: "63",
-    country: "Philippines",
-    operator: "WhatsApp",
-    subOperator: "WhatsApp",
-    totalStock: 6000,
-    rented: 0,
-    available: "Unlimited",
-    rate: "0.0096 USD",
-    a2pLimit: "10000",
-    cap: "95%",
-  },
-];
+const POPULAR_RANGES: any[] = [];
 
 export const generateFullPhoneNumber = (codePrefix?: string, countryName?: string, offset: number = 0): string => {
   const cleanCode = (codePrefix || "").replace(/[^0-9]/g, "");
@@ -2236,13 +1575,13 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const [rentModalTab, setRentModalTab] = useState<"rent" | "upload">("rent");
   const [isChooseTerminationOpen, setIsChooseTerminationOpen] = useState(false);
   const [modalSearchFilter, setModalSearchFilter] = useState("");
-  const [modalSelectedRange, setModalSelectedRange] = useState<any | null>(POPULAR_RANGES[0]);
+  const [modalSelectedRange, setModalSelectedRange] = useState<any | null>(null);
   const [modalDropdownOpen, setModalDropdownOpen] = useState(false);
   const [modalQuantity, setModalQuantity] = useState(50);
   const [numberOrder, setNumberOrder] = useState<"serial" | "random">("serial");
   const [modalPaymentTerm, setModalPaymentTerm] = useState("1/1 (Default) - Rate: 0.0000 USD");
-  const [stockUploadCountry, setStockUploadCountry] = useState("ivory coast");
-  const [stockUploadOperator, setStockUploadOperator] = useState("WhatsApp I said");
+  const [stockUploadCountry, setStockUploadCountry] = useState("");
+  const [stockUploadOperator, setStockUploadOperator] = useState("");
   const [stockUploadNumbersText, setStockUploadNumbersText] = useState("");
   const [stockUploadSuccess, setStockUploadSuccess] = useState(false);
 
@@ -8263,44 +7602,64 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                       </div>
                     </button>
 
-                    {/* Dynamic Popular Ranges List */}
-                    {POPULAR_RANGES.filter((r) => {
-                      if (!modalSearchFilter.trim()) return true;
-                      const q = modalSearchFilter.toLowerCase();
-                      return (
-                        r.country.toLowerCase().includes(q) ||
-                        r.operator.toLowerCase().includes(q) ||
-                        (r.subOperator && r.subOperator.toLowerCase().includes(q)) ||
-                        (r.dialCode && r.dialCode.includes(q))
-                      );
-                    }).map((range) => {
-                      const isSelected = modalSelectedRange && modalSelectedRange.id === range.id;
-                      return (
-                        <button
-                          key={range.id}
-                          type="button"
-                          onClick={() => {
-                            setModalSelectedRange(range);
-                            setIsChooseTerminationOpen(false);
-                            setModalSearchFilter("");
-                          }}
-                          className={`w-full text-left px-5 py-3.5 text-xs sm:text-sm transition flex items-center justify-between cursor-pointer active:bg-blue-50/60 ${
-                            isSelected
-                              ? "bg-blue-50/40 text-gray-900 font-medium"
-                              : "bg-white text-gray-800 hover:bg-gray-50"
-                          }`}
-                        >
-                          <span className="truncate pr-3">
-                            {range.country} - {range.subOperator || range.operator} - {range.dialCode} (Unlimited available)
-                          </span>
-                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                            isSelected ? "border-blue-600" : "border-gray-400"
-                          }`}>
-                            {isSelected && <div className="w-2.5 h-2.5 rounded-full bg-blue-600" />}
-                          </div>
-                        </button>
-                      );
-                    })}
+                    {/* Real Available Terminations List */}
+                    {manualRanges.length === 0 ? (
+                      <div className="p-8 text-center text-xs text-gray-400">
+                        No terminations found.
+                      </div>
+                    ) : (
+                      manualRanges.filter((r) => {
+                        if (!modalSearchFilter.trim()) return true;
+                        const q = modalSearchFilter.toLowerCase();
+                        const info = formatTerminationInfo(r);
+                        return (
+                          r.country.toLowerCase().includes(q) ||
+                          r.rangePrefix.toLowerCase().includes(q) ||
+                          info.operator.toLowerCase().includes(q) ||
+                          (r.dialCode && r.dialCode.toLowerCase().includes(q))
+                        );
+                      }).map((r) => {
+                        const info = formatTerminationInfo(r);
+                        const isSelected = modalSelectedRange && (modalSelectedRange.rangePrefix === r.rangePrefix || modalSelectedRange.id === r.rangePrefix);
+                        const rangeObj = {
+                          id: r.rangePrefix,
+                          code: r.rangePrefix,
+                          rangePrefix: r.rangePrefix,
+                          country: r.country,
+                          operator: info.operator,
+                          subOperator: info.operator,
+                          dialCode: r.dialCode || r.rangePrefix,
+                          rate: "0.0000 USD",
+                          a2pLimit: "10000",
+                          available: "Unlimited",
+                        };
+                        return (
+                          <button
+                            key={r.rangePrefix}
+                            type="button"
+                            onClick={() => {
+                              setModalSelectedRange(rangeObj);
+                              setIsChooseTerminationOpen(false);
+                              setModalSearchFilter("");
+                            }}
+                            className={`w-full text-left px-5 py-3.5 text-xs sm:text-sm transition flex items-center justify-between cursor-pointer active:bg-blue-50/60 ${
+                              isSelected
+                                ? "bg-blue-50/40 text-gray-900 font-medium"
+                                : "bg-white text-gray-800 hover:bg-gray-50"
+                            }`}
+                          >
+                            <span className="truncate pr-3">
+                              {r.country} - {info.operator} - {info.masked} (Unlimited available)
+                            </span>
+                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                              isSelected ? "border-blue-600" : "border-gray-400"
+                            }`}>
+                              {isSelected && <div className="w-2.5 h-2.5 rounded-full bg-blue-600" />}
+                            </div>
+                          </button>
+                        );
+                      })
+                    )}
                   </div>
                 </motion.div>
               ) : (
@@ -8371,7 +7730,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
                       {/* Subtext Underneath */}
                       <p className="text-xs text-gray-500 leading-relaxed pt-0.5">
-                        Showing the first 500 of 4,238 ranges. Type a range or operator name to find a specific one.
+                        {manualRanges.length > 0
+                          ? `Showing ${manualRanges.length} active termination route${manualRanges.length === 1 ? "" : "s"}.`
+                          : "Select a termination to configure allocation."}
                       </p>
                     </div>
 
@@ -8389,7 +7750,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                               COUNTRY
                             </span>
                             <span className="block text-sm sm:text-base font-bold text-slate-900">
-                              {modalSelectedRange.dialCode || "93"}
+                              {modalSelectedRange.dialCode || modalSelectedRange.country || ""}
                             </span>
                           </div>
                           <div className="space-y-1">
@@ -8397,7 +7758,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                               OPERATOR
                             </span>
                             <span className="block text-sm sm:text-base font-bold text-slate-900 truncate">
-                              {modalSelectedRange.operator || "AWCC"}
+                              {modalSelectedRange.operator || "Standard Carrier"}
                             </span>
                           </div>
                         </div>
@@ -8427,9 +7788,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                             onChange={(e) => setModalPaymentTerm(e.target.value)}
                             className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs sm:text-sm font-medium text-slate-800 bg-white focus:outline-none focus:ring-1 focus:ring-[#689F38] cursor-pointer shadow-2xs"
                           >
-                            <option value="1/1 (Default) - Rate: 0.0096 USD">1/1 (Default) - Rate: 0.0096 USD</option>
-                            <option value="1/2 (Bulk Terms) - Rate: 0.0096 USD">1/2 (Bulk Terms) - Rate: 0.0096 USD</option>
-                            <option value="1/7 (Weekly Terms) - Rate: 0.0096 USD">1/7 (Weekly Terms) - Rate: 0.0096 USD</option>
+                            <option value="1/1 (Default) - Rate: 0.0000 USD">1/1 (Default) - Rate: 0.0000 USD</option>
+                            <option value="1/2 (Bulk Terms) - Rate: 0.0000 USD">1/2 (Bulk Terms) - Rate: 0.0000 USD</option>
+                            <option value="1/7 (Weekly Terms) - Rate: 0.0000 USD">1/7 (Weekly Terms) - Rate: 0.0000 USD</option>
                           </select>
 
                           <p className="text-xs text-slate-400">
@@ -8444,7 +7805,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                               RATE
                             </span>
                             <span className="block text-xs sm:text-sm font-bold text-[#9333EA]">
-                              {modalSelectedRange.rate || "0.0096 USD"}
+                              {modalSelectedRange.rate || "0.0000 USD"}
                             </span>
                           </div>
                           <div className="space-y-1">
@@ -8750,7 +8111,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                     {modalQuantity} number(s)
                   </p>
                   <p className="text-xs font-bold text-gray-600">
-                    from {modalSelectedRange?.country || "Ethiopia"} - {modalSelectedRange?.operator || modalSelectedRange?.name || "Telegram"}
+                    from {modalSelectedRange?.country || "Carrier Route"} - {modalSelectedRange?.operator || modalSelectedRange?.name || "Standard"}
                   </p>
                 </div>
 
@@ -8760,10 +8121,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                     type="button"
                     onClick={() => {
                       const qty = Math.max(1, modalQuantity);
-                      const selectedCountry = modalSelectedRange?.country || "Ethiopia";
-                      const selectedOp = modalSelectedRange?.operator || modalSelectedRange?.name || "Telegram";
-                      const rawCode = modalSelectedRange?.code?.replace(/\D/g, "") || "25191123456";
-                      const baseNum = parseInt(rawCode, 10) || 251911234567;
+                      const selectedCountry = modalSelectedRange?.country || "Carrier Route";
+                      const selectedOp = modalSelectedRange?.operator || modalSelectedRange?.name || "Standard";
+                      const rawCode = modalSelectedRange?.code?.replace(/\D/g, "") || modalSelectedRange?.rangePrefix?.replace(/\D/g, "") || "88017";
+                      const baseNum = parseInt(rawCode, 10) || 880170000000;
 
                       const newEntries: any[] = [];
                       const nowMs = Date.now();

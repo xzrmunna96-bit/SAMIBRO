@@ -191,45 +191,40 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
     }
   };
 
-  const flipVariants = {
-    enter: (dir: number) => ({
-      rotateY: dir > 0 ? 80 : -80,
+  const cardVariants = {
+    enter: {
       opacity: 0,
-      scale: 0.96,
-    }),
+      scale: 0.99,
+    },
     center: {
-      rotateY: 0,
       opacity: 1,
       scale: 1,
       transition: {
-        duration: 0.45,
+        duration: 0.08,
         ease: 'easeOut' as const,
       },
     },
-    exit: (dir: number) => ({
-      rotateY: dir > 0 ? -80 : 80,
+    exit: {
       opacity: 0,
-      scale: 0.96,
+      scale: 0.99,
       transition: {
-        duration: 0.38,
-        ease: 'easeInOut' as const,
+        duration: 0.04,
+        ease: 'easeIn' as const,
       },
-    }),
+    },
   };
 
   return (
-    <div className="w-full max-w-[440px] mx-auto relative select-none" style={{ perspective: 1200 }}>
-      <AnimatePresence mode="wait" custom={direction}>
+    <div className="w-full max-w-[440px] mx-auto relative select-none">
+      <AnimatePresence mode="popLayout">
         {view === 'login' ? (
           <motion.div
             key="login-view"
-            custom={direction}
-            variants={flipVariants}
+            variants={cardVariants}
             initial="enter"
             animate="center"
             exit="exit"
             className="w-full bg-[#0d1322]/90 backdrop-blur-2xl border border-slate-700/60 rounded-[28px] p-6 sm:p-8 shadow-2xl shadow-black/80 relative text-white"
-            style={{ transformStyle: 'preserve-3d' }}
           >
             {/* Header branding */}
             <div className="text-center mb-6">
@@ -415,13 +410,11 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
         ) : (
           <motion.div
             key="create-account-view"
-            custom={direction}
-            variants={flipVariants}
+            variants={cardVariants}
             initial="enter"
             animate="center"
             exit="exit"
             className="w-full bg-[#0d1322]/90 backdrop-blur-2xl border border-slate-700/60 rounded-[28px] p-6 sm:p-8 shadow-2xl shadow-black/80 relative text-white"
-            style={{ transformStyle: 'preserve-3d' }}
           >
             {/* Header inside Card */}
             <div className="text-center mb-6">

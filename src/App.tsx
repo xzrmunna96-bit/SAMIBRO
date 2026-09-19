@@ -279,7 +279,7 @@ export function App() {
             </svg>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white mt-3.5">
-            Code Flow <span className="text-[#38bdf8] font-black">SMS</span>
+            SUPER X <span className="text-[#38bdf8] font-black">SMS</span>
           </h1>
           <p className="text-[10px] sm:text-[11px] font-extrabold tracking-[0.2em] text-slate-400 uppercase mt-1">
             ENTERPRISE VERIFICATION NETWORK

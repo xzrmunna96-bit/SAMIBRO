@@ -58,6 +58,7 @@ import {
   Megaphone,
   ArrowLeft,
   ArrowUpDown,
+  FileText,
   History,
   Download,
   Receipt,
@@ -939,68 +940,408 @@ const TOP_APPLICATIONS = [
 
 const POPULAR_RANGES = [
   {
-    id: "ethiopia_telegram",
-    name: "Telegram",
-    code: "25191XXX",
-    country: "Ethiopia",
-    operator: "Telegram",
-    totalStock: 8500,
+    id: "afghanistan_awcc_10",
+    name: "AWCC 10",
+    code: "9370XXX",
+    dialCode: "93",
+    country: "Afghanistan",
+    operator: "AWCC",
+    subOperator: "AWCC 10",
+    totalStock: 9999,
     rented: 0,
-    available: 8500,
-    rate: "0.0000 USD",
-    a2pLimit: "10,000",
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
+    id: "afghanistan_areeba_1",
+    name: "Areeba 1",
+    code: "9377XXX",
+    dialCode: "93",
+    country: "Afghanistan",
+    operator: "Areeba",
+    subOperator: "Areeba 1",
+    totalStock: 9999,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
+    id: "afghanistan_areeba_2",
+    name: "Areeba 2",
+    code: "9377XXX",
+    dialCode: "93",
+    country: "Afghanistan",
+    operator: "Areeba",
+    subOperator: "Areeba 2",
+    totalStock: 9999,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
+    id: "afghanistan_areeba_3",
+    name: "Areeba 3",
+    code: "9377XXX",
+    dialCode: "93",
+    country: "Afghanistan",
+    operator: "Areeba",
+    subOperator: "Areeba 3",
+    totalStock: 9999,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
+    id: "afghanistan_areeba_4",
+    name: "Areeba 4",
+    code: "9377XXX",
+    dialCode: "93",
+    country: "Afghanistan",
+    operator: "Areeba",
+    subOperator: "Areeba 4",
+    totalStock: 9999,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
+    id: "afghanistan_awcc",
+    name: "AWCC",
+    code: "9370XXX",
+    dialCode: "93",
+    country: "Afghanistan",
+    operator: "AWCC",
+    subOperator: "AWCC",
+    totalStock: 9999,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
+    id: "afghanistan_awcc_1",
+    name: "AWCC 1",
+    code: "9370XXX",
+    dialCode: "93",
+    country: "Afghanistan",
+    operator: "AWCC",
+    subOperator: "AWCC 1",
+    totalStock: 9999,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
+    id: "afghanistan_awcc_11",
+    name: "AWCC 11",
+    code: "9370XXX",
+    dialCode: "93",
+    country: "Afghanistan",
+    operator: "AWCC",
+    subOperator: "AWCC 11",
+    totalStock: 9999,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
+    id: "afghanistan_awcc_12",
+    name: "AWCC 12",
+    code: "9370XXX",
+    dialCode: "93",
+    country: "Afghanistan",
+    operator: "AWCC",
+    subOperator: "AWCC 12",
+    totalStock: 9999,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
+    id: "afghanistan_awcc_13",
+    name: "AWCC 13",
+    code: "9370XXX",
+    dialCode: "93",
+    country: "Afghanistan",
+    operator: "AWCC",
+    subOperator: "AWCC 13",
+    totalStock: 9999,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
+    id: "afghanistan_awcc_14",
+    name: "AWCC 14",
+    code: "9370XXX",
+    dialCode: "93",
+    country: "Afghanistan",
+    operator: "AWCC",
+    subOperator: "AWCC 14",
+    totalStock: 9999,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
+    id: "afghanistan_awcc_15",
+    name: "AWCC 15",
+    code: "9370XXX",
+    dialCode: "93",
+    country: "Afghanistan",
+    operator: "AWCC",
+    subOperator: "AWCC 15",
+    totalStock: 9999,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
+    id: "afghanistan_awcc_16",
+    name: "AWCC 16",
+    code: "9370XXX",
+    dialCode: "93",
+    country: "Afghanistan",
+    operator: "AWCC",
+    subOperator: "AWCC 16",
+    totalStock: 9999,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
+    id: "afghanistan_awcc_2",
+    name: "AWCC 2",
+    code: "9370XXX",
+    dialCode: "93",
+    country: "Afghanistan",
+    operator: "AWCC",
+    subOperator: "AWCC 2",
+    totalStock: 9999,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
+    id: "afghanistan_awcc_3",
+    name: "AWCC 3",
+    code: "9370XXX",
+    dialCode: "93",
+    country: "Afghanistan",
+    operator: "AWCC",
+    subOperator: "AWCC 3",
+    totalStock: 9999,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
+    id: "afghanistan_awcc_4",
+    name: "AWCC 4",
+    code: "9370XXX",
+    dialCode: "93",
+    country: "Afghanistan",
+    operator: "AWCC",
+    subOperator: "AWCC 4",
+    totalStock: 9999,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
+    id: "bangladesh_wa",
+    name: "WhatsApp",
+    code: "88017XXX",
+    dialCode: "880",
+    country: "Bangladesh",
+    operator: "WhatsApp",
+    subOperator: "WhatsApp",
+    totalStock: 15000,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
+    id: "bangladesh_tg",
+    name: "Telegram",
+    code: "88018XXX",
+    dialCode: "880",
+    country: "Bangladesh",
+    operator: "Telegram",
+    subOperator: "Telegram",
+    totalStock: 12500,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
     cap: "99%",
   },
   {
     id: "ivory_coast_wa",
     name: "WhatsApp",
     code: "22501XXX",
+    dialCode: "225",
     country: "Ivory Coast",
     operator: "WhatsApp",
+    subOperator: "WhatsApp",
     totalStock: 9995,
     rented: 0,
-    available: 9995,
-    rate: "0.0000 USD",
-    a2pLimit: "10,000",
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
     cap: "98%",
   },
   {
-    id: "bangladesh_tg",
+    id: "ethiopia_telegram",
     name: "Telegram",
-    code: "88017XXX",
-    country: "Bangladesh",
+    code: "25191XXX",
+    dialCode: "251",
+    country: "Ethiopia",
     operator: "Telegram",
-    totalStock: 12500,
+    subOperator: "Telegram",
+    totalStock: 8500,
     rented: 0,
-    available: 12500,
-    rate: "0.0000 USD",
-    a2pLimit: "10,000",
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
     cap: "99%",
   },
   {
     id: "iraq_wa",
     name: "WhatsApp",
     code: "96477XXX",
+    dialCode: "964",
     country: "Iraq",
     operator: "WhatsApp",
+    subOperator: "WhatsApp",
     totalStock: 5000,
     rented: 0,
-    available: 5000,
-    rate: "0.0000 USD",
-    a2pLimit: "10,000",
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
     cap: "96%",
   },
   {
     id: "indonesia_wa",
     name: "WhatsApp",
     code: "62812XXX",
+    dialCode: "62",
     country: "Indonesia",
     operator: "WhatsApp",
+    subOperator: "WhatsApp",
     totalStock: 8000,
     rented: 0,
-    available: 8000,
-    rate: "0.0000 USD",
-    a2pLimit: "10,000",
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "95%",
+  },
+  {
+    id: "india_wa",
+    name: "WhatsApp",
+    code: "9198XXX",
+    dialCode: "91",
+    country: "India",
+    operator: "WhatsApp",
+    subOperator: "WhatsApp",
+    totalStock: 20000,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "99%",
+  },
+  {
+    id: "kenya_wa",
+    name: "WhatsApp",
+    code: "25470XXX",
+    dialCode: "254",
+    country: "Kenya",
+    operator: "WhatsApp",
+    subOperator: "WhatsApp",
+    totalStock: 7500,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "98%",
+  },
+  {
+    id: "nigeria_wa",
+    name: "WhatsApp",
+    code: "23480XXX",
+    dialCode: "234",
+    country: "Nigeria",
+    operator: "WhatsApp",
+    subOperator: "WhatsApp",
+    totalStock: 10000,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "97%",
+  },
+  {
+    id: "pakistan_wa",
+    name: "WhatsApp",
+    code: "92300XXX",
+    dialCode: "92",
+    country: "Pakistan",
+    operator: "WhatsApp",
+    subOperator: "WhatsApp",
+    totalStock: 8500,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
+    cap: "98%",
+  },
+  {
+    id: "philippines_wa",
+    name: "WhatsApp",
+    code: "63917XXX",
+    dialCode: "63",
+    country: "Philippines",
+    operator: "WhatsApp",
+    subOperator: "WhatsApp",
+    totalStock: 6000,
+    rented: 0,
+    available: "Unlimited",
+    rate: "0.0096 USD",
+    a2pLimit: "10000",
     cap: "95%",
   },
 ];
@@ -7170,15 +7511,15 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               <button
                 type="button"
                 onClick={() => {
-                  if (!modalSelectedRange) {
-                    setModalSelectedRange(POPULAR_RANGES[0]);
-                  }
+                  setModalSelectedRange(null);
+                  setIsChooseTerminationOpen(false);
+                  setModalSearchFilter("");
                   setIsRentModalOpen(true);
                 }}
                 className="px-5 py-2.5 text-xs sm:text-sm font-bold bg-[#74A50C] hover:bg-[#628B0A] text-white rounded-xl transition cursor-pointer flex items-center justify-center gap-2 shadow-sm"
               >
                 <Plus className="w-4 h-4 font-black" />
-                <span>Add number</span>
+                <span>Add numbers</span>
               </button>
 
               <div className="flex items-center gap-1.5">
@@ -7584,7 +7925,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           </div>
         )}
 
-        {/* -------------------- RENT NUMBERS MODAL (Screenshot 1 & 2) -------------------- */}
+        {/* -------------------- ADD NUMBERS MODAL (Matching User Screenshot) -------------------- */}
         <AnimatePresence>
           {isRentModalOpen && (
             <div
@@ -7595,27 +7936,29 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   setModalSearchFilter("");
                 }
               }}
-              className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/50 overflow-y-auto"
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto"
             >
               <motion.div
-                initial={{ opacity: 0, scale: 0.98 }}
+                initial={{ opacity: 0, scale: 0.96 }}
                 animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.98 }}
-                transition={{ duration: 0.1, ease: "easeOut" }}
-                className="w-full max-w-xl bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden flex flex-col my-auto relative"
+                exit={{ opacity: 0, scale: 0.96 }}
+                transition={{ duration: 0.15, ease: "easeOut" }}
+                className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden flex flex-col my-auto relative"
               >
                 {/* Modal Header */}
-                <div className="p-4 sm:p-6 border-b border-gray-100 flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3 sm:gap-4 min-w-0">
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-[#74A50C]/10 border border-[#74A50C]/20 text-[#74A50C] flex items-center justify-center shrink-0 shadow-3xs">
-                      <Plus className="w-5 h-5 sm:w-6 sm:h-6 font-black" />
+                <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div className="w-9 h-9 rounded-lg bg-[#689F38] text-white flex items-center justify-center shrink-0 shadow-xs">
+                      <div className="w-5 h-5 rounded-full border-2 border-white flex items-center justify-center">
+                        <Plus className="w-3 h-3 stroke-[3]" />
+                      </div>
                     </div>
-                    <div className="space-y-0.5 sm:space-y-1 min-w-0">
-                      <h3 className="text-base sm:text-lg font-black text-gray-900 tracking-tight">
-                        Rent Numbers
+                    <div className="min-w-0">
+                      <h3 className="text-base sm:text-lg font-bold text-gray-900 tracking-tight leading-snug">
+                        Add numbers
                       </h3>
-                      <p className="text-xs text-gray-500 leading-relaxed max-w-sm truncate sm:whitespace-normal">
-                        Select a termination range and specify how many numbers you want to rent.
+                      <p className="text-xs text-gray-500 truncate">
+                        Select a termination and specify how many numbers yo...
                       </p>
                     </div>
                   </div>
@@ -7632,458 +7975,308 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   </button>
                 </div>
 
-                {/* Top Tabs (Screenshot 2) */}
-                <div className="border-b border-gray-100 bg-gray-50/50 p-1.5 flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setRentModalTab("rent")}
-                    className={`flex-1 py-2 px-3 rounded-xl text-xs sm:text-sm font-extrabold transition flex items-center justify-center gap-2 cursor-pointer ${
-                      rentModalTab === "rent"
-                        ? "bg-white text-[#74A50C] shadow-2xs border border-gray-200/80"
-                        : "text-gray-500 hover:text-gray-900 hover:bg-white/60"
-                    }`}
-                  >
-                    <ShoppingCart className="w-4 h-4 text-[#74A50C]" />
-                    <span>Rent Numbers (ইউজার রেন্ট)</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setRentModalTab("upload")}
-                    className={`flex-1 py-2 px-3 rounded-xl text-xs sm:text-sm font-extrabold transition flex items-center justify-center gap-2 cursor-pointer ${
-                      rentModalTab === "upload"
-                        ? "bg-white text-[#74A50C] shadow-2xs border border-gray-200/80"
-                        : "text-gray-500 hover:text-gray-900 hover:bg-white/60"
-                    }`}
-                  >
-                    <Upload className="w-4 h-4 text-emerald-600" />
-                    <span>Upload to Stock Pool (স্টক পুলে ফাইল আপলোড)</span>
-                  </button>
-                </div>
+                {/* Modal Body */}
+                <div className="p-4 sm:p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+                  {/* Select Termination Header */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs sm:text-sm font-semibold text-gray-800">
+                      Select termination
+                    </label>
 
-                {rentModalTab === "rent" ? (
-                  /* TAB 1: RENT NUMBERS FORM (Exact Match to User Screenshot) */
-                  <div className="p-4 sm:p-6 space-y-4 max-h-[75vh] overflow-y-auto">
-                    {/* SELECT TERMINATION Section */}
-                    <div className="space-y-2.5">
-                      <div className="flex items-center justify-between text-xs font-black uppercase tracking-wider">
-                        <span className="text-gray-900 font-extrabold">SELECT TERMINATION</span>
-                        <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-[#EAF0D8] text-[#557A08] border border-[#D5E0B0] font-bold">
-                          1 Ranges - 86 Countries
+                    {/* Dropdown Button / Select Box */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setIsChooseTerminationOpen(!isChooseTerminationOpen)}
+                        className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg border text-xs sm:text-sm text-left cursor-pointer transition shadow-2xs ${
+                          modalSelectedRange
+                            ? "border-[#689F38] ring-1 ring-[#689F38]/30 bg-white text-gray-900 font-medium"
+                            : "border-gray-300 bg-white text-gray-600 hover:border-gray-400"
+                        }`}
+                      >
+                        <span className="truncate pr-2">
+                          {modalSelectedRange
+                            ? `${modalSelectedRange.country} - ${modalSelectedRange.subOperator || modalSelectedRange.operator} - ${modalSelectedRange.dialCode} (Unlimited available)`
+                            : "-- Choose a termination --"}
+                        </span>
+                        <ChevronDown className="w-4 h-4 text-gray-500 shrink-0" />
+                      </button>
+
+                      {/* Dropdown Options Popup (Exact Match to Screenshot 1) */}
+                      {isChooseTerminationOpen && (
+                        <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden z-50 divide-y divide-gray-100 max-h-72 overflow-y-auto">
+                          {/* Search Filter Inside Dropdown */}
+                          <div className="p-2 bg-gray-50/80 sticky top-0 z-10 border-b border-gray-100 flex items-center gap-2">
+                            <Search className="w-3.5 h-3.5 text-gray-400 shrink-0 ml-1" />
+                            <input
+                              type="text"
+                              placeholder="Search country, operator, or code..."
+                              value={modalSearchFilter}
+                              onChange={(e) => setModalSearchFilter(e.target.value)}
+                              className="w-full bg-white px-2.5 py-1 text-xs border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-[#689F38]"
+                            />
+                            {modalSearchFilter && (
+                              <button
+                                type="button"
+                                onClick={() => setModalSearchFilter("")}
+                                className="text-[10px] text-gray-400 hover:text-gray-600 px-1 font-bold"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Default "-- Choose a termination --" Option */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setModalSelectedRange(null);
+                              setIsChooseTerminationOpen(false);
+                            }}
+                            className="w-full text-left px-4 py-2.5 text-xs sm:text-sm font-normal text-gray-800 hover:bg-gray-50 flex items-center justify-between cursor-pointer transition"
+                          >
+                            <span>-- Choose a termination --</span>
+                            <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                              !modalSelectedRange ? "border-blue-600" : "border-gray-400"
+                            }`}>
+                              {!modalSelectedRange && <div className="w-2 h-2 rounded-full bg-blue-600" />}
+                            </div>
+                          </button>
+
+                          {/* Filtered Range Items */}
+                          {POPULAR_RANGES.filter((r) => {
+                            if (!modalSearchFilter.trim()) return true;
+                            const q = modalSearchFilter.toLowerCase();
+                            return (
+                              r.country.toLowerCase().includes(q) ||
+                              r.operator.toLowerCase().includes(q) ||
+                              (r.subOperator && r.subOperator.toLowerCase().includes(q)) ||
+                              (r.dialCode && r.dialCode.includes(q))
+                            );
+                          }).map((range) => {
+                            const isSelected = modalSelectedRange && modalSelectedRange.id === range.id;
+                            return (
+                              <button
+                                key={range.id}
+                                type="button"
+                                onClick={() => {
+                                  setModalSelectedRange(range);
+                                  setIsChooseTerminationOpen(false);
+                                  setModalSearchFilter("");
+                                }}
+                                className={`w-full text-left px-4 py-2.5 text-xs sm:text-sm transition flex items-center justify-between cursor-pointer ${
+                                  isSelected
+                                    ? "bg-blue-50/40 text-gray-900 font-medium"
+                                    : "bg-white text-gray-800 hover:bg-gray-50"
+                                }`}
+                              >
+                                <span className="truncate pr-3">
+                                  {range.country} - {range.subOperator || range.operator} - {range.dialCode} (Unlimited available)
+                                </span>
+                                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                                  isSelected ? "border-blue-600" : "border-gray-400"
+                                }`}>
+                                  {isSelected && <div className="w-2 h-2 rounded-full bg-blue-600" />}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Subtext Underneath */}
+                    <p className="text-xs text-gray-500 leading-relaxed pt-0.5">
+                      Showing the first 500 of 4,238 ranges. Type a range or operator name to find a specific one.
+                    </p>
+                  </div>
+
+                  {/* Range Detail Container (Matching Screenshot 2) */}
+                  {modalSelectedRange && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="p-4 sm:p-5 rounded-2xl bg-[#F8FAFC] border border-slate-100 space-y-3.5 shadow-2xs"
+                    >
+                      {/* Row 1: COUNTRY & OPERATOR */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            COUNTRY
+                          </span>
+                          <span className="block text-sm sm:text-base font-bold text-slate-900">
+                            {modalSelectedRange.dialCode || "93"}
+                          </span>
+                        </div>
+                        <div className="space-y-1">
+                          <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            OPERATOR
+                          </span>
+                          <span className="block text-sm sm:text-base font-bold text-slate-900 truncate">
+                            {modalSelectedRange.operator || "AWCC"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Row 2: AVAILABLE */}
+                      <div className="space-y-1">
+                        <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          AVAILABLE
+                        </span>
+                        <span className="block text-xs sm:text-sm font-bold text-[#9333EA]">
+                          Unlimited
                         </span>
                       </div>
 
-                      {/* Filter Input Box */}
-                      <div className="relative">
-                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        <input
-                          type="text"
-                          placeholder="Filter country, operator or prefix (e.g. Bangladesh, Vodafone, MTN)..."
-                          value={modalSearchFilter}
-                          onChange={(e) => setModalSearchFilter(e.target.value)}
-                          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-300 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#74A50C]/40 focus:border-[#74A50C] transition text-gray-900 placeholder-gray-400 bg-white shadow-2xs"
-                        />
-                        {modalSearchFilter && (
-                          <button
-                            type="button"
-                            onClick={() => setModalSearchFilter("")}
-                            className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400 hover:text-gray-600 cursor-pointer"
-                          >
-                            Clear
-                          </button>
-                        )}
-                      </div>
+                      {/* Subtle Divider */}
+                      <div className="border-t border-slate-200/70 pt-3 space-y-2">
+                        {/* Select Payment Term */}
+                        <div className="flex items-center gap-1.5">
+                          <FileText className="w-3.5 h-3.5 text-[#689F38]" />
+                          <label className="text-xs font-semibold text-slate-700">
+                            Select payment term
+                          </label>
+                        </div>
 
-                      {/* Termination Dropdown Selector Box */}
-                      <div className="relative">
-                        <button
-                          type="button"
-                          onClick={() => setIsChooseTerminationOpen(!isChooseTerminationOpen)}
-                          className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl border border-gray-900 bg-white transition text-xs sm:text-sm font-semibold text-gray-900 text-left cursor-pointer shadow-2xs"
+                        <select
+                          value={modalPaymentTerm}
+                          onChange={(e) => setModalPaymentTerm(e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs sm:text-sm font-medium text-slate-800 bg-white focus:outline-none focus:ring-1 focus:ring-[#689F38] cursor-pointer shadow-2xs"
                         >
-                          {modalSelectedRange ? (
-                            <div className="flex items-center gap-2 truncate">
-                              <span className="truncate font-bold text-gray-900">
-                                {modalSelectedRange.country} - {modalSelectedRange.operator || modalSelectedRange.name} [🟢 Available]
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="text-gray-900 font-bold">-- Choose a termination --</span>
-                          )}
-                          <ChevronDown className="w-4 h-4 text-gray-700 shrink-0" />
+                          <option value="1/1 (Default) - Rate: 0.0096 USD">1/1 (Default) - Rate: 0.0096 USD</option>
+                          <option value="1/2 (Bulk Terms) - Rate: 0.0096 USD">1/2 (Bulk Terms) - Rate: 0.0096 USD</option>
+                          <option value="1/7 (Weekly Terms) - Rate: 0.0096 USD">1/7 (Weekly Terms) - Rate: 0.0096 USD</option>
+                        </select>
+
+                        <p className="text-xs text-slate-400">
+                          Payment terms determine your rate
+                        </p>
+                      </div>
+
+                      {/* Subtle Divider */}
+                      <div className="border-t border-slate-200/70 pt-3 grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            RATE
+                          </span>
+                          <span className="block text-xs sm:text-sm font-bold text-[#9333EA]">
+                            {modalSelectedRange.rate || "0.0096 USD"}
+                          </span>
+                        </div>
+                        <div className="space-y-1">
+                          <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            A2P LIMIT
+                          </span>
+                          <span className="block text-xs sm:text-sm font-bold text-slate-900">
+                            {modalSelectedRange.a2pLimit || "10000"}
+                          </span>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* HOW MANY NUMBERS? Section (Matching Screenshot 2) */}
+                  <div className="space-y-2 pt-1">
+                    <label className="block text-xs sm:text-sm font-semibold text-gray-800">
+                      How many numbers?
+                    </label>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={1}
+                        max={1000}
+                        value={modalQuantity}
+                        onChange={(e) => setModalQuantity(Math.max(1, Math.min(1000, parseInt(e.target.value) || 1)))}
+                        className="w-20 px-3 py-2 text-center text-xs sm:text-sm font-bold border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#689F38] shadow-2xs"
+                      />
+
+                      {[1, 5, 10, 50, 100].map((qty) => (
+                        <button
+                          key={qty}
+                          type="button"
+                          onClick={() => setModalQuantity(qty)}
+                          className={`px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium transition border cursor-pointer ${
+                            modalQuantity === qty
+                              ? "bg-slate-900 text-white border-slate-900 shadow-2xs"
+                              : "bg-white hover:bg-gray-50 text-gray-700 border-gray-300"
+                          }`}
+                        >
+                          {qty}
                         </button>
-
-                        {/* Inline Dropdown List (Matching Screenshot Image September 19, 2026 - 5:32AM) */}
-                        {isChooseTerminationOpen && (
-                          <div className="mt-1 w-full bg-white border border-gray-900 rounded-xl shadow-xl overflow-hidden divide-y divide-gray-200 z-50">
-                            {/* Blue Header Option: "-- Choose a termination --" */}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setModalSelectedRange(null);
-                                setIsChooseTerminationOpen(false);
-                              }}
-                              className="w-full text-left px-4 py-2 text-xs sm:text-sm font-bold bg-[#0056B3] text-white flex items-center justify-between hover:bg-[#004494] transition cursor-pointer"
-                            >
-                              <span>-- Choose a termination --</span>
-                            </button>
-
-                            {/* List of Country - Service options (e.g. Ethiopia - Telegram [🟢 Available]) */}
-                            <div className="max-h-52 overflow-y-auto divide-y divide-gray-100">
-                              {POPULAR_RANGES.filter((r) => {
-                                if (!modalSearchFilter.trim()) return true;
-                                const q = modalSearchFilter.toLowerCase();
-                                return (
-                                  r.country.toLowerCase().includes(q) ||
-                                  r.operator.toLowerCase().includes(q) ||
-                                  r.name.toLowerCase().includes(q) ||
-                                  r.code.includes(q)
-                                );
-                              }).map((range) => {
-                                const isSelected = modalSelectedRange && modalSelectedRange.id === range.id;
-                                return (
-                                  <button
-                                    key={range.id}
-                                    type="button"
-                                    onClick={() => {
-                                      setModalSelectedRange(range);
-                                      setIsChooseTerminationOpen(false);
-                                    }}
-                                    className={`w-full text-left px-4 py-2.5 text-xs sm:text-sm font-semibold transition flex items-center justify-between cursor-pointer ${
-                                      isSelected
-                                        ? "bg-[#0056B3] text-white font-bold"
-                                        : "bg-white text-gray-900 hover:bg-slate-50"
-                                    }`}
-                                  >
-                                    <div className="flex items-center gap-2 truncate">
-                                      <span className="truncate">
-                                        {range.country} - {range.operator || range.name}
-                                      </span>
-                                      <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded inline-flex items-center gap-1">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                        <span>Available</span>
-                                      </span>
-                                    </div>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Muted Sub-info Text */}
-                      <p className="text-[11px] text-teal-800/80 font-medium pt-0.5">
-                        Showing 1 of 1 active range sources added by Admin across 1 countries.
-                      </p>
+                      ))}
                     </div>
+                  </div>
 
-                    {/* Show Details & Quantity Selection ONLY when a termination is chosen */}
-                    {modalSelectedRange && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="space-y-4 pt-1"
+                  {/* NUMBER ORDER Section (Matching Screenshot 2) */}
+                  <div className="space-y-2 pt-1">
+                    <label className="block text-xs sm:text-sm font-semibold text-gray-800">
+                      Number order
+                    </label>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setNumberOrder("serial")}
+                        className={`py-2.5 px-4 rounded-lg text-xs sm:text-sm font-semibold transition border flex items-center justify-center gap-1.5 cursor-pointer ${
+                          numberOrder === "serial"
+                            ? "bg-[#F4F9EB] text-[#557A08] border-[#689F38] shadow-2xs"
+                            : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+                        }`}
                       >
-                        {/* 1. RANGE POOL STOCK HEALTH (Screenshot 1) */}
-                        <div className="p-3.5 sm:p-4 rounded-xl border border-gray-200 bg-gray-50/70 space-y-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-black text-gray-900 tracking-tight">
-                              Range Pool Stock Health
-                            </span>
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-[#EBF4D2] text-[#4A6B07] border border-[#D1E2A3]">
-                              <span className="w-2 h-2 rounded-full bg-[#74A50C] animate-pulse" />
-                              <span>In Stock ({modalSelectedRange.available || 25} Available)</span>
-                            </span>
-                          </div>
+                        <span>↓↑ Serial</span>
+                      </button>
 
-                          {/* 3 Metric Cards */}
-                          <div className="grid grid-cols-3 gap-2.5 text-center">
-                            <div className="p-2.5 rounded-lg bg-white border border-gray-200 shadow-2xs">
-                              <span className="block text-[9px] font-black uppercase tracking-wider text-gray-400">
-                                TOTAL NUMBERS
-                              </span>
-                              <span className="block text-sm sm:text-base font-black text-gray-900 mt-0.5">
-                                {modalSelectedRange.available || 25}
-                              </span>
-                            </div>
-                            <div className="p-2.5 rounded-lg bg-white border border-gray-200 shadow-2xs">
-                              <span className="block text-[9px] font-black uppercase tracking-wider text-gray-400">
-                                USED / RENTED
-                              </span>
-                              <span className="block text-sm sm:text-base font-black text-gray-900 mt-0.5">
-                                0
-                              </span>
-                            </div>
-                            <div className="p-2.5 rounded-lg bg-white border border-gray-200 shadow-2xs">
-                              <span className="block text-[9px] font-black uppercase tracking-wider text-gray-400">
-                                AVAILABLE
-                              </span>
-                              <span className="block text-sm sm:text-base font-black text-gray-900 mt-0.5">
-                                {modalSelectedRange.available || 25}
-                              </span>
-                            </div>
-                          </div>
+                      <button
+                        type="button"
+                        onClick={() => setNumberOrder("random")}
+                        className={`py-2.5 px-4 rounded-lg text-xs sm:text-sm font-semibold transition border flex items-center justify-center gap-1.5 cursor-pointer ${
+                          numberOrder === "random"
+                            ? "bg-[#F4F9EB] text-[#557A08] border-[#689F38] shadow-2xs"
+                            : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+                        }`}
+                      >
+                        <span>🔀 Random</span>
+                      </button>
+                    </div>
 
-                          <div className="pt-0.5 space-y-1 text-[11px] text-gray-500 font-medium">
-                            <p>Showing 1 of 1 active range sources added by Admin across 1 countries.</p>
-                          </div>
-                        </div>
-
-                        {/* 2. COUNTRY, OPERATOR, AVAILABLE (Screenshot 1) */}
-                        <div className="p-3.5 rounded-xl border border-gray-200 bg-white shadow-3xs grid grid-cols-3 gap-2 text-xs">
-                          <div className="space-y-0.5">
-                            <span className="block text-[10px] font-extrabold uppercase tracking-wider text-gray-400">
-                              COUNTRY
-                            </span>
-                            <span className="font-black text-gray-900 capitalize text-xs sm:text-sm">
-                              {modalSelectedRange.country}
-                            </span>
-                          </div>
-                          <div className="space-y-0.5">
-                            <span className="block text-[10px] font-extrabold uppercase tracking-wider text-gray-400">
-                              OPERATOR
-                            </span>
-                            <span className="font-black text-gray-900 text-xs sm:text-sm">
-                              {modalSelectedRange.operator || modalSelectedRange.name}
-                            </span>
-                          </div>
-                          <div className="space-y-0.5">
-                            <span className="block text-[10px] font-extrabold uppercase tracking-wider text-purple-600">
-                              AVAILABLE
-                            </span>
-                            <span className="font-black text-purple-700 text-xs sm:text-sm">
-                              {modalSelectedRange.available || 25} available
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* 3. SELECT PAYMENT TERM */}
-                        <div className="space-y-2">
-                          <label className="block text-xs font-black uppercase tracking-wider text-gray-700">
-                            SELECT PAYMENT TERM
-                          </label>
-                          <select
-                            value={modalPaymentTerm}
-                            onChange={(e) => setModalPaymentTerm(e.target.value)}
-                            className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 text-xs sm:text-sm font-bold text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#74A50C]/40 focus:border-[#74A50C] cursor-pointer"
-                          >
-                            <option value="1/1 (Default) - Rate: 0.0000 USD">1/1 (Default) - Rate: 0.0000 USD</option>
-                            <option value="1/2 (Bulk Terms) - Rate: 0.0000 USD">1/2 (Bulk Terms) - Rate: 0.0000 USD</option>
-                          </select>
-                          <p className="text-[11px] text-gray-400 font-medium">
-                            Payment terms determine your rate
-                          </p>
-
-                          <div className="grid grid-cols-2 gap-3 pt-1">
-                            <div className="p-3 rounded-xl bg-gray-50 border border-gray-200 space-y-0.5">
-                              <span className="block text-[10px] font-extrabold uppercase tracking-wider text-gray-400">
-                                RATE
-                              </span>
-                              <span className="block text-xs sm:text-sm font-black text-purple-700">
-                                0.0000 USD
-                              </span>
-                            </div>
-                            <div className="p-3 rounded-xl bg-gray-50 border border-gray-200 space-y-0.5">
-                              <span className="block text-[10px] font-extrabold uppercase tracking-wider text-gray-400">
-                                A2P LIMIT
-                              </span>
-                              <span className="block text-xs sm:text-sm font-black text-gray-900">
-                                10,000
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* 4. HOW MANY NUMBERS? (Matching Screenshot 1 & 2) */}
-                        <div className="space-y-2 pt-1 border-t border-gray-100">
-                          <div className="flex items-center justify-between">
-                            <label className="block text-xs font-black uppercase tracking-wider text-gray-800">
-                              HOW MANY NUMBERS?
-                            </label>
-                            <span className="text-[11px] font-bold text-gray-500">
-                              Max: 50
-                            </span>
-                          </div>
-
-                          {/* Preset Quantity Row: Input field + pills (1, 5, 10, 25, 50) */}
-                          <div className="flex items-center gap-2">
-                            <div className="relative w-20">
-                              <input
-                                type="number"
-                                min={1}
-                                max={50}
-                                value={modalQuantity}
-                                onChange={(e) => setModalQuantity(Math.max(1, Math.min(50, parseInt(e.target.value) || 1)))}
-                                className="w-full px-3 py-2 text-center text-xs font-black border border-gray-300 rounded-xl bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#74A50C]"
-                              />
-                            </div>
-
-                            {[1, 5, 10, 25, 50].map((qty) => (
-                              <button
-                                key={qty}
-                                type="button"
-                                onClick={() => setModalQuantity(qty)}
-                                className={`px-3.5 py-2 rounded-xl text-xs font-black transition border cursor-pointer ${
-                                  modalQuantity === qty
-                                    ? "bg-black text-white border-black shadow-xs"
-                                    : "bg-white hover:bg-gray-100 text-gray-800 border-gray-300"
-                                }`}
-                              >
-                                {qty}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* 5. NUMBER ORDER Section (Matching Screenshot 2) */}
-                        <div className="space-y-2 pt-1">
-                          <label className="block text-xs font-black uppercase tracking-wider text-gray-800">
-                            NUMBER ORDER
-                          </label>
-
-                          <div className="grid grid-cols-2 gap-3">
-                            <button
-                              type="button"
-                              onClick={() => setNumberOrder("serial")}
-                              className={`py-2.5 px-4 rounded-xl text-xs font-bold transition border flex items-center justify-center gap-2 cursor-pointer ${
-                                numberOrder === "serial"
-                                  ? "bg-[#F3F8E8] text-[#557A08] border-[#74A50C] shadow-2xs"
-                                  : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
-                              }`}
-                            >
-                              <span>↑↓ Serial</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => setNumberOrder("random")}
-                              className={`py-2.5 px-4 rounded-xl text-xs font-bold transition border flex items-center justify-center gap-2 cursor-pointer ${
-                                numberOrder === "random"
-                                  ? "bg-[#F3F8E8] text-[#557A08] border-[#74A50C] shadow-2xs"
-                                  : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
-                              }`}
-                            >
-                              <span>🔀 Random</span>
-                            </button>
-                          </div>
-
-                          <p className="text-[11px] text-gray-400 font-medium">
-                            You can request up to 50 numbers at a time.
-                          </p>
-                        </div>
-                      </motion.div>
-                    )}
+                    <p className="text-xs text-gray-400">
+                      You can request up to 1000 at a time.
+                    </p>
                   </div>
-                ) : (
-                  /* TAB 2: UPLOAD TO STOCK POOL FORM */
-                  <div className="p-4 sm:p-6 space-y-4 max-h-[75vh] overflow-y-auto">
-                    <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 font-medium">
-                      <strong>স্টক পুল আপলোড (Stock Pool Upload):</strong> এখানে আপনি সরাসরি আপনার স্টক ফাইলের নম্বরগুলো সিস্টেমে আপলোড করতে পারবেন।
-                    </div>
+                </div>
 
-                    <div className="space-y-1.5">
-                      <label className="block text-xs font-bold text-gray-700">Country (দেশ)</label>
-                      <input
-                        type="text"
-                        value={stockUploadCountry}
-                        onChange={(e) => setStockUploadCountry(e.target.value)}
-                        placeholder="e.g. Ivory Coast, Iraq, Bangladesh"
-                        className="w-full px-3.5 py-2 rounded-xl border border-gray-200 text-xs sm:text-sm text-gray-900 font-bold"
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="block text-xs font-bold text-gray-700">Operator / Range Name</label>
-                      <input
-                        type="text"
-                        value={stockUploadOperator}
-                        onChange={(e) => setStockUploadOperator(e.target.value)}
-                        placeholder="e.g. WhatsApp I said, GP A2P"
-                        className="w-full px-3.5 py-2 rounded-xl border border-gray-200 text-xs sm:text-sm text-gray-900 font-bold"
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="block text-xs font-bold text-gray-700">
-                        Paste Phone Numbers (প্রতি লাইনে ১টি নম্বর)
-                      </label>
-                      <textarea
-                        rows={4}
-                        value={stockUploadNumbersText}
-                        onChange={(e) => setStockUploadNumbersText(e.target.value)}
-                        placeholder="22501234567&#10;22501234568&#10;22501234569"
-                        className="w-full p-3 rounded-xl border border-gray-200 text-xs font-mono text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#74A50C]"
-                      />
-                    </div>
-
-                    {stockUploadSuccess && (
-                      <div className="p-3 rounded-xl bg-emerald-100 text-emerald-800 font-bold text-xs">
-                        ✓ ফাইল স্টক পুলে সফলভাবে যোগ হয়েছে!
-                      </div>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setStockUploadSuccess(true);
-                        setTimeout(() => {
-                          setStockUploadSuccess(false);
-                          setRentModalTab("rent");
-                          showDashboardToast("Numbers added to stock pool successfully!", "success");
-                        }, 1200);
-                      }}
-                      className="w-full py-2.5 bg-[#74A50C] hover:bg-[#628B0A] text-white font-extrabold text-xs sm:text-sm rounded-xl transition cursor-pointer"
-                    >
-                      Upload Numbers to Stock Pool
-                    </button>
-                  </div>
-                )}
-
-                {/* Modal Footer */}
-                {rentModalTab === "rent" && (
-                  <div className="p-4 sm:p-6 bg-gray-50/80 border-t border-gray-100 flex items-center justify-end gap-3">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsRentModalOpen(false);
-                        setIsChooseTerminationOpen(false);
-                        setModalSearchFilter("");
-                      }}
-                      className="px-5 py-2.5 text-xs sm:text-sm font-bold bg-white hover:bg-gray-50 border border-gray-200 rounded-xl text-gray-700 transition cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!modalSelectedRange || isAllocating}
-                      onClick={() => {
-                        if (!modalSelectedRange) {
-                          setModalSelectedRange(POPULAR_RANGES[0]);
-                        }
-                        setIsRentModalOpen(false);
-                        setIsAddNumbersConfirmOpen(true);
-                      }}
-                      className={`px-5 py-2.5 text-xs sm:text-sm font-bold rounded-xl transition flex items-center gap-2 ${
-                        !modalSelectedRange || isAllocating
-                          ? "bg-[#C4CFC0] text-gray-600 border border-[#B5C2B0] cursor-not-allowed"
-                          : "bg-[#74A50C] hover:bg-[#628B0A] text-white cursor-pointer active:scale-95 shadow-sm"
-                      }`}
-                    >
-                      {isAllocating ? (
-                        <>
-                          <RotateCw className="w-4 h-4 animate-spin" />
-                          <span>Adding...</span>
-                        </>
-                      ) : (
-                        <>
-                          <span>+ Rent numbers</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                )}
-
-
+                {/* Modal Footer (Matching Screenshot 2) */}
+                <div className="px-6 py-4 bg-gray-50/70 border-t border-gray-100 flex items-center justify-end gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsRentModalOpen(false);
+                      setIsChooseTerminationOpen(false);
+                      setModalSearchFilter("");
+                    }}
+                    className="px-4 py-2 text-xs sm:text-sm font-medium bg-white hover:bg-gray-50 border border-gray-300 rounded-lg text-gray-700 transition cursor-pointer shadow-2xs"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!modalSelectedRange || isAllocating}
+                    onClick={() => {
+                      if (!modalSelectedRange) return;
+                      setIsRentModalOpen(false);
+                      setIsAddNumbersConfirmOpen(true);
+                    }}
+                    className={`px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition flex items-center gap-1.5 shadow-2xs ${
+                      !modalSelectedRange || isAllocating
+                        ? "bg-[#8E9CA8] text-white cursor-not-allowed opacity-90"
+                        : "bg-[#111827] hover:bg-black text-white cursor-pointer active:scale-95"
+                    }`}
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Add numbers</span>
+                  </button>
+                </div>
               </motion.div>
             </div>
           )}

@@ -718,12 +718,15 @@ export function formatTerminationInfo(range: ManualRangeSummary) {
     operator = "Airtel TZ";
   }
 
+  // Append the selected platform/social media name next to operator
+  const finalOperator = `${operator} (${resolvedPlatform})`;
+
   return {
     prefix5,
     masked,
-    operator,
+    operator: finalOperator,
     resolvedPlatform,
-    label: `${range.country} - ${operator} - ${masked}`,
+    label: `${range.country} - ${finalOperator} - ${masked}`,
   };
 }
 
@@ -7112,7 +7115,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               <button
                 type="button"
                 onClick={() => {
-                  setIsChooseTerminationOpen(true);
+                  setModalSelectedRange(null);
+                  setIsChooseTerminationOpen(false);
                   setModalSearchFilter("");
                   setIsRentModalOpen(true);
                 }}
@@ -7142,8 +7146,17 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   type="button"
                   onClick={() => {
                     if (selectedNums.length > 0) {
-                      setDeleteTargetIds(selectedNums);
-                      setIsDeleteConfirmOpen(true);
+                      const idsToRemove = [...selectedNums];
+                      setGetNumHistory((prev) => prev.filter((n) => !idsToRemove.includes(n.id)));
+                      setSelectedNums([]);
+                      if (user?.email) {
+                        const idsStr = idsToRemove.join(",");
+                        fetch(
+                          `/api/account/numbers?email=${encodeURIComponent(user.email)}&id=${encodeURIComponent(idsStr)}`,
+                          { method: "DELETE" }
+                        ).catch(() => {});
+                      }
+                      showDashboardToast(`Successfully deleted ${idsToRemove.length} number(s)`, "success");
                     } else {
                       showDashboardToast("No numbers selected to delete", "warning");
                     }
@@ -7278,7 +7291,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         <button
                           type="button"
                           onClick={() => {
-                            setIsChooseTerminationOpen(true);
+                            setModalSelectedRange(null);
+                            setIsChooseTerminationOpen(false);
                             setModalSearchFilter("");
                             setIsRentModalOpen(true);
                           }}
@@ -7337,139 +7351,113 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         return (
                           <div
                             key={item.id}
-                            className={`rounded-2xl border transition-all duration-200 p-4 sm:p-5 mb-3 bg-white shadow-3xs ${
-                              isSelected
-                                ? "border-emerald-400 bg-emerald-50/20 ring-1 ring-emerald-300"
-                                : "border-gray-200/90 hover:border-gray-300 hover:shadow-2xs"
+                            className={`px-4 sm:px-6 py-5 flex items-start justify-between gap-4 bg-white border-b border-gray-150 transition-colors ${
+                              isSelected ? "bg-[#74A50C]/5" : "hover:bg-gray-50/30"
                             }`}
                           >
-                            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                              {/* Left Side: Checkbox, Full Number Pill, Country/Carrier, A2P RATE underneath */}
-                              <div className="flex items-start gap-3 min-w-0 flex-1">
-                                <input
-                                  type="checkbox"
-                                  checked={isSelected}
-                                  onChange={(e) => {
-                                    if (e.target.checked) {
-                                      setSelectedNums(prev => [...prev, item.id]);
-                                    } else {
-                                      setSelectedNums(prev => prev.filter(id => id !== item.id));
-                                    }
-                                  }}
-                                  className="mt-2 w-4 h-4 text-[#74A50C] border-gray-300 rounded focus:ring-[#74A50C] cursor-pointer shrink-0"
-                                />
+                            {/* Left Side: Checkbox, Number + Badge, A2P Rate */}
+                            <div className="flex items-start gap-4 flex-1 min-w-0">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedNums(prev => [...prev, item.id]);
+                                  } else {
+                                    setSelectedNums(prev => prev.filter(id => id !== item.id));
+                                  }
+                                }}
+                                className="mt-1 w-4.5 h-4.5 text-[#74A50C] border-gray-300 rounded focus:ring-[#74A50C] cursor-pointer shrink-0"
+                              />
 
-                                <div className="space-y-2 min-w-0 flex-1">
-                                  {/* 1. Full Number Pill Container - Touch/Click anywhere to Copy */}
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <div
-                                      onClick={() => copyToClipboard(item.number, `mynum_${item.id}`, item.country || "GLOBAL")}
-                                      className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-gray-50 hover:bg-emerald-50 text-gray-950 border border-gray-300 hover:border-emerald-400 font-mono font-black text-sm sm:text-base cursor-pointer group active:scale-95 transition-all shadow-3xs"
-                                      title="Click or touch to copy full phone number"
-                                    >
-                                      <span className="group-hover:text-emerald-800 transition-colors tracking-wide">
-                                        {item.number}
-                                      </span>
-                                      <div className="p-0.5 rounded text-gray-400 group-hover:text-emerald-700 transition">
-                                        {copiedText === `mynum_${item.id}` ? (
-                                          <Check className="w-4 h-4 text-emerald-600 font-bold" />
-                                        ) : (
-                                          <Copy className="w-4 h-4" />
-                                        )}
-                                      </div>
-                                    </div>
+                              <div className="space-y-3 min-w-0">
+                                {/* Number and 1/1 badge */}
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span
+                                    onClick={() => copyToClipboard(item.number, `mynum_${item.id}`, item.country || "GLOBAL")}
+                                    className="font-mono font-bold text-gray-950 text-base sm:text-lg tracking-wide cursor-pointer hover:text-[#74A50C] active:scale-95 transition-all select-all"
+                                    title="Click to copy phone number"
+                                  >
+                                    {item.number}
+                                  </span>
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-black bg-[#EAF0D8] text-[#557A08] border border-[#D5E0B0]">
+                                    1/1
+                                  </span>
+                                </div>
 
-                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-[#EAF0D8] text-[#557A08] border border-[#D5E0B0]">
-                                      1/1
-                                    </span>
-                                  </div>
-
-                                  {/* 2. Country & Carrier Info */}
-                                  <div className="flex items-center gap-2 flex-wrap text-xs text-gray-600">
-                                    <span className="font-bold text-gray-900 flex items-center gap-1.5 bg-gray-50 border border-gray-200/80 px-2 py-0.5 rounded-lg">
-                                      <CountryFlag countryCode={displayCountry} size="sm" />
-                                      <span>{stripFlagFromCountryName(displayCountry)}</span>
-                                    </span>
-                                    <span className="text-gray-300">•</span>
-                                    <span className="flex items-center gap-1 text-[11px] bg-gray-100 text-gray-700 px-2 py-0.5 rounded-md font-bold">
-                                      <Radio className="w-3 h-3 text-gray-400 shrink-0" />
-                                      <span>{displayOperator}</span>
-                                    </span>
-                                  </div>
-
-                                  {/* 3. A2P RATE placed below Country */}
-                                  <div className="flex items-center gap-2 text-[11px] text-gray-500 pt-0.5">
-                                    <span className="font-extrabold text-gray-600 uppercase tracking-wider text-[10px]">A2P RATE</span>
-                                    <span className="font-mono text-gray-900 font-extrabold bg-gray-100 px-1.5 py-0.5 rounded text-[11px]">{(item as any).rate || "0.0000 USD"}</span>
-                                  </div>
+                                {/* A2P Rate under the number */}
+                                <div className="space-y-1">
+                                  <span className="block text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">
+                                    A2P RATE
+                                  </span>
+                                  <span className="block text-xs font-mono font-black text-[#74A50C]">
+                                    0.0100 USD
+                                  </span>
                                 </div>
                               </div>
+                            </div>
 
-                              {/* Right Side: Real-time OTP / Message, Live Status, Delete */}
-                              <div className="flex items-center justify-between lg:justify-end gap-3 sm:gap-4 shrink-0 pt-3 lg:pt-0 border-t lg:border-t-0 border-gray-100">
-                                <div className="space-y-1.5 text-left lg:text-right">
-                                  <div className="flex items-center lg:justify-end gap-2">
-                                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                                      item.otp 
-                                        ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
-                                        : "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                    }`}>
-                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                                      <span>{item.otp ? "OTP Received" : "Live Listening"}</span>
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => showDashboardToast("OTP history synced", "info")}
-                                      className="text-[11px] font-bold text-gray-500 hover:text-gray-900 flex items-center gap-1 hover:underline cursor-pointer"
-                                    >
-                                      <span>👁 History</span>
-                                    </button>
-                                  </div>
+                            {/* Right Side: Live Listening, Watching, History/Delete, LAST SMS */}
+                            <div className="flex flex-col items-end gap-1.5 text-right shrink-0">
+                              {/* Live Listening Badge */}
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-[#F1F5F9] text-[#334155] border border-gray-200">
+                                <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] animate-pulse" />
+                                <span>Live Listening</span>
+                              </span>
 
-                                  {/* Real-time OTP Display Box */}
-                                  {item.otp ? (
-                                    <div className="flex items-center gap-2 lg:justify-end">
-                                      <div
-                                        onClick={() => copyToClipboard(item.otp || "", `myotp_${item.id}`, "OTP Code")}
-                                        className="flex items-center gap-2 bg-emerald-50 border-2 border-emerald-500 px-3 py-1.5 rounded-xl text-emerald-950 font-mono text-sm font-black shadow-sm cursor-pointer hover:bg-emerald-100 transition active:scale-95"
-                                        title="Click to copy OTP"
-                                      >
-                                        <Key className="w-4 h-4 text-emerald-600" />
-                                        <span>OTP: {item.otp}</span>
-                                        {copiedText === `myotp_${item.id}` ? (
-                                          <Check className="w-4 h-4 text-emerald-600 font-bold ml-1" />
-                                        ) : (
-                                          <Copy className="w-4 h-4 text-emerald-700 ml-1" />
-                                        )}
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200/60 px-2.5 py-1 rounded-lg font-bold animate-pulse lg:justify-end">
-                                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
-                                      <span>Waiting for OTP...</span>
-                                    </div>
-                                  )}
+                              {/* Live stream status */}
+                              <span className="text-[11px] text-gray-400 font-bold tracking-tight">
+                                {item.otp ? "OTP Received" : "Waiting for OTP..."}
+                              </span>
 
-                                  <div className="text-[10px] text-gray-400 font-medium">
-                                    <span>LAST SMS: </span>
-                                    <span className="font-mono text-gray-700 font-bold">{item.otp || (item as any).lastSms || "-"}</span>
-                                  </div>
-                                </div>
+                              {/* History & Delete Links */}
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => showDashboardToast("OTP history synced", "info")}
+                                  className="text-[11px] font-bold text-gray-400 hover:text-gray-900 flex items-center gap-1 transition cursor-pointer"
+                                >
+                                  <span>👁 History</span>
+                                </button>
+                                <span className="text-gray-200">|</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const entryId = item.id;
+                                    setGetNumHistory((prev) => prev.filter((i) => i.id !== entryId));
+                                    setSelectedNums((prev) => prev.filter((id) => id !== entryId));
+                                    if (user?.email) {
+                                      fetch(
+                                        `/api/account/numbers?email=${encodeURIComponent(user.email)}&id=${encodeURIComponent(entryId)}`,
+                                        { method: "DELETE" }
+                                      ).catch(() => {});
+                                    }
+                                    showDashboardToast("Number removed from history", "success");
+                                  }}
+                                  className="text-[11px] font-bold text-rose-500 hover:text-rose-700 transition cursor-pointer"
+                                >
+                                  Delete
+                                </button>
+                              </div>
 
-                                {/* Delete Individual Number Button */}
-                                <div className="flex items-center gap-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setDeleteTargetIds([item.id]);
-                                      setIsDeleteConfirmOpen(true);
-                                    }}
-                                    className="p-2 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer border border-transparent hover:border-rose-100"
-                                    title="Delete number"
+                              {/* LAST SMS info */}
+                              <div className="mt-1">
+                                <span className="block text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">
+                                  LAST SMS
+                                </span>
+                                {item.otp ? (
+                                  <span
+                                    onClick={() => copyToClipboard(item.otp || "", `myotp_${item.id}`, "OTP Code")}
+                                    className="inline-block text-xs font-mono font-black text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded mt-0.5 cursor-pointer hover:bg-emerald-100 active:scale-95 transition"
+                                    title="Click to copy OTP"
                                   >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                </div>
+                                    {item.otp}
+                                  </span>
+                                ) : (
+                                  <span className="block text-xs font-mono font-bold text-gray-400">
+                                    -
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -7592,13 +7580,13 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         setIsChooseTerminationOpen(false);
                         setModalSearchFilter("");
                       }}
-                      className="w-full text-left px-5 py-3.5 text-xs sm:text-sm text-gray-900 hover:bg-gray-50 flex items-center justify-between cursor-pointer transition active:bg-gray-100"
+                      className="w-full text-left px-5 py-3.5 text-xs sm:text-sm text-gray-900 hover:bg-gray-50 flex items-center justify-between cursor-pointer transition active:bg-gray-100 border-b border-gray-100"
                     >
                       <span className="font-normal text-gray-800">-- Choose a termination --</span>
-                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                        !modalSelectedRange ? "border-blue-600" : "border-gray-400"
+                      <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 transition ${
+                        !modalSelectedRange ? "border-[#2563EB]" : "border-slate-300"
                       }`}>
-                        {!modalSelectedRange && <div className="w-2.5 h-2.5 rounded-full bg-blue-600" />}
+                        {!modalSelectedRange && <div className="w-3 h-3 rounded-full bg-[#2563EB]" />}
                       </div>
                     </button>
 
@@ -7620,19 +7608,12 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         );
                       }).map((r) => {
                         const info = formatTerminationInfo(r);
-                        const isSelected = modalSelectedRange && (modalSelectedRange.rangePrefix === r.rangePrefix || modalSelectedRange.id === r.rangePrefix);
+                        const isSelected = modalSelectedRange && (modalSelectedRange.rangePrefix === r.rangePrefix);
                         const rangeObj = {
-                          id: r.rangePrefix,
-                          code: r.rangePrefix,
-                          rangePrefix: r.rangePrefix,
-                          country: r.country,
-                          operator: info.operator,
-                          subOperator: info.operator,
-                          dialCode: r.dialCode || r.rangePrefix,
-                          rate: "0.0000 USD",
-                          a2pLimit: "10000",
-                          available: "Unlimited",
+                          ...r,
+                          rate: "0.0000 USD"
                         };
+
                         return (
                           <button
                             key={r.rangePrefix}
@@ -7642,19 +7623,19 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                               setIsChooseTerminationOpen(false);
                               setModalSearchFilter("");
                             }}
-                            className={`w-full text-left px-5 py-3.5 text-xs sm:text-sm transition flex items-center justify-between cursor-pointer active:bg-blue-50/60 ${
+                            className={`w-full text-left px-5 py-3.5 text-xs sm:text-sm transition flex items-center justify-between cursor-pointer active:bg-blue-50/60 border-b border-gray-100 last:border-none ${
                               isSelected
                                 ? "bg-blue-50/40 text-gray-900 font-medium"
                                 : "bg-white text-gray-800 hover:bg-gray-50"
                             }`}
                           >
-                            <span className="truncate pr-3">
-                              {r.country} - {info.operator} - {info.masked} (Unlimited available)
+                            <span className="truncate pr-3 text-slate-800">
+                              {r.country} - {info.operator} - {r.dialCode || r.rangePrefix} (Unlimited available)
                             </span>
-                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                              isSelected ? "border-blue-600" : "border-gray-400"
+                            <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 transition ${
+                              isSelected ? "border-[#2563EB]" : "border-slate-300"
                             }`}>
-                              {isSelected && <div className="w-2.5 h-2.5 rounded-full bg-blue-600" />}
+                              {isSelected && <div className="w-3 h-3 rounded-full bg-[#2563EB]" />}
                             </div>
                           </button>
                         );
@@ -7675,7 +7656,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   {/* Modal Header */}
                   <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3.5 min-w-0">
-                      <div className="w-9 h-9 rounded-lg bg-[#689F38] text-white flex items-center justify-center shrink-0 shadow-xs">
+                      <div className="w-9 h-9 rounded-lg bg-[#74A50C] text-white flex items-center justify-center shrink-0 shadow-xs">
                         <div className="w-5 h-5 rounded-full border-2 border-white flex items-center justify-center">
                           <Plus className="w-3 h-3 stroke-[3]" />
                         </div>
@@ -7706,7 +7687,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   <div className="p-4 sm:p-6 space-y-4 max-h-[80vh] overflow-y-auto">
                     {/* Select Termination Header */}
                     <div className="space-y-1.5">
-                      <label className="block text-xs sm:text-sm font-semibold text-gray-800">
+                      <label className="block text-xs sm:text-sm font-semibold text-slate-700">
                         Select termination
                       </label>
 
@@ -7716,7 +7697,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         onClick={() => setIsChooseTerminationOpen(true)}
                         className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg border text-xs sm:text-sm text-left cursor-pointer transition shadow-2xs ${
                           modalSelectedRange
-                            ? "border-[#689F38] ring-1 ring-[#689F38]/30 bg-white text-gray-900 font-medium"
+                            ? "border-[#74A50C] ring-1 ring-[#74A50C]/20 bg-white text-gray-900 font-medium"
                             : "border-gray-300 bg-white text-gray-600 hover:border-gray-400"
                         }`}
                       >
@@ -7730,169 +7711,170 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
                       {/* Subtext Underneath */}
                       <p className="text-xs text-gray-500 leading-relaxed pt-0.5">
-                        {manualRanges.length > 0
-                          ? `Showing ${manualRanges.length} active termination route${manualRanges.length === 1 ? "" : "s"}.`
-                          : "Select a termination to configure allocation."}
+                        Showing the first 500 of 4,238 ranges. Type a range or operator name to find a specific one.
                       </p>
                     </div>
 
-                    {/* Range Detail Container (Matching Screenshot 2) */}
+                    {/* Range Detail Container & Inputs (Visible only when a range is selected) */}
                     {modalSelectedRange && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="p-4 sm:p-5 rounded-2xl bg-[#F8FAFC] border border-slate-100 space-y-3.5 shadow-2xs"
-                      >
-                        {/* Row 1: COUNTRY & OPERATOR */}
-                        <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-4">
+                        <motion.div
+                          initial={{ opacity: 0, y: 6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="p-5 rounded-xl bg-[#F8FAFC] border border-slate-100/80 space-y-4 shadow-3xs"
+                        >
+                          {/* Row 1: COUNTRY & OPERATOR */}
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                              <span className="block text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]">
+                                COUNTRY
+                              </span>
+                              <span className="block text-sm sm:text-base font-bold text-[#1E293B]">
+                                {modalSelectedRange.dialCode || modalSelectedRange.rangePrefix}
+                              </span>
+                            </div>
+                            <div className="space-y-1">
+                              <span className="block text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]">
+                                OPERATOR
+                              </span>
+                              <span className="block text-sm sm:text-base font-bold text-[#1E293B] truncate">
+                                {modalSelectedRange.operator || formatTerminationInfo(modalSelectedRange).operator || "Telecom Route"}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Row 2: AVAILABLE */}
                           <div className="space-y-1">
-                            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                              COUNTRY
+                            <span className="block text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]">
+                              AVAILABLE
                             </span>
-                            <span className="block text-sm sm:text-base font-bold text-slate-900">
-                              {modalSelectedRange.dialCode || modalSelectedRange.country || ""}
+                            <span className="block text-sm font-bold text-[#9333EA]">
+                              Unlimited
                             </span>
                           </div>
-                          <div className="space-y-1">
-                            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                              OPERATOR
-                            </span>
-                            <span className="block text-sm sm:text-base font-bold text-slate-900 truncate">
-                              {modalSelectedRange.operator || "Standard Carrier"}
-                            </span>
+
+                          {/* Subtle Divider */}
+                          <div className="border-t border-slate-200/50 pt-3.5 space-y-2">
+                            {/* Select Payment Term */}
+                            <div className="flex items-center gap-1.5">
+                              <FileText className="w-3.5 h-3.5 text-[#74A50C]" />
+                              <label className="text-xs font-semibold text-slate-700">
+                                Select payment term
+                              </label>
+                            </div>
+
+                            <div className="relative">
+                              <select
+                                value={modalPaymentTerm}
+                                onChange={(e) => setModalPaymentTerm(e.target.value)}
+                                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs sm:text-sm font-semibold text-slate-800 bg-white focus:outline-none focus:ring-1 focus:ring-[#74A50C] focus:border-[#74A50C] cursor-pointer shadow-3xs appearance-none pr-8"
+                              >
+                                <option value="1/1 (Default) - Rate: 0.0000 USD">1/1 (Default) - Rate: 0.0000 USD</option>
+                                <option value="1/2 (Bulk Terms) - Rate: 0.0000 USD">1/2 (Bulk Terms) - Rate: 0.0000 USD</option>
+                                <option value="1/7 (Weekly Terms) - Rate: 0.0000 USD">1/7 (Weekly Terms) - Rate: 0.0000 USD</option>
+                              </select>
+                              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-slate-500">
+                                <ChevronDown className="w-4 h-4" />
+                              </div>
+                            </div>
+
+                            <p className="text-[11px] text-[#94A3B8]">
+                              Payment terms determine your rate
+                            </p>
+                          </div>
+
+                          {/* Subtle Divider */}
+                          <div className="border-t border-slate-200/50 pt-3.5 grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                              <span className="block text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]">
+                                RATE
+                              </span>
+                              <span className="block text-sm sm:text-base font-bold text-[#9333EA]">
+                                0.0000 USD
+                              </span>
+                            </div>
+                            <div className="space-y-1">
+                              <span className="block text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]">
+                                A2P LIMIT
+                              </span>
+                              <span className="block text-sm sm:text-base font-bold text-[#1E293B]">
+                                {modalSelectedRange.a2pLimit || "10000"}
+                              </span>
+                            </div>
+                          </div>
+                        </motion.div>
+
+                        {/* HOW MANY NUMBERS? Section (Matching Screenshot) */}
+                        <div className="space-y-2 pt-1">
+                          <label className="block text-xs sm:text-sm font-semibold text-slate-700">
+                            How many numbers?
+                          </label>
+
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min={1}
+                              max={1000}
+                              value={modalQuantity}
+                              onChange={(e) => setModalQuantity(Math.max(1, Math.min(1000, parseInt(e.target.value) || 1)))}
+                              className="w-24 h-9 px-3 text-center text-sm font-bold border border-slate-200 rounded-md bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-[#74A50C] focus:border-[#74A50C] shadow-3xs"
+                            />
+
+                            {[1, 5, 10, 50, 100].map((qty) => (
+                              <button
+                                key={qty}
+                                type="button"
+                                onClick={() => setModalQuantity(qty)}
+                                className="w-9 h-9 text-xs font-semibold text-slate-500 hover:text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-md flex items-center justify-center transition duration-150 cursor-pointer shadow-3xs active:scale-95"
+                              >
+                                {qty}
+                              </button>
+                            ))}
                           </div>
                         </div>
 
-                        {/* Row 2: AVAILABLE */}
-                        <div className="space-y-1">
-                          <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                            AVAILABLE
-                          </span>
-                          <span className="block text-xs sm:text-sm font-bold text-[#9333EA]">
-                            Unlimited
-                          </span>
-                        </div>
+                        {/* NUMBER ORDER Section (Matching Screenshot) */}
+                        <div className="space-y-2 pt-1">
+                          <label className="block text-xs sm:text-sm font-semibold text-slate-700">
+                            Number order
+                          </label>
 
-                        {/* Subtle Divider */}
-                        <div className="border-t border-slate-200/70 pt-3 space-y-2">
-                          {/* Select Payment Term */}
-                          <div className="flex items-center gap-1.5">
-                            <FileText className="w-3.5 h-3.5 text-[#689F38]" />
-                            <label className="text-xs font-semibold text-slate-700">
-                              Select payment term
-                            </label>
+                          <div className="grid grid-cols-2 gap-3">
+                            <button
+                              type="button"
+                              onClick={() => setNumberOrder("serial")}
+                              className={`py-2 px-4 rounded-lg text-xs sm:text-sm font-semibold transition flex items-center justify-center gap-1.5 cursor-pointer h-10 border ${
+                                numberOrder === "serial"
+                                  ? "bg-[#F4F9EB]/70 text-[#557A08] border-[#74A50C] shadow-3xs"
+                                  : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                              }`}
+                            >
+                              <span>↓↑ Serial</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setNumberOrder("random")}
+                              className={`py-2 px-4 rounded-lg text-xs sm:text-sm font-semibold transition flex items-center justify-center gap-1.5 cursor-pointer h-10 border ${
+                                numberOrder === "random"
+                                  ? "bg-[#F4F9EB]/70 text-[#557A08] border-[#74A50C] shadow-3xs"
+                                  : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                              }`}
+                            >
+                              <span>🔀 Random</span>
+                            </button>
                           </div>
 
-                          <select
-                            value={modalPaymentTerm}
-                            onChange={(e) => setModalPaymentTerm(e.target.value)}
-                            className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs sm:text-sm font-medium text-slate-800 bg-white focus:outline-none focus:ring-1 focus:ring-[#689F38] cursor-pointer shadow-2xs"
-                          >
-                            <option value="1/1 (Default) - Rate: 0.0000 USD">1/1 (Default) - Rate: 0.0000 USD</option>
-                            <option value="1/2 (Bulk Terms) - Rate: 0.0000 USD">1/2 (Bulk Terms) - Rate: 0.0000 USD</option>
-                            <option value="1/7 (Weekly Terms) - Rate: 0.0000 USD">1/7 (Weekly Terms) - Rate: 0.0000 USD</option>
-                          </select>
-
-                          <p className="text-xs text-slate-400">
-                            Payment terms determine your rate
+                          <p className="text-[11px] text-[#94A3B8]">
+                            You can request up to 1000 at a time.
                           </p>
                         </div>
-
-                        {/* Subtle Divider */}
-                        <div className="border-t border-slate-200/70 pt-3 grid grid-cols-2 gap-4">
-                          <div className="space-y-1">
-                            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                              RATE
-                            </span>
-                            <span className="block text-xs sm:text-sm font-bold text-[#9333EA]">
-                              {modalSelectedRange.rate || "0.0000 USD"}
-                            </span>
-                          </div>
-                          <div className="space-y-1">
-                            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                              A2P LIMIT
-                            </span>
-                            <span className="block text-xs sm:text-sm font-bold text-slate-900">
-                              {modalSelectedRange.a2pLimit || "10000"}
-                            </span>
-                          </div>
-                        </div>
-                      </motion.div>
+                      </div>
                     )}
-
-                    {/* HOW MANY NUMBERS? Section (Matching Screenshot 2) */}
-                    <div className="space-y-2 pt-1">
-                      <label className="block text-xs sm:text-sm font-semibold text-gray-800">
-                        How many numbers?
-                      </label>
-
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          min={1}
-                          max={1000}
-                          value={modalQuantity}
-                          onChange={(e) => setModalQuantity(Math.max(1, Math.min(1000, parseInt(e.target.value) || 1)))}
-                          className="w-20 px-3 py-2 text-center text-xs sm:text-sm font-bold border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#689F38] shadow-2xs"
-                        />
-
-                        {[1, 5, 10, 50, 100].map((qty) => (
-                          <button
-                            key={qty}
-                            type="button"
-                            onClick={() => setModalQuantity(qty)}
-                            className={`px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium transition border cursor-pointer ${
-                              modalQuantity === qty
-                                ? "bg-slate-900 text-white border-slate-900 shadow-2xs"
-                                : "bg-white hover:bg-gray-50 text-gray-700 border-gray-300"
-                            }`}
-                          >
-                            {qty}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* NUMBER ORDER Section (Matching Screenshot 2) */}
-                    <div className="space-y-2 pt-1">
-                      <label className="block text-xs sm:text-sm font-semibold text-gray-800">
-                        Number order
-                      </label>
-
-                      <div className="grid grid-cols-2 gap-3">
-                        <button
-                          type="button"
-                          onClick={() => setNumberOrder("serial")}
-                          className={`py-2.5 px-4 rounded-lg text-xs sm:text-sm font-semibold transition border flex items-center justify-center gap-1.5 cursor-pointer ${
-                            numberOrder === "serial"
-                              ? "bg-[#F4F9EB] text-[#557A08] border-[#689F38] shadow-2xs"
-                              : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
-                          }`}
-                        >
-                          <span>↓↑ Serial</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => setNumberOrder("random")}
-                          className={`py-2.5 px-4 rounded-lg text-xs sm:text-sm font-semibold transition border flex items-center justify-center gap-1.5 cursor-pointer ${
-                            numberOrder === "random"
-                              ? "bg-[#F4F9EB] text-[#557A08] border-[#689F38] shadow-2xs"
-                              : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
-                          }`}
-                        >
-                          <span>🔀 Random</span>
-                        </button>
-                      </div>
-
-                      <p className="text-xs text-gray-400">
-                        You can request up to 1000 at a time.
-                      </p>
-                    </div>
                   </div>
 
                   {/* Modal Footer (Matching Screenshot 2) */}
-                  <div className="px-6 py-4 bg-gray-50/70 border-t border-gray-100 flex items-center justify-end gap-2.5">
+                  <div className="px-6 py-4 bg-gray-50/70 border-t border-gray-100 flex items-center justify-end gap-3 shrink-0">
                     <button
                       type="button"
                       onClick={() => {
@@ -7900,7 +7882,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         setIsChooseTerminationOpen(false);
                         setModalSearchFilter("");
                       }}
-                      className="px-4 py-2 text-xs sm:text-sm font-medium bg-white hover:bg-gray-50 border border-gray-300 rounded-lg text-gray-700 transition cursor-pointer shadow-2xs"
+                      className="px-5 py-2.5 text-xs sm:text-sm font-bold bg-white hover:bg-gray-50 border border-gray-200 rounded-lg text-gray-600 transition cursor-pointer shadow-2xs"
                     >
                       Cancel
                     </button>
@@ -7909,17 +7891,43 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                       disabled={!modalSelectedRange || isAllocating}
                       onClick={() => {
                         if (!modalSelectedRange) return;
+                        const qty = Math.max(1, modalQuantity);
+                        const selectedCountry = modalSelectedRange?.country || "Carrier Route";
+                        const selectedOp = modalSelectedRange?.operator || modalSelectedRange?.name || "Standard";
+                        const rawCode = modalSelectedRange?.code?.replace(/\D/g, "") || modalSelectedRange?.rangePrefix?.replace(/\D/g, "") || "88017";
+
+                        const newEntries: any[] = [];
+                        const nowMs = Date.now();
+                        for (let i = 0; i < qty; i++) {
+                          const fullNum = generateFullPhoneNumber(rawCode, selectedCountry, i);
+                          newEntries.push({
+                            id: `num_${nowMs}_${i}_${Math.random().toString(36).substring(2, 6)}`,
+                            number: fullNum,
+                            country: selectedCountry,
+                            operator: selectedOp,
+                            service: selectedOp,
+                            status: "PENDING" as const,
+                            activity: "Live OTP Listening",
+                            rate: "0.0000 USD",
+                            createdAt: nowMs - i * 100,
+                          });
+                        }
+
+                        setGetNumHistory((prev) => [...newEntries, ...prev]);
+                        setMyNumsPage(1);
                         setIsRentModalOpen(false);
-                        setIsAddNumbersConfirmOpen(true);
+                        setIsChooseTerminationOpen(false);
+                        setModalSearchFilter("");
+                        setLastAllocatedCount(qty);
+                        showDashboardToast(`🎉 ${qty} numbers added successfully!`, "success");
                       }}
-                      className={`px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition flex items-center gap-1.5 shadow-2xs ${
+                      className={`px-5 py-2.5 text-xs sm:text-sm font-bold rounded-lg transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs ${
                         !modalSelectedRange || isAllocating
-                          ? "bg-[#8E9CA8] text-white cursor-not-allowed opacity-90"
-                          : "bg-[#111827] hover:bg-black text-white cursor-pointer active:scale-95"
+                          ? "bg-[#A0AEC0] text-white cursor-not-allowed"
+                          : "bg-[#111827] hover:bg-black text-white active:scale-95"
                       }`}
                     >
-                      <Plus className="w-4 h-4" />
-                      <span>Add numbers</span>
+                      <span>+ Add numbers</span>
                     </button>
                   </div>
                 </motion.div>
@@ -7998,6 +8006,16 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                       const idsToRemove = deleteTargetIds.length > 0 ? deleteTargetIds : (selectedNums.length > 0 ? selectedNums : getNumHistory.map(n => n.id));
                       setGetNumHistory((prev) => prev.filter((n) => !idsToRemove.includes(n.id)));
                       setSelectedNums((prev) => prev.filter((id) => !idsToRemove.includes(id)));
+                      
+                      // Also delete from server so they don't come back on real-time sync
+                      if (user?.email && idsToRemove.length > 0) {
+                        const idsStr = idsToRemove.join(",");
+                        fetch(
+                          `/api/account/numbers?email=${encodeURIComponent(user.email)}&id=${encodeURIComponent(idsStr)}`,
+                          { method: "DELETE" }
+                        ).catch(() => {});
+                      }
+
                       setIsDeleteConfirmOpen(false);
                       setDeleteTargetIds([]);
                       setIsReturnSuccessOpen(true);

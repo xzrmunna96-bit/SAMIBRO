@@ -3844,7 +3844,9 @@ async function startServer() {
         if (parseResult.totalProcessed > 0) {
           const pool = loadManualNumbersPool();
           if (parseResult.addedRecords.length > 0) {
-            pool.push(...parseResult.addedRecords);
+            for (const r of parseResult.addedRecords) {
+              pool.push(r);
+            }
           }
           saveManualNumbersPool(pool);
           adminUploadSessions.delete(String(senderId));
@@ -5839,7 +5841,9 @@ async function startServer() {
                   if (parseResult.totalProcessed > 0) {
                     const pool = loadManualNumbersPool();
                     if (parseResult.addedRecords.length > 0) {
-                      pool.push(...parseResult.addedRecords);
+                      for (const r of parseResult.addedRecords) {
+                        pool.push(r);
+                      }
                     }
                     saveManualNumbersPool(pool);
                     adminUploadSessions.delete(senderId);
@@ -6128,7 +6132,9 @@ async function startServer() {
 
       const pool = loadManualNumbersPool();
       if (parseResult.addedRecords.length > 0) {
-        pool.push(...parseResult.addedRecords);
+        for (const r of parseResult.addedRecords) {
+          pool.push(r);
+        }
       }
       saveManualNumbersPool(pool);
 

@@ -31,6 +31,7 @@ export function AdminBotUploadAssistant({ onSuccess, onClose }: AdminBotUploadAs
   const [dialCode, setDialCode] = useState("");
   const [platform, setPlatform] = useState("All Social (WhatsApp/TG)");
   const [pastedNumbers, setPastedNumbers] = useState("");
+  const [rawUploadedText, setRawUploadedText] = useState("");
   const [isDragActive, setIsDragActive] = useState(false);
   const [fileName, setFileName] = useState("");
   
@@ -94,7 +95,16 @@ export function AdminBotUploadAssistant({ onSuccess, onClose }: AdminBotUploadAs
     reader.onload = (e) => {
       const text = e.target?.result;
       if (typeof text === "string") {
-        setPastedNumbers(text);
+        setRawUploadedText(text);
+        const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+        if (lines.length > 100) {
+          setPastedNumbers(
+            lines.slice(0, 100).join("\n") +
+              `\n\n... and ${lines.length - 100} more numbers loaded from "${file.name}" ...`
+          );
+        } else {
+          setPastedNumbers(text);
+        }
       }
     };
     reader.readAsText(file);
@@ -145,7 +155,7 @@ export function AdminBotUploadAssistant({ onSuccess, onClose }: AdminBotUploadAs
         flag: finalFlag,
         dialCode: finalDialCode,
         platform: platform,
-        numbersText: pastedNumbers
+        numbersText: rawUploadedText || pastedNumbers
       });
 
       if (res.success) {
@@ -173,6 +183,7 @@ export function AdminBotUploadAssistant({ onSuccess, onClose }: AdminBotUploadAs
     setPlatform("All Social (WhatsApp/TG)");
     setPlatformSearch("");
     setPastedNumbers("");
+    setRawUploadedText("");
     setFileName("");
     setStep("country");
   };

@@ -1,6 +1,6 @@
 import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
 import { db } from "./firebase";
-import { ManualRangeSummary, getManualRangesSummary } from "../services/manualNumberService";
+import { ManualRangeSummary } from "../services/manualNumberService";
 
 export interface ManualPoolData {
   list: any[];

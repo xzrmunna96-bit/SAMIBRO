@@ -367,6 +367,7 @@ import {
   ManualRangeSummary,
   ManualNumberRecord,
 } from "../services/manualNumberService";
+import { AdminBotUploadAssistant } from "./AdminBotUploadAssistant";
 import {
   getTopAppsConfig,
   TOP_APPS_UPDATE_EVENT,
@@ -2599,6 +2600,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   const [terminationSearchQuery, setTerminationSearchQuery] = useState("");
   const [terminationDropdownPlatform, setTerminationDropdownPlatform] = useState<string>("ALL");
   const [isTerminationDropdownOpen, setIsTerminationDropdownOpen] = useState(false);
+  const [showAdminBotUploadTab, setShowAdminBotUploadTab] = useState(false);
   const [actionFeedbackToast, setActionFeedbackToast] = useState<string | null>(null);
 
   useEffect(() => {
@@ -9123,7 +9125,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             {/* Modal Dialog Matching User Screenshot */}
             {(isTerminationDropdownOpen || isAddNumbersModalOpen) && (
               <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-fadeIn">
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-md max-h-[85vh] flex flex-col overflow-hidden animate-scaleUp">
+                <div className={`bg-white rounded-2xl border border-slate-200 shadow-2xl w-full flex flex-col overflow-hidden animate-scaleUp transition-all duration-200 ${
+                  showAdminBotUploadTab && isAdminUser ? "max-w-lg" : "max-w-md"
+                }`}>
                   {/* Dialog Header */}
                   <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                     <h2 className="text-sm font-black text-slate-800 uppercase tracking-wider">
@@ -9141,111 +9145,155 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                     </button>
                   </div>
 
-                  {/* Search Bar in Dialog */}
-                  <div className="p-3 border-b border-slate-100 bg-white">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                      <input
-                        type="text"
-                        placeholder="Search country name or range..."
-                        value={terminationSearchQuery}
-                        onChange={(e) => setTerminationSearchQuery(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-8 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500"
-                        autoFocus
+                  {/* Admin Nav Toggles if AdminUser */}
+                  {isAdminUser && (
+                    <div className="grid grid-cols-2 border-b border-slate-100 bg-slate-50 text-xs font-bold">
+                      <button
+                        type="button"
+                        onClick={() => setShowAdminBotUploadTab(false)}
+                        className={`py-3 text-center transition-all cursor-pointer border-b-2 ${
+                          !showAdminBotUploadTab
+                            ? "text-slate-900 border-indigo-600 bg-white"
+                            : "text-slate-500 hover:text-slate-800 border-transparent hover:bg-slate-100/50"
+                        }`}
+                      >
+                        📡 Choose Route
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowAdminBotUploadTab(true)}
+                        className={`py-3 text-center transition-all cursor-pointer border-b-2 ${
+                          showAdminBotUploadTab
+                            ? "text-slate-900 border-indigo-600 bg-white"
+                            : "text-slate-500 hover:text-slate-800 border-transparent hover:bg-slate-100/50"
+                        }`}
+                      >
+                        🤖 Admin Upload Bot
+                      </button>
+                    </div>
+                  )}
+
+                  {showAdminBotUploadTab && isAdminUser ? (
+                    <div className="flex-1 overflow-hidden p-1 flex flex-col">
+                      <AdminBotUploadAssistant 
+                        onSuccess={(msg) => {
+                          showDashboardToast(msg, "success");
+                        }}
+                        onClose={() => {
+                          setIsTerminationDropdownOpen(false);
+                          setIsAddNumbersModalOpen(false);
+                        }}
                       />
-                      {terminationSearchQuery && (
+                    </div>
+                  ) : (
+                    <>
+                      {/* Search Bar in Dialog */}
+                      <div className="p-3 border-b border-slate-100 bg-white">
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                          <input
+                            type="text"
+                            placeholder="Search country name or range..."
+                            value={terminationSearchQuery}
+                            onChange={(e) => setTerminationSearchQuery(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-8 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500"
+                            autoFocus
+                          />
+                          {terminationSearchQuery && (
+                            <button
+                              type="button"
+                              onClick={() => setTerminationSearchQuery("")}
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold p-0.5"
+                            >
+                              &times;
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Scrollable Radio Option List (Exact screenshot format) */}
+                      <div className="flex-1 overflow-y-auto divide-y divide-slate-100 p-2">
+                        {/* Default "-- Choose a termination --" Option */}
                         <button
                           type="button"
-                          onClick={() => setTerminationSearchQuery("")}
-                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold p-0.5"
+                          onClick={() => {
+                            setSelectedTerminationPrefix("");
+                            setIsTerminationDropdownOpen(false);
+                            setIsAddNumbersModalOpen(false);
+                          }}
+                          className={`w-full text-left px-4 py-3.5 rounded-xl transition flex items-center justify-between gap-3 cursor-pointer ${
+                            !selectedTerminationPrefix
+                              ? "bg-slate-100/90 font-bold text-slate-900"
+                              : "hover:bg-slate-50 text-slate-700"
+                          }`}
                         >
-                          &times;
+                          <span className="text-xs sm:text-sm">-- Choose a termination --</span>
+                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                            !selectedTerminationPrefix ? "border-indigo-600" : "border-slate-300"
+                          }`}>
+                            {!selectedTerminationPrefix && <div className="w-2.5 h-2.5 rounded-full bg-indigo-600" />}
+                          </div>
                         </button>
-                      )}
-                    </div>
-                  </div>
 
-                  {/* Scrollable Radio Option List (Exact screenshot format) */}
-                  <div className="flex-1 overflow-y-auto divide-y divide-slate-100 p-2">
-                    {/* Default "-- Choose a termination --" Option */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedTerminationPrefix("");
-                        setIsTerminationDropdownOpen(false);
-                        setIsAddNumbersModalOpen(false);
-                      }}
-                      className={`w-full text-left px-4 py-3.5 rounded-xl transition flex items-center justify-between gap-3 cursor-pointer ${
-                        !selectedTerminationPrefix
-                          ? "bg-slate-100/90 font-bold text-slate-900"
-                          : "hover:bg-slate-50 text-slate-700"
-                      }`}
-                    >
-                      <span className="text-xs sm:text-sm">-- Choose a termination --</span>
-                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                        !selectedTerminationPrefix ? "border-indigo-600" : "border-slate-300"
-                      }`}>
-                        {!selectedTerminationPrefix && <div className="w-2.5 h-2.5 rounded-full bg-indigo-600" />}
+                        {/* All Added Country Ranges from Telegram / Admin */}
+                        {filteredAvailableTerminations.length === 0 ? (
+                          <div className="p-8 text-center text-xs text-slate-400">
+                            No terminations found.
+                          </div>
+                        ) : (
+                          filteredAvailableTerminations.map((r) => {
+                            const info = formatTerminationInfo(r);
+                            const isSelected = selectedTerminationPrefix === r.rangePrefix;
+                            const displayText = `${r.country} - ${info.operator} - ${(info as any).maskedPrefix || r.rangePrefix || r.dialCode} (Unlimited available)`;
+
+                            return (
+                              <button
+                                key={r.rangePrefix}
+                                type="button"
+                                onClick={() => handleAddTermination(r.rangePrefix, false)}
+                                className={`w-full text-left px-4 py-3 rounded-xl transition flex items-center justify-between gap-3 cursor-pointer group ${
+                                  isSelected
+                                    ? "bg-indigo-50/80 font-bold text-slate-900"
+                                    : "hover:bg-slate-50 text-slate-700"
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                  <CountryFlag
+                                    countryCode={r.country}
+                                    size="md"
+                                    className="w-6 h-4 rounded border border-slate-300 shrink-0"
+                                  />
+                                  <span className="text-xs sm:text-sm font-medium leading-tight text-slate-800 break-words">
+                                    {displayText}
+                                  </span>
+                                </div>
+
+                                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
+                                  isSelected ? "border-indigo-600 bg-white" : "border-slate-300 group-hover:border-slate-400"
+                                }}`}>
+                                  {isSelected && <div className="w-2.5 h-2.5 rounded-full bg-indigo-600" />}
+                                </div>
+                              </button>
+                            );
+                          })
+                        )}
                       </div>
-                    </button>
 
-                    {/* All Added Country Ranges from Telegram / Admin */}
-                    {filteredAvailableTerminations.length === 0 ? (
-                      <div className="p-8 text-center text-xs text-slate-400">
-                        No terminations found.
+                      {/* Modal Footer */}
+                      <div className="p-3 border-t border-slate-100 bg-slate-50 flex items-center justify-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsTerminationDropdownOpen(false);
+                            setIsAddNumbersModalOpen(false);
+                          }}
+                          className="px-4 py-2 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 transition cursor-pointer"
+                        >
+                          Close
+                        </button>
                       </div>
-                    ) : (
-                      filteredAvailableTerminations.map((r) => {
-                        const info = formatTerminationInfo(r);
-                        const isSelected = selectedTerminationPrefix === r.rangePrefix;
-                        const displayText = `${r.country} - ${info.operator} - ${(info as any).maskedPrefix || r.rangePrefix || r.dialCode} (Unlimited available)`;
-
-                        return (
-                          <button
-                            key={r.rangePrefix}
-                            type="button"
-                            onClick={() => handleAddTermination(r.rangePrefix, false)}
-                            className={`w-full text-left px-4 py-3 rounded-xl transition flex items-center justify-between gap-3 cursor-pointer group ${
-                              isSelected
-                                ? "bg-indigo-50/80 font-bold text-slate-900"
-                                : "hover:bg-slate-50 text-slate-700"
-                            }`}
-                          >
-                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                              <CountryFlag
-                                countryCode={r.country}
-                                size="md"
-                                className="w-6 h-4 rounded border border-slate-300 shrink-0"
-                              />
-                              <span className="text-xs sm:text-sm font-medium leading-tight text-slate-800 break-words">
-                                {displayText}
-                              </span>
-                            </div>
-
-                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-                              isSelected ? "border-indigo-600 bg-white" : "border-slate-300 group-hover:border-slate-400"
-                            }`}>
-                              {isSelected && <div className="w-2.5 h-2.5 rounded-full bg-indigo-600" />}
-                            </div>
-                          </button>
-                        );
-                      })
-                    )}
-                  </div>
-
-                  {/* Modal Footer */}
-                  <div className="p-3 border-t border-slate-100 bg-slate-50 flex items-center justify-end">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsTerminationDropdownOpen(false);
-                        setIsAddNumbersModalOpen(false);
-                      }}
-                      className="px-4 py-2 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 transition cursor-pointer"
-                    >
-                      Close
-                    </button>
-                  </div>
+                    </>
+                  )}
                 </div>
               </div>
             )}

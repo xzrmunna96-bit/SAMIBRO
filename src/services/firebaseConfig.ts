@@ -3,7 +3,7 @@ import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAnalytics, isSupported as isAnalyticsSupported } from "firebase/analytics";
 import { initializeFirestore, getFirestore, setLogLevel } from "firebase/firestore";
 import { getDatabase } from "firebase/database";
-import { getAuth } from "firebase/auth";
+import { getAuth, setPersistence, inMemoryPersistence, browserLocalPersistence } from "firebase/auth";
 
 export const firebaseConfig = {
   apiKey: "AIzaSyBhXcv4tNEO7vFmqfMlvZlndcUGtsWLIHs",
@@ -58,6 +58,18 @@ export const realtimeDb = rtdb;
 let auth: any;
 try {
   auth = getAuth(firebaseApp);
+  try {
+    const isIframe = typeof window !== "undefined" && window.self !== window.top;
+    if (isIframe) {
+      // Force in-memory persistence inside sandboxed iframes to bypass third-party cookie/IndexedDB restrictions
+      setPersistence(auth, inMemoryPersistence).catch(() => {});
+    } else {
+      // Use local persistence in full window context
+      setPersistence(auth, browserLocalPersistence).catch(() => {});
+    }
+  } catch {
+    // ignore
+  }
 } catch (e) {
   auth = null;
 }

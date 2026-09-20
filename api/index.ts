@@ -105,15 +105,17 @@ let memoryNumbers: any[] = readJsonFile<any[]>("shared_account_numbers.json", []
 let memoryRates: any[] = readJsonFile<any[]>("rates.json", []);
 let memoryLiveChats: any[] = readJsonFile<any[]>("live_chats.json", []);
 let memoryManualNumbers: any[] = readJsonFile<any[]>("manual_numbers_pool.json", []);
-let memoryBotConfig: any = readJsonFile<any>("bot_management_config.json", {
+
+const DEFAULT_BOT_CONFIG = {
   botToken: "8892734138:AAEu_wMYBM6523MjGIbGGwtPbXSko0yqhew",
   adminId: "7084317713",
   chatId: "-1004476126020",
   otpGroupUrl: "https://t.me/trstyyop",
   activePolling: true,
   botUsername: "",
-  lastUpdated: Date.now(),
-});
+};
+
+let memoryBotConfig: any = readJsonFile<any>("bot_management_config.json", DEFAULT_BOT_CONFIG);
 
 function loadManualNumbersPool(): any[] {
   memoryManualNumbers = readJsonFile<any[]>("manual_numbers_pool.json", []);
@@ -406,6 +408,10 @@ async function sendTelegramMessage(botToken: string, chatId: string | number, te
   } catch {}
 }
 
+function detectCountryFromText(text: string): { name: string; flag: string; dialCode: string } {
+  return findCountryByNameOrCode(text);
+}
+
 async function handleTelegramUpdateInApi(update: any, botConfig: any) {
   if (!update) return;
   const botToken = botConfig?.botToken || DEFAULT_BOT_CONFIG.botToken;
@@ -441,11 +447,17 @@ async function handleTelegramUpdateInApi(update: any, botConfig: any) {
             );
 
             if (parseResult.newCount > 0) {
+              const pool = loadManualNumbersPool();
+              for (const r of parseResult.addedRecords) {
+                pool.push(r);
+              }
+              saveManualNumbersPool(pool);
+
               const replyMsg = `✅ <b>SUPER X SMS — Numbers Uploaded!</b>\n\n` +
                 `📁 <b>File:</b> <code>${fileName}</code>\n` +
                 `🌍 <b>Country:</b> ${parseResult.detectedCountry.flag} <b>${parseResult.detectedCountry.name}</b>\n` +
                 `📞 <b>Added Numbers:</b> <code>${parseResult.newCount}</code>\n` +
-                `🔄 <b>Total Pool Count:</b> <code>${parseResult.totalProcessed}</code>\n\n` +
+                `🔄 <b>Total Pool Count:</b> <code>${pool.length}</code>\n\n` +
                 `<i>Available instantly on Website & Choose Termination dropdown!</i>`;
               await sendTelegramMessage(botToken, chatId, replyMsg);
             }
@@ -470,9 +482,16 @@ async function handleTelegramUpdateInApi(update: any, botConfig: any) {
     );
 
     if (parseResult.newCount > 0) {
+      const pool = loadManualNumbersPool();
+      for (const r of parseResult.addedRecords) {
+        pool.push(r);
+      }
+      saveManualNumbersPool(pool);
+
       const replyMsg = `✅ <b>SUPER X SMS — Text Numbers Added!</b>\n\n` +
         `🌍 <b>Country:</b> ${parseResult.detectedCountry.flag} <b>${parseResult.detectedCountry.name}</b>\n` +
-        `📞 <b>Added Numbers:</b> <code>${parseResult.newCount}</code>\n\n` +
+        `📞 <b>Added Numbers:</b> <code>${parseResult.newCount}</code>\n` +
+        `🔄 <b>Total Pool Count:</b> <code>${pool.length}</code>\n\n` +
         `<i>Visible real-time on Website & Choose Termination dropdown!</i>`;
       await sendTelegramMessage(botToken, chatId, replyMsg);
     }
@@ -1245,7 +1264,9 @@ export default async function handler(req: any, res: any) {
 
     const pool = loadManualNumbersPool();
     if (parseResult.addedRecords.length > 0) {
-      pool.push(...parseResult.addedRecords);
+      for (const r of parseResult.addedRecords) {
+        pool.push(r);
+      }
     }
     saveManualNumbersPool(pool);
 
@@ -1408,6 +1429,15 @@ export default async function handler(req: any, res: any) {
     // Optionally trigger background polling for new updates from Telegram
     if (memoryBotConfig.botToken) {
       pollTelegramUpdatesInApi(memoryBotConfig).catch(() => {});
+      
+      // Auto set/sync Webhook on Vercel deployment URL
+      if (req.headers.host) {
+        const host = req.headers.host;
+        const protocol = host.includes("localhost") ? "http" : "https";
+        const webhookUrl = `${protocol}://${host}/api/telegram-webhook`;
+        fetch(`https://api.telegram.org/bot${memoryBotConfig.botToken}/setWebhook?url=${encodeURIComponent(webhookUrl)}`)
+          .catch(() => {});
+      }
     }
     return sendJson(res, 200, {
       success: true,

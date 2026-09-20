@@ -266,7 +266,12 @@ export const BotManagementView: React.FC<BotManagementViewProps> = ({ onToast })
         setNumbersInputText('');
         setRawUploadedText('');
         setFileName(null);
-        await syncPoolWithFirestore(res.ranges); // Force immediate instant sync with Firestore
+        
+        // Sync with Firestore in the background (non-blocking)
+        syncPoolWithFirestore(res.ranges).catch((err) => {
+          console.error('[FirestoreSync] Failed background Firestore sync:', err);
+        });
+        
         await loadPoolData();
       } else {
         onToast(res.message || 'নাম্বার আপলোড করতে সমস্যা হয়েছে।');
@@ -307,7 +312,12 @@ export const BotManagementView: React.FC<BotManagementViewProps> = ({ onToast })
     }
     const res = await deleteManualRange(prefix);
     onToast(res.message);
-    await syncPoolWithFirestore(); // Force immediate sync with Firestore
+    
+    // Sync with Firestore in the background (non-blocking)
+    syncPoolWithFirestore().catch((err) => {
+      console.error('[FirestoreSync] Failed background Firestore sync:', err);
+    });
+    
     await loadPoolData();
   };
 
@@ -318,7 +328,12 @@ export const BotManagementView: React.FC<BotManagementViewProps> = ({ onToast })
     }
     const res = await clearAllManualNumbers();
     onToast(res.message);
-    await syncPoolWithFirestore(); // Force immediate sync with Firestore
+    
+    // Sync with Firestore in the background (non-blocking)
+    syncPoolWithFirestore().catch((err) => {
+      console.error('[FirestoreSync] Failed background Firestore sync:', err);
+    });
+    
     await loadPoolData();
   };
 

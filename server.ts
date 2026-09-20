@@ -287,11 +287,14 @@ async function startServer() {
 
   function saveManualNumbersPool(list: ManualNumberRecord[]) {
     cachedManualNumbersPool = list;
-    try {
-      fs.writeFileSync(MANUAL_NUMBERS_POOL_FILE, JSON.stringify(list), "utf-8");
-    } catch (e) {
-      console.warn("Could not save manual_numbers_pool.json:", e);
-    }
+    // Save asynchronously so the Node.js event loop is NEVER blocked, resulting in instant uploads
+    fs.writeFile(MANUAL_NUMBERS_POOL_FILE, JSON.stringify(list), "utf-8", (err) => {
+      if (err) {
+        console.warn("Could not save manual_numbers_pool.json asynchronously:", err);
+      } else {
+        console.log(`[Storage] Successfully saved manual numbers pool asynchronously. Total: ${list.length} records.`);
+      }
+    });
   }
 
   function findCountryByNameOrCode(rawInput: string): { name: string; flag: string; dialCode: string } {

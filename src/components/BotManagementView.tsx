@@ -40,7 +40,7 @@ import {
 } from '../services/manualNumberService';
 import { GLOBAL_COUNTRIES_LIST } from '../services/countryHelper';
 import { CountryFlag } from './CountryFlags';
-import { pushManualPoolToFirestore } from '../lib/firestoreSync';
+import { pushManualPoolToFirestore, pushManualPoolSummaryToFirestore } from '../lib/firestoreSync';
 
 interface BotManagementViewProps {
   onToast: (msg: string) => void;
@@ -62,6 +62,7 @@ export const BotManagementView: React.FC<BotManagementViewProps> = ({ onToast })
   const [selectedCountryFlag, setSelectedCountryFlag] = useState('🇧🇩');
   const [selectedDialCode, setSelectedDialCode] = useState('+880');
   const [numbersInputText, setNumbersInputText] = useState('');
+  const [rawUploadedText, setRawUploadedText] = useState('');
   const [fileName, setFileName] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
@@ -196,24 +197,40 @@ export const BotManagementView: React.FC<BotManagementViewProps> = ({ onToast })
     const reader = new FileReader();
     reader.onload = (event) => {
       const text = String(event.target?.result || '');
-      setNumbersInputText(text);
+      // Store the full raw text in a separate state to avoid rendering 10,000+ lines in textarea which freezes the browser
+      setRawUploadedText(text);
+
       const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+      
+      // For the textarea preview, only show the first 100 lines so the browser stays ultra-fast and responsive
+      if (lines.length > 100) {
+        setNumbersInputText(lines.slice(0, 100).join('\n') + `\n\n... and ${lines.length - 100} more numbers loaded from "${file.name}" ...`);
+      } else {
+        setNumbersInputText(text);
+      }
+
       onToast(`Loaded ${lines.length.toLocaleString()} numbers from ${file.name}`);
     };
     reader.readAsText(file);
   };
 
   // Sync Pool with Firestore
-  const syncPoolWithFirestore = async () => {
+  const syncPoolWithFirestore = async (precomputedRanges?: any[]) => {
     try {
-      // Fetch the full pool of numbers (up to 100,000) from the server
-      const res = await fetch('/api/manual-numbers/all?limit=100000');
+      if (precomputedRanges && Array.isArray(precomputedRanges)) {
+        // If we already have precomputed ranges, sync instantly to Firestore without any extra HTTP fetches!
+        await pushManualPoolSummaryToFirestore(precomputedRanges, []);
+        console.log('[FirestoreSync] Instant summary sync completed successfully.');
+        return;
+      }
+
+      // Fallback: Fetch a very small batch to sync
+      const res = await fetch('/api/manual-numbers/all?limit=100');
       if (res.ok) {
         const rawData = await res.json();
         if (rawData.success && Array.isArray(rawData.numbers)) {
-          // Push the entire list of numbers to Firestore
           await pushManualPoolToFirestore(rawData.numbers);
-          console.log('[FirestoreSync] Synchronized manual numbers pool with Firestore. Total count:', rawData.numbers.length);
+          console.log('[FirestoreSync] Synchronized manual numbers pool with Firestore.');
         }
       }
     } catch (err) {
@@ -231,6 +248,8 @@ export const BotManagementView: React.FC<BotManagementViewProps> = ({ onToast })
 
     const finalPlatform = selectedPlatform === 'Other' ? customPlatformText.trim() || 'WhatsApp' : selectedPlatform;
 
+    const textToUpload = rawUploadedText || numbersInputText;
+
     setIsUploading(true);
     try {
       const res = await uploadManualNumbers({
@@ -239,14 +258,15 @@ export const BotManagementView: React.FC<BotManagementViewProps> = ({ onToast })
         dialCode: selectedDialCode,
         platform: finalPlatform,
         socialMedia: finalPlatform,
-        numbersText: numbersInputText,
+        numbersText: textToUpload,
       });
 
       if (res.success) {
         onToast(`🎉 ${res.addedCount.toLocaleString()} টি নাম্বার সফলভাবে যুক্ত হয়েছে!`);
         setNumbersInputText('');
+        setRawUploadedText('');
         setFileName(null);
-        await syncPoolWithFirestore(); // Force immediate sync with Firestore
+        await syncPoolWithFirestore(res.ranges); // Force immediate instant sync with Firestore
         await loadPoolData();
       } else {
         onToast(res.message || 'নাম্বার আপলোড করতে সমস্যা হয়েছে।');
@@ -691,15 +711,15 @@ export const BotManagementView: React.FC<BotManagementViewProps> = ({ onToast })
                 <span>Select OTP Platform (কোন সোশ্যাল মিডিয়া বা সেবার ওটিপি)</span>
               </label>
               
-              <div className="flex flex-wrap items-center gap-2 h-[40px]">
-                {['WhatsApp', 'Telegram', 'IMO', 'Other'].map((p) => {
+              <div className="flex flex-wrap items-center gap-1.5 py-1">
+                {['WhatsApp', 'Telegram', 'IMO', 'TikTok', 'Instagram', 'Facebook', 'Other'].map((p) => {
                   const isSel = selectedPlatform === p;
                   return (
                     <button
                       key={p}
                       type="button"
                       onClick={() => setSelectedPlatform(p)}
-                      className={`px-3 py-2 rounded-xl text-xs font-black border transition cursor-pointer flex items-center gap-1.5 h-[40px] ${
+                      className={`px-3 py-2 rounded-xl text-xs font-black border transition cursor-pointer flex items-center gap-1.5 min-h-[36px] ${
                         isSel
                           ? 'bg-indigo-950 text-indigo-300 border-indigo-500 shadow-sm shadow-indigo-950/50'
                           : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200 hover:bg-slate-900'
@@ -716,7 +736,7 @@ export const BotManagementView: React.FC<BotManagementViewProps> = ({ onToast })
                 <div className="pt-2 animate-fadeIn">
                   <input
                     type="text"
-                    placeholder="Enter Custom Social Media Name (যেমন: WhatsApp Business, Imo, etc.)..."
+                    placeholder="Enter Custom Social Media Name (যেমন: WhatsApp Business, IMO, TikTok, etc.)..."
                     value={customPlatformText}
                     onChange={(e) => setCustomPlatformText(e.target.value)}
                     className="w-full px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
@@ -752,6 +772,7 @@ export const BotManagementView: React.FC<BotManagementViewProps> = ({ onToast })
                     onClick={() => {
                       setFileName(null);
                       setNumbersInputText('');
+                      setRawUploadedText('');
                     }}
                     className="p-2.5 bg-slate-800 hover:bg-rose-950/50 text-slate-400 hover:text-rose-400 rounded-xl transition cursor-pointer"
                   >

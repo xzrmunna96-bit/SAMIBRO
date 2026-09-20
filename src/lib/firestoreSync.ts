@@ -21,7 +21,8 @@ export function subscribeToManualPool(
         if (snapshot.exists()) {
           const data = snapshot.data();
           const list = Array.isArray(data?.list) ? data.list : [];
-          const ranges = getManualRangesFromList(list);
+          // Prioritize precomputed full ranges summary from Firestore to avoid sliced list limits
+          const ranges = Array.isArray(data?.ranges) ? data.ranges : getManualRangesFromList(list);
           onData(list, ranges);
         }
       },
@@ -85,9 +86,26 @@ export function getManualRangesFromList(list: any[]): ManualRangeSummary[] {
 export async function pushManualPoolToFirestore(list: any[]) {
   try {
     const docRef = doc(db, "app_data", "manual_pool");
-    await setDoc(docRef, { list, updatedAt: Date.now() }, { merge: true });
+    // Compute small, lightweight ranges summary
+    const ranges = getManualRangesFromList(list);
+    // Keep only the most recent 100 numbers for the list property to avoid Firestore's 1MB document limit
+    const slicedList = list.slice(0, 100);
+    await setDoc(docRef, { ranges, list: slicedList, updatedAt: Date.now() });
   } catch (err) {
     console.warn("[FirestoreSync] Failed to push manual pool to Firestore:", err);
+  }
+}
+
+/**
+ * Direct summary save to Firestore (super fast, zero network overhead)
+ */
+export async function pushManualPoolSummaryToFirestore(ranges: ManualRangeSummary[], sampleList: any[]) {
+  try {
+    const docRef = doc(db, "app_data", "manual_pool");
+    const slicedList = Array.isArray(sampleList) ? sampleList.slice(0, 100) : [];
+    await setDoc(docRef, { ranges, list: slicedList, updatedAt: Date.now() }, { merge: true });
+  } catch (err) {
+    console.warn("[FirestoreSync] Failed to push manual pool summary to Firestore:", err);
   }
 }
 

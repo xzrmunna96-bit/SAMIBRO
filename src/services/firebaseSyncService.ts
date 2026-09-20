@@ -64,8 +64,11 @@ export async function ensureFirebaseAuth(): Promise<boolean> {
       firebaseAuth,
       "system_sync@superxsms.com",
       "SuperXSyncSecretPassword2026!"
-    );
-    return true;
+    ).catch((err) => {
+      console.warn("Firebase Auth sign in notice:", err?.code || err?.message || err);
+      return null;
+    });
+    return !!firebaseAuth.currentUser;
   } catch (err: any) {
     console.warn("Firebase Auth sign in note:", err?.message);
     return false;

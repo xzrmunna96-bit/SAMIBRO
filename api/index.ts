@@ -105,6 +105,7 @@ let memoryNumbers: any[] = readJsonFile<any[]>("shared_account_numbers.json", []
 let memoryRates: any[] = readJsonFile<any[]>("rates.json", []);
 let memoryLiveChats: any[] = readJsonFile<any[]>("live_chats.json", []);
 let memoryManualNumbers: any[] = readJsonFile<any[]>("manual_numbers_pool.json", []);
+let memoryUploadedFiles: any[] = readJsonFile<any[]>("uploaded_files_history.json", []);
 
 const DEFAULT_BOT_CONFIG = {
   botToken: "8892734138:AAEu_wMYBM6523MjGIbGGwtPbXSko0yqhew",
@@ -116,6 +117,20 @@ const DEFAULT_BOT_CONFIG = {
 };
 
 let memoryBotConfig: any = readJsonFile<any>("bot_management_config.json", DEFAULT_BOT_CONFIG);
+
+function loadUploadedFilesHistory(): any[] {
+  memoryUploadedFiles = readJsonFile<any[]>("uploaded_files_history.json", []);
+  return memoryUploadedFiles;
+}
+
+function saveUploadedFilesHistory(list: any[]) {
+  memoryUploadedFiles = list;
+  writeJsonFile("uploaded_files_history.json", list);
+  try {
+    const docRef = doc(firestoreDb, "app_data", "uploaded_files_history");
+    setDoc(docRef, { list, updatedAt: Date.now() }, { merge: true }).catch(() => {});
+  } catch {}
+}
 
 function loadManualNumbersPool(): any[] {
   memoryManualNumbers = readJsonFile<any[]>("manual_numbers_pool.json", []);
@@ -416,13 +431,15 @@ async function handleTelegramUpdateInApi(update: any, botConfig: any) {
   if (!update) return;
   const botToken = botConfig?.botToken || DEFAULT_BOT_CONFIG.botToken;
 
-  const msg = update.message || update.channel_post || update.edited_message;
+  const msg = update.message || update.channel_post || update.edited_message || update.callback_query?.message;
   if (!msg) return;
 
-  const chatId = msg.chat?.id;
-  const text = (msg.text || msg.caption || "").trim();
+  const chatId = msg.chat?.id || update.callback_query?.from?.id;
+  if (!chatId) return;
 
-  // If a document (.txt / .csv) is attached
+  const rawText = (msg.text || msg.caption || update.callback_query?.data || "").trim();
+
+  // 1. If a document (.txt / .csv) is attached
   if (msg.document) {
     const fileId = msg.document.file_id;
     const fileName = msg.document.file_name || "numbers.txt";
@@ -453,12 +470,35 @@ async function handleTelegramUpdateInApi(update: any, botConfig: any) {
               }
               saveManualNumbersPool(pool);
 
+              // Record history entry
+              const history = loadUploadedFilesHistory();
+              const historyItem = {
+                id: `file_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                serialNo: history.length + 1,
+                fileName: fileName,
+                country: parseResult.detectedCountry.name,
+                flag: parseResult.detectedCountry.flag,
+                dialCode: parseResult.detectedCountry.dialCode,
+                platform: "WhatsApp / Telegram",
+                addedCount: parseResult.newCount,
+                totalProcessed: parseResult.totalProcessed,
+                source: "Telegram Bot 🤖",
+                uploadedAt: Date.now(),
+              };
+              history.unshift(historyItem);
+              saveUploadedFilesHistory(history);
+
               const replyMsg = `✅ <b>SUPER X SMS — Numbers Uploaded!</b>\n\n` +
                 `📁 <b>File:</b> <code>${fileName}</code>\n` +
                 `🌍 <b>Country:</b> ${parseResult.detectedCountry.flag} <b>${parseResult.detectedCountry.name}</b>\n` +
-                `📞 <b>Added Numbers:</b> <code>${parseResult.newCount}</code>\n` +
-                `🔄 <b>Total Pool Count:</b> <code>${pool.length}</code>\n\n` +
+                `📞 <b>Added Numbers:</b> <code>${parseResult.newCount.toLocaleString()}</code>\n` +
+                `🔄 <b>Total Pool Count:</b> <code>${pool.length.toLocaleString()}</code>\n\n` +
                 `<i>Available instantly on Website & Choose Termination dropdown!</i>`;
+              await sendTelegramMessage(botToken, chatId, replyMsg);
+            } else {
+              const replyMsg = `⚠️ <b>SUPER X SMS — File Upload Note</b>\n\n` +
+                `📁 <b>File:</b> <code>${fileName}</code>\n` +
+                `No new valid 7-16 digit phone numbers found or all numbers already exist in pool.`;
               await sendTelegramMessage(botToken, chatId, replyMsg);
             }
           }
@@ -470,11 +510,11 @@ async function handleTelegramUpdateInApi(update: any, botConfig: any) {
     return;
   }
 
-  // If message contains digits/numbers text
-  if (text && /\d{7,}/.test(text)) {
-    const countryInfo = detectCountryFromText(text) || { name: "Global", flag: "🌐", dialCode: "" };
+  // 2. If message contains digits/numbers text
+  if (rawText && /\d{7,}/.test(rawText)) {
+    const countryInfo = detectCountryFromText(rawText) || { name: "Global", flag: "🌐", dialCode: "" };
     const parseResult = parseManualNumbersDetailed(
-      text,
+      rawText,
       countryInfo.name,
       countryInfo.flag,
       countryInfo.dialCode,
@@ -488,14 +528,48 @@ async function handleTelegramUpdateInApi(update: any, botConfig: any) {
       }
       saveManualNumbersPool(pool);
 
+      // Record history entry
+      const history = loadUploadedFilesHistory();
+      const historyItem = {
+        id: `text_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        serialNo: history.length + 1,
+        fileName: `${parseResult.detectedCountry.name}_Text_Batch.txt`,
+        country: parseResult.detectedCountry.name,
+        flag: parseResult.detectedCountry.flag,
+        dialCode: parseResult.detectedCountry.dialCode,
+        platform: "WhatsApp / Telegram",
+        addedCount: parseResult.newCount,
+        totalProcessed: parseResult.totalProcessed,
+        source: "Telegram Bot 🤖",
+        uploadedAt: Date.now(),
+      };
+      history.unshift(historyItem);
+      saveUploadedFilesHistory(history);
+
       const replyMsg = `✅ <b>SUPER X SMS — Text Numbers Added!</b>\n\n` +
         `🌍 <b>Country:</b> ${parseResult.detectedCountry.flag} <b>${parseResult.detectedCountry.name}</b>\n` +
-        `📞 <b>Added Numbers:</b> <code>${parseResult.newCount}</code>\n` +
-        `🔄 <b>Total Pool Count:</b> <code>${pool.length}</code>\n\n` +
+        `📞 <b>Added Numbers:</b> <code>${parseResult.newCount.toLocaleString()}</code>\n` +
+        `🔄 <b>Total Pool Count:</b> <code>${pool.length.toLocaleString()}</code>\n\n` +
         `<i>Visible real-time on Website & Choose Termination dropdown!</i>`;
       await sendTelegramMessage(botToken, chatId, replyMsg);
+      return;
     }
   }
+
+  // 3. Command /start, /help, /menu or generic greeting
+  const senderName = msg.from?.first_name || "Admin";
+  const poolCount = loadManualNumbersPool().length;
+
+  const replyMsg = `⚡ <b>SUPER X SMS — OFFICIAL ADMIN BOT ONLINE</b>\n\n` +
+    `Hello Administrator <b>${senderName}</b>! (Chat ID: <code>${chatId}</code>)\n` +
+    `Connected to SUPER X SMS Automation Engine.\n\n` +
+    `📊 <b>System Status:</b> 🟢 Active & Operational\n` +
+    `🔄 <b>Total Pool Count:</b> <code>${poolCount.toLocaleString()}</code> numbers\n\n` +
+    `<b>How to Upload Numbers:</b>\n` +
+    `📁 Send any <code>.txt</code> file containing phone numbers to upload automatically!\n` +
+    `💬 Send text containing phone numbers directly (e.g. 88017XXXXXXXX).\n\n` +
+    `<i>All uploaded numbers sync in real-time with Website & Choose Termination dropdown!</i>`;
+  await sendTelegramMessage(botToken, chatId, replyMsg);
 }
 
 async function pollTelegramUpdatesInApi(botConfig: any) {
@@ -1231,56 +1305,92 @@ export default async function handler(req: any, res: any) {
     });
   }
 
+  if (cleanPath === "/api/manual-numbers/uploaded-files" && method === "GET") {
+    const files = loadUploadedFilesHistory();
+    return sendJson(res, 200, { success: true, files });
+  }
+
+  if ((cleanPath === "/api/manual-numbers/uploaded-files/clear" || cleanPath === "/api/manual-numbers/uploaded-files") && (method === "POST" || method === "DELETE")) {
+    saveUploadedFilesHistory([]);
+    return sendJson(res, 200, { success: true, message: "Uploaded files history cleared" });
+  }
+
   if (cleanPath === "/api/manual-numbers/upload" && method === "POST") {
-    const body = await parseBody(req);
-    const { numbersText, numbersList, country, flag, dialCode, platform } = body || {};
-    let rawText = "";
-    if (typeof numbersText === "string") {
-      rawText = numbersText;
-    } else if (Array.isArray(numbersList)) {
-      rawText = numbersList.join("\n");
-    }
-
-    if (!rawText.trim()) {
-      return sendJson(res, 400, { success: false, error: "numbersText or numbersList is required" });
-    }
-
-    const cInfo = findCountryByNameOrCode(country || "Global");
-    const resolvedCountry = country || cInfo.name;
-    const resolvedFlag = flag || cInfo.flag;
-    const resolvedDial = dialCode || cInfo.dialCode;
-
-    const parseResult = parseManualNumbersDetailed(
-      rawText,
-      resolvedCountry,
-      resolvedFlag,
-      resolvedDial,
-      platform || "All Social (WhatsApp/TG)"
-    );
-
-    if (parseResult.totalProcessed === 0) {
-      return sendJson(res, 200, { success: false, error: "No valid 7-16 digit phone numbers found in input" });
-    }
-
-    const pool = loadManualNumbersPool();
-    if (parseResult.addedRecords.length > 0) {
-      for (const r of parseResult.addedRecords) {
-        pool.push(r);
+    try {
+      const body = await parseBody(req);
+      const { numbersText, numbersList, country, flag, dialCode, platform, fileName, source } = body || {};
+      let rawText = "";
+      if (typeof numbersText === "string") {
+        rawText = numbersText;
+      } else if (Array.isArray(numbersList)) {
+        rawText = numbersList.join("\n");
       }
-    }
-    saveManualNumbersPool(pool);
 
-    const ranges = getManualRangesSummary(pool);
-    return sendJson(res, 200, {
-      success: true,
-      message: `Successfully processed ${parseResult.totalProcessed} numbers (${parseResult.newCount} new, ${parseResult.existingCount} refreshed) for ${parseResult.detectedCountry.name}!`,
-      count: parseResult.totalProcessed,
-      addedCount: parseResult.newCount,
-      existingCount: parseResult.existingCount,
-      totalPoolCount: pool.length,
-      country: parseResult.detectedCountry,
-      ranges,
-    });
+      if (!rawText.trim()) {
+        return sendJson(res, 400, { success: false, error: "numbersText or numbersList is required" });
+      }
+
+      const cInfo = findCountryByNameOrCode(country || "Global");
+      const resolvedCountry = country || cInfo.name;
+      const resolvedFlag = flag || cInfo.flag;
+      const resolvedDial = dialCode || cInfo.dialCode;
+
+      const parseResult = parseManualNumbersDetailed(
+        rawText,
+        resolvedCountry,
+        resolvedFlag,
+        resolvedDial,
+        platform || "All Social (WhatsApp/TG)"
+      );
+
+      if (parseResult.totalProcessed === 0) {
+        return sendJson(res, 200, { success: false, error: "No valid 7-16 digit phone numbers found in input" });
+      }
+
+      const pool = loadManualNumbersPool();
+      if (parseResult.addedRecords.length > 0) {
+        for (const r of parseResult.addedRecords) {
+          pool.push(r);
+        }
+      }
+      saveManualNumbersPool(pool);
+
+      // Record to uploaded files history
+      const history = loadUploadedFilesHistory();
+      const historyItem = {
+        id: `file_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        serialNo: history.length + 1,
+        fileName: fileName || `${parseResult.detectedCountry.name}_Numbers_${parseResult.newCount}.txt`,
+        country: parseResult.detectedCountry.name,
+        flag: parseResult.detectedCountry.flag,
+        dialCode: parseResult.detectedCountry.dialCode,
+        platform: platform || "WhatsApp / Telegram",
+        addedCount: parseResult.newCount,
+        totalProcessed: parseResult.totalProcessed,
+        source: source || "Web Uploader",
+        uploadedAt: Date.now(),
+      };
+      history.unshift(historyItem);
+      saveUploadedFilesHistory(history);
+
+      const ranges = getManualRangesSummary(pool);
+      return sendJson(res, 200, {
+        success: true,
+        message: `Successfully processed ${parseResult.totalProcessed} numbers (${parseResult.newCount} new, ${parseResult.existingCount} refreshed) for ${parseResult.detectedCountry.name}!`,
+        count: parseResult.totalProcessed,
+        addedCount: parseResult.newCount,
+        existingCount: parseResult.existingCount,
+        totalPoolCount: pool.length,
+        country: parseResult.detectedCountry,
+        ranges,
+      });
+    } catch (err: any) {
+      console.error("[ManualUpload API Error]:", err);
+      return sendJson(res, 200, {
+        success: false,
+        error: err?.message || "Failed to process manual numbers upload. Please try again."
+      });
+    }
   }
 
   if (cleanPath === "/api/manual-numbers/allocate" && method === "POST") {

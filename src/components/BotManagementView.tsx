@@ -33,9 +33,12 @@ import {
   testSendManualOtp,
   deleteManualRange,
   clearAllManualNumbers,
+  fetchUploadedFilesHistory,
+  clearUploadedFilesHistory,
   BotHostingConfig,
   ManualRangeSummary,
   ManualNumberRecord,
+  UploadedFileRecord,
   DEFAULT_BOT_CONFIG,
 } from '../services/manualNumberService';
 import { GLOBAL_COUNTRIES_LIST } from '../services/countryHelper';
@@ -103,6 +106,10 @@ export const BotManagementView: React.FC<BotManagementViewProps> = ({ onToast })
   const [totalNumbers, setTotalNumbers] = useState(0);
   const [isLoadingPool, setIsLoadingPool] = useState(false);
 
+  // 3.5 Uploaded Files History State
+  const [uploadedFilesList, setUploadedFilesList] = useState<UploadedFileRecord[]>([]);
+  const [isLoadingFilesHistory, setIsLoadingFilesHistory] = useState(false);
+
   // 4. Test OTP Dispatcher State
   const [testNumber, setTestNumber] = useState('');
   const [testOtpCode, setTestOtpCode] = useState('852941');
@@ -113,11 +120,35 @@ export const BotManagementView: React.FC<BotManagementViewProps> = ({ onToast })
   useEffect(() => {
     loadConfig();
     loadPoolData();
+    loadUploadedFiles();
   }, []);
 
   const loadConfig = async () => {
     const cfg = await fetchBotHostingConfig();
     setBotConfig(cfg);
+  };
+
+  const loadUploadedFiles = async () => {
+    setIsLoadingFilesHistory(true);
+    try {
+      const files = await fetchUploadedFilesHistory();
+      setUploadedFilesList(files);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsLoadingFilesHistory(false);
+    }
+  };
+
+  const handleClearUploadedFilesHistory = async () => {
+    if (!window.confirm('আপনি কি নিশ্চিত যে আপলোডকৃত ফাইলের সব হিস্ট্রি মুছে ফেলতে চান?')) return;
+    const res = await clearUploadedFilesHistory();
+    if (res.success) {
+      onToast('✅ আপলোডকৃত ফাইলের হিস্ট্রি মুছে ফেলা হয়েছে!');
+      setUploadedFilesList([]);
+    } else {
+      onToast('❌ হিস্ট্রি মুছতে সমস্যা হয়েছে');
+    }
   };
 
   const loadPoolData = async () => {
@@ -259,6 +290,8 @@ export const BotManagementView: React.FC<BotManagementViewProps> = ({ onToast })
         platform: finalPlatform,
         socialMedia: finalPlatform,
         numbersText: textToUpload,
+        fileName: fileName || `${selectedCountryName}_Numbers.txt`,
+        source: 'Web Uploader',
       });
 
       if (res.success) {
@@ -272,6 +305,7 @@ export const BotManagementView: React.FC<BotManagementViewProps> = ({ onToast })
           console.error('[FirestoreSync] Failed background Firestore sync:', err);
         });
         
+        await loadUploadedFiles();
         await loadPoolData();
       } else {
         onToast(res.message || 'নাম্বার আপলোড করতে সমস্যা হয়েছে।');
@@ -845,6 +879,116 @@ export const BotManagementView: React.FC<BotManagementViewProps> = ({ onToast })
             </button>
           </div>
         </form>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* SECTION 2.5: UPLOADED FILES HISTORY TABLE (আপলোডকৃত ফাইলের তালিকা)       */}
+      {/* ========================================================================= */}
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 space-y-5 shadow-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-emerald-500/20 text-emerald-400 rounded-xl">
+              <FileText className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-extrabold text-white">
+                Uploaded Files History (আপলোডকৃত ফাইলের তালিকা)
+              </h3>
+              <p className="text-xs text-slate-400">
+                মোট {uploadedFilesList.length} টি ফাইল আপলোড করা হয়েছে (ওয়েবসাইট ও বট থেকে)
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={loadUploadedFiles}
+              disabled={isLoadingFilesHistory}
+              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer text-xs flex items-center gap-1.5"
+            >
+              <RotateCw className={`w-3.5 h-3.5 ${isLoadingFilesHistory ? 'animate-spin' : ''}`} />
+              <span>Refresh History</span>
+            </button>
+            {uploadedFilesList.length > 0 && (
+              <button
+                type="button"
+                onClick={handleClearUploadedFilesHistory}
+                className="p-2 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 border border-rose-800/40 text-rose-300 hover:text-white transition cursor-pointer text-xs flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Clear History</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {uploadedFilesList.length === 0 ? (
+          <div className="p-8 text-center bg-slate-950/50 rounded-xl border border-dashed border-slate-800">
+            <p className="text-xs text-slate-400">
+              এখনো কোনো ফাইল আপলোড করা হয়নি। উপরে ফাইল আপলোড করুন অথবা টেলিগ্রাম বটের মাধ্যমে পাঠান।
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-slate-300 border-collapse">
+              <thead>
+                <tr className="bg-slate-950 border-b border-slate-800 text-slate-400 font-semibold">
+                  <th className="p-3 w-12 text-center">#</th>
+                  <th className="p-3">ফাইল এর নাম</th>
+                  <th className="p-3">দেশ ও পতাকা</th>
+                  <th className="p-3">প্ল্যাটফর্ম</th>
+                  <th className="p-3 text-right">নাম্বার সংখ্যা</th>
+                  <th className="p-3">আপলোডের উৎস</th>
+                  <th className="p-3 text-right">তারিখ ও সময়</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60">
+                {uploadedFilesList.map((file, idx) => (
+                  <tr key={file.id || idx} className="hover:bg-slate-800/30 transition">
+                    <td className="p-3 text-center font-bold text-slate-500">{file.serialNo || idx + 1}</td>
+                    <td className="p-3 font-semibold text-white flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span className="truncate max-w-[220px] font-mono">{file.fileName}</span>
+                    </td>
+                    <td className="p-3">
+                      <span className="inline-flex items-center gap-1.5 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
+                        <span>{file.flag}</span>
+                        <span className="font-bold text-slate-200">{file.country}</span>
+                        {file.dialCode && <span className="text-slate-500 font-mono text-[10px]">({file.dialCode})</span>}
+                      </span>
+                    </td>
+                    <td className="p-3">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-purple-950/80 text-purple-300 border border-purple-800/40">
+                        {file.platform || 'WhatsApp'}
+                      </span>
+                    </td>
+                    <td className="p-3 text-right font-bold text-emerald-400 font-mono text-sm">
+                      +{file.addedCount?.toLocaleString() || 0}
+                    </td>
+                    <td className="p-3">
+                      <span className={`px-2 py-0.5 rounded-md text-[11px] font-bold ${
+                        file.source?.includes('Bot') 
+                          ? 'bg-blue-950/80 text-blue-300 border border-blue-800/40' 
+                          : 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/40'
+                      }`}>
+                        {file.source || 'Web Uploader'}
+                      </span>
+                    </td>
+                    <td className="p-3 text-right text-slate-400 font-mono text-[11px]">
+                      {new Date(file.uploadedAt).toLocaleString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* ========================================================================= */}

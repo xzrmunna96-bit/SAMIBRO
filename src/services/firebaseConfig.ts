@@ -4,16 +4,11 @@ import { getAnalytics, isSupported as isAnalyticsSupported } from "firebase/anal
 import { initializeFirestore, getFirestore, setLogLevel } from "firebase/firestore";
 import { getDatabase } from "firebase/database";
 import { getAuth, setPersistence, inMemoryPersistence, browserLocalPersistence } from "firebase/auth";
+import appletConfig from "../../firebase-applet-config.json";
 
 export const firebaseConfig = {
-  apiKey: "AIzaSyBhXcv4tNEO7vFmqfMlvZlndcUGtsWLIHs",
-  authDomain: "super-x-sms.firebaseapp.com",
-  databaseURL: "https://super-x-sms-default-rtdb.firebaseio.com",
-  projectId: "super-x-sms",
-  storageBucket: "super-x-sms.firebasestorage.app",
-  messagingSenderId: "560607077548",
-  appId: "1:560607077548:web:aba384c4d34f6b01166b09",
-  measurementId: "G-M2MVV39R6Y"
+  ...appletConfig,
+  databaseURL: (appletConfig as any).databaseURL || "https://super-x-sms-default-rtdb.firebaseio.com",
 };
 
 // Initialize Firebase safely (avoid multi-instance duplication)
@@ -30,7 +25,10 @@ try {
 let db: any;
 try {
   const isIframe = typeof window !== "undefined" && window.self !== window.top;
-  if (isIframe) {
+  const dbId = (appletConfig as any).firestoreDatabaseId;
+  if (dbId) {
+    db = getFirestore(firebaseApp, dbId);
+  } else if (isIframe) {
     db = initializeFirestore(firebaseApp, {
       experimentalForceLongPolling: true,
       experimentalAutoDetectLongPolling: true,
@@ -40,7 +38,8 @@ try {
   }
 } catch {
   try {
-    db = getFirestore(firebaseApp);
+    const dbId = (appletConfig as any).firestoreDatabaseId;
+    db = dbId ? getFirestore(firebaseApp, dbId) : getFirestore(firebaseApp);
   } catch {
     db = null;
   }

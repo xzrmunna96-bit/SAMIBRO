@@ -83,6 +83,7 @@ async function startServer() {
   const API_CONFIGS_FILE = path.join(DATA_DIR, "api_configs.json");
   const BOT_MANAGEMENT_CONFIG_FILE = path.join(DATA_DIR, "bot_management_config.json");
   const MANUAL_NUMBERS_POOL_FILE = path.join(DATA_DIR, "manual_numbers_pool.json");
+  const UPLOADED_FILES_HISTORY_FILE = path.join(DATA_DIR, "uploaded_files_history.json");
   const AUTHORIZED_TELEGRAM_ADMINS_FILE = path.join(DATA_DIR, "authorized_telegram_admins.json");
   const BOT_CUSTOM_BUTTONS_FILE = path.join(DATA_DIR, "bot_custom_buttons.json");
   const VOLTX_API_STATUS_FILE = path.join(DATA_DIR, "voltx_api_status.json");
@@ -295,6 +296,25 @@ async function startServer() {
       } else {
         console.log(`[Storage] Successfully saved manual numbers pool asynchronously. Total: ${list.length} records.`);
       }
+    });
+  }
+
+  function loadUploadedFilesHistory(): any[] {
+    try {
+      if (fs.existsSync(UPLOADED_FILES_HISTORY_FILE)) {
+        const raw = fs.readFileSync(UPLOADED_FILES_HISTORY_FILE, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      console.warn("Could not load uploaded_files_history.json:", e);
+    }
+    return [];
+  }
+
+  function saveUploadedFilesHistory(list: any[]) {
+    fs.writeFile(UPLOADED_FILES_HISTORY_FILE, JSON.stringify(list, null, 2), "utf-8", (err) => {
+      if (err) console.warn("Could not save uploaded_files_history.json:", err);
     });
   }
 
@@ -6098,10 +6118,22 @@ async function startServer() {
     });
   });
 
+  // Get uploaded files history
+  app.get("/api/manual-numbers/uploaded-files", (req, res) => {
+    const files = loadUploadedFilesHistory();
+    res.json({ success: true, files });
+  });
+
+  // Clear uploaded files history
+  app.post("/api/manual-numbers/uploaded-files/clear", (req, res) => {
+    saveUploadedFilesHistory([]);
+    res.json({ success: true, message: "Uploaded files history cleared" });
+  });
+
   // 6. Upload Manual Numbers
   app.post("/api/manual-numbers/upload", (req, res) => {
     try {
-      const { numbersText, numbersList, country, flag, dialCode, platform } = req.body || {};
+      const { numbersText, numbersList, country, flag, dialCode, platform, fileName, source } = req.body || {};
       let rawText = "";
       if (typeof numbersText === "string") {
         rawText = numbersText;
@@ -6138,6 +6170,24 @@ async function startServer() {
       }
       saveManualNumbersPool(pool);
 
+      // Record to uploaded files history
+      const history = loadUploadedFilesHistory();
+      const historyItem = {
+        id: `file_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        serialNo: history.length + 1,
+        fileName: fileName || `${parseResult.detectedCountry.name}_Numbers_${parseResult.newCount}.txt`,
+        country: parseResult.detectedCountry.name,
+        flag: parseResult.detectedCountry.flag,
+        dialCode: parseResult.detectedCountry.dialCode,
+        platform: platform || "WhatsApp / Telegram",
+        addedCount: parseResult.newCount,
+        totalProcessed: parseResult.totalProcessed,
+        source: source || "Web Uploader",
+        uploadedAt: Date.now(),
+      };
+      history.unshift(historyItem);
+      saveUploadedFilesHistory(history);
+
       const ranges = getManualRangesSummary(pool);
       res.json({
         success: true,
@@ -6151,7 +6201,7 @@ async function startServer() {
       });
     } catch (error: any) {
       console.error("[ManualUpload] Unexpected error processing manual upload:", error);
-      res.status(500).json({
+      res.status(200).json({
         success: false,
         error: error.message || "An unexpected error occurred during file parsing and deployment"
       });

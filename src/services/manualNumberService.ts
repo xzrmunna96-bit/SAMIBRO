@@ -44,6 +44,20 @@ export interface ManualRangeSummary {
   allocatedCount: number;
 }
 
+export interface UploadedFileRecord {
+  id: string;
+  serialNo?: number;
+  fileName: string;
+  country: string;
+  flag: string;
+  dialCode: string;
+  platform?: string;
+  addedCount: number;
+  totalProcessed: number;
+  source: string;
+  uploadedAt: number;
+}
+
 export interface UploadNumbersResult {
   success: boolean;
   message: string;
@@ -202,6 +216,8 @@ export async function uploadManualNumbers(payload: {
   socialMedia?: string;
   numbersText?: string;
   numbersList?: string[];
+  fileName?: string;
+  source?: string;
 }): Promise<UploadNumbersResult> {
   try {
     const res = await fetch('/api/manual-numbers/upload', {
@@ -209,8 +225,21 @@ export async function uploadManualNumbers(payload: {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    const data = await res.json();
-    if (res.ok && data.success) {
+    
+    const text = await res.text();
+    let data: any = {};
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = {
+        success: false,
+        error: text.includes("A server error")
+          ? "সার্ভারে ফাইল প্রসেসিং এরর ঘটেছে। অনুগ্রহ করে আবার চেষ্টা করুন।"
+          : text.slice(0, 150),
+      };
+    }
+
+    if (data.success) {
       return {
         success: true,
         message: data.message || `Successfully added ${data.addedCount} numbers!`,
@@ -221,7 +250,7 @@ export async function uploadManualNumbers(payload: {
     }
     return {
       success: false,
-      message: data.error || 'Failed to upload numbers',
+      message: data.error || data.message || 'ফাইল আপলোড করতে সমস্যা হয়েছে।',
       addedCount: 0,
       totalPoolCount: 0,
       ranges: [],
@@ -234,6 +263,37 @@ export async function uploadManualNumbers(payload: {
       totalPoolCount: 0,
       ranges: [],
     };
+  }
+}
+
+/**
+ * Fetch list of all uploaded files history
+ */
+export async function fetchUploadedFilesHistory(): Promise<UploadedFileRecord[]> {
+  try {
+    const res = await fetch('/api/manual-numbers/uploaded-files');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.files)) {
+        return data.files;
+      }
+    }
+  } catch (err) {
+    console.warn('[ManualNumberService] Error fetching uploaded files history:', err);
+  }
+  return [];
+}
+
+/**
+ * Clear uploaded files history list
+ */
+export async function clearUploadedFilesHistory(): Promise<{ success: boolean; message: string }> {
+  try {
+    const res = await fetch('/api/manual-numbers/uploaded-files/clear', { method: 'POST' });
+    const data = await res.json();
+    return { success: !!data.success, message: data.message || 'Cleared uploaded files history' };
+  } catch {
+    return { success: false, message: 'Failed to clear uploaded files history' };
   }
 }
 

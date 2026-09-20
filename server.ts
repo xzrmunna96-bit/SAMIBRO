@@ -36,7 +36,21 @@ async function startServer() {
   // SERVER-SIDE PERSISTENT STORAGE FOR CROSS-BROWSER AUTH & ACCOUNTS
   // Ensures accounts created in Chrome or Admin work in Firefox, Safari, Edge, Android, iOS, etc.
   // =========================================================================
-  const DATA_DIR = path.join(process.cwd(), "server-data");
+  let DATA_DIR = path.join(process.cwd(), "server-data");
+  // Check if root is writable, otherwise fallback to /tmp
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    // Test write permission
+    const testFile = path.join(DATA_DIR, ".write_test");
+    fs.writeFileSync(testFile, "test");
+    fs.unlinkSync(testFile);
+  } catch (e) {
+    DATA_DIR = path.join("/tmp", "server-data");
+    console.log("[Storage] Root filesystem is read-only. Falling back to writable /tmp/server-data directory.");
+  }
+
   if (!fs.existsSync(DATA_DIR)) {
     try {
       fs.mkdirSync(DATA_DIR, { recursive: true });

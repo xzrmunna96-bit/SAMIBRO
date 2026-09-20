@@ -70,6 +70,10 @@ export const BotManagementView: React.FC<BotManagementViewProps> = ({ onToast })
   const [countrySearchQuery, setCountrySearchQuery] = useState('');
   const countryDropdownRef = useRef<HTMLDivElement>(null);
 
+  // Platform (Social Media) selection states
+  const [selectedPlatform, setSelectedPlatform] = useState('WhatsApp');
+  const [customPlatformText, setCustomPlatformText] = useState('');
+
   // Close country dropdown on click outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -225,12 +229,16 @@ export const BotManagementView: React.FC<BotManagementViewProps> = ({ onToast })
       return;
     }
 
+    const finalPlatform = selectedPlatform === 'Other' ? customPlatformText.trim() || 'WhatsApp' : selectedPlatform;
+
     setIsUploading(true);
     try {
       const res = await uploadManualNumbers({
         country: selectedCountryName,
         flag: selectedCountryFlag,
         dialCode: selectedDialCode,
+        platform: finalPlatform,
+        socialMedia: finalPlatform,
         numbersText: numbersInputText,
       });
 
@@ -615,7 +623,7 @@ export const BotManagementView: React.FC<BotManagementViewProps> = ({ onToast })
         <form onSubmit={handleUploadSubmit} className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
             {/* Country Selector with Flag */}
-            <div className="md:col-span-5 space-y-1.5" ref={countryDropdownRef}>
+            <div className="md:col-span-6 space-y-1.5" ref={countryDropdownRef}>
               <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
                 <Globe className="w-3.5 h-3.5 text-emerald-400" />
                 <span>Select Country (দেশ ও জাতীয় পতাকা)</span>
@@ -676,8 +684,49 @@ export const BotManagementView: React.FC<BotManagementViewProps> = ({ onToast })
               </p>
             </div>
 
+            {/* Social Media Platform Selection (OTP Service) */}
+            <div className="md:col-span-6 space-y-1.5">
+              <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                <Radio className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Select OTP Platform (কোন সোশ্যাল মিডিয়া বা সেবার ওটিপি)</span>
+              </label>
+              
+              <div className="flex flex-wrap items-center gap-2 h-[40px]">
+                {['WhatsApp', 'Telegram', 'IMO', 'Other'].map((p) => {
+                  const isSel = selectedPlatform === p;
+                  return (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setSelectedPlatform(p)}
+                      className={`px-3 py-2 rounded-xl text-xs font-black border transition cursor-pointer flex items-center gap-1.5 h-[40px] ${
+                        isSel
+                          ? 'bg-indigo-950 text-indigo-300 border-indigo-500 shadow-sm shadow-indigo-950/50'
+                          : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200 hover:bg-slate-900'
+                      }`}
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                      <span>{p}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {selectedPlatform === 'Other' && (
+                <div className="pt-2 animate-fadeIn">
+                  <input
+                    type="text"
+                    placeholder="Enter Custom Social Media Name (যেমন: WhatsApp Business, Imo, etc.)..."
+                    value={customPlatformText}
+                    onChange={(e) => setCustomPlatformText(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
+                  />
+                </div>
+              )}
+            </div>
+
             {/* File (.txt) Picker supporting 5k/10k numbers */}
-            <div className="md:col-span-7 space-y-1.5">
+            <div className="md:col-span-12 space-y-1.5">
               <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
                 <FileText className="w-3.5 h-3.5 text-amber-400" />
                 <span>Upload .txt File (৫,০০০ বা ১০,০০০ নাম্বারের ফাইল)</span>

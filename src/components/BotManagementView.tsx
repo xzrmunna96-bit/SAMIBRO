@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Bot,
   Shield,
@@ -40,6 +40,7 @@ import {
 } from '../services/manualNumberService';
 import { GLOBAL_COUNTRIES_LIST } from '../services/countryHelper';
 import { CountryFlag } from './CountryFlags';
+import { pushManualPoolToFirestore } from '../lib/firestoreSync';
 
 interface BotManagementViewProps {
   onToast: (msg: string) => void;
@@ -63,6 +64,33 @@ export const BotManagementView: React.FC<BotManagementViewProps> = ({ onToast })
   const [numbersInputText, setNumbersInputText] = useState('');
   const [fileName, setFileName] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+
+  // Searchable country dropdown states & ref
+  const [isCountryDropdownOpen, setIsCountryDropdownOpen] = useState(false);
+  const [countrySearchQuery, setCountrySearchQuery] = useState('');
+  const countryDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close country dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (countryDropdownRef.current && !countryDropdownRef.current.contains(event.target as Node)) {
+        setIsCountryDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const filteredCountries = useMemo(() => {
+    if (!countrySearchQuery.trim()) return GLOBAL_COUNTRIES_LIST;
+    const query = countrySearchQuery.toLowerCase();
+    return GLOBAL_COUNTRIES_LIST.filter(
+      (c) =>
+        c.name.toLowerCase().includes(query) ||
+        c.dialCode.includes(query) ||
+        c.iso.toLowerCase().includes(query)
+    );
+  }, [countrySearchQuery]);
 
   // 3. Pool & Ranges State
   const [manualRanges, setManualRanges] = useState<ManualRangeSummary[]>([]);
@@ -171,6 +199,24 @@ export const BotManagementView: React.FC<BotManagementViewProps> = ({ onToast })
     reader.readAsText(file);
   };
 
+  // Sync Pool with Firestore
+  const syncPoolWithFirestore = async () => {
+    try {
+      // Fetch the full pool of numbers (up to 100,000) from the server
+      const res = await fetch('/api/manual-numbers/all?limit=100000');
+      if (res.ok) {
+        const rawData = await res.json();
+        if (rawData.success && Array.isArray(rawData.numbers)) {
+          // Push the entire list of numbers to Firestore
+          await pushManualPoolToFirestore(rawData.numbers);
+          console.log('[FirestoreSync] Synchronized manual numbers pool with Firestore. Total count:', rawData.numbers.length);
+        }
+      }
+    } catch (err) {
+      console.error('[FirestoreSync] Failed to sync manual pool with Firestore:', err);
+    }
+  };
+
   // Submit Manual Numbers to Pool
   const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -192,6 +238,7 @@ export const BotManagementView: React.FC<BotManagementViewProps> = ({ onToast })
         onToast(`🎉 ${res.addedCount.toLocaleString()} টি নাম্বার সফলভাবে যুক্ত হয়েছে!`);
         setNumbersInputText('');
         setFileName(null);
+        await syncPoolWithFirestore(); // Force immediate sync with Firestore
         await loadPoolData();
       } else {
         onToast(res.message || 'নাম্বার আপলোড করতে সমস্যা হয়েছে।');
@@ -232,7 +279,8 @@ export const BotManagementView: React.FC<BotManagementViewProps> = ({ onToast })
     }
     const res = await deleteManualRange(prefix);
     onToast(res.message);
-    loadPoolData();
+    await syncPoolWithFirestore(); // Force immediate sync with Firestore
+    await loadPoolData();
   };
 
   // Clear all numbers
@@ -242,7 +290,8 @@ export const BotManagementView: React.FC<BotManagementViewProps> = ({ onToast })
     }
     const res = await clearAllManualNumbers();
     onToast(res.message);
-    loadPoolData();
+    await syncPoolWithFirestore(); // Force immediate sync with Firestore
+    await loadPoolData();
   };
 
   // Copy text helper
@@ -566,26 +615,60 @@ export const BotManagementView: React.FC<BotManagementViewProps> = ({ onToast })
         <form onSubmit={handleUploadSubmit} className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
             {/* Country Selector with Flag */}
-            <div className="md:col-span-5 space-y-1.5">
+            <div className="md:col-span-5 space-y-1.5" ref={countryDropdownRef}>
               <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
                 <Globe className="w-3.5 h-3.5 text-emerald-400" />
                 <span>Select Country (দেশ ও জাতীয় পতাকা)</span>
               </label>
-              <div className="flex items-center gap-2">
-                <span className="p-1.5 bg-slate-950 border border-slate-700 rounded-xl shrink-0 flex items-center justify-center">
-                  <CountryFlag countryCode={selectedCountryName} size="lg" />
-                </span>
-                <select
-                  value={selectedCountryName}
-                  onChange={(e) => handleCountryChange(e.target.value)}
-                  className="flex-1 px-3 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white focus:outline-none focus:border-emerald-500 transition cursor-pointer"
-                >
-                  {GLOBAL_COUNTRIES_LIST.map((c) => (
-                    <option key={c.iso} value={c.name}>
-                      {c.flag} {c.name} ({c.dialCode})
-                    </option>
-                  ))}
-                </select>
+              
+              <div className="relative">
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 bg-slate-950 border border-slate-700 rounded-xl shrink-0 flex items-center justify-center min-w-[40px] h-[40px]">
+                    {selectedCountryFlag}
+                  </span>
+                  <div className="relative flex-1">
+                    <input
+                      type="text"
+                      placeholder="Search country (e.g. Ivory Coast, United Kingdom)..."
+                      value={isCountryDropdownOpen ? countrySearchQuery : `${selectedCountryFlag} ${selectedCountryName} (${selectedDialCode})`}
+                      onFocus={() => {
+                        setIsCountryDropdownOpen(true);
+                        setCountrySearchQuery('');
+                      }}
+                      onChange={(e) => setCountrySearchQuery(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition cursor-pointer"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-[10px]">
+                      {isCountryDropdownOpen ? '🔍 Search' : '▼'}
+                    </span>
+                  </div>
+                </div>
+
+                {isCountryDropdownOpen && (
+                  <div className="absolute z-50 left-12 right-0 mt-1 max-h-60 overflow-y-auto bg-slate-950 border border-slate-800 rounded-xl shadow-2xl divide-y divide-slate-900 scrollbar-thin scrollbar-thumb-slate-800">
+                    {filteredCountries.length > 0 ? (
+                      filteredCountries.map((c) => (
+                        <button
+                          key={c.iso}
+                          type="button"
+                          onClick={() => {
+                            handleCountryChange(c.name);
+                            setIsCountryDropdownOpen(false);
+                            setCountrySearchQuery('');
+                          }}
+                          className="w-full text-left px-4 py-2.5 text-xs text-slate-200 hover:bg-emerald-950 hover:text-emerald-300 font-bold transition flex items-center justify-between cursor-pointer"
+                        >
+                          <span>{c.flag} {c.name}</span>
+                          <span className="text-slate-500 font-mono text-[10px]">{c.dialCode}</span>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="px-4 py-3 text-xs text-slate-500 text-center">
+                        No country found matching "{countrySearchQuery}"
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               <p className="text-[11px] text-slate-400">
                 দেশের নাম দিলে স্বয়ংক্রিয়ভাবে পতাকা <b>{selectedCountryFlag}</b> ও কোড{' '}

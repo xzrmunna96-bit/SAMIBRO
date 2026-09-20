@@ -274,7 +274,7 @@ async function startServer() {
   function saveManualNumbersPool(list: ManualNumberRecord[]) {
     cachedManualNumbersPool = list;
     try {
-      fs.writeFileSync(MANUAL_NUMBERS_POOL_FILE, JSON.stringify(list, null, 2), "utf-8");
+      fs.writeFileSync(MANUAL_NUMBERS_POOL_FILE, JSON.stringify(list), "utf-8");
     } catch (e) {
       console.warn("Could not save manual_numbers_pool.json:", e);
     }
@@ -6067,10 +6067,10 @@ async function startServer() {
     });
   });
 
-  // 5. Get All Manual Numbers (up to last 1000)
+  // 5. Get All Manual Numbers (up to last 100000)
   app.get("/api/manual-numbers/all", (req, res) => {
     const pool = loadManualNumbersPool();
-    const limit = Math.min(Number(req.query.limit) || 100, 1000);
+    const limit = Math.min(Number(req.query.limit) || 100, 100000);
     const offset = Number(req.query.offset) || 0;
     const reversed = [...pool].reverse();
     const paginated = reversed.slice(offset, offset + limit);

@@ -1,7 +1,27 @@
 import https from "https";
+import path from "path";
+import fs from "fs";
 
-const API_KEY = "AIzaSyBhXcv4tNEO7vFmqfMlvZlndcUGtsWLIHs";
-const PROJECT_ID = "super-x-sms";
+let firebaseConfig: any = {
+  projectId: "rare-system-6c9s2",
+  apiKey: "AIzaSyAgwORtcT7ynDo2zpNdrrGHHFz-9O4dzUE",
+  firestoreDatabaseId: "ai-studio-superxsms-b4441554-997f-47d0-ae27-3a0b510aa0e8",
+};
+
+try {
+  const configPath = path.resolve(process.cwd(), "firebase-applet-config.json");
+  if (fs.existsSync(configPath)) {
+    const raw = fs.readFileSync(configPath, "utf8");
+    firebaseConfig = JSON.parse(raw);
+  }
+} catch (e) {
+  console.warn("[Firebase Admin Sync] Config load note:", e);
+}
+
+const API_KEY = firebaseConfig.apiKey || "AIzaSyAgwORtcT7ynDo2zpNdrrGHHFz-9O4dzUE";
+const PROJECT_ID = firebaseConfig.projectId || "rare-system-6c9s2";
+const DATABASE_ID = firebaseConfig.firestoreDatabaseId || "(default)";
+
 const SYSTEM_EMAIL = "system_sync@superxsms.com";
 const SYSTEM_PASSWORD = "SuperXSyncSecretPassword2026!";
 
@@ -157,7 +177,7 @@ export async function fetchRemoteAccountsFromFirestore(): Promise<any[]> {
     if (!token) return [];
 
     const res = await httpsRequest(
-      `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/super_x_accounts?pageSize=300`,
+      `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/${DATABASE_ID}/documents/super_x_accounts?pageSize=300`,
       "GET",
       { Authorization: `Bearer ${token}` }
     );
@@ -182,7 +202,7 @@ export async function fetchSingleAccountFromFirestore(emailOrId: string): Promis
 
     // Try super_x_accounts first
     const res1 = await httpsRequest(
-      `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/super_x_accounts/${safeId}`,
+      `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/${DATABASE_ID}/documents/super_x_accounts/${safeId}`,
       "GET",
       { Authorization: `Bearer ${token}` }
     );
@@ -192,7 +212,7 @@ export async function fetchSingleAccountFromFirestore(emailOrId: string): Promis
 
     // Try users collection
     const res2 = await httpsRequest(
-      `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/users/${safeId}`,
+      `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/${DATABASE_ID}/documents/users/${safeId}`,
       "GET",
       { Authorization: `Bearer ${token}` }
     );
@@ -221,7 +241,7 @@ export async function saveAccountToFirestore(account: any): Promise<boolean> {
     // Save to both collections: super_x_accounts and users
     const [r1, r2] = await Promise.all([
       httpsRequest(
-        `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/super_x_accounts/${safeId}`,
+        `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/${DATABASE_ID}/documents/super_x_accounts/${safeId}`,
         "PATCH",
         {
           Authorization: `Bearer ${token}`,
@@ -231,7 +251,7 @@ export async function saveAccountToFirestore(account: any): Promise<boolean> {
         body
       ),
       httpsRequest(
-        `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/users/${safeId}`,
+        `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/${DATABASE_ID}/documents/users/${safeId}`,
         "PATCH",
         {
           Authorization: `Bearer ${token}`,
@@ -263,12 +283,12 @@ export async function deleteAccountFromFirestore(emailOrId: string): Promise<boo
     const safeId = toSafeDocId(emailOrId);
     await Promise.all([
       httpsRequest(
-        `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/super_x_accounts/${safeId}`,
+        `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/${DATABASE_ID}/documents/super_x_accounts/${safeId}`,
         "DELETE",
         { Authorization: `Bearer ${token}` }
       ),
       httpsRequest(
-        `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/users/${safeId}`,
+        `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/${DATABASE_ID}/documents/users/${safeId}`,
         "DELETE",
         { Authorization: `Bearer ${token}` }
       ),

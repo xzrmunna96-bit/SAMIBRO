@@ -1,6 +1,5 @@
 // Firebase Configuration for SUPER X SMS Real-time Synchronization
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getAnalytics, isSupported as isAnalyticsSupported } from "firebase/analytics";
 import { initializeFirestore, getFirestore, setLogLevel } from "firebase/firestore";
 import { getDatabase } from "firebase/database";
 import { getAuth, setPersistence, inMemoryPersistence, browserLocalPersistence } from "firebase/auth";
@@ -74,18 +73,28 @@ try {
 }
 export const firebaseAuth = auth;
 
-// Initialize Analytics if supported in current browser environment
+// Firebase Analytics is only loaded if a valid Google Analytics measurementId (G-XXXXX) is configured
 export let analyticsInstance: any = null;
-if (typeof window !== "undefined") {
-  isAnalyticsSupported()
-    .then((supported) => {
-      if (supported) {
-        analyticsInstance = getAnalytics(firebaseApp);
-        console.log("Firebase Analytics initialized successfully.");
-      }
+const measurementId = (appletConfig as any)?.measurementId;
+if (typeof window !== "undefined" && typeof measurementId === "string" && measurementId.trim().startsWith("G-")) {
+  import("firebase/analytics")
+    .then(({ getAnalytics, isSupported }) => {
+      isSupported()
+        .then((supported) => {
+          if (supported) {
+            try {
+              analyticsInstance = getAnalytics(firebaseApp);
+            } catch {
+              analyticsInstance = null;
+            }
+          }
+        })
+        .catch(() => {
+          analyticsInstance = null;
+        });
     })
-    .catch((err) => {
-      console.warn("Firebase Analytics could not be initialized:", err);
+    .catch(() => {
+      analyticsInstance = null;
     });
 }
 

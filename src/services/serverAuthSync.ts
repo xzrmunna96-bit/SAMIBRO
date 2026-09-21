@@ -266,9 +266,11 @@ export function getAdminAuthHeaders(): Record<string, string> {
         const parsed = JSON.parse(sessRaw);
         if (parsed?.token) {
           headers['x-admin-token'] = parsed.token;
-        } else if (parsed?.email) {
+        }
+        // Always include x-admin-key as fallback to prevent 401 on server restarts
+        headers['x-admin-key'] = 'XZRMUNNA12061';
+        if (parsed?.email) {
           headers['x-admin-email'] = parsed.email;
-          headers['x-admin-key'] = 'XZRMUNNA12061';
         }
       } else {
         headers['x-admin-key'] = 'XZRMUNNA12061';
@@ -297,6 +299,31 @@ export async function approveAccountOnServer(
         email: idOrEmail,
         approvedByEmail,
         approvedByName,
+      }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+// 4c. Explicit Instant Reject on Server
+export async function rejectAccountOnServer(
+  idOrEmail: string,
+  reason?: string,
+  rejectedByEmail?: string,
+  rejectedByName?: string
+): Promise<boolean> {
+  try {
+    const res = await fetch('/api/accounts/reject', {
+      method: 'POST',
+      headers: getAdminAuthHeaders(),
+      body: JSON.stringify({
+        id: idOrEmail,
+        email: idOrEmail,
+        reason,
+        rejectedByEmail,
+        rejectedByName,
       }),
     });
     return res.ok;

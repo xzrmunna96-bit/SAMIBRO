@@ -81,6 +81,7 @@ import {
   saveAccountToServer,
   saveAllAccountsToServer,
   approveAccountOnServer,
+  rejectAccountOnServer,
   suspendAccountOnServer,
   unsuspendAccountOnServer,
   updateUserRoleOnServer,
@@ -585,13 +586,17 @@ export function approveAccount(
   }
 
   saveAllAccounts(accounts);
-  saveAccountToFirebase(target);
-  saveAccountToServer(target);
-  approveAccountOnServer(target.id, approvedByEmail, approvedByName);
-  unsuspendAccountOnServer(target.id);
+  saveAccountToFirebase(target).catch(() => null);
+  saveAccountToServer(target).catch(() => null);
+  approveAccountOnServer(target.id, approvedByEmail, approvedByName).catch(() => null);
+  unsuspendAccountOnServer(target.id).catch(() => null);
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('super_x_accounts_updated'));
+  }
 
   if (target.email && target.password) {
-    registerUserInFirebaseAuth(target.email, target.password);
+    registerUserInFirebaseAuth(target.email, target.password).catch(() => null);
   }
 
   // Send activity report to Telegram channel with masked credentials and full user name
@@ -648,8 +653,13 @@ export function rejectAccount(
   }
 
   saveAllAccounts(accounts);
-  saveAccountToFirebase(target);
-  saveAccountToServer(target);
+  saveAccountToFirebase(target).catch(() => null);
+  saveAccountToServer(target).catch(() => null);
+  rejectAccountOnServer(target.id, reason, rejectedByEmail, rejectedByName).catch(() => null);
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('super_x_accounts_updated'));
+  }
 
   // Send live chat rejection message to user
   try {
@@ -969,11 +979,11 @@ export function resetAccountPassword(id: string, newPassword: string): { success
   target.password = cleanPass;
   target.updatedAt = Date.now();
   saveAllAccounts(accounts);
-  saveAccountToFirebase(target);
-  saveAccountToServer(target);
+  saveAccountToFirebase(target).catch(() => null);
+  saveAccountToServer(target).catch(() => null);
 
   if (target.email && target.password) {
-    registerUserInFirebaseAuth(target.email, target.password);
+    registerUserInFirebaseAuth(target.email, target.password).catch(() => null);
   }
 
   // Also check if this account is a registered Sub-Admin, and sync sub-admin password
@@ -1776,17 +1786,42 @@ export async function authenticateAdminLoginAsync(
   email?: string;
   name?: string;
   message?: string;
+  token?: string;
 }> {
-  // 1. Try local synchronous authentication first (<1ms)
+  const clean = (email || '').trim().toLowerCase();
+  const cleanPass = (pass || '').trim();
+
+  // 1. Try server admin login endpoint first to retrieve a real token
+  try {
+    const response = await fetch('/api/admin/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: clean, password: cleanPass }),
+    });
+    if (response.ok) {
+      const data = await response.json();
+      if (data && data.success) {
+        return {
+          success: true,
+          role: data.role,
+          email: data.email,
+          name: data.name,
+          message: data.message,
+          token: data.token,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('Server admin login endpoint error, trying fallbacks:', err);
+  }
+
+  // 2. Try local synchronous authentication first (<1ms)
   const localRes = authenticateAdminLogin(email, pass);
   if (localRes.success) {
     return localRes;
   }
 
-  const clean = (email || '').trim().toLowerCase();
-  const cleanPass = (pass || '').trim();
-
-  // 2. Direct Firebase Firestore Lookup (Crucial for Vercel, Netlify, and Cloud Deployments)
+  // 3. Direct Firebase Firestore Lookup (Crucial for Vercel, Netlify, and Cloud Deployments)
   try {
     const fbSub = await Promise.race([
       fetchSpecificSubAdminFromFirebase(clean),

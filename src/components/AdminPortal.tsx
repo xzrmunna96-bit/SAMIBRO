@@ -159,7 +159,7 @@ import {
 } from '../services/intsGatewayService';
 import { getCountryInfo } from '../services/countryHelper';
 import { registerUserInFirebaseAuth, fetchAccountsFromFirebaseDirectly, saveAccountToFirebase, purgeRemoteFirebaseAccountsExceptSuperAdmin, saveMarqueeNoticeToFirebase } from '../services/firebaseSyncService';
-import { fetchAccountsFromServer, fetchSubAdminsFromServer, approveAccountOnServer, saveAccountToServer, purgeAccountsViaServer, getAdminAuthHeaders } from '../services/serverAuthSync';
+import { fetchAccountsFromServer, fetchSubAdminsFromServer, approveAccountOnServer, rejectAccountOnServer, saveAccountToServer, purgeAccountsViaServer, getAdminAuthHeaders } from '../services/serverAuthSync';
 import { unlockUserApiKey, getAllUserApiKeys } from '../services/userApiKeyService';
 import { getBrandLogoComponent } from './BrandLogos';
 
@@ -193,6 +193,7 @@ export interface AdminSession {
   role: 'super_admin' | 'sub_admin';
   email: string;
   name: string;
+  token?: string;
 }
 
 function getInitialAdminSession(): AdminSession {
@@ -1510,6 +1511,7 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
         role: res.role,
         email: res.email || cleanEmail,
         name: res.name || (res.role === 'super_admin' ? 'Super Admin' : 'Sub Admin'),
+        token: res.token,
       };
       setAdminSession(newSession);
       try {
@@ -1815,10 +1817,11 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     setRejectModalReason('');
   };
 
-  const handleConfirmRejectSubmit = (e: React.FormEvent) => {
+  const handleConfirmRejectSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!rejectModalUser) return;
     rejectAccount(rejectModalUser.id, rejectModalReason.trim(), adminSession.email, adminSession.name);
+    await rejectAccountOnServer(rejectModalUser.id, rejectModalReason.trim(), adminSession.email, adminSession.name);
     setAccountsList(getAllAccounts());
     showToast(`Account request for ${rejectModalUser.email} has been REJECTED.`);
     setRejectModalUser(null);
@@ -2049,10 +2052,10 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
       };
       // Directly approve so user can sign in immediately
       approveAccount(res.account.id, adminSession.email, adminSession.name);
-      approveAccountOnServer(res.account.id, adminSession.email, adminSession.name);
-      saveAccountToServer(approvedAccount);
-      saveAccountToFirebase(approvedAccount);
-      registerUserInFirebaseAuth(cleanEmail, cleanPassword);
+      approveAccountOnServer(res.account.id, adminSession.email, adminSession.name).catch(() => null);
+      saveAccountToServer(approvedAccount).catch(() => null);
+      saveAccountToFirebase(approvedAccount).catch(() => null);
+      registerUserInFirebaseAuth(cleanEmail, cleanPassword).catch(() => null);
       setAccountsList(getAllAccounts());
 
       setRecentlyCreatedUser({

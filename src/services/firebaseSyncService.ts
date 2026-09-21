@@ -65,12 +65,15 @@ export async function ensureFirebaseAuth(): Promise<boolean> {
       "system_sync@superxsms.com",
       "SuperXSyncSecretPassword2026!"
     ).catch((err) => {
-      console.warn("Firebase Auth sign in notice:", err?.code || err?.message || err);
+      if (err?.code === 'auth/network-request-failed' || String(err?.message || err).includes('network-request-failed')) {
+        console.log("Firebase Auth offline mode active.");
+      } else {
+        console.warn("Firebase Auth sign in notice:", err?.code || err?.message || err);
+      }
       return null;
     });
     return !!firebaseAuth.currentUser;
   } catch (err: any) {
-    console.warn("Firebase Auth sign in note:", err?.message);
     return false;
   } finally {
     isEnsuringAuth = false;
@@ -582,6 +585,10 @@ export async function registerUserInFirebaseAuth(email: string, password: string
   } catch (err: any) {
     if (err?.code === 'auth/email-already-in-use') {
       console.log(`[Firebase Auth] User ${email} already exists in Firebase Authentication.`);
+      return { success: true };
+    }
+    if (err?.code === 'auth/network-request-failed' || String(err?.message || err).includes('network-request-failed')) {
+      console.log(`[Firebase Auth] Offline fallback active for ${email}`);
       return { success: true };
     }
     console.warn("[Firebase Auth] createUserWithEmailAndPassword note:", err?.code || err?.message);

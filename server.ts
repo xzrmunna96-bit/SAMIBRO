@@ -667,28 +667,61 @@ async function startServer() {
   ): ManualNumberRecord | null {
     const raw = (rangeInput || "").trim();
     const cleanDigits = raw.replace(/\D/g, "");
-    const cleanPrefix = cleanDigits.slice(0, 5);
+    if (!cleanDigits) return null;
+
     const pool = loadManualNumbersPool();
 
-    // 1. First priority: match unallocated numbers starting with the cleanDigits or exact rangePrefix
-    let targetIndex = pool.findIndex(
-      (n) =>
-        !n.allocated &&
-        (n.rangePrefix === cleanDigits ||
-          n.rangePrefix === cleanPrefix ||
-          (cleanDigits.length >= 3 && n.cleanDigits.startsWith(cleanDigits)) ||
-          (cleanPrefix.length >= 3 && n.cleanDigits.startsWith(cleanPrefix)))
-    );
+    // Common country dial codes to strip for matching
+    const commonDialCodes = ["880", "94", "91", "1", "44", "92", "62", "60", "63", "84", "66"];
+    let strippedInput = cleanDigits;
+    for (const code of commonDialCodes) {
+      if (cleanDigits.startsWith(code) && cleanDigits.length > code.length) {
+        strippedInput = cleanDigits.slice(code.length);
+        break;
+      }
+    }
+    if (strippedInput.startsWith("0") && strippedInput.length > 1) {
+      strippedInput = strippedInput.slice(1);
+    }
 
-    // 2. Second priority: match if number contains cleanDigits (at least 4 digits)
-    if (targetIndex < 0 && cleanDigits.length >= 4) {
+    const hasValidStripped = strippedInput.length >= 2;
+
+    // 1. First priority: exact matching with prefix or digits
+    let targetIndex = pool.findIndex((n) => {
+      if (n.allocated) return false;
+      
+      const nDigits = n.cleanDigits;
+      let strippedNDigits = nDigits;
+      for (const code of commonDialCodes) {
+        if (nDigits.startsWith(code) && nDigits.length > code.length) {
+          strippedNDigits = nDigits.slice(code.length);
+          break;
+        }
+      }
+      if (strippedNDigits.startsWith("0") && strippedNDigits.length > 1) {
+        strippedNDigits = strippedNDigits.slice(1);
+      }
+
+      return (
+        n.rangePrefix === cleanDigits ||
+        (hasValidStripped && n.rangePrefix === strippedInput) ||
+        nDigits.startsWith(cleanDigits) ||
+        (hasValidStripped && strippedNDigits.startsWith(strippedInput))
+      );
+    });
+
+    // 2. Second priority: fallback standard startsWith matching
+    if (targetIndex < 0) {
       targetIndex = pool.findIndex(
-        (n) => !n.allocated && n.cleanDigits.includes(cleanDigits)
+        (n) =>
+          !n.allocated &&
+          (n.cleanDigits.startsWith(cleanDigits) ||
+            (cleanDigits.length >= 3 && n.cleanDigits.includes(cleanDigits)))
       );
     }
 
-    // 3. Third priority: if input is empty or "ALL" or "ANY", allocate next available unallocated number
-    if (targetIndex < 0 && (!cleanDigits || raw.toLowerCase() === "all" || raw.toLowerCase() === "any")) {
+    // 3. Third priority: if input is ALL or ANY
+    if (targetIndex < 0 && (raw.toLowerCase() === "all" || raw.toLowerCase() === "any")) {
       targetIndex = pool.findIndex((n) => !n.allocated);
     }
 
@@ -3838,9 +3871,12 @@ async function startServer() {
 
   const BOT_MAIN_KEYBOARD = {
     keyboard: [
-      [{ text: "📁 File Numbers" }],
-      [{ text: "🌍 Countries / Stock" }, { text: "➕ Add Numbers" }],
-      [{ text: "📈 Traffic" }, { text: "👥 Users & Active" }]
+      [{ text: "📱 Get Number" }, { text: "📁 File Numbers" }],
+      [{ text: "⚙️ API Configs" }, { text: "👥 Users & Active" }],
+      [{ text: "📢 Notice & Broadcast" }, { text: "📊 Stats" }],
+      [{ text: "🔑 Admin 2FA Code" }, { text: "💬 Live Support Chat" }],
+      [{ text: "🌍 Add Country" }, { text: "✨ Customize Buttons" }],
+      [{ text: "ℹ️ Bot Info" }],
     ],
     resize_keyboard: true,
     persistent: true,
@@ -3848,9 +3884,12 @@ async function startServer() {
 
   const CUSTOM_KEYBOARD = {
     keyboard: [
-      [{ text: "📁 File Numbers" }],
-      [{ text: "🌍 Countries / Stock" }, { text: "➕ Add Numbers" }],
-      [{ text: "📈 Traffic" }, { text: "👥 Users & Active" }]
+      [{ text: "📱 Get Number" }, { text: "📁 File Numbers" }],
+      [{ text: "⚙️ API Configs" }, { text: "👥 Users & Active" }],
+      [{ text: "📢 Notice & Broadcast" }, { text: "📊 Stats" }],
+      [{ text: "🔑 Admin 2FA Code" }, { text: "💬 Live Support Chat" }],
+      [{ text: "🌍 Add Country" }, { text: "✨ Customize Buttons" }],
+      [{ text: "ℹ️ Bot Info" }],
     ],
     resize_keyboard: true,
     persistent: true,
@@ -3890,9 +3929,12 @@ async function startServer() {
 
     const dynamicMainKeyboard = {
       keyboard: [
-        [{ text: "📁 File Numbers" }],
-        [{ text: "🌍 Countries / Stock" }, { text: "➕ Add Numbers" }],
-        [{ text: "📈 Traffic" }, { text: "👥 Users & Active" }]
+        [{ text: "📱 Get Number" }, { text: "📁 File Numbers" }],
+        [{ text: "⚙️ API Configs" }, { text: "👥 Users & Active" }],
+        [{ text: "📢 Notice & Broadcast" }, { text: "📊 Stats" }],
+        [{ text: "🔑 Admin 2FA Code" }, { text: "💬 Live Support Chat" }],
+        [{ text: "🌍 Add Country" }, { text: "✨ Customize Buttons" }],
+        [{ text: "ℹ️ Bot Info" }],
       ],
       resize_keyboard: true,
       persistent: true,
@@ -3900,9 +3942,12 @@ async function startServer() {
 
     const dynamicCustomKeyboard = {
       keyboard: [
-        [{ text: "📁 File Numbers" }],
-        [{ text: "🌍 Countries / Stock" }, { text: "➕ Add Numbers" }],
-        [{ text: "📈 Traffic" }, { text: "👥 Users & Active" }]
+        [{ text: customButtons.getNumber || "📱 Get Number" }, { text: customButtons.rangeFiles || "📁 File Numbers" }],
+        [{ text: "⚙️ API Configs" }, { text: customButtons.userManagement || "👥 Users & Active" }],
+        [{ text: "📢 Notice & Broadcast" }, { text: customButtons.stats || "📊 Stats" }],
+        [{ text: "🔑 Admin 2FA Code" }, { text: customButtons.liveSupport || "💬 Live Support Chat" }],
+        [{ text: "🌍 Add Country" }, { text: "✨ Customize Buttons" }],
+        [{ text: "ℹ️ Bot Info" }],
       ],
       resize_keyboard: true,
       persistent: true,
@@ -4303,7 +4348,7 @@ async function startServer() {
             `<i>এই নাম্বারে ওটিপি আসা মাত্রই সরাসরি এখানে এবং আমাদের ওটিপি গ্রুপেও নোটিফিকেশন যাবে: ${botHostingConfig.otpGroupUrl}</i>`;
 
           addBotLog(senderName, `Allocated ${allocated.number}`, "allocated");
-          return { responseText, replyMarkup: isAuthorized ? dynamicCustomKeyboard : dynamicMainKeyboard };
+          return { responseText, replyMarkup: { keyboard: [[{ text: "🔙 Back" }]], resize_keyboard: true } };
         }
       }
 
@@ -4314,7 +4359,7 @@ async function startServer() {
         responseText = `📱 <b>SUPER X SMS — গেট নাম্বার পোর্টাল</b>\n\n` +
           `⚠️ বর্তমানে সিস্টেমে কোনো রেঞ্জ উপলব্ধ নেই।\n` +
           `বটের কাস্টম কিবোর্ডে <b>📁 File</b> অপশন থেকে নতুন নাম্বার ফাইল আপলোড করুন।`;
-        return { responseText, replyMarkup: isAuthorized ? dynamicCustomKeyboard : dynamicMainKeyboard };
+        return { responseText, replyMarkup: { keyboard: [[{ text: "🔙 Back" }]], resize_keyboard: true } };
       }
 
       const listText = ranges
@@ -4365,11 +4410,11 @@ async function startServer() {
           `<i>এই নাম্বারে ওটিপি আসা মাত্রই সরাসরি এখানে এবং আমাদের ওটিপি গ্রুপেও নোটিফিকেশন যাবে: ${botHostingConfig.otpGroupUrl}</i>`;
 
         addBotLog(senderName, `Allocated ${allocated.number}`, "allocated");
-        return { responseText, replyMarkup: isAuthorized ? dynamicCustomKeyboard : dynamicMainKeyboard };
+        return { responseText, replyMarkup: { keyboard: [[{ text: "🔙 Back" }]], resize_keyboard: true } };
       } else {
         responseText = `⚠️ <b>রেঞ্জে কোনো নাম্বার খালি নেই!</b>\n` +
           `রেঞ্জ <code>${cleanText}</code> এ বর্তমানে কোনো আন-বরাদ্দকৃত নাম্বার নেই। অনুগ্রহ করে অন্য রেঞ্জ চেষ্টা করুন।`;
-        return { responseText, replyMarkup: isAuthorized ? dynamicCustomKeyboard : dynamicMainKeyboard };
+        return { responseText, replyMarkup: { keyboard: [[{ text: "🔙 Back" }]], resize_keyboard: true } };
       }
     }
 
@@ -4404,7 +4449,7 @@ async function startServer() {
         `<b>শীর্ষ রেঞ্জসমূহ:</b>\n${topRanges || "কোনো রেঞ্জ নেই"}\n\n` +
         `⚡ <i>ওয়েবসাইট ও টেলিগ্রাম ওটিপি গ্রুপ সরাসরি সিঙ্কড!</i>`;
 
-      return { responseText, replyMarkup: isAuthorized ? dynamicCustomKeyboard : dynamicMainKeyboard };
+      return { responseText, replyMarkup: { keyboard: [[{ text: "🔙 Back" }]], resize_keyboard: true } };
     }
 
     // -----------------------------------------------------------------------
@@ -4589,7 +4634,7 @@ async function startServer() {
         trafficLines +
         `\n\n🔄 <i>This statistics updates in real-time as users request codes on the website.</i>`;
 
-      return { responseText, replyMarkup: isAuthorized ? dynamicCustomKeyboard : dynamicMainKeyboard };
+      return { responseText, replyMarkup: { keyboard: [[{ text: "🔙 Back" }]], resize_keyboard: true } };
     }
 
     // -----------------------------------------------------------------------
@@ -4624,7 +4669,7 @@ async function startServer() {
           : onlineUsers.map((u, i) => `${i + 1}. 👤 <b>${u.name || "User"}</b> (<code>${u.email.split("@")[0]}</code>) — Online`).join("\n")) +
         `\n\n⚡ <i>Real-time connection with our website database is fully active!</i>`;
 
-      return { responseText, replyMarkup: isAuthorized ? dynamicCustomKeyboard : dynamicMainKeyboard };
+      return { responseText, replyMarkup: { keyboard: [[{ text: "🔙 Back" }]], resize_keyboard: true } };
     }
 
     // -----------------------------------------------------------------------
@@ -4666,7 +4711,7 @@ async function startServer() {
         `💾 <b>সিস্টেম пул:</b> ${pool.length} টি নাম্বার\n\n` +
         `<i>অ্যাডমিন প্যানেল থেকে বট টোকেন ও গ্রুপ আইডি যেকোনো সময় পরিবর্তন করা যাবে।</i>`;
 
-      return { responseText, replyMarkup: isAuthorized ? dynamicCustomKeyboard : dynamicMainKeyboard };
+      return { responseText, replyMarkup: { keyboard: [[{ text: "🔙 Back" }]], resize_keyboard: true } };
     }
 
     // -----------------------------------------------------------------------
@@ -4680,6 +4725,7 @@ async function startServer() {
         `<b>AVAILABLE ADMIN COMMANDS:</b>\n` +
         `• Send <code>/setapi &lt;new_key&gt;</code> to change primary system API key\n` +
         `• Send <code>/getapi</code> to view unmasked credentials`;
+      return { responseText, replyMarkup: { keyboard: [[{ text: "🔙 Back" }]], resize_keyboard: true } };
     }
     else if (cleanText.startsWith("/setapi")) {
       const parts = cleanText.split(" ");
@@ -4693,11 +4739,13 @@ async function startServer() {
           `🔑 <b>New Primary API Key:</b> <code>${newKey}</code>\n` +
           `⚡ <i>Synchronized across all server proxy routes and active sessions!</i>`;
       }
+      return { responseText, replyMarkup: { keyboard: [[{ text: "🔙 Back" }]], resize_keyboard: true } };
     }
     else if (cleanText === "/getapi") {
       responseText = `<b>🔑 SUPER X SMS — UNMASKED API KEY</b>\n\n` +
         `<code>${activeSystemApiKey}</code>\n\n` +
         `<i>Use this key in website header (mauthapi / x-api-key) or external integrations.</i>`;
+      return { responseText, replyMarkup: { keyboard: [[{ text: "🔙 Back" }]], resize_keyboard: true } };
     }
 
     // -----------------------------------------------------------------------
@@ -5277,6 +5325,7 @@ async function startServer() {
         `⏳ <b>Validity:</b> 10 Minutes (Expires at ${new Date(nowMs + 600000).toLocaleTimeString()})\n` +
         `🛡️ <b>Scope:</b> Full Admin Authorization & Bypass Access\n\n` +
         `<i>Use this code on website login or admin portal to instantly authenticate.</i>`;
+      return { responseText, replyMarkup: { keyboard: [[{ text: "🔙 Back" }]], resize_keyboard: true } };
     }
 
     // -----------------------------------------------------------------------
@@ -6529,6 +6578,20 @@ async function startServer() {
                   reply_markup: replyMarkup,
                 }),
               }).catch(() => {});
+
+              // If the sent replyMarkup contains an inline_keyboard, also send a tiny follow-up message to change the bottom reply keyboard to "🔙 Back"
+              if (replyMarkup && (replyMarkup as any).inline_keyboard) {
+                await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    chat_id: msg.chat.id,
+                    text: `<i>(To return to the main menu, press 🔙 Back below)</i>`,
+                    parse_mode: "HTML",
+                    reply_markup: { keyboard: [[{ text: "🔙 Back" }]], resize_keyboard: true },
+                  }),
+                }).catch(() => {});
+              }
             }
           }
         }
@@ -6777,6 +6840,67 @@ async function startServer() {
         success: false,
         error: "No available numbers found in pool for this range",
         message: "No available numbers found in pool for this range",
+      });
+    }
+  });
+
+  // 7B. Allocate Bulk Manual Numbers
+  app.post("/api/manual-numbers/allocate-bulk", (req, res) => {
+    const { country, rangePrefix, count, allocatedTo, userEmail } = req.body || {};
+    const qty = Math.max(1, parseInt(count, 10) || 50);
+    const assignee = allocatedTo || userEmail || "Website User";
+
+    const pool = loadManualNumbersPool();
+    let candidates: ManualNumberRecord[] = [];
+
+    // Prioritize matching by exact country name if provided
+    if (country) {
+      candidates = pool.filter(
+        (n) => !n.allocated && n.country.toLowerCase() === country.toLowerCase()
+      );
+    }
+
+    // Fallback to rangePrefix if country matching yielded nothing
+    if (candidates.length === 0 && rangePrefix) {
+      const cleanPrefix = rangePrefix.replace(/\D/g, "").slice(0, 5);
+      candidates = pool.filter(
+        (n) =>
+          !n.allocated &&
+          (n.rangePrefix === rangePrefix ||
+            n.rangePrefix === cleanPrefix ||
+            n.cleanDigits.startsWith(rangePrefix) ||
+            n.cleanDigits.startsWith(cleanPrefix))
+      );
+    }
+
+    // If still empty, match any unallocated numbers
+    if (candidates.length === 0) {
+      candidates = pool.filter((n) => !n.allocated);
+    }
+
+    const allocatedList: ManualNumberRecord[] = [];
+    const countToAllocate = Math.min(qty, candidates.length);
+
+    for (let i = 0; i < countToAllocate; i++) {
+      const item = candidates[i];
+      item.allocated = true;
+      item.allocatedTo = assignee;
+      item.allocatedAt = Date.now();
+      allocatedList.push(item);
+    }
+
+    if (allocatedList.length > 0) {
+      saveManualNumbersPool(pool);
+      res.json({
+        success: true,
+        records: allocatedList,
+        count: allocatedList.length,
+      });
+    } else {
+      res.json({
+        success: false,
+        error: "No available numbers in pool for this terminal/country",
+        message: "No available numbers in pool for this terminal/country",
       });
     }
   });
@@ -8761,11 +8885,14 @@ async function startServer() {
 
       const updatedList = numberList.map((entry) => {
         const entryDigits = String(entry.number || "").replace(/\D/g, "");
-        if (!entryDigits) return entry;
+        if (!entryDigits || entryDigits.length < 8) return entry;
+
+        const cleanEntryNoDial = entryDigits.replace(/^(94|880|91|1|44|92|62|60|63|84|66)/, "").replace(/^0+/, "");
+        const cleanHitNoDial = hitDigits.replace(/^(94|880|91|1|44|92|62|60|63|84|66)/, "").replace(/^0+/, "");
 
         const isMatch =
           entryDigits === hitDigits ||
-          (entryDigits.length >= 7 && hitDigits.length >= 7 && (entryDigits.endsWith(hitDigits) || hitDigits.endsWith(entryDigits)));
+          (cleanEntryNoDial.length >= 7 && cleanHitNoDial.length >= 7 && cleanEntryNoDial === cleanHitNoDial);
 
         if (isMatch) {
           updated = true;
@@ -8804,7 +8931,14 @@ async function startServer() {
       let poolUpdated = false;
       pool.forEach((n) => {
         const nDigits = n.cleanDigits || n.number.replace(/\D/g, "");
-        if (nDigits && (nDigits === hitDigits || (nDigits.length >= 7 && hitDigits.length >= 7 && (nDigits.endsWith(hitDigits) || hitDigits.endsWith(nDigits))))) {
+        if (!nDigits || nDigits.length < 8) return;
+
+        const cleanNDial = nDigits.replace(/^(94|880|91|1|44|92|62|60|63|84|66)/, "").replace(/^0+/, "");
+        const cleanHitDial = hitDigits.replace(/^(94|880|91|1|44|92|62|60|63|84|66)/, "").replace(/^0+/, "");
+
+        const isMatch = nDigits === hitDigits || (cleanNDial.length >= 7 && cleanHitDial.length >= 7 && cleanNDial === cleanHitDial);
+
+        if (isMatch) {
           if (!n.otp || n.otp !== otpCode) {
             n.otp = otpCode;
             n.status = "SUCCESS";

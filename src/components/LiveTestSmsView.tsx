@@ -338,11 +338,18 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
     });
   }, []);
 
+  const onRefreshHitsRef = useRef(onRefreshHits);
+  const onMergeHitsRef = useRef(onMergeHits);
+  useEffect(() => {
+    onRefreshHitsRef.current = onRefreshHits;
+    onMergeHitsRef.current = onMergeHits;
+  });
+
   // Fetch real-time hits from FOX SMS & global stream immediately
   const syncLiveData = useCallback(async () => {
     try {
-      if (onRefreshHits) {
-        onRefreshHits();
+      if (onRefreshHitsRef.current) {
+        onRefreshHitsRef.current();
       }
 
       // 1. Fetch from global live stream with cookie check & HTML block protection
@@ -403,14 +410,14 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
       const combined = [...streamHits, ...foxHits];
       if (combined.length > 0) {
         mergeCardsIntoList(combined);
-        if (onMergeHits) {
-          onMergeHits(combined);
+        if (onMergeHitsRef.current) {
+          onMergeHitsRef.current(combined);
         }
       }
     } catch (e) {
       // quiet
     }
-  }, [mergeCardsIntoList, onMergeHits, onRefreshHits]);
+  }, [mergeCardsIntoList]);
 
   // Initial load & continuous 3-second live polling
   useEffect(() => {

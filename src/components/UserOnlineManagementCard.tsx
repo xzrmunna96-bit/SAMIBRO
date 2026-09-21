@@ -78,7 +78,8 @@ export const UserOnlineManagementCard: React.FC<UserOnlineManagementProps> = ({
   // Sync with system updates & window storage events
   useEffect(() => {
     const handleUpdate = () => {
-      setAccounts(getAllAccounts());
+      const fresh = getAllAccounts();
+      setAccounts((prev) => (JSON.stringify(prev) === JSON.stringify(fresh) ? prev : fresh));
     };
 
     window.addEventListener('super_x_accounts_updated', handleUpdate);
@@ -88,7 +89,7 @@ export const UserOnlineManagementCard: React.FC<UserOnlineManagementProps> = ({
     let timer: NodeJS.Timeout | null = null;
     if (autoRefresh) {
       timer = setInterval(() => {
-        setAccounts(getAllAccounts());
+        handleUpdate();
       }, 15000);
     }
 

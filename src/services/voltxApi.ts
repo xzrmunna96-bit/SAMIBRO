@@ -462,15 +462,21 @@ export async function allocateRealNumberDetailed(
 
   // 1. FIRST: Check server-side uploaded manual numbers pool (Real uploaded numbers from Telegram Bot/Web)
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3500);
+
     const poolRes = await fetch('/api/manual-numbers/allocate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
       body: JSON.stringify({
         range: trimmed || cleanDigits,
-        rangePrefix: cleanDigits.slice(0, 5),
+        rangePrefix: cleanDigits,
         allocatedTo: 'website_user',
       }),
     });
+    clearTimeout(timeoutId);
+
     if (poolRes.ok) {
       const poolData = await poolRes.json();
       const rec = poolData.record || poolData.numberRecord;
@@ -494,7 +500,7 @@ export async function allocateRealNumberDetailed(
       }
     }
   } catch (err) {
-    console.warn('[allocateRealNumberDetailed] Manual numbers pool query error:', err);
+    console.warn('[allocateRealNumberDetailed] Manual numbers pool query error/timeout:', err);
   }
 
   // 2. SECOND: Upstream Voltx / m29 API if custom key provided

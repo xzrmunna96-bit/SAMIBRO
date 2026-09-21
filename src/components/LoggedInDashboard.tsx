@@ -1474,7 +1474,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       window.removeEventListener("storage", handleAdminStorageChange);
       clearInterval(interval);
     };
-  }, [user]);
+  }, [user?.email, user?.role]);
 
   const handleOpenAdminPortal = () => {
     if (!user || !user.email) return;
@@ -1636,11 +1636,11 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
   });
 
   useEffect(() => {
-    setProfileName(user.name || "");
-    setProfilePhone(user.phoneOrTelegram || "");
-    setProfileNote(user.note || "");
-    setProfileAvatar(user.avatarUrl || "");
-  }, [user]);
+    setProfileName(user?.name || "");
+    setProfilePhone(user?.phoneOrTelegram || "");
+    setProfileNote(user?.note || "");
+    setProfileAvatar(user?.avatarUrl || "");
+  }, [user?.email, user?.name, user?.phoneOrTelegram, user?.note, user?.avatarUrl]);
 
   const handleOpenGalleryPicker = () => {
     if (profileFileInputRef.current) {
@@ -3082,19 +3082,6 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         const currentAcc = accounts.find(
           (a) => a.email.toLowerCase().trim() === cleanEmail
         );
-
-        if (currentAcc) {
-          // Sync role changes dynamically in memory and local session
-          if (currentAcc.role === 'admin' && user.role !== 'admin') {
-            user.role = 'admin';
-          } else if (currentAcc.role === 'user' && !isSubAdmin && !isSuper && user.role === 'admin') {
-            user.role = 'user';
-          }
-        }
-
-        if ((isSubAdmin || isSuper) && user.role !== 'admin') {
-          user.role = 'admin';
-        }
       } catch {}
     };
 
@@ -3112,7 +3099,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       window.removeEventListener('storage', monitorAccountState);
       clearInterval(interval);
     };
-  }, [user, onLogout]);
+  }, [user?.email, user?.role, onLogout]);
 
   const [topAppsList, setTopAppsList] = useState<TopAppItem[]>(() =>
     getTopAppsConfig(),
@@ -3451,22 +3438,46 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           const data = await res.json();
           if (data?.success && Array.isArray(data.numbers) && isMounted) {
             setGetNumHistory((prev) => {
-              const sanitizedNext = sanitizeAllocatedHistory(data.numbers);
-              // Compare and play voice announcement for new OTPs if received
-              const oldMap = new Map(prev.map(item => [item.id, item.otp || ""]));
-              data.numbers.forEach((entry: any) => {
+              const serverList = Array.isArray(data.numbers) ? data.numbers : [];
+              const mergedMap = new Map<string, any>();
+              // 1. Preserve all existing local allocated numbers
+              prev.forEach((item) => mergedMap.set(item.id, item));
+              // 2. Merge server numbers, updating OTP/status if server has new OTP
+              serverList.forEach((sItem: any) => {
+                const cleanSNum = (sItem.number || "").replace(/\D/g, "");
+                const existing = mergedMap.get(sItem.id) || prev.find((p) => (p.number || "").replace(/\D/g, "") === cleanSNum);
+                if (existing) {
+                  mergedMap.set(existing.id, {
+                    ...existing,
+                    ...sItem,
+                    otp: sItem.otp || existing.otp,
+                    status: sItem.otp ? "SUCCESS" : (existing.status || sItem.status),
+                  });
+                } else {
+                  mergedMap.set(sItem.id, sItem);
+                }
+              });
+
+              const mergedList = sanitizeAllocatedHistory(
+                Array.from(mergedMap.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+              );
+
+              // Voice announcement for new OTPs
+              const oldMap = new Map(prev.map((item) => [item.id, item.otp || ""]));
+              mergedList.forEach((entry: any) => {
                 const prevOtp = oldMap.get(entry.id);
                 if (entry.otp && entry.otp !== prevOtp) {
                   if (isGetNumVoiceOn) {
-                    speakOtpAnnouncement(entry.otp, entry.country || "Bangladesh");
+                    speakOtpAnnouncement(entry.otp, entry.country || "Sri Lanka");
                   }
                   showDashboardToast(`🎉 Real-time OTP received: ${entry.otp} (${entry.number})`, "success");
                 }
               });
-              if (JSON.stringify(prev) === JSON.stringify(sanitizedNext)) {
+
+              if (JSON.stringify(prev) === JSON.stringify(mergedList)) {
                 return prev;
               }
-              return sanitizedNext;
+              return mergedList;
             });
           }
         }
@@ -3559,10 +3570,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     // 1. Subscribe to real-time Firestore pool updates across all devices on Vercel & local
     const unsubscribeFirestore = subscribeToManualPool((numbers, ranges) => {
       if (Array.isArray(ranges)) {
-        setManualRanges(ranges);
+        setManualRanges((prev) => (JSON.stringify(prev) === JSON.stringify(ranges) ? prev : ranges));
       }
       if (Array.isArray(numbers)) {
-        setManualNumbers(numbers);
+        setManualNumbers((prev) => (JSON.stringify(prev) === JSON.stringify(numbers) ? prev : numbers));
         setManualNumbersTotal(numbers.length);
       }
     });
@@ -3571,7 +3582,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       fetchManualRanges()
         .then((ranges) => {
           if (Array.isArray(ranges)) {
-            setManualRanges(ranges);
+            setManualRanges((prev) => (JSON.stringify(prev) === JSON.stringify(ranges) ? prev : ranges));
           }
         })
         .catch(() => {});
@@ -4633,7 +4644,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     const timer = setInterval(() => {
       if (document.hidden) return;
       fetchRealTimeData();
-    }, 15000);
+    }, 3000);
     return () => clearInterval(timer);
   }, [apiKey]);
 
@@ -4779,10 +4790,6 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     setRangeInputError(false);
     setIsAllocating(true);
 
-    const safetyTimeout = setTimeout(() => {
-      setIsAllocating(false);
-    }, 1500);
-
     try {
       const prefix = cleanDigits.slice(0, 6) || "94722";
       const matchedRange = POPULAR_RANGES.find(
@@ -4862,10 +4869,11 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       }
 
       // CRITICAL RANGE PREFIX GUARANTEE:
-      // If user typed custom range digits (e.g. 2250171, 23762, 26134, etc.), displayNum MUST start with cleanDigits!
+      // If user typed custom range digits (e.g. 2250171, 23762, 26134, etc.), displayNum MUST match range if not already matching
       if (cleanDigits && cleanDigits.length >= 3) {
         const pureDigits = displayNum.replace(/\D/g, "");
-        if (!pureDigits.startsWith(cleanDigits)) {
+        const strippedClean = cleanDigits.replace(/^0+/, "");
+        if (!pureDigits.startsWith(cleanDigits) && !pureDigits.includes(strippedClean) && !pureDigits.startsWith(`94${strippedClean}`)) {
           const suffix = pureDigits.length > cleanDigits.length ? pureDigits.slice(cleanDigits.length) : Math.floor(1000 + Math.random() * 9000);
           displayNum = removePlus ? `${cleanDigits}${suffix}` : `+${cleanDigits}${suffix}`;
         }
@@ -4895,7 +4903,15 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         createdAt: nowMs,
       };
 
-      setGetNumHistory((prev) => [newEntry, ...prev]);
+      setGetNumHistory((prev) => {
+        const next = [newEntry, ...prev];
+        if (user?.email) {
+          try {
+            localStorage.setItem(`super_x_get_num_history_${user.email}`, JSON.stringify(next));
+          } catch {}
+        }
+        return next;
+      });
 
       // Broadcast activity alert to Telegram group chat -1004476126020
       sendUserActivityToTelegram({
@@ -4927,7 +4943,6 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         1500,
       );
     } finally {
-      clearTimeout(safetyTimeout);
       setIsAllocating(false);
     }
   };
@@ -6965,10 +6980,21 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                 </span>
 
                                 <div className="flex items-center gap-1.5 pt-0.5">
-                                  <div className="flex items-center gap-1.5 bg-[#f3f4f6] border border-gray-300 px-2.5 py-1 rounded-md text-gray-800 font-mono text-xs font-bold shadow-2xs">
-                                    <Key className="w-3.5 h-3.5 text-emerald-600" />
-                                    <span>{"X".repeat(item.otp.length)}</span>
-                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (typeof navigator !== "undefined" && navigator.clipboard) {
+                                        navigator.clipboard.writeText(item.otp || "").catch(() => {});
+                                      }
+                                      showDashboardToast(`Copied OTP: ${item.otp}`, "success", 1200);
+                                    }}
+                                    className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 hover:border-emerald-500 px-2.5 py-1 rounded-md text-emerald-950 font-mono text-xs font-extrabold shadow-2xs cursor-pointer transition-all active:scale-95"
+                                    title="Click to copy OTP code"
+                                  >
+                                    <Key className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                    <span className="tracking-wider text-emerald-900 select-all font-mono font-extrabold">{item.otp}</span>
+                                    <Copy className="w-3 h-3 text-emerald-600 shrink-0 ml-0.5" />
+                                  </button>
                                 </div>
                               </div>
                             ) : item.status === "FAILED" ? (
@@ -7027,9 +7053,14 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                     <CountryFlag countryCode={displayCountry} size="sm" />
                                     <span className="truncate">{stripFlagFromCountryName(displayCountry)}</span>
                                   </div>
-                                  <div className="text-gray-600 text-[11px] sm:text-xs flex items-center gap-1">
-                                    <Radio className="w-3 h-3 text-gray-600 shrink-0" />
-                                    <span className="truncate">{displayOperator}</span>
+                                  <div className="text-gray-600 text-[11px] sm:text-xs flex items-center gap-1.5 flex-wrap">
+                                    <Radio className="w-3 h-3 text-emerald-600 shrink-0" />
+                                    <span className="truncate font-medium text-slate-700">{displayOperator}</span>
+                                    {item.service && item.service !== displayOperator && (
+                                      <span className="text-[10px] font-extrabold px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 uppercase tracking-tight">
+                                        {item.service}
+                                      </span>
+                                    )}
                                   </div>
                                 </>
                               );
@@ -7568,36 +7599,75 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                       </div>
                     </button>
 
-                    {/* Real Available Terminations List */}
-                    {manualRanges.length === 0 ? (
-                      <div className="p-8 text-center text-xs text-gray-400">
-                        No terminations found.
-                      </div>
-                    ) : (
-                      manualRanges.filter((r) => {
+                    {/* Real Available Terminations List grouped by unique Country */}
+                    {(() => {
+                      const groupedCountriesMap = new Map<string, {
+                        country: string;
+                        flag: string;
+                        dialCode: string;
+                        platform: string;
+                        availableCount: number;
+                        totalCount: number;
+                        ranges: any[];
+                      }>();
+
+                      for (const r of manualRanges) {
+                        const countryKey = r.country.trim().toLowerCase();
+                        if (!groupedCountriesMap.has(countryKey)) {
+                          groupedCountriesMap.set(countryKey, {
+                            country: r.country,
+                            flag: r.flag || "🌐",
+                            dialCode: r.dialCode || "",
+                            platform: r.platform || "All Social (WhatsApp/TG)",
+                            availableCount: 0,
+                            totalCount: 0,
+                            ranges: []
+                          });
+                        }
+                        const entry = groupedCountriesMap.get(countryKey)!;
+                        entry.availableCount += (r.availableCount || 0);
+                        entry.totalCount += (r.totalCount || 0);
+                        entry.ranges.push(r);
+                      }
+
+                      const groupedCountriesList = Array.from(groupedCountriesMap.values());
+                      const filteredGroupedList = groupedCountriesList.filter((c) => {
                         if (!modalSearchFilter.trim()) return true;
                         const q = modalSearchFilter.toLowerCase();
-                        const info = formatTerminationInfo(r);
                         return (
-                          r.country.toLowerCase().includes(q) ||
-                          r.rangePrefix.toLowerCase().includes(q) ||
-                          info.operator.toLowerCase().includes(q) ||
-                          (r.dialCode && r.dialCode.toLowerCase().includes(q))
+                          c.country.toLowerCase().includes(q) ||
+                          (c.dialCode && c.dialCode.toLowerCase().includes(q))
                         );
-                      }).map((r) => {
-                        const info = formatTerminationInfo(r);
-                        const isSelected = modalSelectedRange && (modalSelectedRange.rangePrefix === r.rangePrefix);
-                        const rangeObj = {
-                          ...r,
+                      });
+
+                      if (filteredGroupedList.length === 0) {
+                        return (
+                          <div className="p-8 text-center text-xs text-gray-400">
+                            No terminations found.
+                          </div>
+                        );
+                      }
+
+                      return filteredGroupedList.map((c) => {
+                        const isSelected = modalSelectedRange && (modalSelectedRange.country.toLowerCase().trim() === c.country.toLowerCase().trim());
+                        const mockRangeObj = {
+                          country: c.country,
+                          flag: c.flag,
+                          dialCode: c.dialCode,
+                          rangePrefix: c.dialCode || c.ranges[0]?.rangePrefix || "880",
+                          operator: "All Files",
+                          availableCount: c.availableCount,
+                          totalCount: c.totalCount,
+                          isGroupedCountry: true,
                           rate: "0.0000 USD"
                         };
 
                         return (
                           <button
-                            key={r.rangePrefix}
+                            key={c.country}
                             type="button"
                             onClick={() => {
-                              setModalSelectedRange(rangeObj);
+                              setModalSelectedRange(mockRangeObj);
                               setIsChooseTerminationOpen(false);
                               setModalSearchFilter("");
                             }}
@@ -7607,9 +7677,11 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                 : "bg-white text-gray-800 hover:bg-gray-50"
                             }`}
                           >
-                            <span className="truncate pr-3 text-slate-800">
-                              {r.country} - {info.operator} - {r.dialCode || r.rangePrefix} (Unlimited available)
-                            </span>
+                            <div className="flex items-center gap-2.5">
+                              <span className="text-base">{c.flag}</span>
+                              <span className="font-semibold text-slate-800 text-xs sm:text-sm">{c.country}</span>
+                              <span className="text-gray-400 font-mono text-[11px]">({c.availableCount} available)</span>
+                            </div>
                             <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 transition ${
                               isSelected ? "border-[#2563EB]" : "border-slate-300"
                             }`}>
@@ -7617,8 +7689,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                             </div>
                           </button>
                         );
-                      })
-                    )}
+                      });
+                    })()}
                   </div>
                 </motion.div>
               ) : (
@@ -7679,9 +7751,11 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                             : "border-gray-300 bg-white text-gray-600 hover:border-gray-400"
                         }`}
                       >
-                        <span className="truncate pr-2">
+                        <span className="truncate pr-2 font-semibold">
                           {modalSelectedRange
-                            ? `${modalSelectedRange.country} - ${modalSelectedRange.subOperator || modalSelectedRange.operator} - ${modalSelectedRange.dialCode} (Unlimited available)`
+                            ? (modalSelectedRange.isGroupedCountry
+                                ? `${modalSelectedRange.flag || "🇱🇰"} ${modalSelectedRange.country} - WhatsApp (${modalSelectedRange.availableCount} available)`
+                                : `${modalSelectedRange.country} - ${modalSelectedRange.subOperator || modalSelectedRange.operator} - ${modalSelectedRange.dialCode} (Unlimited available)`)
                             : "-- Choose a termination --"}
                         </span>
                         <ChevronDown className="w-4 h-4 text-gray-500 shrink-0" />
@@ -7689,7 +7763,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
                       {/* Subtext Underneath */}
                       <p className="text-xs text-gray-500 leading-relaxed pt-0.5">
-                        Showing the first 500 of 4,238 ranges. Type a range or operator name to find a specific one.
+                        Select a country to allocate numbers sequentially in bulk from active files.
                       </p>
                     </div>
 
@@ -7864,40 +7938,96 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                     >
                       Cancel
                     </button>
-                    <button
+                     <button
                       type="button"
                       disabled={!modalSelectedRange || isAllocating}
-                      onClick={() => {
+                      onClick={async () => {
                         if (!modalSelectedRange) return;
                         const qty = Math.max(1, modalQuantity);
                         const selectedCountry = modalSelectedRange?.country || "Carrier Route";
                         const selectedOp = modalSelectedRange?.operator || modalSelectedRange?.name || "Standard";
                         const rawCode = modalSelectedRange?.code?.replace(/\D/g, "") || modalSelectedRange?.rangePrefix?.replace(/\D/g, "") || "88017";
 
-                        const newEntries: any[] = [];
-                        const nowMs = Date.now();
-                        for (let i = 0; i < qty; i++) {
-                          const fullNum = generateFullPhoneNumber(rawCode, selectedCountry, i);
-                          newEntries.push({
-                            id: `num_${nowMs}_${i}_${Math.random().toString(36).substring(2, 6)}`,
-                            number: fullNum,
-                            country: selectedCountry,
-                            operator: selectedOp,
-                            service: selectedOp,
-                            status: "PENDING" as const,
-                            activity: "Live OTP Listening",
-                            rate: "0.0000 USD",
-                            createdAt: nowMs - i * 100,
+                        setIsAllocating(true);
+                        try {
+                          // Call real bulk allocation API!
+                          const response = await fetch("/api/manual-numbers/allocate-bulk", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              country: selectedCountry,
+                              rangePrefix: rawCode,
+                              count: qty,
+                              allocatedTo: user?.email || "website_user",
+                              userEmail: user?.email,
+                            }),
                           });
-                        }
 
-                        setGetNumHistory((prev) => [...newEntries, ...prev]);
-                        setMyNumsPage(1);
-                        setIsRentModalOpen(false);
-                        setIsChooseTerminationOpen(false);
-                        setModalSearchFilter("");
-                        setLastAllocatedCount(qty);
-                        showDashboardToast(`🎉 ${qty} numbers added successfully!`, "success");
+                          const resData = await response.json();
+                          if (resData.success && resData.records && resData.records.length > 0) {
+                            const newEntries = resData.records.map((rec: any, idx: number) => {
+                              const rawNum = rec.number.trim();
+                              const fullNum = rawNum.startsWith('+') ? rawNum : `+${rawNum}`;
+                              const displayNum = removePlus 
+                                ? fullNum.replace(/^\+/, "") 
+                                : nationalFormat 
+                                  ? stripAreaCode(fullNum, selectedCountry) 
+                                  : fullNum;
+
+                              return {
+                                id: rec.id || `num_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 6)}`,
+                                number: displayNum,
+                                country: rec.country || selectedCountry,
+                                operator: rec.platform || selectedOp,
+                                service: rec.platform || selectedOp,
+                                status: "PENDING" as const,
+                                activity: "Live OTP Listening",
+                                rate: "0.0000 USD",
+                                createdAt: Date.now() - idx * 100,
+                              };
+                            });
+
+                            setGetNumHistory((prev) => [...newEntries, ...prev]);
+                            setMyNumsPage(1);
+                            setIsRentModalOpen(false);
+                            setIsChooseTerminationOpen(false);
+                            setModalSearchFilter("");
+                            setLastAllocatedCount(newEntries.length);
+                            showDashboardToast(`🎉 ${newEntries.length} numbers allocated from manual pool successfully!`, "success");
+
+                            // Broadcast activity alert to Telegram
+                            sendUserActivityToTelegram({
+                              action: 'Bulk Numbers Allocated',
+                              userEmail: user?.email,
+                              userName: user?.name,
+                              userCode: user?.accountCode,
+                              number: `${newEntries.length} Numbers`,
+                              service: selectedOp,
+                              country: selectedCountry,
+                              details: `Count: ${newEntries.length}`,
+                            }).catch(() => {});
+
+                            // Synchronize with server-side account session
+                            if (user?.email) {
+                              for (const entry of newEntries) {
+                                fetch("/api/account/numbers", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({
+                                    email: user.email,
+                                    entry: entry,
+                                  }),
+                                }).catch(() => {});
+                              }
+                            }
+                          } else {
+                            showDashboardToast(resData.error || "No available numbers in pool for this terminal.", "warning", 2000);
+                          }
+                        } catch (err: any) {
+                          showDashboardToast("Failed to allocate bulk numbers from server.", "warning");
+                        } finally {
+                          setIsAllocating(false);
+                        }
                       }}
                       className={`px-5 py-2.5 text-xs sm:text-sm font-bold rounded-lg transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs ${
                         !modalSelectedRange || isAllocating

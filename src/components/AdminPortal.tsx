@@ -1348,21 +1348,24 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
   // Event Listeners for Accounts, Notifications, Chat Updates, and Sub-Admins
   useEffect(() => {
     const handleAccountsUpdated = () => {
-      setAccountsList(getAllAccounts());
+      const fresh = getAllAccounts();
+      setAccountsList((prev) => (JSON.stringify(prev) === JSON.stringify(fresh) ? prev : fresh));
     };
     const handleChatUpdated = () => {
       setAdminUnreadCount(getAdminUnreadChatCount());
       setChatRefreshKey((k) => k + 1);
     };
     const handleNotifUpdated = () => {
-      setNotificationsList(getAllNotifications());
+      const fresh = getAllNotifications();
+      setNotificationsList((prev) => (JSON.stringify(prev) === JSON.stringify(fresh) ? prev : fresh));
     };
     const handleApiConfigsUpdated = () => {
-      setApiConfigsList(getAllApiConfigs());
+      const fresh = getAllApiConfigs();
+      setApiConfigsList((prev) => (JSON.stringify(prev) === JSON.stringify(fresh) ? prev : fresh));
     };
     const handleSubAdminsUpdated = () => {
       const currentSubAdmins = getAllSubAdmins();
-      setSubAdminsList(currentSubAdmins);
+      setSubAdminsList((prev) => (JSON.stringify(prev) === JSON.stringify(currentSubAdmins) ? prev : currentSubAdmins));
 
       // Live Revocation: Only revoke if explicitly deleted from both sub-admins list AND accounts list
       const sess = adminSessionRef.current;
@@ -2259,12 +2262,14 @@ export function AdminPortal({ onBackToLogin }: AdminPortalProps) {
     );
   });
 
+  const firstChatUserEmail = chatConversations[0]?.userEmail || '';
+
   // Auto-select first chat conversation when none selected
   useEffect(() => {
-    if (chatConversations.length > 0 && !activeChatUserEmail) {
-      setActiveChatUserEmail(chatConversations[0].userEmail);
+    if (firstChatUserEmail && !activeChatUserEmail) {
+      setActiveChatUserEmail(firstChatUserEmail);
     }
-  }, [chatConversations, activeChatUserEmail]);
+  }, [firstChatUserEmail, activeChatUserEmail]);
 
   const currentChatMessages = activeChatUserEmail
     ? getChatMessagesForUser(activeChatUserEmail)

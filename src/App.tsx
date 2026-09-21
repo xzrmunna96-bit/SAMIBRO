@@ -154,7 +154,7 @@ export function App() {
       window.removeEventListener('super_x_sub_admins_updated', handleAccountsUpdated);
       window.removeEventListener('storage', handleAccountsUpdated);
     };
-  }, [currentUser]);
+  }, [currentUser?.email]);
 
   // Automatically sync logged-in URL to default 'agent' when entering dashboard without overwriting sub-views
   useEffect(() => {

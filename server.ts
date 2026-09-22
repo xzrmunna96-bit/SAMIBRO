@@ -62,17 +62,7 @@ const accounts = readJSON(ACCOUNTS_FILE, [
 ]);
 
 const subadmins = readJSON(SUBADMINS_FILE, []);
-const apiConfigs = readJSON(API_CONFIGS_FILE, [
-  {
-    "id": "gate_1",
-    "name": "Default Voltx Gateway",
-    "type": "voltx",
-    "url": "https://voltsms.store/api/v1/sms/history",
-    "apiKey": process.env.VOLTX_KEY || "M7ANNWJY6B2",
-    "slug": process.env.VOLTX_BACKEND_SLUG || "00",
-    "status": "active"
-  }
-]);
+const apiConfigs = readJSON(API_CONFIGS_FILE, []);
 
 const chats = readJSON(CHATS_FILE, []);
 const marquee = readJSON(MARQUEE_FILE, { text: "Welcome to SUPER X SMS Routing Gateway. Active high-speed channels are ready." });
@@ -141,9 +131,31 @@ function parseSmsHits(data: any, gatewayType: string = 'voltx'): any[] {
   }
 
   if (list.length === 0 && typeof data === 'object' && data !== null) {
-    // Check if it looks like a single message object
-    if (data.message || data.msg || data.text || data.sms || data.body || data.otp) {
-      list = [data];
+    // Check if it is an error or status message response instead of an actual SMS object
+    const statusVal = String(data.status || data.error || "").toLowerCase();
+    const msgVal = String(data.message || data.msg || "").toLowerCase();
+    
+    const isErrorPayload = 
+      statusVal.includes('err') || 
+      statusVal.includes('fail') || 
+      data.code === 400 || 
+      data.code === 401 || 
+      data.code === 404 ||
+      msgVal.includes('no records') || 
+      msgVal.includes('not found') || 
+      msgVal.includes('invalid') || 
+      msgVal.includes('error') || 
+      msgVal.includes('fail') ||
+      msgVal.includes('success'); // System response message, not a single SMS
+
+    if (!isErrorPayload) {
+      // Must look like an actual single SMS message object containing both content and a recipient/sender number
+      const hasMessageContent = !!(data.message || data.msg || data.text || data.sms || data.body || data.otp);
+      const hasRecipientNumber = !!(data.number || data.phone || data.phoneNumber || data.sender || data.cli || data.mobile || data.to);
+      
+      if (hasMessageContent && hasRecipientNumber) {
+        list = [data];
+      }
     }
   }
 

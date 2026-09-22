@@ -58,10 +58,14 @@ try {
   if (typeof window !== "undefined") {
     auth = getAuth(firebaseApp);
     const isIframe = window.self !== window.top;
-    if (isIframe) {
-      setPersistence(auth, inMemoryPersistence).catch(() => {});
-    } else {
-      setPersistence(auth, browserLocalPersistence).catch(() => {});
+    try {
+      if (isIframe) {
+        setPersistence(auth, inMemoryPersistence).catch(() => {});
+      } else {
+        setPersistence(auth, browserLocalPersistence).catch(() => {});
+      }
+    } catch {
+      // ignore persistence error
     }
   }
 } catch {

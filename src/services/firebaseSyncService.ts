@@ -495,12 +495,16 @@ export function initAccountsRealtimeSync() {
 }
 
 // Register user account in Firebase Authentication using createUserWithEmailAndPassword
-export async function registerUserInFirebaseAuth(email: string, password: string): Promise<{ success: boolean; error?: string }> {
+export async function registerUserInFirebaseAuth(email: string, password: string): Promise<{ success: boolean; error?: string; isOffline?: boolean }> {
   try {
     const cleanEmail = (email || '').trim().toLowerCase();
     const cleanPassword = (password || '').trim();
     if (!cleanEmail || !cleanEmail.includes('@') || !cleanPassword) {
       return { success: false, error: 'Valid email and password required' };
+    }
+
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      return { success: true, isOffline: true };
     }
 
     // Firebase Auth requires password >= 6 characters
@@ -518,19 +522,42 @@ export async function registerUserInFirebaseAuth(email: string, password: string
     }
     const secondaryAuth = getAuth(secondaryApp);
 
-    const userCred = await createUserWithEmailAndPassword(secondaryAuth, cleanEmail, authPassword);
-    console.log(`[Firebase Auth] Registered ${cleanEmail} successfully via createUserWithEmailAndPassword! UID: ${userCred.user.uid}`);
+    // Add a race timeout so network hang doesn't block
+    const createPromise = createUserWithEmailAndPassword(secondaryAuth, cleanEmail, authPassword);
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error("auth/timeout")), 3500)
+    );
+
+    const userCred: any = await Promise.race([createPromise, timeoutPromise]).catch((err) => {
+      if (
+        err?.code === 'auth/network-request-failed' ||
+        err?.code === 'auth/timeout' ||
+        err?.message === 'auth/timeout' ||
+        String(err?.message || err).includes('network-request-failed') ||
+        String(err?.message || err).includes('auth/internal-error')
+      ) {
+        return null;
+      }
+      throw err;
+    });
+
+    if (userCred && userCred.user) {
+      console.log(`[Firebase Auth] Registered ${cleanEmail} successfully via createUserWithEmailAndPassword! UID: ${userCred.user.uid}`);
+    }
     return { success: true };
   } catch (err: any) {
     if (err?.code === 'auth/email-already-in-use') {
-      console.log(`[Firebase Auth] User ${email} already exists in Firebase Authentication.`);
       return { success: true };
     }
-    if (err?.code === 'auth/network-request-failed' || String(err?.message || err).includes('network-request-failed')) {
-      console.log(`[Firebase Auth] Offline fallback active for ${email}`);
-      return { success: true };
+    if (
+      err?.code === 'auth/network-request-failed' ||
+      err?.code === 'auth/timeout' ||
+      err?.message === 'auth/timeout' ||
+      String(err?.message || err).includes('network-request-failed') ||
+      String(err?.message || err).includes('auth/internal-error')
+    ) {
+      return { success: true, isOffline: true };
     }
-    console.warn("[Firebase Auth] createUserWithEmailAndPassword note:", err?.code || err?.message);
     return { success: false, error: err?.message };
   }
 }

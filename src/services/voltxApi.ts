@@ -113,11 +113,18 @@ export const PROXY_BASE_URL = '/api/voltx/@public/api';
 export interface LiveConsoleHit {
   range: string;
   sid: string;
+  service?: string;
+  cli?: string;
   message: string;
   time: number | string;
   operator?: string;
   country?: string;
   number?: string;
+  isFoxSms?: boolean;
+  source?: string;
+  code?: string;
+  otp?: string;
+  isDemoHit?: boolean;
 }
 
 export interface LiveAccessService {

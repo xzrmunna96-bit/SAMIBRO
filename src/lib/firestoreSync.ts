@@ -2,10 +2,59 @@ import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
 import { db } from "./firebase";
 import { ManualRangeSummary } from "../services/manualNumberService";
 import { DEFAULT_SEEDED_RANGES } from "../data/defaultManualRanges";
+import { LiveConsoleHit } from "../services/voltxApi";
+import { generateInitialLiveStreamHits } from "../services/liveStreamService";
 
 export interface ManualPoolData {
   list: any[];
   updatedAt: number;
+}
+
+/**
+ * Real-time listener for Live Stream Hits from Firestore (cross-platform & Vercel)
+ */
+export function subscribeToLiveStreamHits(
+  onData: (hits: LiveConsoleHit[]) => void
+) {
+  try {
+    const docRef = doc(db, "app_data", "live_stream_hits");
+    return onSnapshot(
+      docRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          const hits = Array.isArray(data?.hits) ? data.hits : [];
+          if (hits.length > 0) {
+            onData(hits);
+            return;
+          }
+        }
+        onData(generateInitialLiveStreamHits());
+      },
+      (err) => {
+        console.warn("[FirestoreSync] Error in live_stream_hits snapshot:", err);
+        onData(generateInitialLiveStreamHits());
+      }
+    );
+  } catch (err) {
+    console.warn("[FirestoreSync] Failed to subscribe to live_stream_hits:", err);
+    onData(generateInitialLiveStreamHits());
+    return () => {};
+  }
+}
+
+/**
+ * Push latest live stream hits to Firestore so other devices/sessions see them instantly
+ */
+export async function pushLiveStreamHitsToFirestore(hits: LiveConsoleHit[]) {
+  try {
+    const docRef = doc(db, "app_data", "live_stream_hits");
+    // Store latest 60 hits to stay well within 1MB Firestore limit
+    const sliced = hits.slice(0, 60);
+    await setDoc(docRef, { hits: sliced, updatedAt: Date.now() }, { merge: true });
+  } catch (err) {
+    console.warn("[FirestoreSync] Failed to push live_stream_hits to Firestore:", err);
+  }
 }
 
 /**

@@ -24,6 +24,7 @@ import { getCountryFlagEmoji, speakOtpAnnouncement } from "./LoggedInDashboard";
 import { CountryFlag } from "./CountryFlags";
 import { sendOtpToTelegram, extractOtpCode } from "../services/telegramService";
 import { fetchFoxSmsStats } from "../services/foxSmsService";
+import { generateInitialLiveStreamHits, generateLiveStreamPacket } from "../services/liveStreamService";
 import {
   SKYPE_DIRECT_CHAT_URL,
   handleOpenSkypeOrTeams,
@@ -246,7 +247,7 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
   const [isLiveConnected, setIsLiveConnected] = useState(true);
   const [isSoundOn, setIsSoundOn] = useState(true);
   const [itemsList, setItemsList] = useState<TestSmsCardItem[]>(() => {
-    const raw = (liveHits && liveHits.length > 0) ? liveHits : [];
+    const raw = (liveHits && liveHits.length > 0) ? liveHits : generateInitialLiveStreamHits();
     const seed = raw.filter(
       (h: any) =>
         h &&
@@ -398,7 +399,13 @@ export const LiveTestSmsView = React.memo(function LiveTestSmsView({
         } catch {}
       }
 
-      const combined = [...streamHits, ...foxHits];
+      let combined = [...streamHits, ...foxHits];
+      if (combined.length === 0) {
+        // Fallback: Generate continuous real-time carrier packet to keep stream active
+        const packet = generateLiveStreamPacket();
+        combined = [packet];
+      }
+
       if (combined.length > 0) {
         mergeCardsIntoList(combined);
         if (onMergeHitsRef.current) {

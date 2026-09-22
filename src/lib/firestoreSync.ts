@@ -1,6 +1,7 @@
 import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
 import { db } from "./firebase";
 import { ManualRangeSummary } from "../services/manualNumberService";
+import { DEFAULT_SEEDED_RANGES } from "../data/defaultManualRanges";
 
 export interface ManualPoolData {
   list: any[];
@@ -22,16 +23,22 @@ export function subscribeToManualPool(
           const data = snapshot.data();
           const list = Array.isArray(data?.list) ? data.list : [];
           // Prioritize precomputed full ranges summary from Firestore to avoid sliced list limits
-          const ranges = Array.isArray(data?.ranges) ? data.ranges : getManualRangesFromList(list);
+          let ranges = Array.isArray(data?.ranges) && data.ranges.length > 0
+            ? data.ranges
+            : (list.length > 0 ? getManualRangesFromList(list) : DEFAULT_SEEDED_RANGES);
           onData(list, ranges);
+        } else {
+          onData([], DEFAULT_SEEDED_RANGES);
         }
       },
       (err) => {
         console.warn("[FirestoreSync] Error in manual_pool snapshot:", err);
+        onData([], DEFAULT_SEEDED_RANGES);
       }
     );
   } catch (err) {
     console.warn("[FirestoreSync] Failed to subscribe to manual_pool:", err);
+    onData([], DEFAULT_SEEDED_RANGES);
     return () => {};
   }
 }

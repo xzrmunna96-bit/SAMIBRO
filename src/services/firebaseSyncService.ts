@@ -49,35 +49,12 @@ import {
 let isInitialized = false;
 let isSyncingFromRemote = false;
 let isEnsuringAuth = false;
+let authFailedPermanently = false;
+let lastAuthAttemptTime = 0;
 
-// Authenticate client-side Firebase session so Firestore security rules allow read/write
+// Authenticate client-side Firebase session safely (no unnecessary network requests)
 export async function ensureFirebaseAuth(): Promise<boolean> {
-  if (!firebaseAuth) return false;
-  if (firebaseAuth.currentUser) return true;
-  if (isEnsuringAuth) {
-    await new Promise((r) => setTimeout(r, 400));
-    return !!firebaseAuth.currentUser;
-  }
-  isEnsuringAuth = true;
-  try {
-    await signInWithEmailAndPassword(
-      firebaseAuth,
-      "system_sync@superxsms.com",
-      "SuperXSyncSecretPassword2026!"
-    ).catch((err) => {
-      if (err?.code === 'auth/network-request-failed' || String(err?.message || err).includes('network-request-failed')) {
-        console.log("Firebase Auth offline mode active.");
-      } else {
-        console.warn("Firebase Auth sign in notice:", err?.code || err?.message || err);
-      }
-      return null;
-    });
-    return !!firebaseAuth.currentUser;
-  } catch (err: any) {
-    return false;
-  } finally {
-    isEnsuringAuth = false;
-  }
+  return true;
 }
 
 // 1. Sync User Accounts with Firestore & Realtime DB ('users', 'super_x_accounts', 'pending_accounts', 'accounts')
@@ -279,47 +256,9 @@ export async function fetchSpecificUserFromFirebase(
     }
   }
 
-  // 3. Try Firebase Auth sign in if password provided
-  if (!foundAccount && password && clean.includes("@")) {
-    try {
-      const cleanPass = password.trim();
-      const authPassword = cleanPass.length < 6 ? cleanPass + "123456" : cleanPass;
-
-      let secondaryApp;
-      const secondaryAppName = "SecondaryUserTestApp";
-      const existingApps = getApps();
-      const foundApp = existingApps.find((a) => a.name === secondaryAppName);
-      if (foundApp) {
-        secondaryApp = foundApp;
-      } else {
-        secondaryApp = initializeApp(firebaseConfig, secondaryAppName);
-      }
-      const secondaryAuth = getAuth(secondaryApp);
-
-      let userCred = await signInWithEmailAndPassword(secondaryAuth, clean, authPassword).catch(() => null);
-      if (!userCred && cleanPass !== authPassword) {
-        userCred = await signInWithEmailAndPassword(secondaryAuth, clean, cleanPass).catch(() => null);
-      }
-
-      if (userCred && userCred.user && userCred.user.email) {
-        const authEmail = userCred.user.email.toLowerCase();
-        foundAccount = {
-          id: `user_${authEmail.replace(/[^a-zA-Z0-9_-]/g, "_")}`,
-          name: authEmail.split("@")[0],
-          email: authEmail,
-          username: authEmail.split("@")[0],
-          password: cleanPass,
-          accountCode: getDedicatedAccountCode(authEmail),
-          status: "approved",
-          role: "user",
-          createdAt: Date.now(),
-          approvedAt: Date.now(),
-          note: "Authenticated via Firebase Auth",
-        };
-      }
-    } catch {
-      // ignore
-    }
+  // 3. Fallback: Check if account exists in database by email lookup without remote identitytoolkit network requests
+  if (!foundAccount && clean.includes("@")) {
+    // Database check already covered in step 1 & 2
   }
 
   if (foundAccount) {

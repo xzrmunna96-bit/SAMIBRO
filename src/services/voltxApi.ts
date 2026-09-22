@@ -217,26 +217,54 @@ export function stripFlagFromCountryName(name: string): string {
     .trim();
 }
 
-export function getRealCountryName(rawCountry?: string, rangeStr?: string): string {
-  const digits = (rangeStr || '').replace(/\D/g, '');
-  const info = getCountryInfo(rangeStr || '');
+export function getRealCountryName(rawCountry?: string, rangeStr?: string, fallbackNumber?: string): string {
+  const combined = `${rangeStr || ''} ${fallbackNumber || ''}`;
+  const digits = combined.replace(/\D/g, '');
+  const info = getCountryInfo(digits || rangeStr || fallbackNumber || '');
   
-  // If rawCountry is missing, "International", or incorrectly "Sri Lanka" when range does NOT start with 94:
-  if (
-    !rawCountry ||
-    !rawCountry.trim() ||
-    rawCountry.trim().toLowerCase().includes('international') ||
-    rawCountry.trim().toLowerCase() === 'global' ||
-    rawCountry.trim().toLowerCase() === 'global route' ||
-    (rawCountry.trim().toLowerCase().includes('sri lanka') && digits && !digits.startsWith('94'))
-  ) {
-    if (info && info.name && !info.name.toLowerCase().includes('international')) {
+  const cleanedRaw = stripFlagFromCountryName(rawCountry || '').trim();
+  const lowerRaw = cleanedRaw.toLowerCase();
+
+  const isGenericOrInvalid =
+    !cleanedRaw ||
+    lowerRaw.includes('international') ||
+    lowerRaw === 'global' ||
+    lowerRaw === 'global route' ||
+    lowerRaw.includes('unknown') ||
+    lowerRaw.includes('carrier') ||
+    (lowerRaw.includes('sri lanka') && digits && !digits.startsWith('94')) ||
+    (lowerRaw.includes('bangladesh') && digits && !digits.startsWith('880')) ||
+    (lowerRaw.includes('india') && digits && !digits.startsWith('91')) ||
+    (lowerRaw.includes('benin') && digits && !digits.startsWith('229'));
+
+  if (isGenericOrInvalid) {
+    if (info && info.name && !info.name.toLowerCase().includes('international') && !info.name.toLowerCase().includes('direct route')) {
       return stripFlagFromCountryName(info.name);
     }
-    const carrier = resolveCarrierDetails(rangeStr || '');
-    return stripFlagFromCountryName(carrier.country);
+    // Check against GLOBAL_COUNTRIES_LIST for dial code prefixes
+    if (digits) {
+      for (const c of GLOBAL_COUNTRIES_LIST) {
+        const cleanDial = c.dialCode.replace(/\D/g, '');
+        if (cleanDial && digits.startsWith(cleanDial)) {
+          return c.name;
+        }
+      }
+    }
+    const carrier = resolveCarrierDetails(digits || rangeStr || fallbackNumber || '');
+    if (carrier.country && !carrier.country.toLowerCase().includes('international') && !carrier.country.toLowerCase().includes('global')) {
+      return stripFlagFromCountryName(carrier.country);
+    }
   }
-  return stripFlagFromCountryName(rawCountry.trim());
+
+  if (cleanedRaw && !isGenericOrInvalid) {
+    return cleanedRaw;
+  }
+
+  if (info && info.name && !info.name.toLowerCase().includes('international') && !info.name.toLowerCase().includes('direct route')) {
+    return stripFlagFromCountryName(info.name);
+  }
+
+  return 'Direct Route';
 }
 
 export interface FetchConsoleResponse {

@@ -157,8 +157,8 @@ export async function pingTelegramBot(token?: string): Promise<{
   }
 }
 
-// Seeded default ranges (Empty by default until uploaded via bot or admin)
-export const DEFAULT_SEEDED_RANGES: ManualRangeSummary[] = [];
+import { DEFAULT_SEEDED_RANGES } from '../data/defaultManualRanges';
+export { DEFAULT_SEEDED_RANGES };
 
 const CACHED_RANGES_KEY = 'superx_cached_manual_ranges';
 
@@ -170,7 +170,7 @@ export async function fetchManualRanges(): Promise<ManualRangeSummary[]> {
     const res = await fetch('/api/manual-numbers/ranges');
     if (res.ok) {
       const data = await res.json();
-      if (data.success && Array.isArray(data.ranges)) {
+      if (data.success && Array.isArray(data.ranges) && data.ranges.length > 0) {
         try {
           localStorage.setItem(CACHED_RANGES_KEY, JSON.stringify(data.ranges));
         } catch {}
@@ -181,7 +181,31 @@ export async function fetchManualRanges(): Promise<ManualRangeSummary[]> {
     console.warn('[ManualNumberService] Error fetching manual ranges from API:', err);
   }
 
-  return [];
+  // 1. Try static backup JSON served on Vercel / GitHub Pages / custom hosting
+  try {
+    const backupRes = await fetch('/manual_ranges_backup.json');
+    if (backupRes.ok) {
+      const data = await backupRes.json();
+      if (Array.isArray(data) && data.length > 0) {
+        try {
+          localStorage.setItem(CACHED_RANGES_KEY, JSON.stringify(data));
+        } catch {}
+        return data;
+      }
+    }
+  } catch {}
+
+  // 2. Local storage cache fallback
+  try {
+    const cached = localStorage.getItem(CACHED_RANGES_KEY);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+
+  // 3. Embedded static default fallback
+  return DEFAULT_SEEDED_RANGES;
 }
 
 /**

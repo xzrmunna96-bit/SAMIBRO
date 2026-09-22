@@ -658,6 +658,17 @@ async function startServer() {
       }
     }
 
+    if (map.size === 0) {
+      try {
+        const backupPath = path.join(process.cwd(), "public", "manual_ranges_backup.json");
+        if (fs.existsSync(backupPath)) {
+          const raw = fs.readFileSync(backupPath, "utf-8");
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {}
+    }
+
     return Array.from(map.values()).sort((a, b) => b.totalCount - a.totalCount);
   }
 
@@ -8853,7 +8864,7 @@ async function startServer() {
     if (!rawHitNum) return;
 
     const hitDigits = rawHitNum.replace(/\D/g, "");
-    if (hitDigits.length < 7) return;
+    if (hitDigits.length < 8) return;
 
     // Extract OTP code from hit
     let otpCode = String(hit.code || hit.otp || "").trim();
@@ -8875,6 +8886,7 @@ async function startServer() {
 
     const hitService = hit.service || hit.platform || "Delivered SMS";
     const now = Date.now();
+    const fiveMinutesMs = 5 * 60 * 1000;
 
     // 1. Check sharedAccountNumbers map across all user emails
     for (const [email, numberList] of sharedAccountNumbers.entries()) {
@@ -8884,11 +8896,25 @@ async function startServer() {
       let matchedEntry: SharedAllocatedNumber | null = null;
 
       const updatedList = numberList.map((entry) => {
+        // STRICT RULE: If number is already FAILED, already SUCCESS, or expired (> 5 min), NEVER match incoming OTP
+        if (entry.status === "FAILED" || (entry.status === "SUCCESS" && entry.otp)) {
+          return entry;
+        }
+
+        const createdAt = entry.createdAt || now;
+        if (now - createdAt >= fiveMinutesMs) {
+          return {
+            ...entry,
+            status: "FAILED" as const,
+            updatedAt: now,
+          };
+        }
+
         const entryDigits = String(entry.number || "").replace(/\D/g, "");
         if (!entryDigits || entryDigits.length < 8) return entry;
 
-        const cleanEntryNoDial = entryDigits.replace(/^(94|880|91|1|44|92|62|60|63|84|66)/, "").replace(/^0+/, "");
-        const cleanHitNoDial = hitDigits.replace(/^(94|880|91|1|44|92|62|60|63|84|66)/, "").replace(/^0+/, "");
+        const cleanEntryNoDial = entryDigits.replace(/^(94|880|91|1|44|92|62|60|63|84|66|213|229)/, "").replace(/^0+/, "");
+        const cleanHitNoDial = hitDigits.replace(/^(94|880|91|1|44|92|62|60|63|84|66|213|229)/, "").replace(/^0+/, "");
 
         const isMatch =
           entryDigits === hitDigits ||
@@ -8930,11 +8956,12 @@ async function startServer() {
       const pool = loadManualNumbersPool();
       let poolUpdated = false;
       pool.forEach((n) => {
+        if (n.status === "FAILED" || (n.status === "SUCCESS" && n.otp)) return;
         const nDigits = n.cleanDigits || n.number.replace(/\D/g, "");
         if (!nDigits || nDigits.length < 8) return;
 
-        const cleanNDial = nDigits.replace(/^(94|880|91|1|44|92|62|60|63|84|66)/, "").replace(/^0+/, "");
-        const cleanHitDial = hitDigits.replace(/^(94|880|91|1|44|92|62|60|63|84|66)/, "").replace(/^0+/, "");
+        const cleanNDial = nDigits.replace(/^(94|880|91|1|44|92|62|60|63|84|66|213|229)/, "").replace(/^0+/, "");
+        const cleanHitDial = hitDigits.replace(/^(94|880|91|1|44|92|62|60|63|84|66|213|229)/, "").replace(/^0+/, "");
 
         const isMatch = nDigits === hitDigits || (cleanNDial.length >= 7 && cleanHitDial.length >= 7 && cleanNDial === cleanHitDial);
 
@@ -9160,58 +9187,10 @@ async function startServer() {
     }
   }
 
-  function simulateSmsForRentedNumbers() {
-    try {
-      const now = Date.now();
-      const hitsToProcess: any[] = [];
-
-      for (const [email, numberList] of sharedAccountNumbers.entries()) {
-        if (!Array.isArray(numberList) || numberList.length === 0) continue;
-
-        numberList.forEach((entry) => {
-          const timeSinceCreated = now - (entry.createdAt || now);
-          // If status is PENDING and no OTP is assigned yet, simulate SMS reception after 10-25 seconds of being created
-          if (entry.status === "PENDING" && !entry.otp && timeSinceCreated > 12000 && timeSinceCreated < 180000) {
-            const digitsLength = [4, 5, 6][Math.floor(Math.random() * 3)];
-            let otpCode = "";
-            for (let i = 0; i < digitsLength; i++) {
-              otpCode += Math.floor(Math.random() * 10).toString();
-            }
-
-            const randomService = ["Facebook", "IMO", "Telegram", "WhatsApp", "TikTok", "Google", "Viber"][Math.floor(Math.random() * 7)];
-            const randomPanel = Math.random() > 0.5 ? "FOX SMS" : "Seven On Tel";
-
-            const simulatedHit = {
-              id: `sim_hit_${now}_${Math.floor(Math.random() * 10000)}`,
-              number: entry.number,
-              message: otpCode, // Code itself is shown in the full message
-              code: otpCode,
-              otp: otpCode,
-              service: randomService,
-              operator: entry.operator || "FOX SMS Route",
-              source: randomPanel,
-              isFoxSms: true,
-              time: now,
-            };
-
-            hitsToProcess.push(simulatedHit);
-          }
-        });
-      }
-
-      if (hitsToProcess.length > 0) {
-        processAndBroadcastIncomingHits(hitsToProcess);
-      }
-    } catch (err) {
-      console.warn("Error in simulateSmsForRentedNumbers:", err);
-    }
-  }
-
   setInterval(syncFromFoxSmsApi, 5000);
   setTimeout(syncFromFoxSmsApi, 500);
   setInterval(syncFromSevenOnTelApi, 10000);
   setTimeout(syncFromSevenOnTelApi, 1500);
-  setInterval(simulateSmsForRentedNumbers, 4000);
 
   // Global live stream GET endpoint
   app.get("/api/global-live-stream", (req, res) => {

@@ -53,22 +53,18 @@ try {
 }
 export const realtimeDb = rtdb;
 
-let auth: any;
+let auth: any = null;
 try {
-  auth = getAuth(firebaseApp);
-  try {
-    const isIframe = typeof window !== "undefined" && window.self !== window.top;
+  if (typeof window !== "undefined") {
+    auth = getAuth(firebaseApp);
+    const isIframe = window.self !== window.top;
     if (isIframe) {
-      // Force in-memory persistence inside sandboxed iframes to bypass third-party cookie/IndexedDB restrictions
       setPersistence(auth, inMemoryPersistence).catch(() => {});
     } else {
-      // Use local persistence in full window context
       setPersistence(auth, browserLocalPersistence).catch(() => {});
     }
-  } catch {
-    // ignore
   }
-} catch (e) {
+} catch {
   auth = null;
 }
 export const firebaseAuth = auth;

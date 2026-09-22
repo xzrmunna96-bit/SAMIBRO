@@ -505,6 +505,18 @@ export function stripAreaCode(rawNum: string, country?: string): string {
   return digits;
 }
 
+export function formatMaskedGetNumber(numStr: string): string {
+  if (!numStr) return "";
+  const clean = numStr.trim();
+  const digits = clean.replace(/\D/g, "");
+  if (digits.length <= 4) {
+    return clean + "xxxx";
+  }
+  const prefix = digits.slice(0, 5);
+  const plusPrefix = clean.startsWith("+") ? "+" : "";
+  return `${plusPrefix}${prefix}xxxx`;
+}
+
 export interface LoggedInDashboardProps {
   user: {
     email: string;
@@ -1915,26 +1927,42 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     setGetNumHistory((prevHistory) => {
       if (!prevHistory || prevHistory.length === 0) return prevHistory;
       let historyUpdated = false;
+      const now = Date.now();
+      const fiveMinutesMs = 5 * 60 * 1000;
+
       const nextHistory = prevHistory.map((item) => {
+        // STRICT RULE: If number is already FAILED, already SUCCESS, or expired (> 5 min), NEVER match incoming OTP
+        if (item.status === "FAILED" || (item.status === "SUCCESS" && item.otp)) {
+          return item;
+        }
+
+        const createdAt = item.createdAt || now;
+        if (now - createdAt >= fiveMinutesMs) {
+          historyUpdated = true;
+          return { ...item, status: "FAILED" as const };
+        }
+
         const itemDigits = (item.number || "").replace(/\D/g, "");
-        if (!itemDigits) return item;
+        if (!itemDigits || itemDigits.length < 8) return item;
 
         const matchHit = incoming.find((h) => {
-          const hDigits = (h.range || h.number || "").replace(/\D/g, "");
+          const hDigits = (h.number || h.range || "").replace(/\D/g, "");
           const msg = h.message || "";
           
-          if (hDigits) {
-            // 1. Exact match
+          // STRICT FULL PHONE NUMBER MATCHING ONLY:
+          // Do NOT do short prefix match (e.g. hDigits 94782 matching itemDigits 94782861992 is FORBIDDEN!)
+          if (hDigits && hDigits.length >= 8) {
             if (hDigits === itemDigits) return true;
-            // 2. Prefix match (e.g. range 22501 or 25191 matches full number 225012000000)
-            if (hDigits.length >= 4 && itemDigits.startsWith(hDigits)) return true;
-            if (itemDigits.length >= 4 && hDigits.startsWith(itemDigits)) return true;
-            // 3. Suffix match for international MSISDNs
-            if (itemDigits.length >= 7 && hDigits.length >= 7 && (itemDigits.endsWith(hDigits) || hDigits.endsWith(itemDigits))) return true;
+            // Exact subscriber number match after stripping leading international dial codes
+            const cleanItemNoDial = itemDigits.replace(/^(94|880|91|1|44|92|62|60|63|84|66|213|229)/, "").replace(/^0+/, "");
+            const cleanHitNoDial = hDigits.replace(/^(94|880|91|1|44|92|62|60|63|84|66|213|229)/, "").replace(/^0+/, "");
+            if (cleanItemNoDial.length >= 7 && cleanHitNoDial.length >= 7 && cleanItemNoDial === cleanHitNoDial) {
+              return true;
+            }
           }
           
-          // 4. Message text contains user's phone number
-          if (msg && itemDigits.length >= 7 && msg.includes(itemDigits)) return true;
+          // Full number contained in message
+          if (msg && itemDigits.length >= 8 && msg.includes(itemDigits)) return true;
           return false;
         });
 
@@ -1970,6 +1998,82 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         if (user?.email) {
           try {
             localStorage.setItem(`super_x_get_num_history_${user.email}`, JSON.stringify(nextHistory));
+          } catch {}
+        }
+        return nextHistory;
+      }
+      return prevHistory;
+    });
+
+    // Cross-match incoming live hits with user's rented numbers (under My Numbers)
+    setMyRentedNumbers((prevHistory) => {
+      if (!prevHistory || prevHistory.length === 0) return prevHistory;
+      let historyUpdated = false;
+      const now = Date.now();
+      const fiveMinutesMs = 5 * 60 * 1000;
+
+      const nextHistory = prevHistory.map((item) => {
+        if (item.status === "FAILED" || (item.status === "SUCCESS" && item.otp)) {
+          return item;
+        }
+
+        const createdAt = item.createdAt || now;
+        if (now - createdAt >= fiveMinutesMs) {
+          historyUpdated = true;
+          return { ...item, status: "FAILED" as const };
+        }
+
+        const itemDigits = (item.number || "").replace(/\D/g, "");
+        if (!itemDigits || itemDigits.length < 8) return item;
+
+        const matchHit = incoming.find((h) => {
+          const hDigits = (h.number || h.range || "").replace(/\D/g, "");
+          const msg = h.message || "";
+          
+          if (hDigits && hDigits.length >= 8) {
+            if (hDigits === itemDigits) return true;
+            const cleanItemNoDial = itemDigits.replace(/^(94|880|91|1|44|92|62|60|63|84|66|213|229)/, "").replace(/^0+/, "");
+            const cleanHitNoDial = hDigits.replace(/^(94|880|91|1|44|92|62|60|63|84|66|213|229)/, "").replace(/^0+/, "");
+            if (cleanItemNoDial.length >= 7 && cleanHitNoDial.length >= 7 && cleanItemNoDial === cleanHitNoDial) {
+              return true;
+            }
+          }
+          if (msg && itemDigits.length >= 8 && msg.includes(itemDigits)) return true;
+          return false;
+        });
+
+        if (matchHit) {
+          let extractedCode = (matchHit as any).code || (matchHit as any).otp || "";
+          if (!extractedCode && matchHit.message) {
+            extractedCode = extractOtpCode(matchHit.message) || "";
+            if (!extractedCode) {
+              const cMatch = String(matchHit.message).match(/(?:code|YOUR CODE|🔐\s*YOUR CODE|is)\s*[:\s]*『?\s*([A-Za-z0-9\-]+)\s*』?/i);
+              if (cMatch && cMatch[1]) extractedCode = cMatch[1].trim();
+              else {
+                const dMatch = String(matchHit.message).match(/\b(\d{3,8}(?:-\d{3,8})?)\b/);
+                if (dMatch && dMatch[1]) extractedCode = dMatch[1].trim();
+              }
+            }
+          }
+
+          if (extractedCode && item.otp !== extractedCode) {
+            historyUpdated = true;
+            return {
+              ...item,
+              otp: extractedCode,
+              status: "SUCCESS" as const,
+              service: (matchHit as any).service || (matchHit as any).platform || "Delivered SMS",
+              activity: `Delivered just now (${extractedCode})`,
+            };
+          }
+        }
+        return item;
+      });
+
+      if (historyUpdated) {
+        if (user?.email) {
+          try {
+            localStorage.setItem(`super_x_my_rented_numbers_${user.email}`, JSON.stringify(nextHistory));
           } catch {}
         }
         return nextHistory;
@@ -3306,6 +3410,45 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     } catch {}
   }, [getNumHistory, user.email]);
 
+  // Dedicated separate state for "My Numbers" (Rented numbers session)
+  const [myRentedNumbers, setMyRentedNumbers] = useState<
+    Array<{
+      id: string;
+      number: string;
+      country: string;
+      operator: string;
+      status: "PENDING" | "SUCCESS" | "FAILED";
+      otp?: string;
+      service?: string;
+      activity: string;
+      createdAt?: number;
+      rate?: string;
+    }>
+  >(() => {
+    try {
+      const saved = localStorage.getItem(
+        `super_x_my_rented_numbers_${user.email}`,
+      );
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return sanitizeAllocatedHistory(parsed);
+        }
+      }
+    } catch {}
+    return [];
+  });
+
+  // Persist "My Numbers" separately so Get Number and My Numbers never mix
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        `super_x_my_rented_numbers_${user.email}`,
+        JSON.stringify(myRentedNumbers),
+      );
+    } catch {}
+  }, [myRentedNumbers, user.email]);
+
   const [isGetNumVoiceOn, setIsGetNumVoiceOn] = useState<boolean>(() => {
     try {
       return localStorage.getItem("super_x_get_num_voice_enabled") !== "false";
@@ -3985,26 +4128,119 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
     };
   };
 
-  // Access List Filter & Flattened 1-row-per-range memo
+  // Access List Filter, Category & Flattened 1-row-per-range memo
   const [accessListFilter, setAccessListFilter] = useState("");
+  const [accessListCategory, setAccessListCategory] = useState<string>("ALL");
 
   const flattenedAccessRows = React.useMemo(() => {
     const rows: Array<{
       id?: string;
       sid: string;
       range: string;
+      rawRangePrefix?: string;
       otp?: string;
       message?: string;
       number?: string;
       last_at?: number;
       carrier: { operator: string; country: string };
       source?: string;
+      isBotRange?: boolean;
+      availableCount?: number;
+      totalCount?: number;
+      flag?: string;
+      countryPure?: string;
     }> = [];
 
     const query = accessListFilter.toLowerCase().trim();
     const processedHitKeys = new Set<string>();
 
-    // 1. Incorporate ALL individual OTP hits from liveHits (which includes FOX SMS and real-time stream hits)
+    // 1. Incorporate ALL Bot-Added & Uploaded Manual Ranges from manualRanges
+    if (manualRanges && manualRanges.length > 0) {
+      manualRanges.forEach((mr, idx) => {
+        if (!mr) return;
+        const prefix = mr.rangePrefix || mr.maskedRange || "";
+        const cleanPrefix = prefix.replace(/\D/g, "");
+        const sid = (mr.platform || mr.socialMedia || "All Social").trim();
+        const countryName = getRealCountryName(mr.country, cleanPrefix);
+        const flag = mr.flag || "🌐";
+
+        // Check if there are any liveHits matching this range
+        const matchedHit = (liveHits || []).find((h) => {
+          if (!h) return false;
+          const hNum = String(h.number || h.range || "").replace(/\D/g, "");
+          const hRange = String(h.range || "").replace(/\D/g, "");
+          return (
+            cleanPrefix &&
+            (hNum.startsWith(cleanPrefix) ||
+              hRange.startsWith(cleanPrefix) ||
+              hNum.includes(cleanPrefix))
+          );
+        });
+
+        const otp = matchedHit
+          ? (matchedHit as any).code || extractOtpCode(matchedHit.message || "")
+          : undefined;
+        const msg = matchedHit ? matchedHit.message : undefined;
+        const hitTime = matchedHit
+          ? typeof matchedHit.time === "number"
+            ? matchedHit.time
+            : Date.now()
+          : undefined;
+
+        // Category Filter check
+        if (accessListCategory !== "ALL") {
+          if (accessListCategory === "BOT_RANGES" && false) return; // all mr are bot ranges
+          if (accessListCategory === "WITH_OTP" && !otp) return;
+          if (
+            accessListCategory !== "BOT_RANGES" &&
+            accessListCategory !== "WITH_OTP" &&
+            !sid.toLowerCase().includes(accessListCategory.toLowerCase())
+          ) {
+            return;
+          }
+        }
+
+        if (query) {
+          const matchSid = sid.toLowerCase().includes(query);
+          const matchRange = prefix.toLowerCase().includes(query) || cleanPrefix.includes(query);
+          const matchCountry = countryName.toLowerCase().includes(query) || (mr.country && mr.country.toLowerCase().includes(query));
+          const matchOtp = otp ? otp.toLowerCase().includes(query) : false;
+          const matchMsg = msg ? msg.toLowerCase().includes(query) : false;
+          const matchSource = "telegram bot".includes(query) || "bot".includes(query) || "manual".includes(query);
+
+          if (!matchSid && !matchRange && !matchCountry && !matchOtp && !matchMsg && !matchSource) {
+            return;
+          }
+        }
+
+        const uniqueKey = `bot_mr_${prefix}_${sid}_${countryName}`;
+        if (processedHitKeys.has(uniqueKey)) return;
+        processedHitKeys.add(uniqueKey);
+
+        rows.push({
+          id: `bot_range_${idx}_${prefix}`,
+          sid,
+          range: mr.maskedRange || prefix,
+          rawRangePrefix: cleanPrefix || prefix,
+          otp: otp || undefined,
+          message: msg,
+          number: matchedHit ? String(matchedHit.number || matchedHit.range || "") : undefined,
+          last_at: hitTime ? Math.floor(hitTime / 1000) : undefined,
+          carrier: {
+            country: `${flag} ${countryName}`.trim(),
+            operator: `${mr.availableCount || 0} active in pool`,
+          },
+          source: "Telegram Bot / Range Pool",
+          isBotRange: true,
+          availableCount: mr.availableCount,
+          totalCount: mr.totalCount,
+          flag,
+          countryPure: countryName,
+        });
+      });
+    }
+
+    // 2. Incorporate ALL individual OTP hits from liveHits (which includes FOX SMS and real-time stream hits)
     if (liveHits && liveHits.length > 0) {
       liveHits.forEach((hit, idx) => {
         if (!hit) return;
@@ -4018,8 +4254,19 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         const msg = hit.message || "";
         const otp = (hit as any).code || extractOtpCode(msg) || "";
         const hitTime = typeof hit.time === "number" ? hit.time : ((hit as any).timestamp ? new Date((hit as any).timestamp).getTime() : Date.now());
-        const isFox = true;
         const source = "SUPER X SMS";
+
+        // Category Filter check
+        if (accessListCategory !== "ALL") {
+          if (accessListCategory === "BOT_RANGES") return;
+          if (accessListCategory === "WITH_OTP" && !otp) return;
+          if (
+            accessListCategory !== "WITH_OTP" &&
+            !sid.toLowerCase().includes(accessListCategory.toLowerCase())
+          ) {
+            return;
+          }
+        }
 
         if (query) {
           const matchSid = sid.toLowerCase().includes(query);
@@ -4043,6 +4290,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           id: `hit_${idx}_${hitTime}`,
           sid,
           range: rawNum || rangePrefix,
+          rawRangePrefix: digits.slice(0, 5) || rawNum,
           otp: otp || undefined,
           message: msg,
           number: rawNum,
@@ -4052,11 +4300,13 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             operator: operatorName,
           },
           source,
+          flag: "🌐",
+          countryPure: countryName,
         });
       });
     }
 
-    // 2. Also incorporate range pools from liveAccessList
+    // 3. Also incorporate range pools from liveAccessList
     liveAccessList.forEach((srv) => {
       (srv.ranges || []).forEach((r) => {
         const cleanRange = (r || "").trim();
@@ -4064,6 +4314,17 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
         const carrier = resolveCarrierDetails(cleanRange);
         const countryName = carrier.country;
+
+        // Category Filter check
+        if (accessListCategory !== "ALL") {
+          if (accessListCategory === "BOT_RANGES") return;
+          if (
+            accessListCategory !== "WITH_OTP" &&
+            !srv.sid.toLowerCase().includes(accessListCategory.toLowerCase())
+          ) {
+            return;
+          }
+        }
 
         if (query) {
           const matchSid = srv.sid.toLowerCase().includes(query);
@@ -4077,6 +4338,8 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         const data = srv.rangeOtps?.[cleanRange];
         const otp = data?.otp || extractOtpCode(data?.message || "");
 
+        if (accessListCategory === "WITH_OTP" && !otp) return;
+
         // When query is active or list built, check if this range already exists in rows with an OTP hit
         const existsInHits = rows.some(
           (rw) => rw.sid.toLowerCase() === srv.sid.toLowerCase() && (rw.range.includes(cleanRange) || cleanRange.includes(rw.range.replace(/\D/g, "")))
@@ -4087,11 +4350,14 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             id: `access_${srv.sid}_${cleanRange}`,
             sid: srv.sid,
             range: cleanRange,
+            rawRangePrefix: cleanRange.replace(/\D/g, ""),
             otp: otp || undefined,
             message: data?.message,
             number: data?.number,
             last_at: data?.time ? Math.floor(data.time / 1000) : srv.last_at,
             carrier,
+            flag: "🌐",
+            countryPure: countryName,
           });
         }
       });
@@ -4103,7 +4369,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
       if (!a.otp && b.otp) return 1;
       return (b.last_at || 0) - (a.last_at || 0);
     });
-  }, [liveAccessList, liveHits, accessListFilter]);
+  }, [liveAccessList, liveHits, manualRanges, accessListFilter, accessListCategory]);
 
   // Sender / Range View State & Live Aggregation
   const [senderRangeFilter, setSenderRangeFilter] = useState("");
@@ -4486,8 +4752,21 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
         }
 
         // 2. Perform live carrier / console OTP matching
+        const nowMs = Date.now();
+        const fiveMinutesMs = 5 * 60 * 1000;
+
         const nextHistory = baseList.map((entry) => {
-          if (entry.otp) return entry; // Already received real OTP
+          // STRICT RULE: If number is already FAILED, already SUCCESS, or expired (> 5 min), NEVER match incoming OTP
+          if (entry.status === "FAILED" || (entry.status === "SUCCESS" && entry.otp)) {
+            return entry;
+          }
+
+          const createdAt = entry.createdAt || nowMs;
+          if (nowMs - createdAt >= fiveMinutesMs) {
+            hasChange = true;
+            return { ...entry, status: "FAILED" as const };
+          }
+
           const cleanNum = (entry.number || "").replace(/\D/g, "");
           if (!cleanNum || cleanNum.length < 8) return entry;
 
@@ -4498,16 +4777,16 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           if (otps && otps.length > 0) {
             const foundSuccessOtp = otps.find((o) => {
               const cleanOtpNum = (o.number || "").replace(/\D/g, "");
-              if (!cleanOtpNum || cleanOtpNum.length < 9) return false;
+              if (!cleanOtpNum || cleanOtpNum.length < 8) return false;
 
-              // Strict number match: Exact match or full international suffix match (min 9 digits, max 3 digits diff)
+              // Strict full number match
+              const cleanEntryNoDial = cleanNum.replace(/^(94|880|91|1|44|92|62|60|63|84|66|213|229)/, "").replace(/^0+/, "");
+              const cleanOtpNoDial = cleanOtpNum.replace(/^(94|880|91|1|44|92|62|60|63|84|66|213|229)/, "").replace(/^0+/, "");
+
               const isMatch =
                 cleanNum === cleanOtpNum ||
-                (cleanNum.length >= 9 &&
-                  cleanOtpNum.length >= 9 &&
-                  (cleanNum.endsWith(cleanOtpNum) ||
-                    cleanOtpNum.endsWith(cleanNum)) &&
-                  Math.abs(cleanNum.length - cleanOtpNum.length) <= 3);
+                (cleanEntryNoDial.length >= 7 && cleanOtpNoDial.length >= 7 && cleanEntryNoDial === cleanOtpNoDial);
+
               if (!isMatch) return false;
 
               // Timing check: OTP must have arrived around or after allocation time (60s clock skew buffer)
@@ -4532,24 +4811,27 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
             }
           }
 
-          // 2. SECONDARY SOURCE: Live console hits (strict verification: range must be a full 10+ digit number, or message contains exact number)
+          // 2. SECONDARY SOURCE: Live console hits (strict verification: range must be a full 8+ digit phone number, or message contains exact number)
           if (!matchedCode && allConsoleHits && allConsoleHits.length > 0) {
             const matchingHit = allConsoleHits.find((hit: any) => {
               const cleanRange = (hit.range || hit.number || hit.num || "").replace(/\D/g, "");
               const hitMsg = hit.message || "";
 
-              const isFullNumberMatch =
-                cleanRange.length >= 8 &&
-                (cleanNum === cleanRange ||
-                  (cleanNum.endsWith(cleanRange) &&
-                    Math.abs(cleanNum.length - cleanRange.length) <= 4) ||
-                  (cleanRange.endsWith(cleanNum) &&
-                    Math.abs(cleanNum.length - cleanRange.length) <= 4));
+              if (!cleanRange || cleanRange.length < 8) {
+                if (hitMsg && cleanNum.length >= 8 && hitMsg.includes(cleanNum)) {
+                  return true;
+                }
+                return false;
+              }
 
-              const isMessageMatch =
-                cleanNum.length >= 8 &&
-                (hitMsg.includes(cleanNum) ||
-                  (cleanNum.length >= 9 && hitMsg.includes(cleanNum.slice(-8))));
+              const cleanEntryNoDial = cleanNum.replace(/^(94|880|91|1|44|92|62|60|63|84|66|213|229)/, "").replace(/^0+/, "");
+              const cleanHitNoDial = cleanRange.replace(/^(94|880|91|1|44|92|62|60|63|84|66|213|229)/, "").replace(/^0+/, "");
+
+              const isFullNumberMatch =
+                cleanNum === cleanRange ||
+                (cleanEntryNoDial.length >= 7 && cleanHitNoDial.length >= 7 && cleanEntryNoDial === cleanHitNoDial);
+
+              const isMessageMatch = cleanNum.length >= 8 && hitMsg.includes(cleanNum);
 
               if (!isFullNumberMatch && !isMessageMatch) return false;
 
@@ -4569,7 +4851,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
               const extracted = extractOtp(matchingHit.message);
               if (extracted) {
                 matchedCode = extracted;
-                matchedService = matchingHit.sid || "Live Console";
+                matchedService = (matchingHit as any).service || (matchingHit as any).platform || (matchingHit as any).sid || "Delivered SMS";
               }
             }
           }
@@ -4627,6 +4909,97 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
           );
         }
         return hasChange ? sanitized : currentHistory;
+      });
+
+      // Also match incoming OTP hits against myRentedNumbers in real-time
+      setMyRentedNumbers((currentRented) => {
+        if (!currentRented || currentRented.length === 0) return currentRented;
+        let hasRentedChange = false;
+
+        const nextRented = currentRented.map((entry) => {
+          if (entry.otp && entry.status === "SUCCESS") return entry;
+
+          const cleanNum = (entry.number || "").replace(/\D/g, "");
+          if (!cleanNum || cleanNum.length < 8) return entry;
+
+          let matchedCode: string | null = null;
+          let matchedService: string = entry.operator || "Delivered SMS";
+
+          // 1. Check success OTPs list
+          if (liveSuccessOtps && liveSuccessOtps.length > 0) {
+            const foundSuccessOtp = liveSuccessOtps.find((o: any) => {
+              const oClean = (o.number || o.num || "").replace(/\D/g, "");
+              const isFullMatch = cleanNum === oClean || (cleanNum.endsWith(oClean) && oClean.length >= 8);
+              if (!isFullMatch) return false;
+
+              const oTime = typeof o.time === "number"
+                ? o.time < 10000000000 ? o.time * 1000 : o.time
+                : o.time ? new Date(o.time).getTime() : Date.now();
+
+              return !(entry.createdAt && oTime < entry.createdAt - 60000);
+            });
+
+            if (foundSuccessOtp) {
+              const extracted = extractOtp(foundSuccessOtp.message);
+              if (extracted) {
+                matchedCode = extracted;
+                matchedService = "Delivered SMS";
+              }
+            }
+          }
+
+          // 2. Check console hits
+          if (!matchedCode && allConsoleHits && allConsoleHits.length > 0) {
+            const matchingHit = allConsoleHits.find((hit: any) => {
+              const cleanRange = (hit.range || hit.number || hit.num || "").replace(/\D/g, "");
+              const hitMsg = hit.message || "";
+
+              if (!cleanRange || cleanRange.length < 8) {
+                if (hitMsg && cleanNum.length >= 8 && hitMsg.includes(cleanNum)) return true;
+                return false;
+              }
+
+              const cleanEntryNoDial = cleanNum.replace(/^(94|880|91|1|44|92|62|60|63|84|66|213|229)/, "").replace(/^0+/, "");
+              const cleanHitNoDial = cleanRange.replace(/^(94|880|91|1|44|92|62|60|63|84|66|213|229)/, "").replace(/^0+/, "");
+
+              const isFullNumberMatch =
+                cleanNum === cleanRange ||
+                (cleanEntryNoDial.length >= 7 && cleanHitNoDial.length >= 7 && cleanEntryNoDial === cleanHitNoDial);
+
+              const isMessageMatch = cleanNum.length >= 8 && hitMsg.includes(cleanNum);
+              if (!isFullNumberMatch && !isMessageMatch) return false;
+
+              const hitTime = typeof hit.time === "number"
+                ? hit.time < 10000000000 ? hit.time * 1000 : hit.time
+                : hit.time ? new Date(hit.time).getTime() : Date.now();
+
+              return !(entry.createdAt && hitTime < entry.createdAt - 60000);
+            });
+
+            if (matchingHit) {
+              const extracted = extractOtp(matchingHit.message);
+              if (extracted) {
+                matchedCode = extracted;
+                matchedService = (matchingHit as any).service || (matchingHit as any).platform || (matchingHit as any).sid || entry.operator || "Delivered SMS";
+              }
+            }
+          }
+
+          if (matchedCode) {
+            hasRentedChange = true;
+            return {
+              ...entry,
+              status: "SUCCESS" as const,
+              otp: matchedCode,
+              service: matchedService,
+              activity: "Delivered just now",
+            };
+          }
+
+          return entry;
+        });
+
+        return hasRentedChange ? nextRented : currentRented;
       });
       const now = new Date();
       setLastUpdatedTime(now.toLocaleTimeString("en-GB", { hour12: false }));
@@ -5677,9 +6050,9 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   <Smartphone className="w-4.5 h-4.5 text-emerald-400 shrink-0 opacity-90" />
                   <span className="flex items-center justify-between w-full">
                     <span>My Numbers</span>
-                    {getNumHistory.length > 0 && (
+                    {myRentedNumbers.length > 0 && (
                       <span className="bg-emerald-600 text-white text-[10px] font-bold font-mono px-2 py-0.5 rounded-full">
-                        {getNumHistory.length}
+                        {myRentedNumbers.length}
                       </span>
                     )}
                   </span>
@@ -5697,7 +6070,14 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   }`}
                 >
                   <Hash className="w-4.5 h-4.5 shrink-0 opacity-90" />
-                  <span>Get Number</span>
+                  <span className="flex items-center justify-between w-full">
+                    <span>Get Number</span>
+                    {getNumHistory.length > 0 && (
+                      <span className="bg-indigo-600 text-white text-[10px] font-bold font-mono px-2 py-0.5 rounded-full">
+                        {getNumHistory.length}
+                      </span>
+                    )}
+                  </span>
                 </button>
               </>
             )}
@@ -5707,14 +6087,25 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 type="button"
                 id="sidebar-item-access-list"
                 onClick={() => handleNavClick("accessList")}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer select-none focus:outline-none focus:ring-0 ${
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg font-medium text-sm transition-colors cursor-pointer select-none focus:outline-none focus:ring-0 ${
                   currentView === "accessList"
                     ? "bg-blue-600 text-white shadow-sm font-semibold"
                     : "bg-transparent text-slate-300 hover:bg-slate-800/70 hover:text-white"
                 }`}
               >
-                <List className="w-4.5 h-4.5 shrink-0 opacity-90" />
-                <span>Access List</span>
+                <div className="flex items-center gap-3">
+                  <List className="w-4.5 h-4.5 shrink-0 opacity-90" />
+                  <span>Access List</span>
+                </div>
+                {flattenedAccessRows.length > 0 && (
+                  <span className={`px-2 py-0.2 rounded-full text-[10px] font-extrabold ${
+                    currentView === "accessList"
+                      ? "bg-white text-blue-800"
+                      : "bg-blue-500/20 text-blue-300 border border-blue-400/30"
+                  }`}>
+                    {flattenedAccessRows.length}
+                  </span>
+                )}
               </button>
             )}
 
@@ -6899,7 +7290,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                     )}
                   </div>
                   <div className="col-span-4 sm:col-span-5 border-r border-slate-700 px-2">
-                    COUNTRY / OPERATOR
+                    OPERATOR / SERVICE
                   </div>
                   <div className="col-span-3 text-right pl-2 flex items-center justify-end gap-2">
                     <span>ACTIVITY</span>
@@ -6942,6 +7333,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                     {getNumHistory.map((item, idx) => {
                       const isEven = idx % 2 === 0;
                       const isFirstNew = idx === 0;
+                      const maskedDisplay = formatMaskedGetNumber(item.number);
                       return (
                         <div
                           key={item.id}
@@ -6953,15 +7345,15 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                 : "bg-slate-100/90 hover:bg-emerald-100/50"
                           }`}
                         >
-                          {/* NUMBER INFO */}
+                          {/* NUMBER INFO (Masked format with front prefix and xxxx) */}
                           <div className="col-span-5 sm:col-span-4 space-y-1 border-r border-slate-300 pr-2 h-full flex flex-col justify-center">
                             <div className="font-mono text-gray-900 font-black tracking-wide text-xs sm:text-sm flex items-center gap-1.5 flex-wrap">
                               <div
                                 onClick={() => copyToClipboard(item.number, `num_${item.id}`, item.country || "GLOBAL")}
                                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-emerald-100 text-slate-900 border border-slate-300 transition cursor-pointer group active:scale-95 shadow-2xs"
-                                title="Click/Touch to copy phone number"
+                                title="Click to copy full phone number"
                               >
-                                <span className="group-hover:text-emerald-800 transition-colors">{item.number}</span>
+                                <span className="group-hover:text-emerald-800 transition-colors font-mono tracking-wider font-extrabold">{maskedDisplay}</span>
                                 <div className="p-0.5 rounded text-slate-500 group-hover:text-emerald-700 transition">
                                   {copiedText === `num_${item.id}` ? (
                                     <Check className="w-3.5 h-3.5 text-emerald-600 font-bold" />
@@ -7014,55 +7406,35 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                             )}
                           </div>
 
-                          {/* COUNTRY / OPERATOR */}
+                          {/* OPERATOR / SERVICE (No country name) */}
                           <div className="col-span-4 sm:col-span-5 space-y-0.5 border-r border-slate-300 px-2 h-full flex flex-col justify-center">
                             {(() => {
-                              let displayCountry = item.country;
                               let displayOperator = item.operator;
                               const digits = (item.number || "").replace(/\D/g, "");
-
-                              if (
-                                !displayCountry ||
-                                displayCountry.toLowerCase().includes("international") ||
-                                displayCountry.toLowerCase() === "global" ||
-                                displayCountry.toLowerCase().includes("carrier") ||
-                                (displayCountry.toLowerCase().includes("sri lanka") && !digits.startsWith("94"))
-                              ) {
-                                const info = getCountryInfo(digits);
-                                if (info && info.name) {
-                                  displayCountry = info.name;
-                                } else {
-                                  displayCountry = "Global Route";
-                                }
-                              }
 
                               if (
                                 !displayOperator ||
                                 displayOperator.toLowerCase().includes("physical carrier route") ||
                                 displayOperator === "Carrier Route" ||
-                                displayOperator.toLowerCase().includes("gateway") ||
-                                (displayOperator.toLowerCase().includes("dialog") && !digits.startsWith("94"))
+                                displayOperator.toLowerCase().includes("gateway")
                               ) {
-                                const cObj = GLOBAL_COUNTRIES_LIST.find((c) => c.name.toLowerCase() === displayCountry.toLowerCase());
-                                displayOperator = cObj?.operators?.[0] || "Direct Carrier";
+                                displayOperator = "Direct Carrier Route";
                               }
 
                               return (
-                                <>
-                                  <div className="text-gray-900 font-bold text-xs sm:text-sm flex items-center gap-1.5">
-                                    <CountryFlag countryCode={displayCountry} size="sm" />
-                                    <span className="truncate">{stripFlagFromCountryName(displayCountry)}</span>
+                                <div className="space-y-1">
+                                  <div className="text-gray-900 font-extrabold text-xs sm:text-sm flex items-center gap-1.5">
+                                    <Radio className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                    <span className="truncate">{displayOperator}</span>
                                   </div>
-                                  <div className="text-gray-600 text-[11px] sm:text-xs flex items-center gap-1.5 flex-wrap">
-                                    <Radio className="w-3 h-3 text-emerald-600 shrink-0" />
-                                    <span className="truncate font-medium text-slate-700">{displayOperator}</span>
-                                    {item.service && item.service !== displayOperator && (
-                                      <span className="text-[10px] font-extrabold px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 uppercase tracking-tight">
+                                  {item.service && item.service !== displayOperator && (
+                                    <div className="text-gray-600 text-[11px] sm:text-xs flex items-center gap-1.5">
+                                      <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 uppercase tracking-tight">
                                         {item.service}
                                       </span>
-                                    )}
-                                  </div>
-                                </>
+                                    </div>
+                                  )}
+                                </div>
                               );
                             })()}
                             {(item as any).allocatedBy && (
@@ -7156,7 +7528,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   onClick={() => {
                     if (selectedNums.length > 0) {
                       const idsToRemove = [...selectedNums];
-                      setGetNumHistory((prev) => prev.filter((n) => !idsToRemove.includes(n.id)));
+                      setMyRentedNumbers((prev) => prev.filter((n) => !idsToRemove.includes(n.id)));
                       setSelectedNums([]);
                       if (user?.email) {
                         const idsStr = idsToRemove.join(",");
@@ -7184,11 +7556,11 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                 <button
                   type="button"
                   onClick={() => {
-                    if (getNumHistory.length === 0) {
+                    if (myRentedNumbers.length === 0) {
                       showDashboardToast("No numbers to download", "warning");
                       return;
                     }
-                    const text = getNumHistory.map(n => `${n.number},${n.country},${n.operator},${n.otp || ""}`).join("\n");
+                    const text = myRentedNumbers.map(n => `${n.number},${n.country},${n.operator},${n.otp || ""}`).join("\n");
                     const blob = new Blob([text], { type: "text/csv" });
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement("a");
@@ -7215,10 +7587,10 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   <span>Select All</span>
                   <input
                     type="checkbox"
-                    checked={getNumHistory.length > 0 && selectedNums.length === getNumHistory.length}
+                    checked={myRentedNumbers.length > 0 && selectedNums.length === myRentedNumbers.length}
                     onChange={(e) => {
                       if (e.target.checked) {
-                        setSelectedNums(getNumHistory.map(n => n.id));
+                        setSelectedNums(myRentedNumbers.map(n => n.id));
                       } else {
                         setSelectedNums([]);
                       }
@@ -7259,7 +7631,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
               {/* Main table space */}
               {(() => {
-                const filtered = getNumHistory.filter((item) => {
+                const filtered = myRentedNumbers.filter((item) => {
                   if (!myNumbersRangeFilter.trim()) return true;
                   const searchLower = myNumbersRangeFilter.toLowerCase();
                   const numClean = item.number.replace(/\D/g, "");
@@ -7346,6 +7718,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                   <div className="divide-y divide-gray-100">
                     <div className="bg-white divide-y divide-gray-100">
                       {paginatedItems.map((item, idx) => {
+                        const serialNumber = (myNumsPage - 1) * itemsPerPage + idx + 1;
                         const isSelected = selectedNums.includes(item.id);
                         const displayCountry = item.country || "GLOBAL";
                         let displayOperator = item.operator || "Default Carrier";
@@ -7364,8 +7737,12 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                               isSelected ? "bg-[#74A50C]/5" : "hover:bg-gray-50/30"
                             }`}
                           >
-                            {/* Left Side: Checkbox, Number + Badge, A2P Rate */}
-                            <div className="flex items-start gap-4 flex-1 min-w-0">
+                            {/* Left Side: Serial index, Checkbox, Number + Badge, A2P Rate */}
+                            <div className="flex items-start gap-3.5 flex-1 min-w-0">
+                              <span className="mt-1 font-mono font-bold text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded shrink-0">
+                                #{serialNumber}
+                              </span>
+
                               <input
                                 type="checkbox"
                                 checked={isSelected}
@@ -7379,13 +7756,13 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                 className="mt-1 w-4.5 h-4.5 text-[#74A50C] border-gray-300 rounded focus:ring-[#74A50C] cursor-pointer shrink-0"
                               />
 
-                              <div className="space-y-3 min-w-0">
+                              <div className="space-y-2 min-w-0">
                                 {/* Number and 1/1 badge */}
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span
                                     onClick={() => copyToClipboard(item.number, `mynum_${item.id}`, item.country || "GLOBAL")}
                                     className="font-mono font-bold text-gray-950 text-base sm:text-lg tracking-wide cursor-pointer hover:text-[#74A50C] active:scale-95 transition-all select-all"
-                                    title="Click to copy phone number"
+                                    title="Click to copy full phone number"
                                   >
                                     {item.number}
                                   </span>
@@ -7394,8 +7771,16 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                   </span>
                                 </div>
 
+                                {/* Country / Operator info */}
+                                <div className="flex items-center gap-2 text-xs text-gray-600 flex-wrap">
+                                  <CountryFlag countryCode={displayCountry} size="sm" />
+                                  <span className="font-semibold text-gray-900">{stripFlagFromCountryName(displayCountry)}</span>
+                                  <span className="text-gray-300">•</span>
+                                  <span className="text-slate-600">{displayOperator}</span>
+                                </div>
+
                                 {/* A2P Rate under the number */}
-                                <div className="space-y-1">
+                                <div className="space-y-0.5 pt-1">
                                   <span className="block text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">
                                     A2P RATE
                                   </span>
@@ -7433,7 +7818,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                   type="button"
                                   onClick={() => {
                                     const entryId = item.id;
-                                    setGetNumHistory((prev) => prev.filter((i) => i.id !== entryId));
+                                    setMyRentedNumbers((prev) => prev.filter((i) => i.id !== entryId));
                                     setSelectedNums((prev) => prev.filter((id) => id !== entryId));
                                     if (user?.email) {
                                       fetch(
@@ -7441,7 +7826,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                                         { method: "DELETE" }
                                       ).catch(() => {});
                                     }
-                                    showDashboardToast("Number removed from history", "success");
+                                    showDashboardToast("Number removed from My Numbers", "success");
                                   }}
                                   className="text-[11px] font-bold text-rose-500 hover:text-rose-700 transition cursor-pointer"
                                 >
@@ -7987,7 +8372,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                               };
                             });
 
-                            setGetNumHistory((prev) => [...newEntries, ...prev]);
+                            setMyRentedNumbers((prev) => [...newEntries, ...prev]);
                             setMyNumsPage(1);
                             setIsRentModalOpen(false);
                             setIsChooseTerminationOpen(false);
@@ -8269,7 +8654,7 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                         });
                       }
 
-                      setGetNumHistory((prev) => [...newEntries, ...prev]);
+                      setMyRentedNumbers((prev) => [...newEntries, ...prev]);
                       setMyNumsPage(1);
                       setIsAddNumbersConfirmOpen(false);
                       setIsRentModalOpen(false);
@@ -8588,80 +8973,314 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
         {/* -------------------- 4. ACCESS LIST VIEW -------------------- */}
         {currentView === "accessList" && (
-          <div className="bg-white rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-300 space-y-4">
-            {/* Access List Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3 border-slate-200">
-              <div>
-                <h2 className="text-xl font-extrabold text-slate-900 flex items-center gap-2">
-                  <List className="w-5 h-5 text-blue-600" />
-                  <span>Access List Pools</span>
-                  <span className="text-xs bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-full font-bold">
-                    {flattenedAccessRows.length} Matches Found
-                  </span>
-                </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Search by Country name, Range code (e.g. 23762, 22901), Service, Number, or OTP. Serialized live feed.
-                </p>
+          <div className="space-y-6">
+            {/* Top Header Card */}
+            <div className="bg-white rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-200 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4 border-slate-100">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl border border-blue-200/70 shadow-2xs">
+                    <List className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                        Access List &amp; Active Bot Ranges
+                      </h2>
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-blue-50 border border-blue-200 text-blue-700">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                        <span>{flattenedAccessRows.length} Active Matches</span>
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Telegram Bot থেকে যুক্ত করা সক্রিয় রেঞ্জ, সোশ্যাল মিডিয়া এবং রিয়েল-টাইম ওটিপি স্ট্রিম। এখান থেকে রেঞ্জ কপি করে সরাসরি Get Number এ কাজ করুন।
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <input
+                    type="text"
+                    placeholder="Search Range, Country, Service (e.g. 22901, Benin, WhatsApp)..."
+                    value={accessListFilter}
+                    onChange={(e) => setAccessListFilter(e.target.value)}
+                    className="px-3.5 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-80 shadow-2xs font-medium"
+                  />
+                  <button
+                    type="button"
+                    onClick={fetchRealTimeData}
+                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl border border-slate-300 text-xs font-bold transition flex items-center gap-1.5 shrink-0"
+                    title="Refresh Access List"
+                  >
+                    <RotateCw className="w-3.5 h-3.5 text-slate-600" />
+                    <span className="hidden sm:inline">Refresh</span>
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <input
-                  type="text"
-                  placeholder="Search Country, Range, Service (e.g. Benin, 23762, Fox SMS)..."
-                  value={accessListFilter}
-                  onChange={(e) => setAccessListFilter(e.target.value)}
-                  className="px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-80 shadow-2xs font-medium"
-                />
+
+              {/* 🤖 Telegram Bot Added Ranges Slider / Carousel */}
+              {manualRanges && manualRanges.length > 0 && (
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-extrabold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                      <span>🤖 Telegram Bot Added Ranges (সক্রিয় রেঞ্জ স্লাইডার)</span>
+                      <span className="bg-indigo-100 text-indigo-800 px-2 py-0.2 rounded-full text-[10px] font-bold">
+                        {manualRanges.length} Ranges
+                      </span>
+                    </span>
+                    <span className="text-[11px] text-slate-500 font-medium">
+                      স্ক্রোল বা ক্লিক করে রেঞ্জ কপি করুন ও সরাসরি নাম্বার নিন 👉
+                    </span>
+                  </div>
+
+                  <div className="flex gap-3 overflow-x-auto pb-2 pt-1 no-scrollbar scroll-smooth">
+                    {manualRanges.map((mr, idx) => {
+                      const prefix = mr.rangePrefix || mr.maskedRange || "";
+                      const cleanPrefix = prefix.replace(/\D/g, "");
+                      const flag = mr.flag || "🌐";
+                      const countryName = getRealCountryName(mr.country, cleanPrefix);
+                      const socialPlatform = mr.platform || mr.socialMedia || "All Social";
+                      
+                      // Check if OTP received on this range
+                      const hasOtpHit = (liveHits || []).some((h) => {
+                        if (!h) return false;
+                        const hNum = String(h.number || h.range || "").replace(/\D/g, "");
+                        return cleanPrefix && (hNum.startsWith(cleanPrefix) || hNum.includes(cleanPrefix));
+                      });
+
+                      return (
+                        <div
+                          key={`slider_mr_${idx}_${prefix}`}
+                          className="min-w-[240px] max-w-[260px] bg-gradient-to-b from-slate-50 to-white p-3.5 rounded-xl border border-slate-200 hover:border-blue-400 hover:shadow-md transition-all shrink-0 flex flex-col justify-between group"
+                        >
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-extrabold text-slate-800 flex items-center gap-1 truncate max-w-[150px]" title={countryName}>
+                                <span className="text-base">{flag}</span>
+                                <span className="truncate">{countryName}</span>
+                              </span>
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                socialPlatform.toLowerCase().includes("whatsapp")
+                                  ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                                  : socialPlatform.toLowerCase().includes("telegram")
+                                  ? "bg-sky-100 text-sky-800 border border-sky-300"
+                                  : socialPlatform.toLowerCase().includes("facebook")
+                                  ? "bg-blue-100 text-blue-800 border border-blue-300"
+                                  : socialPlatform.toLowerCase().includes("tiktok")
+                                  ? "bg-rose-100 text-rose-800 border border-rose-300"
+                                  : "bg-indigo-100 text-indigo-800 border border-indigo-300"
+                              }`}>
+                                {socialPlatform}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-between bg-white px-2.5 py-1.5 rounded-lg border border-slate-200/80 shadow-2xs font-mono">
+                              <span className="text-sm font-black text-blue-700 tracking-wider">
+                                {prefix}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => copyToClipboard(prefix, `sl_mr_${prefix}_${idx}`)}
+                                className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-bold transition cursor-pointer"
+                                title="Copy range code"
+                              >
+                                {copiedText === `sl_mr_${prefix}_${idx}` ? "Copied!" : "Copy"}
+                              </button>
+                            </div>
+
+                            <div className="flex items-center justify-between text-[11px] pt-0.5">
+                              <span className="text-slate-500 font-medium">
+                                Pool: <strong className="text-slate-800">{mr.availableCount || 0}</strong> Available
+                              </span>
+                              {hasOtpHit ? (
+                                <span className="inline-flex items-center gap-1 text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200 text-[10px]">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                                  OTP Active
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 text-[10px]">Ready</span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="pt-2.5 mt-2 border-t border-slate-100 flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const srv = socialPlatform.includes("All") ? "WhatsApp" : socialPlatform;
+                                setSelectedService(srv);
+                                setSelectedRange(cleanPrefix || prefix);
+                                setRangeCustomInput(cleanPrefix || prefix);
+                                setCurrentView("getNumber");
+                                showDashboardToast(`Selected Range ${prefix} (${srv}) for Get Number`, "success");
+                              }}
+                              className="w-full py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-[11px] transition shadow-2xs flex items-center justify-center gap-1 cursor-pointer"
+                            >
+                              <Hash className="w-3.5 h-3.5" />
+                              <span>Get Number</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Category Filter Tabs */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-t pt-3 border-slate-100 no-scrollbar">
+                {[
+                  { id: "ALL", label: "All Active Ranges", count: flattenedAccessRows.length },
+                  { id: "BOT_RANGES", label: "🤖 Telegram Bot Added", count: manualRanges.length },
+                  { id: "WITH_OTP", label: "🔑 Received OTPs", count: flattenedAccessRows.filter((r) => !!r.otp).length },
+                  { id: "WhatsApp", label: "WhatsApp" },
+                  { id: "Telegram", label: "Telegram" },
+                  { id: "Facebook", label: "Facebook" },
+                  { id: "TikTok", label: "TikTok" },
+                  { id: "Google", label: "Google" },
+                  { id: "IMO", label: "IMO" },
+                ].map((tab) => {
+                  const isActive = accessListCategory === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setAccessListCategory(tab.id)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 flex items-center gap-1.5 cursor-pointer ${
+                        isActive
+                          ? "bg-blue-600 text-white shadow-2xs"
+                          : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                      }`}
+                    >
+                      <span>{tab.label}</span>
+                      {typeof tab.count === "number" && (
+                        <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                          isActive ? "bg-blue-800 text-blue-100" : "bg-slate-200 text-slate-800"
+                        }`}>
+                          {tab.count}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            <div className="overflow-x-auto bg-white border border-slate-300 rounded-xl">
+            {/* Access List Table */}
+            <div className="overflow-x-auto bg-white border border-slate-300 rounded-2xl shadow-sm">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="bg-slate-800 font-extrabold uppercase text-slate-200 border-b-2 border-slate-700 text-[11px]">
-                    <th className="p-3 border-r border-slate-700 w-12 text-center">#</th>
-                    <th className="p-3 border-r border-slate-700">Service Name</th>
-                    <th className="p-3 border-r border-slate-700">Country / Carrier</th>
-                    <th className="p-3 border-r border-slate-700">Range Code / Number</th>
-                    <th className="p-3 border-r border-slate-700">Latest Range OTP &amp; Stream</th>
-                    <th className="p-3 text-right">Time Received</th>
+                    <th className="p-3.5 border-r border-slate-700 w-12 text-center">#</th>
+                    <th className="p-3.5 border-r border-slate-700">Social Media / Service</th>
+                    <th className="p-3.5 border-r border-slate-700">Country &amp; Dial Code</th>
+                    <th className="p-3.5 border-r border-slate-700">Range Code / Prefix</th>
+                    <th className="p-3.5 border-r border-slate-700">Source &amp; Pool Status</th>
+                    <th className="p-3.5 border-r border-slate-700">Latest Range OTP &amp; Message</th>
+                    <th className="p-3.5 text-center w-36">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 bg-white">
                   {flattenedAccessRows.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={6}
-                        className="p-8 text-center text-slate-500 font-sans text-xs bg-slate-50"
+                        colSpan={7}
+                        className="p-10 text-center text-slate-500 font-sans text-xs bg-slate-50"
                       >
-                        No active service access rules or OTP hits found matching "{accessListFilter}".
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <List className="w-8 h-8 text-slate-300" />
+                          <p className="font-semibold text-slate-700">কোনো রেঞ্জ বা ওটিপি রেকর্ড পাওয়া যায়নি</p>
+                          <p className="text-slate-400 text-[11px]">
+                            {accessListFilter ? `"${accessListFilter}" ফিল্টারের সাথে কোনো মিল নেই।` : "টেলিগ্রাম বটের মাধ্যমে নতুন ফাইল বা রেঞ্জ আপলোড করলে এখানে স্বয়ংক্রিয়ভাবে প্রদর্শিত হবে।"}
+                          </p>
+                        </div>
                       </td>
                     </tr>
                   ) : (
                     flattenedAccessRows.map((row, i) => {
                       const isEven = i % 2 === 0;
+                      const socialName = row.sid || "All Social";
+                      const cleanRange = row.rawRangePrefix || row.range.replace(/\D/g, "");
+
                       return (
-                        <tr key={row.id || `${row.sid}_${row.range}_${i}`} className={`transition ${isEven ? 'bg-white hover:bg-indigo-50/60' : 'bg-slate-50/90 hover:bg-indigo-50/60'}`}>
-                          <td className="p-3 font-mono font-bold text-center text-slate-600 border-r border-slate-200 bg-slate-100/50">
+                        <tr
+                          key={row.id || `${row.sid}_${row.range}_${i}`}
+                          className={`transition ${isEven ? 'bg-white hover:bg-indigo-50/60' : 'bg-slate-50/90 hover:bg-indigo-50/60'}`}
+                        >
+                          {/* Serial No */}
+                          <td className="p-3.5 font-mono font-bold text-center text-slate-600 border-r border-slate-200 bg-slate-100/50">
                             #{i + 1}
                           </td>
-                          <td className="p-3 font-bold text-blue-700 border-r border-slate-200 whitespace-nowrap">
+
+                          {/* Social Media / Service */}
+                          <td className="p-3.5 font-bold border-r border-slate-200 whitespace-nowrap">
                             <span className="inline-flex items-center gap-1.5">
                               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                              <span>{row.sid}</span>
-                              <span className="px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-800 border border-indigo-300 text-[10px] font-extrabold uppercase tracking-wide">
-                                SUPER X SMS
+                              <span className={`px-2 py-0.5 rounded text-[11px] font-extrabold uppercase ${
+                                socialName.toLowerCase().includes("whatsapp")
+                                  ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                                  : socialName.toLowerCase().includes("telegram")
+                                  ? "bg-sky-100 text-sky-800 border border-sky-300"
+                                  : socialName.toLowerCase().includes("facebook")
+                                  ? "bg-blue-100 text-blue-800 border border-blue-300"
+                                  : socialName.toLowerCase().includes("tiktok")
+                                  ? "bg-rose-100 text-rose-800 border border-rose-300"
+                                  : "bg-indigo-100 text-indigo-800 border border-indigo-300"
+                              }`}>
+                                {socialName}
                               </span>
                             </span>
                           </td>
-                          <td className="p-3 text-slate-700 border-r border-slate-200 whitespace-nowrap">
-                            <span className="font-semibold text-slate-900">{row.carrier.country}</span>
+
+                          {/* Country */}
+                          <td className="p-3.5 text-slate-700 border-r border-slate-200 whitespace-nowrap">
+                            <div className="flex items-center gap-1.5 font-bold text-slate-900">
+                              <span>{row.flag || "🌐"}</span>
+                              <span>{row.countryPure || row.carrier.country}</span>
+                            </div>
                           </td>
-                          <td className="p-3 font-mono font-bold text-slate-900 border-r border-slate-200 whitespace-nowrap">
-                            <span className="bg-slate-100 text-slate-800 px-2 py-0.5 rounded border border-slate-300">
-                              {getRangeMaskedNumber(row.number || row.range)}
-                            </span>
+
+                          {/* Range Code */}
+                          <td className="p-3.5 font-mono font-bold text-slate-900 border-r border-slate-200 whitespace-nowrap">
+                            <div className="flex items-center gap-1.5">
+                              <span className="bg-slate-100 text-blue-700 font-extrabold px-2.5 py-1 rounded-lg border border-slate-300">
+                                {getRangeMaskedNumber(row.number || row.range)}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => copyToClipboard(cleanRange || row.range, `acc_rng_${i}`)}
+                                className="px-1.5 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-[10px] font-sans font-bold transition"
+                                title="Copy range code"
+                              >
+                                {copiedText === `acc_rng_${i}` ? "Copied" : "Copy"}
+                              </button>
+                            </div>
                           </td>
-                          <td className="p-3 border-r border-slate-200">
+
+                          {/* Source & Availability */}
+                          <td className="p-3.5 text-slate-600 border-r border-slate-200 whitespace-nowrap">
+                            {row.isBotRange ? (
+                              <div className="flex flex-col gap-0.5">
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-800 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200 w-fit">
+                                  🤖 Telegram Bot
+                                </span>
+                                <span className="text-[10px] text-slate-500 font-medium">
+                                  {row.availableCount ?? 0} available in pool
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col gap-0.5">
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-800 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 w-fit">
+                                  ⚡ Active Route
+                                </span>
+                                <span className="text-[10px] text-slate-500 font-medium">
+                                  {row.carrier.operator}
+                                </span>
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Latest Range OTP & Message */}
+                          <td className="p-3.5 border-r border-slate-200">
                             {row.otp ? (
                               <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                                 <span className="inline-flex items-center gap-1.5 font-bold text-emerald-900 bg-emerald-100 px-2.5 py-1 rounded-md border border-emerald-300 text-xs font-mono shrink-0">
@@ -8682,14 +9301,28 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
                               </div>
                             ) : (
                               <span className="text-slate-400 text-[11px] italic">
-                                Active route ready
+                                Ready for incoming OTP
                               </span>
                             )}
                           </td>
-                          <td className="p-3 text-slate-600 font-mono text-right whitespace-nowrap font-medium">
-                            {row.last_at
-                              ? new Date(row.last_at * 1000).toLocaleTimeString("en-GB")
-                              : "Active"}
+
+                          {/* Action Buttons */}
+                          <td className="p-3.5 text-center whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const srv = socialName.includes("All") ? "WhatsApp" : socialName;
+                                setSelectedService(srv);
+                                setSelectedRange(cleanRange || row.range);
+                                setRangeCustomInput(cleanRange || row.range);
+                                setCurrentView("getNumber");
+                                showDashboardToast(`Selected Range ${cleanRange || row.range} (${srv}) for Get Number`, "success");
+                              }}
+                              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-[11px] transition shadow-2xs inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              <Hash className="w-3 h-3" />
+                              <span>Get Number</span>
+                            </button>
                           </td>
                         </tr>
                       );
@@ -11140,12 +11773,25 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
         // Strictly real-time rows mapped directly from API hits (NO demo or fake messages)
         const activeRows = realHits.map((h) => {
-          const country = getRealCountryName(h.country, h.range).toUpperCase();
-          const rangeName = h.range ? `${country} ${h.range}` : country;
-          const fullNum = (h as any).number || (h as any).num || formatNumberWithAreaCode(h.range || "", country);
+          const rawNum = String((h as any).number || (h as any).num || (h as any).receiver || (h as any).testNumber || h.range || "").trim();
+          const cleanDigits = rawNum.replace(/\D/g, "");
+          const cleanRange = String(h.range || "").replace(/\D/g, "");
+          const bestDigits = cleanDigits || cleanRange;
+
+          const country = getRealCountryName(h.country, bestDigits, rawNum).toUpperCase();
+          
+          let rangeCode = h.range && !h.range.toUpperCase().includes("INTERNATIONAL") && !h.range.toUpperCase().includes("GLOBAL") ? h.range.trim() : "";
+          if (!rangeCode && bestDigits) {
+            rangeCode = bestDigits.length >= 5 ? bestDigits.slice(0, 5) : bestDigits;
+          }
+
+          const rangeName = rangeCode ? `${country} ${rangeCode}` : country;
+          const maskedDisplay = formatMaskedGetNumber(rawNum || bestDigits || "—");
+
           return {
             range: rangeName,
-            number: fullNum || "—",
+            number: maskedDisplay,
+            fullNumber: rawNum || bestDigits,
             sid: h.sid || (targetSid === "ALL" ? "SMS" : targetSid),
             message: maskOtpInMessage(h.message || ""),
           };
@@ -11350,7 +11996,18 @@ export function LoggedInDashboard({ user, onLogout }: LoggedInDashboardProps) {
 
                             {/* Test Number */}
                             <td className="py-3 px-4 border-r border-slate-200 font-bold text-emerald-700 align-top font-mono">
-                              {row.number}
+                              <span
+                                onClick={() => {
+                                  if (row.fullNumber && row.fullNumber !== "—") {
+                                    navigator.clipboard.writeText(row.fullNumber);
+                                    showDashboardToast(`Copied ${row.fullNumber}`, "success");
+                                  }
+                                }}
+                                className="cursor-pointer hover:text-emerald-900 select-all"
+                                title="Click to copy full test number"
+                              >
+                                {row.number}
+                              </span>
                             </td>
 
                             {/* SID */}

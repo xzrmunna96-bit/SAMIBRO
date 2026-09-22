@@ -43,25 +43,31 @@ if (typeof window !== "undefined") {
 
   window.addEventListener("unhandledrejection", (event) => {
     const reason = event.reason;
-    if (reason && (
-      String(reason.message || reason).includes("auth/network-request-failed") ||
-      String(reason.code || "").includes("auth/network-request-failed") ||
-      String(reason.message || reason).includes("network-request-failed")
-    )) {
-      event.preventDefault(); // Suppress warning in console/test runner
-      console.log("⚡ Suppressed Firebase Auth network-request-failed rejection gracefully.");
+    const str = String(reason?.message || reason?.code || reason || "");
+    if (
+      str.includes("auth/network-request-failed") ||
+      str.includes("network-request-failed") ||
+      str.includes("auth/internal-error") ||
+      reason?.code === "auth/network-request-failed"
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
     }
   });
 
   window.addEventListener("error", (event) => {
     const error = event.error || event;
-    if (error && (
-      String(error.message || error).includes("auth/network-request-failed") ||
-      String(error.code || "").includes("auth/network-request-failed") ||
-      String(error.message || error).includes("network-request-failed")
-    )) {
-      event.preventDefault(); // Suppress error
-      console.log("⚡ Suppressed Firebase Auth network-request-failed error gracefully.");
+    const str = String(error?.message || error?.code || event.message || error || "");
+    if (
+      str.includes("auth/network-request-failed") ||
+      str.includes("network-request-failed") ||
+      str.includes("auth/internal-error") ||
+      error?.code === "auth/network-request-failed"
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
     }
   });
 }

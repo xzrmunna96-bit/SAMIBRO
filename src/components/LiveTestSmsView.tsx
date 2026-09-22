@@ -150,20 +150,11 @@ export function convertHitToCard(h: any, i: number = 0): TestSmsCardItem {
   const cleanDigits = (rawPhone || rawRange).replace(/\D/g, "");
   const info = getCountryInfo(cleanDigits || rawRange || rawPhone);
 
-  let countryName = (h.country || (h as any).countryName || "").trim();
-  if (
-    !countryName ||
-    countryName.toUpperCase().includes("INTERNATIONAL") ||
-    countryName.toUpperCase().includes("UNKNOWN") ||
-    countryName.toUpperCase().includes("GLOBAL") ||
-    (countryName.toUpperCase().includes("SRI LANKA") && !cleanDigits.startsWith("94")) ||
-    (countryName.toUpperCase().includes("BANGLADESH") && !cleanDigits.startsWith("880"))
-  ) {
-    countryName = info.name || getRealCountryName(info.name, cleanDigits);
-  }
-
-  if (!countryName || countryName.toUpperCase().includes("INTERNATIONAL")) {
-    countryName = getRealCountryName(info.name, cleanDigits) || "Global Route";
+  let countryName = getRealCountryName(h.country || (h as any).countryName, cleanDigits || rawRange, rawPhone);
+  if (!countryName || countryName.toUpperCase().includes("INTERNATIONAL") || countryName.toUpperCase().includes("DIRECT ROUTE")) {
+    if (info && info.name && !info.name.toLowerCase().includes("international")) {
+      countryName = stripFlagFromCountryName(info.name);
+    }
   }
 
   let operatorName = h.operator || "";
